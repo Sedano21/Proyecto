@@ -1,0 +1,15 @@
+{% extends "base.html" %}{% from "_m.html" import b, csrf %}
+{% block content %}<h1>Programación de distribución</h1>
+<p class="muted small">La propuesta prioriza por fecha, pedidos completos y urgencia; agrupa por zona/distrito; respeta capacidad de las unidades disponibles (propias primero) y ordena paradas por horario de cita. El Coordinador de Distribución ajusta y confirma (IF §12.1).</p>
+<form class="row card" method="get"><div><label>Fecha</label><input type="date" name="fecha" value="{{ fecha.isoformat() }}"></div><div><button class="sec">Ver</button></div></form>
+<h2>Pedidos listos para programar (hasta {{ fecha|d }})</h2>
+<table><tr><th>OV</th><th>Cliente</th><th>Distrito</th><th>Comprometida</th><th>Cita</th><th class="r">Kg</th><th>Tipo</th></tr>
+{% for o in pend %}<tr><td><a href="{{ url_for('com.order_detail', oid=o.id) }}">{{ o.numero }}</a></td><td>{{ o.customer.nombre }}</td><td>{{ o.distrito }}</td><td>{{ o.fecha_compromiso|d }}</td><td>{{ o.hora_cita }} {{ '✓' if o.cita_confirmada else ('(sin confirmar)' if o.customer.requiere_cita else '') }}</td><td class="r">{{ peso(o)|n }}</td><td>{{ 'PARCIAL' if o.decision_parcial=='APROBADA' and o.estado_stock!='COMPLETA' else 'COMPLETO' }}</td></tr>
+{% else %}<tr><td colspan="7" class="muted">Sin pedidos preparados pendientes de programar.</td></tr>{% endfor %}</table>
+{% if can('distribucion.programar') %}<form method="post">{{ csrf() }}<input type="hidden" name="fecha" value="{{ fecha.isoformat() }}"><button>Generar propuesta de rutas</button></form>{% endif %}
+<h2>Rutas del {{ fecha|d }}</h2>
+<table><tr><th>Ruta</th><th>Zona</th><th>Unidad</th><th>Conductor</th><th class="r">Kg</th><th>Paradas</th><th>Estado</th><th>Advertencias</th></tr>
+{% for r in rows %}<tr><td><a href="{{ url_for('dist.route_detail', rid=r.id) }}">#{{ r.id }}</a></td><td>{{ r.zona }}</td><td>{{ r.vehicle.placa if r.vehicle else '—' }} {{ '(tercero/externo)' if r.requiere_externo }}</td><td>{{ r.driver.nombre if r.driver else '—' }}</td><td class="r">{{ r.peso_total|n }}{% if r.vehicle %} / {{ r.vehicle.capacidad_kg|n }}{% endif %}</td><td>{{ r.stops|length }}</td><td>{{ b(r.estado) }}</td><td class="small">{{ r.advertencias|join('; ') }}</td></tr>
+{% else %}<tr><td colspan="8" class="muted">Sin rutas</td></tr>{% endfor %}</table>
+{% if otras %}<h3>Rutas activas de otras fechas</h3><table>{% for r in otras %}<tr><td><a href="{{ url_for('dist.route_detail', rid=r.id) }}">#{{ r.id }}</a></td><td>{{ r.fecha|d }}</td><td>{{ r.zona }}</td><td>{{ b(r.estado) }}</td></tr>{% endfor %}</table>{% endif %}
+{% if can('export.datos') %}<p><a href="{{ url_for('main.export', entidad='rutas') }}">Exportar rutas</a></p>{% endif %}{% endblock %}

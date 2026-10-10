@@ -1,0 +1,113 @@
+"""Traslados entre almacenes (IF §6.2, §13): Logística decide y la Jefatura autoriza; Almacén confirma recepción."""
+from sqlalchemy import select
+
+from ..db import db
+from ..models import OVDecision, StockLot, Transfer, Warehouse, now
+from . import alerts
+from .core import BusinessError, audit, has_perm
+from .stock import add_or_increase_lot, free_qty, lot_usable, reevaluate_pending
+
+
+def pending_transfer_qty(lot):
+    q = select(Transfer).where(Transfer.origen_lot_id == lot.id, Transfer.estado.in_(["SOLICITADO", "AUTORIZADO"]))
+    return sum(t.cantidad for t in db().execute(q).scalars())
+
+
+def transferable_qty(lot):
+    ok, _ = lot_usable(lot)
+    if not ok:
+        return 0.0
+    return max(free_qty(lot) - pending_transfer_qty(lot), 0.0)
+
+
+def request_transfer(user, lot_id, destino_code, cantidad, order=None, observacion=""):
+    if not (has_perm(user, "traslado.solicitar") or has_perm(user, "ov.decidir_alternativa")):
+        raise BusinessError("Su rol no puede solicitar traslados (Logística decide, IF §6.2).")
+    lot = db().get(StockLot, int(lot_id))
+    if lot is None:
+        raise BusinessError("Lote no encontrado.")
+    if db().get(Warehouse, destino_code) is None:
+        raise BusinessError("Almacén destino no válido.")
+    if destino_code == lot.warehouse_code:
+        raise BusinessError("Origen y destino son el mismo almacén.")
+    disp = transferable_qty(lot)
+    if cantidad <= 0 or cantidad > disp + 1e-9:
+        raise BusinessError(f"Cantidad no disponible para traslado (máximo {disp:g}).")
+    t = Transfer(origen_lot_id=lot.id, destino_code=destino_code, cantidad=cantidad, order_id=order.id if order else None,
+                 solicitado_por=user.id, observacion=observacion)
+    db().add(t)
+    db().flush()
+    if order is not None:
+        db().add(OVDecision(order_id=order.id, tipo="USO_ALMACEN_ALTERNATIVO", estado="REGISTRADA",
+                            detalle={"traslado": t.id, "lote": lot.lote, "origen": lot.warehouse_code,
+                                     "destino": destino_code, "cantidad": cantidad}, comentario=observacion, user_id=user.id))
+    alerts.emit("TRASLADO_SOLICITADO", f"Autorizar traslado #{t.id}: {lot.product_code} × {cantidad:g}",
+                f"{lot.warehouse_code} → {destino_code}, lote {lot.lote}. OV: {order.numero if order else '-'}.",
+                "Transfer", t.id, dedup_key=f"TRASLADO_SOL:{t.id}", creado_por=user)
+    audit(user, "TRASLADO_SOLICITADO", "Transfer", t.id, {"lote": lot.id, "destino": destino_code, "cantidad": cantidad})
+    return t
+
+
+def authorize(t, user, aprobar, observacion=""):
+    if not has_perm(user, "traslado.autorizar"):
+        raise BusinessError("Solo la Jefatura de Logística autoriza traslados (IF §6.2, §13).")
+    if t.estado != "SOLICITADO":
+        raise BusinessError("El traslado no está pendiente de autorización.")
+    if aprobar:
+        disp = transferable_qty(t.lot) + t.cantidad  # excluye su propia cantidad pendiente
+        if t.cantidad > disp + 1e-9:
+            raise BusinessError(f"El lote ya no tiene la cantidad disponible ({disp:g}).")
+    t.estado = "AUTORIZADO" if aprobar else "RECHAZADO"
+    t.autorizado_por = user.id
+    t.autorizado_ts = now()
+    if observacion:
+        t.observacion = (t.observacion + "\n" if t.observacion else "") + f"Autorización: {observacion}"
+    alerts.close_by_system(f"TRASLADO_SOL:{t.id}", f"Traslado {t.estado.lower()}")
+    if aprobar:
+        alerts.emit("TRASLADO_AUTORIZADO", f"Traslado #{t.id} autorizado", f"{t.lot.product_code} × {t.cantidad:g} "
+                    f"{t.lot.warehouse_code} → {t.destino_code}.", "Transfer", t.id, creado_por=user)
+    audit(user, f"TRASLADO_{t.estado}", "Transfer", t.id, {"observacion": observacion})
+
+
+def ship(t, user):
+    if not has_perm(user, "traslado.salida"):
+        raise BusinessError("Su rol no registra salidas de traslado.")
+    if t.estado != "AUTORIZADO":
+        raise BusinessError("Solo se despachan traslados autorizados.")
+    if t.cantidad > free_qty(t.lot) + 1e-9:
+        raise BusinessError("El lote de origen ya no tiene la cantidad libre.")
+    t.lot.cantidad -= t.cantidad
+    if t.lot.cantidad_verificada is not None:
+        t.lot.cantidad_verificada -= t.cantidad
+    t.estado = "EN_TRANSITO"
+    t.salida_ts = now()
+    t.salida_por = user.id
+    audit(user, "TRASLADO_SALIDA", "Transfer", t.id)
+
+
+def receive(t, user, cantidad_recibida, observacion=""):
+    if not has_perm(user, "traslado.recibir"):
+        raise BusinessError("La recepción la confirma el Coordinador de Almacén o su asistente (IF §6.2).")
+    if t.estado != "EN_TRANSITO":
+        raise BusinessError("El traslado no está en tránsito.")
+    if cantidad_recibida < 0:
+        raise BusinessError("Cantidad inválida.")
+    t.cantidad_recibida = cantidad_recibida
+    t.diferencia = t.cantidad - cantidad_recibida
+    t.recibido_por = user.id
+    t.recibido_ts = now()
+    t.estado = "RECIBIDO" if abs(t.diferencia) < 1e-9 else "RECIBIDO_CON_DIFERENCIA"
+    if observacion:
+        t.observacion = (t.observacion + "\n" if t.observacion else "") + f"Recepción: {observacion}"
+    if cantidad_recibida > 0:
+        add_or_increase_lot(t.lot.product_code, t.destino_code, t.lot.lote, cantidad_recibida, t.lot.estado,
+                            t.lot.fecha_venc, t.lot.fecha_fab, origen=f"TRASLADO-{t.id}")
+    if t.estado == "RECIBIDO_CON_DIFERENCIA":
+        alerts.emit("TRASLADO_DIFERENCIA", f"Diferencia en traslado #{t.id}",
+                    f"Enviado {t.cantidad:g}, recibido {cantidad_recibida:g}. {observacion}", "Transfer", t.id, creado_por=user)
+    audit(user, f"TRASLADO_{t.estado}", "Transfer", t.id, {"recibido": cantidad_recibida, "diferencia": t.diferencia})
+    if t.order is not None and t.order.estado not in ("CANCELADA",):
+        from .stock import evaluate_order, ORDEN_ESTADOS_CERRADOS
+        if t.order.estado not in ORDEN_ESTADOS_CERRADOS:
+            evaluate_order(t.order, user, "REEVALUACION")
+    reevaluate_pending(user, [t.lot.product_code])

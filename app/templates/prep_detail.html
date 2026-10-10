@@ -1,0 +1,13 @@
+{% extends "base.html" %}{% from "_m.html" import b, bar, csrf %}
+{% block content %}
+<h1>Preparación OV {{ o.numero }} {{ b(o.estado) }}</h1>
+<p>Cliente {{ o.customer.nombre }} · comprometida {{ o.fecha_compromiso|d }} · avance {{ bar(progress) }} <b>{{ progress }}%</b></p>
+<div class="note info small">Registre la cantidad preparada indicando el lote; el sistema verifica que corresponda a los lotes reservados (lote/vencimiento validados al reservar). Al llegar al 80 % se alerta a Distribución; al 100 % el pedido queda PREPARADO y se generan los certificados de Calidad.</div>
+<table><tr><th>Producto</th><th class="r">A preparar (reservado)</th><th class="r">Preparado</th><th>Lotes reservados</th><th>Registrar</th></tr>
+{% for l in o.lines if l.activa %}<tr><td>{{ l.product_code }} <span class="small muted">{{ l.product.descripcion }}</span></td><td class="r">{{ line_reserved(l)|n }}</td><td class="r">{{ l.preparado|n }}</td>
+<td class="small">{% for r in l.reservations if r.estado=='ACTIVA' %}{{ r.lot.lote }} × {{ r.cantidad|n }} (vence {{ r.lot.fecha_venc|d }})<br>{% endfor %}</td>
+<td>{% if can('preparacion.registrar') and o.estado in ['EVALUADA','EN_PREPARACION'] %}<form method="post" class="row">{{ csrf() }}<input type="hidden" name="line_id" value="{{ l.id }}">
+<select name="lote">{% for r in l.reservations if r.estado=='ACTIVA' %}<option>{{ r.lot.lote }}</option>{% endfor %}</select>
+<input type="number" step="any" name="cantidad" value="{{ line_reserved(l) - l.preparado }}" style="width:90px"><button class="small">Registrar</button></form>{% endif %}</td></tr>{% endfor %}</table>
+<p><a href="{{ url_for('com.order_detail', oid=o.id) }}">Ver OV</a></p>
+{% endblock %}

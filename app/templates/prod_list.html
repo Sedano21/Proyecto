@@ -1,0 +1,17 @@
+{% extends "base.html" %}{% from "_m.html" import b, csrf %}
+{% block content %}<h1>Producción: solicitudes y programa</h1>
+<p class="muted small">El sistema realiza el análisis preliminar (materiales desde la lista Excel, cálculo proporcional y merma); Almacén revisa y envía; Producción valida lista, disponibilidad real, capacidad y plazo (IF §8.2).</p>
+{% if can('produccion.solicitud') %}<form method="post" class="card row">{{ csrf() }}
+<div><label>Producto</label><input name="product_code" list="bomp" required></div><div><label>Cantidad</label><input type="number" step="any" name="cantidad" required></div>
+<div><label>OV relacionada</label><input name="ov"></div><div><label>Fecha requerida</label><input type="date" name="fecha_requerida"></div><div><label>Observación</label><input name="observacion"></div>
+<div><button>Crear solicitud preliminar</button></div><datalist id="bomp">{% for p in prods %}<option value="{{ p }}">{% endfor %}</datalist></form>{% endif %}
+<div class="tbl"><table><tr><th>#</th><th>Producto</th><th class="r">Cantidad</th><th>OV</th><th>Requerida</th><th>Origen</th><th>Estado</th><th>Materiales</th><th>Línea / fecha</th></tr>
+{% for r in rows %}<tr><td><a href="{{ url_for('prod.request_detail', rid=r.id) }}">{{ r.id }}</a></td><td>{{ r.product_code }}</td><td class="r">{{ r.cantidad|n }}</td><td>{{ r.order.numero if r.order }}</td><td>{{ r.fecha_requerida|d }}</td><td>{{ r.origen }}</td><td>{{ b(r.estado) }}</td>
+<td>{% if r.analisis.bom_encontrada %}{{ 'suficientes' if r.analisis.factible else 'con faltantes' }}{% else %}<span class="muted">sin BOM</span>{% endif %}</td><td>{{ r.line_code or '' }} {{ r.fecha_programada|d }}</td></tr>{% endfor %}</table></div>
+<h2>Programa semanal (kg programados por línea y día)</h2>
+<form class="row" method="get"><div><label>Desde</label><input type="date" name="desde" value="{{ dias[0].isoformat() }}"></div><div><button class="sec">Ver</button></div></form>
+<table><tr><th>Línea</th><th>Capacidad kg/día</th>{% for d in dias %}<th>{{ d|d }}</th>{% endfor %}</tr>
+{% for l in lines %}<tr><td>{{ l.nombre }}</td><td>{{ l.capacidad_kg_dia|n if l.capacidad_kg_dia else 'no configurada' }}</td>
+{% for d in dias %}<td class="small">{% for r in prog.get((l.code, d), []) %}<a href="{{ url_for('prod.request_detail', rid=r.id) }}">#{{ r.id }} {{ r.product_code }}</a><br>{% endfor %}{% if carga[(l.code, d)] %}<b>{{ carga[(l.code, d)]|n }} kg</b>{% endif %}</td>{% endfor %}</tr>{% endfor %}</table>
+<p class="small muted">La programación diaria hoy es manual; el sistema organiza con la capacidad y plazos que informe Producción (configurar capacidad en Configuración → Líneas).</p>
+{% endblock %}

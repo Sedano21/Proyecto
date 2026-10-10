@@ -1,0 +1,13 @@
+{% extends "base.html" %}{% from "_m.html" import b, csrf %}
+{% block content %}<h1>Reempaque</h1>
+<p class="muted small">Almacén inicia → Calidad evalúa y aprueba/desaprueba → se notifica a Almacén y se envía a Producción → Producción ejecuta y registra (IF §9). Criterios de conversión de calidad, SKU, lote y disposición pendientes de validación por Calidad.</p>
+{% if can('reempaque.solicitar') %}<form method="post" class="card">{{ csrf() }}<h3>Nueva solicitud</h3><div class="row">
+<div><label>Tipo</label><select name="tipo">{% for c, n, d in tipos %}<option value="{{ c }}" title="{{ d }}">{{ n }}</option>{% endfor %}</select></div>
+<div><label>Lote origen</label><select name="lot_id">{% for l in lots %}<option value="{{ l.id }}">{{ l.product_code }} · {{ l.lote }} · {{ l.warehouse_code }} · {{ l.estado }} · libre {{ free(l)|n }} · vence {{ l.fecha_venc|d }}</option>{% endfor %}</select></div>
+<div><label>Cantidad</label><input type="number" step="any" name="cantidad" required></div>
+<div><label>Producto destino (cambio de presentación / conversión)</label><input name="producto_destino" list="pt"></div>
+<div><label>Motivo</label><input name="motivo"></div><div><button>Solicitar</button></div></div>
+<datalist id="pt">{% for p in prods %}<option value="{{ p.code }}">{{ p.descripcion }}</option>{% endfor %}</datalist>
+<ul class="small muted">{% for c, n, d in tipos %}<li><b>{{ n }}</b>: {{ d }}</li>{% endfor %}</ul></form>{% endif %}
+<table><tr><th>#</th><th>Fecha</th><th>Tipo</th><th>Lote origen</th><th class="r">Cant.</th><th>Destino</th><th>OV</th><th>Estado</th></tr>
+{% for r in rows %}<tr><td><a href="{{ url_for('alm.repack_detail', rid=r.id) }}">{{ r.id }}</a></td><td>{{ r.ts|d }}</td><td>{{ r.tipo|replace('_',' ') }}</td><td>{{ r.lot.product_code }} {{ r.lot.lote }}</td><td class="r">{{ r.cantidad|n }}</td><td>{{ r.producto_destino }}</td><td>{{ r.order.numero if r.order }}</td><td>{{ b(r.estado) }}</td></tr>{% endfor %}</table>{% endblock %}

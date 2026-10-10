@@ -1,0 +1,7 @@
+{% extends "base.html" %}{% from "_m.html" import b %}
+{% block content %}<h1>Cargas de archivos SAP / Excel</h1>
+<p class="muted small">Cada archivo se valida (formato, obligatorios, duplicados, diferencias) antes de incorporarse; quien carga corrige o excluye filas y luego se autoriza (IF §6.4, §19).</p>
+<p>{% for k, s in specs.items() %}<a class="btn sec" href="{{ url_for('alm.upload_new', tipo=k) }}">{{ s.nombre }}</a> {% endfor %}</p>
+<table><tr><th>#</th><th>Tipo</th><th>Archivo / hoja</th><th>Fecha</th><th>Usuario</th><th>Estado</th><th>Resumen</th></tr>
+{% for r in rows %}<tr><td><a href="{{ url_for('alm.upload_detail', bid=r.id) }}">{{ r.id }}</a></td><td>{{ specs[r.tipo].nombre }}</td><td>{{ r.archivo }} / {{ r.hoja }}</td><td>{{ r.ts|d }}</td><td>{{ r.user.nombre if r.user }}</td><td>{{ b(r.estado) }}</td>
+<td class="small">{{ r.resumen.filas }} filas · {{ r.resumen.con_error }} con error · {{ r.resumen.con_advertencia }} adv.</td></tr>{% endfor %}</table>{% endblock %}

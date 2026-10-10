@@ -1,0 +1,49 @@
+{% extends "base.html" %}{% from "_m.html" import b, csrf %}
+{% block content %}
+<h1>Configuración</h1>
+<p class="muted">Sistemas y Gerencia General administran la configuración (IF §16). Cada cambio crea una nueva versión y queda auditado. Estados: {{ b('DEFINIDO') }} regla expresa · {{ b('PROPUESTO') }} requiere validación · {{ b('PENDIENTE') }} decisión pendiente · {{ b('AS-IS') }} observado en archivos actuales · {{ b('DEMO') }} solo demostración.</p>
+<p><a href="{{ url_for('main.products') }}">Catálogo de artículos</a> · <a href="{{ url_for('main.customers') }}">Clientes</a> · <a href="#almacenes">Almacenes</a> · <a href="#plazos">Plazos de compra</a> · <a href="#lineas">Líneas de producción</a> · <a href="#fases">Fases de importación</a></p>
+<h2 id="params">Parámetros</h2>
+<div class="tbl"><table><tr><th>Grupo</th><th>Parámetro</th><th>Valor</th><th>Estado</th><th>Descripción / fuente</th></tr>
+{% for p in params %}<tr><td>{{ p.grupo }}</td><td class="mono">{{ p.key }}<br><a class="small" href="{{ url_for('main.param_history', key=p.key) }}">v{{ p.version }} · historial</a></td>
+<td>{% if can('config.editar') %}<form method="post" action="{{ url_for('main.param_edit', key=p.key) }}">{{ csrf() }}
+<input name="valor" value="{{ p.valor.v|tojson if p.tipo in ['list','dict'] else (p.valor.v if p.valor.v is not none else '') }}" style="width:260px" placeholder="(vacío = no definido)">
+<select name="estado">{% for e in ['DEFINIDO','PROPUESTO','PENDIENTE','AS-IS','DEMO'] %}<option {{ 'selected' if p.estado==e }}>{{ e }}</option>{% endfor %}</select>
+<button class="small">Guardar</button></form>{% else %}{{ p.valor.v }}{% endif %}</td>
+<td>{{ b(p.estado) }}</td><td class="small">{{ p.descripcion }}<br><span class="muted">Fuente: {{ p.fuente }}</span></td></tr>{% endfor %}</table></div>
+
+<h2 id="almacenes">Almacenes</h2>
+<p class="small muted">Uso: PT (producto terminado, 1560), MP_INSUMOS (1524), ALTERNATIVO (Ext-001/005/010/014: solo se muestran como opción), OTRO (no reservable).</p>
+<div class="ftable"><div class="frow fh"><div class="fcell">Código SAP</div><div class="fcell">Nombre</div><div class="fcell">Uso</div><div class="fcell">Prioridad</div><div class="fcell">Reservable</div><div class="fcell">Observación</div><div class="fcell"></div></div>
+{% for w in warehouses %}<form class="frow" method="post" action="{{ url_for('main.warehouse_edit') }}">{{ csrf() }}<input type="hidden" name="code" value="{{ w.code }}">
+<div class="fcell mono">{{ w.code }}</div><div class="fcell"><input name="nombre" value="{{ w.nombre }}" size="12"></div>
+<div class="fcell"><select name="uso">{% for u in ['PT','MP_INSUMOS','ALTERNATIVO','OTRO'] %}<option {{ 'selected' if w.uso==u }}>{{ u }}</option>{% endfor %}</select></div>
+<div class="fcell"><input type="number" name="prioridad" value="{{ w.prioridad }}" style="width:60px"></div>
+<div class="fcell"><select name="reservable"><option value="1" {{ 'selected' if w.reservable }}>Sí</option><option value="0" {{ 'selected' if not w.reservable }}>No</option></select></div>
+<div class="fcell"><input name="observacion" value="{{ w.observacion }}" size="40"><br><span class="small muted">{{ w.fuente }}</span></div>
+<div class="fcell">{% if can('config.editar') %}<button class="small">Guardar</button>{% endif %}</div></form>{% endfor %}</div>
+
+<h2 id="plazos">Plazos de reposición (días naturales)</h2>
+<div class="ftable"><div class="frow fh"><div class="fcell">Categoría</div><div class="fcell">Mín.</div><div class="fcell">Máx.</div><div class="fcell">Mes desde</div><div class="fcell">Mes hasta</div><div class="fcell">Descripción</div><div class="fcell"></div></div>
+{% for lt in lead_times %}<form class="frow" method="post" action="{{ url_for('main.leadtime_edit') }}">{{ csrf() }}<input type="hidden" name="id" value="{{ lt.id }}">
+<div class="fcell"><input name="categoria" value="{{ lt.categoria }}"></div><div class="fcell"><input type="number" name="dias_min" value="{{ lt.dias_min }}" style="width:60px"></div><div class="fcell"><input type="number" name="dias_max" value="{{ lt.dias_max }}" style="width:60px"></div>
+<div class="fcell"><input type="number" name="mes_desde" value="{{ lt.mes_desde or '' }}" style="width:55px"></div><div class="fcell"><input type="number" name="mes_hasta" value="{{ lt.mes_hasta or '' }}" style="width:55px"></div>
+<div class="fcell small">{{ lt.descripcion }}</div><div class="fcell">{% if can('config.editar') %}<button class="small">Guardar</button>{% endif %}</div></form>{% endfor %}
+{% if can('config.editar') %}<form class="frow" method="post" action="{{ url_for('main.leadtime_edit') }}">{{ csrf() }}<div class="fcell"><input name="categoria" placeholder="Nueva categoría"></div><div class="fcell"><input type="number" name="dias_min" style="width:60px"></div><div class="fcell"><input type="number" name="dias_max" style="width:60px"></div><div class="fcell"><input type="number" name="mes_desde" style="width:55px"></div><div class="fcell"><input type="number" name="mes_hasta" style="width:55px"></div><div class="fcell"></div><div class="fcell"><button class="small">Agregar</button></div></form>{% endif %}</div>
+
+<h2 id="lineas">Líneas de producción</h2>
+<p class="small muted">La capacidad la informa Producción (IF §8.2); mientras esté vacía, la programación no verifica capacidad y lo advierte.</p>
+<div class="ftable"><div class="frow fh"><div class="fcell">Código</div><div class="fcell">Nombre</div><div class="fcell">Capacidad kg/día</div><div class="fcell">Activa</div><div class="fcell">Fuente</div><div class="fcell"></div></div>
+{% for l in lines %}<form class="frow" method="post" action="{{ url_for('main.line_edit') }}">{{ csrf() }}<input type="hidden" name="code" value="{{ l.code }}"><div class="fcell">{{ l.code }}</div><div class="fcell">{{ l.nombre }}</div>
+<div class="fcell"><input name="capacidad_kg_dia" value="{{ l.capacidad_kg_dia or '' }}" style="width:100px"></div><div class="fcell"><select name="activa"><option value="1" {{ 'selected' if l.activa }}>Sí</option><option value="0" {{ 'selected' if not l.activa }}>No</option></select></div><div class="fcell small">{{ l.fuente }}</div><div class="fcell"><button class="small">Guardar</button></div></form>{% endfor %}</div>
+
+<h2 id="fases">Plantilla de fases de importación</h2>
+<div class="note">Las fases y responsables por hito están pendientes de precisar (IF §20). Las cargadas son de <b>demostración</b>.</div>
+<div class="ftable"><div class="frow fh"><div class="fcell">Orden</div><div class="fcell">Fase</div><div class="fcell">Días desde inicio</div><div class="fcell">Recordatorio (días antes)</div><div class="fcell">Responsable</div><div class="fcell">Estado</div><div class="fcell"></div></div>
+{% for ph in phases %}<form class="frow" method="post" action="{{ url_for('main.phase_edit') }}">{{ csrf() }}<input type="hidden" name="id" value="{{ ph.id }}">
+<div class="fcell"><input type="number" name="orden" value="{{ ph.orden }}" style="width:55px"></div><div class="fcell"><input name="nombre" value="{{ ph.nombre }}"></div><div class="fcell"><input type="number" name="dias_desde_inicio" value="{{ ph.dias_desde_inicio }}" style="width:70px"></div><div class="fcell"><input type="number" name="recordatorio_dias" value="{{ ph.recordatorio_dias }}" style="width:70px"></div>
+<div class="fcell"><select name="responsable_rol">{% for r in roles %}<option value="{{ r.code }}" {{ 'selected' if r.code==ph.responsable_rol }}>{{ r.nombre }}</option>{% endfor %}</select></div>
+<div class="fcell"><select name="estado_def">{% for e in ['DEMO','PROPUESTO','DEFINIDO'] %}<option {{ 'selected' if ph.estado_def==e }}>{{ e }}</option>{% endfor %}</select></div>
+<div class="fcell"><button class="small">Guardar</button> <label class="small"><input type="checkbox" name="eliminar" value="1"> eliminar</label></div></form>{% endfor %}
+<form class="frow" method="post" action="{{ url_for('main.phase_edit') }}">{{ csrf() }}<div class="fcell"><input type="number" name="orden" style="width:55px"></div><div class="fcell"><input name="nombre" placeholder="Nueva fase"></div><div class="fcell"><input type="number" name="dias_desde_inicio" style="width:70px"></div><div class="fcell"><input type="number" name="recordatorio_dias" style="width:70px"></div><div class="fcell"><select name="responsable_rol">{% for r in roles %}<option value="{{ r.code }}">{{ r.nombre }}</option>{% endfor %}</select></div><div class="fcell"><select name="estado_def"><option>PROPUESTO</option><option>DEFINIDO</option></select></div><div class="fcell"><button class="small">Agregar</button></div></form></div>
+{% endblock %}

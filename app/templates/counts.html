@@ -1,0 +1,6 @@
+{% extends "base.html" %}{% from "_m.html" import b, csrf %}
+{% block content %}<h1>Conteos físicos</h1>
+<p class="muted small">Contraste periódico del inventario físico; Faltante = MAX(SAP − físico, 0), Sobrante = MAX(físico − SAP, 0); físico = conteo × peso unitario cuando se cuenta por unidades de peso (formato "Inven. bobinas"). Las diferencias alertan a Sistemas y limitan lo reservable.</p>
+<form method="post" class="card row">{{ csrf() }}<div><label>Almacén</label><select name="warehouse_code">{% for w in whs %}<option value="{{ w.code }}">{{ w.code }} {{ w.nombre }}</option>{% endfor %}</select></div>
+<div><label>Prefijo de artículo (opcional, p.ej. EN-)</label><input name="prefijo"></div><div><label>Observación</label><input name="observacion"></div><div><button>Abrir conteo</button></div></form>
+<table><tr><th>#</th><th>Fecha</th><th>Almacén</th><th>Líneas</th><th>Estado</th></tr>{% for c in rows %}<tr><td><a href="{{ url_for('alm.count_detail', cid=c.id) }}">{{ c.id }}</a></td><td>{{ c.fecha|d }}</td><td>{{ c.warehouse_code }}</td><td>{{ c.lines|length }}</td><td>{{ b(c.estado) }}</td></tr>{% endfor %}</table>{% endblock %}

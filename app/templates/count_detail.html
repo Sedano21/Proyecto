@@ -1,0 +1,9 @@
+{% extends "base.html" %}{% from "_m.html" import b, csrf %}
+{% block content %}<h1>Conteo #{{ c.id }} · {{ c.warehouse_code }} {{ b(c.estado) }}</h1>
+<form method="post">{{ csrf() }}
+<div class="tbl"><table><tr><th>Artículo</th><th>Lote</th><th class="r">SAP</th><th>Peso unitario</th><th>Conteo</th><th class="r">Físico</th><th class="r">Faltante</th><th class="r">Sobrante</th><th>Comentario</th></tr>
+{% for l in c.lines %}<tr><td>{{ l.product_code }}</td><td>{{ l.lote }}</td><td class="r">{{ l.sap|n }}</td>
+<td><input name="peso_{{ l.id }}" value="{{ l.peso_unitario if l.peso_unitario is not none else '' }}" size="6" {{ 'disabled' if c.estado!='ABIERTO' }}></td>
+<td><input name="conteo_{{ l.id }}" value="{{ l.conteo if l.conteo is not none else '' }}" size="8" {{ 'disabled' if c.estado!='ABIERTO' }}></td>
+<td class="r">{{ l.fisico|n }}</td><td class="r">{{ l.faltante|n }}</td><td class="r">{{ l.sobrante|n }}</td><td><input name="com_{{ l.id }}" value="{{ l.comentario }}" {{ 'disabled' if c.estado!='ABIERTO' }}></td></tr>{% endfor %}</table></div>
+{% if c.estado=='ABIERTO' %}<p><button>Guardar</button> <button class="sec" name="cerrar" value="1">Guardar y cerrar conteo</button></p>{% endif %}</form>{% endblock %}

@@ -1,0 +1,21 @@
+{% extends "base.html" %}{% from "_m.html" import csrf %}
+{% block content %}
+<h1>Registrar orden de venta</h1>
+<div class="note info small">Al guardar, el sistema valida los datos y evalúa stock, reservas, lotes, vencimientos y condiciones del cliente; reserva solo stock físico verificado y utilizable (IF §4.2–4.3). Los campos siguen la exportación OVS de SAP; deben contrastarse con el formato oficial de OV (IF §5).</div>
+<form method="post" class="card">{{ csrf() }}
+<div class="row">
+<div><label>N° de OV / documento</label><input name="numero" required></div>
+<div><label>Cliente</label><select name="customer_id" required>{% for c in customers %}<option value="{{ c.id }}">{{ c.nombre }} ({{ c.ruc }}){{ ' · requiere cita' if c.requiere_cita }}</option>{% endfor %}</select></div>
+<div><label>Fecha comprometida de despacho</label><input type="date" name="fecha_compromiso" required></div>
+<div><label>Vendedor responsable</label><select name="vendedor_id"><option value="">(—)</option>{% for v in vendedores %}<option value="{{ v.id }}" {{ 'selected' if v.id==user.id }}>{{ v.nombre }}</option>{% endfor %}</select></div>
+<div><label><input type="checkbox" name="urgente" value="1"> Urgente</label></div>
+<div><label>Hora cita</label><input name="hora_cita" placeholder="(horario del cliente)"></div>
+<div><label><input type="checkbox" name="cita_confirmada" value="1"> Cita confirmada</label></div>
+</div>
+<label>Comentarios</label><textarea name="comentarios"></textarea>
+<h3>Líneas</h3>
+<table><tr><th>Producto</th><th>Cantidad (UM del artículo)</th><th>Precio unitario S/</th></tr>
+{% for i in range(8) %}<tr><td><input name="product_code" list="prods" style="width:360px"></td><td><input name="cantidad" type="number" step="any" min="0"></td><td><input name="precio_unitario" type="number" step="any" min="0"></td></tr>{% endfor %}</table>
+<datalist id="prods">{% for p in products %}<option value="{{ p.code }}">{{ p.descripcion }} ({{ p.um }})</option>{% endfor %}</datalist>
+<p><button>Registrar y evaluar</button></p>
+</form>{% endblock %}

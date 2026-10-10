@@ -1,0 +1,8 @@
+{% extends "base.html" %}{% from "_m.html" import csrf %}
+{% block content %}<h1>Nueva carga: {{ specs[tipo].nombre }}</h1>
+<form method="post" enctype="multipart/form-data" class="card">{{ csrf() }}
+<label>Tipo</label><select name="tipo" onchange="location='?tipo='+this.value">{% for k, s in specs.items() %}<option value="{{ k }}" {{ 'selected' if k==tipo }}>{{ s.nombre }}</option>{% endfor %}</select>
+<label>Archivo (.xlsx / .xlsm)</label><input type="file" name="archivo" accept=".xlsx,.xlsm" required>
+<label>Hoja (opcional; por defecto se busca {{ specs[tipo].hojas|join(', ') }} o la primera con los encabezados)</label><input name="hoja">
+<p class="small muted">Encabezados obligatorios: {% for r in specs[tipo].req %}<b>{{ specs[tipo].cols[r][0] }}</b>{{ ', ' if not loop.last }}{% endfor %}. Opcionales: {% for k, v in specs[tipo].cols.items() if k not in specs[tipo].req %}{{ v[0] }}{{ ', ' if not loop.last }}{% endfor %}.</p>
+<p><button>Leer y validar</button></p></form>{% endblock %}

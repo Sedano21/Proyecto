@@ -1,0 +1,396 @@
+"""Distribución y despacho (IF §12).
+
+Propuesta de rutas: prioriza (fecha, completitud, urgencia), agrupa por zona/distrito, respeta capacidad
+(kg) de unidades disponibles (propias primero), ordena paradas por horario de cita y advierte citas no
+confirmadas o pesos desconocidos. Si no hay unidad propia suficiente propone transporte externo.
+El Coordinador de Distribución ajusta y confirma; nada sale sin verificación.
+"""
+import os
+import uuid
+from datetime import date
+
+from sqlalchemy import select
+
+from ..db import db
+from ..models import Driver, Incident, Route, RouteStop, SalesOrder, Vehicle, now
+from . import alerts
+from .catalogs_helpers import incident_type_name
+from .core import BusinessError, audit, has_perm, param
+from .orders import order_weight_kg
+from .stock import consume_order, priority_key, release_order
+
+CHECKLIST = [("cantidades", "Cantidades verificadas"), ("documentos", "Documentos (guías, facturas, certificados)"),
+             ("carga_fisica", "Carga física verificada"), ("vehiculo", "Vehículo verificado"),
+             ("conductor", "Conductor verificado")]
+ACTIVE_ROUTE = ("PROPUESTA", "CONFIRMADA", "EN_RUTA")
+
+
+def _zone(order):
+    zonas = param("zonas_distrito", {}) or {}
+    d = (order.distrito or order.customer.distrito or "SIN DISTRITO").upper()
+    for zona, distritos in zonas.items():
+        if d in [x.upper() for x in distritos]:
+            return zona
+    return d
+
+
+def orders_in_active_route():
+    q = select(RouteStop.order_id).join(Route).where(Route.estado.in_(ACTIVE_ROUTE))
+    return set(db().execute(q).scalars())
+
+
+def dispatchable_orders(fecha=None, require_prepared=True):
+    estados = ["PREPARADA"] if require_prepared else ["EVALUADA", "EN_PREPARACION", "PREPARADA"]
+    q = select(SalesOrder).where(SalesOrder.estado.in_(estados))
+    out = []
+    usados = orders_in_active_route()
+    for o in db().execute(q).scalars():
+        if o.id in usados:
+            continue
+        if not (o.estado_stock == "COMPLETA" or o.decision_parcial == "APROBADA"):
+            continue
+        if fecha and o.fecha_compromiso and o.fecha_compromiso > fecha:
+            continue
+        out.append(o)
+    return sorted(out, key=priority_key)
+
+
+def _busy(fecha):
+    rs = db().execute(select(Route).where(Route.fecha == fecha, Route.estado.in_(ACTIVE_ROUTE))).scalars()
+    vs, ds = set(), set()
+    for r in rs:
+        if r.vehicle_id:
+            vs.add(r.vehicle_id)
+        if r.driver_id:
+            ds.add(r.driver_id)
+    return vs, ds
+
+
+def propose_routes(fecha, user, orders=None, require_prepared=True):
+    """Genera rutas PROPUESTA para la fecha. Devuelve la lista de rutas creadas."""
+    if user is not None and not (has_perm(user, "distribucion.programar") or has_perm(user, "ov.aprobar_parcial")):
+        raise BusinessError("Su rol no genera programación de distribución.")
+    s = db()
+    candidates = orders if orders is not None else dispatchable_orders(fecha, require_prepared)
+    usados = orders_in_active_route()
+    candidates = [o for o in candidates if o.id not in usados]
+    if not candidates:
+        return []
+    groups = {}
+    for o in sorted(candidates, key=priority_key):
+        groups.setdefault(_zone(o), []).append(o)
+    busy_v, busy_d = _busy(fecha)
+    vehicles = [v for v in s.execute(select(Vehicle).where(Vehicle.disponible.is_(True))).scalars() if v.id not in busy_v]
+    drivers = [d for d in s.execute(select(Driver).where(Driver.disponible.is_(True))).scalars() if d.id not in busy_d]
+    rutas = []
+    # zonas en orden de la mejor prioridad que contienen
+    for zona, ords in sorted(groups.items(), key=lambda kv: priority_key(kv[1][0])):
+        pending = [(o, *order_weight_kg(o)) for o in ords]
+        while pending:
+            total = sum(p[1] for p in pending)
+            propios = sorted([v for v in vehicles if v.propio], key=lambda v: v.capacidad_kg)
+            terceros = sorted([v for v in vehicles if not v.propio], key=lambda v: v.capacidad_kg)
+            vehicle = next((v for v in propios if v.capacidad_kg >= total), None) or \
+                next((v for v in terceros if v.capacidad_kg >= total), None)
+            if vehicle is None and (propios or terceros):
+                vehicle = max(propios or terceros, key=lambda v: v.capacidad_kg)
+            carga, resto, peso = [], [], 0.0
+            cap = vehicle.capacidad_kg if vehicle else float((param("capacidad_externo_kg", [2000, 25000]) or [0, 25000])[-1])
+            for item in pending:
+                if peso + item[1] <= cap + 1e-9 or not carga:
+                    carga.append(item)
+                    peso += item[1]
+                else:
+                    resto.append(item)
+            adv = []
+            if vehicle is None:
+                adv.append("No hay unidad disponible: evaluar contratación de transporte externo (IF §12.1).")
+            elif peso > vehicle.capacidad_kg + 1e-9:
+                adv.append(f"Un pedido supera la capacidad de la unidad ({peso:,.0f} > {vehicle.capacidad_kg:,.0f} kg); dividir o usar externo.")
+            for o, _, sin_peso in carga:
+                if sin_peso:
+                    adv.append(f"OV {o.numero}: productos sin peso unitario ({', '.join(sin_peso)}); peso subestimado.")
+                if o.customer.requiere_cita and not o.cita_confirmada:
+                    adv.append(f"OV {o.numero}: cliente requiere cita y no está confirmada.")
+            driver = None
+            if vehicle is not None:
+                if vehicle.conductor_habitual_id and any(d.id == vehicle.conductor_habitual_id for d in drivers):
+                    driver = next(d for d in drivers if d.id == vehicle.conductor_habitual_id)
+                elif drivers:
+                    driver = drivers[0]
+                if driver is None:
+                    adv.append("Sin conductor disponible.")
+            route = Route(fecha=fecha, vehicle_id=vehicle.id if vehicle else None, driver_id=driver.id if driver else None,
+                          requiere_externo=(vehicle is None or not vehicle.propio), zona=zona, peso_total=peso,
+                          advertencias=adv, creado_por=user.id if user else None)
+            carga.sort(key=lambda it: ((it[0].hora_cita or "99:99"), priority_key(it[0])))
+            for i, (o, w, _) in enumerate(carga, 1):
+                route.stops.append(RouteStop(order_id=o.id, orden=i, peso_kg=w))
+            s.add(route)
+            s.flush()
+            rutas.append(route)
+            if vehicle is not None:
+                vehicles.remove(vehicle)
+            if driver is not None:
+                drivers.remove(driver)
+            pending = resto
+    for r in rutas:
+        audit(user, "RUTA_PROPUESTA", "Route", r.id, {"zona": r.zona, "peso": r.peso_total, "paradas": len(r.stops)})
+    alerts.emit("DIST_PROGRAMACION", f"Programación de distribución {fecha:%d/%m/%Y}: {len(rutas)} ruta(s) propuesta(s)",
+                "; ".join(f"Ruta #{r.id} {r.zona} {r.peso_total:,.0f} kg ({len(r.stops)} paradas)"
+                          + (" EXTERNO" if r.requiere_externo else "") for r in rutas),
+                "Route", rutas[0].id, creado_por=user)
+    return rutas
+
+
+def _req(user, perm="distribucion.programar"):
+    if not has_perm(user, perm):
+        raise BusinessError("Su rol no puede realizar esta acción de distribución.")
+
+
+def update_route(route, user, vehicle_id=None, driver_id=None):
+    _req(user)
+    if route.estado not in ("PROPUESTA", "CONFIRMADA"):
+        raise BusinessError("La ruta ya salió.")
+    if vehicle_id:
+        v = db().get(Vehicle, int(vehicle_id))
+        if v is None:
+            raise BusinessError("Unidad no válida.")
+        if route.peso_total > v.capacidad_kg + 1e-9:
+            raise BusinessError(f"La carga ({route.peso_total:,.0f} kg) supera la capacidad de {v.placa} ({v.capacidad_kg:,.0f} kg).")
+        busy_v, _ = _busy(route.fecha)
+        if v.id in busy_v and v.id != route.vehicle_id:
+            raise BusinessError("La unidad ya está asignada a otra ruta ese día.")
+        route.vehicle_id = v.id
+        route.requiere_externo = not v.propio
+    if driver_id:
+        d = db().get(Driver, int(driver_id))
+        if d is None or not d.disponible:
+            raise BusinessError("Conductor no disponible.")
+        _, busy_d = _busy(route.fecha)
+        if d.id in busy_d and d.id != route.driver_id:
+            raise BusinessError("El conductor ya está asignado a otra ruta ese día.")
+        route.driver_id = d.id
+    audit(user, "RUTA_AJUSTADA", "Route", route.id, {"vehicle": vehicle_id, "driver": driver_id})
+
+
+def move_stop(stop, user, target_route):
+    _req(user)
+    if stop.route.estado not in ("PROPUESTA", "CONFIRMADA") or target_route.estado not in ("PROPUESTA", "CONFIRMADA"):
+        raise BusinessError("Solo se mueven paradas entre rutas no despachadas.")
+    if target_route.vehicle and target_route.peso_total + stop.peso_kg > target_route.vehicle.capacidad_kg + 1e-9:
+        raise BusinessError("La ruta destino excede la capacidad de su unidad.")
+    origin = stop.route
+    origin.stops.remove(stop)
+    origin.peso_total -= stop.peso_kg
+    stop.orden = len(target_route.stops) + 1
+    target_route.stops.append(stop)
+    target_route.peso_total += stop.peso_kg
+    audit(user, "PARADA_MOVIDA", "Route", target_route.id, {"stop": stop.id, "desde": origin.id})
+
+
+def confirm_route(route, user):
+    _req(user)
+    if route.estado != "PROPUESTA":
+        raise BusinessError("Solo se confirman rutas propuestas.")
+    if not route.stops:
+        raise BusinessError("La ruta no tiene paradas.")
+    if route.vehicle_id is None:
+        raise BusinessError("Asigne una unidad (propia o tercera registrada) antes de confirmar.")
+    if route.driver_id is None:
+        raise BusinessError("Asigne un conductor antes de confirmar.")
+    route.estado = "CONFIRMADA"
+    for st in route.stops:
+        if st.order.estado == "PREPARADA":
+            st.order.estado = "PROGRAMADA"
+    alerts.emit("DIST_PROGRAMACION", f"Ruta #{route.id} confirmada ({route.fecha:%d/%m/%Y})",
+                f"Unidad {route.vehicle.placa}; conductor {route.driver.nombre}; {len(route.stops)} paradas.",
+                "Route", route.id, creado_por=user)
+    audit(user, "RUTA_CONFIRMADA", "Route", route.id)
+
+
+def register_security_check(route, user, guia_numero, lineas):
+    """Seguridad valida cantidades/presentación contra guía (IF §12.2, §13).
+    lineas: [{order_line_id, producto, esperado, guia, cargado, presentacion_ok}]"""
+    _req(user, "distribucion.seguridad")
+    if route.estado not in ("CONFIRMADA",):
+        raise BusinessError("La validación de carga se hace sobre rutas confirmadas antes de salir.")
+    discrepancias = []
+    for ln in lineas:
+        if abs((ln.get("guia") or 0) - (ln.get("cargado") or 0)) > 1e-9:
+            discrepancias.append(f"{ln['producto']}: guía {ln.get('guia')} vs cargado {ln.get('cargado')}")
+        if abs((ln.get("esperado") or 0) - (ln.get("guia") or 0)) > 1e-9:
+            discrepancias.append(f"{ln['producto']}: preparado {ln.get('esperado')} vs guía {ln.get('guia')}")
+        if ln.get("presentacion_ok") is False:
+            discrepancias.append(f"{ln['producto']}: presentación no coincide con la guía")
+    route.guia_numero = guia_numero
+    route.seguridad = {"user": user.nombre, "ts": now().isoformat(), "lineas": lineas, "discrepancias": discrepancias,
+                       "conforme": not discrepancias}
+    if discrepancias:
+        alerts.emit("GUIA_DISCREPANCIA", f"Discrepancia carga vs guía en ruta #{route.id}", "; ".join(discrepancias),
+                    "Route", route.id, creado_por=user)
+    audit(user, "SEGURIDAD_VALIDACION", "Route", route.id, route.seguridad)
+    return discrepancias
+
+
+def expected_lines(route):
+    out = []
+    for st in route.stops:
+        for l in st.order.lines:
+            if l.activa:
+                esperado = l.preparado if l.preparado > 0 else sum(r.cantidad for r in l.reservations if r.estado == "ACTIVA")
+                out.append({"order_line_id": l.id, "ov": st.order.numero, "producto": l.product_code,
+                            "descripcion": l.product.descripcion, "esperado": esperado})
+    return out
+
+
+def confirm_departure(route, user, checklist):
+    _req(user, "distribucion.confirmar_salida")
+    if route.estado != "CONFIRMADA":
+        raise BusinessError("La ruta debe estar confirmada.")
+    faltan = [lbl for k, lbl in CHECKLIST if not checklist.get(k)]
+    if faltan:
+        raise BusinessError("Antes de la salida verifique: " + ", ".join(faltan) + " (IF §12.2).")
+    if not route.seguridad:
+        raise BusinessError("Falta la validación de Seguridad de carga contra guía.")
+    if route.seguridad.get("discrepancias"):
+        if param("bloquear_salida_con_discrepancia", False):
+            raise BusinessError("Salida bloqueada: discrepancias entre carga y guía.")
+    route.checklist = {k: bool(checklist.get(k)) for k, _ in CHECKLIST}
+    route.checklist["advertencia_discrepancias"] = bool(route.seguridad.get("discrepancias"))
+    route.estado = "EN_RUTA"
+    route.salida_ts = now()
+    route.salida_confirmada_por = user.id
+    for st in route.stops:
+        consume_order(st.order, user)
+        st.order.estado = "DESPACHADA"
+        st.order.salida_ts = now()
+        st.estado = "EN_CAMINO"
+    alerts.emit("DIST_AVANCE_RUTA", f"Ruta #{route.id} salió ({route.vehicle.placa})",
+                ", ".join(f"OV {st.order.numero}" for st in route.stops), "Route", route.id, creado_por=user)
+    audit(user, "SALIDA_CONFIRMADA", "Route", route.id, route.checklist)
+
+
+def register_arrival(stop, user):
+    _req(user, "distribucion.entrega")
+    if stop.estado != "EN_CAMINO":
+        raise BusinessError("La parada no está en camino.")
+    stop.estado = "LLEGADA"
+    stop.llegada_ts = now()
+    alerts.emit("DIST_AVANCE_RUTA", f"Llegada a cliente: OV {stop.order.numero}", stop.order.customer.nombre, "Route",
+                stop.route_id, creado_por=user)
+
+
+def save_upload(file_storage, upload_dir, prefix):
+    if file_storage is None or not getattr(file_storage, "filename", ""):
+        return ""
+    ext = os.path.splitext(file_storage.filename)[1].lower()
+    if ext not in (".jpg", ".jpeg", ".png", ".pdf", ".webp", ".heic"):
+        raise BusinessError("Formato de evidencia no permitido (jpg, png, pdf, webp, heic).")
+    os.makedirs(upload_dir, exist_ok=True)
+    name = f"{prefix}_{uuid.uuid4().hex[:10]}{ext}"
+    file_storage.save(os.path.join(upload_dir, name))
+    return name
+
+
+def register_delivery(stop, user, foto_path, guia_path, entregas=None, observacion=""):
+    """Entrega respaldada con fotografía y guía firmada (IF §12.3). entregas: {order_line_id: cantidad}."""
+    _req(user, "distribucion.entrega")
+    if stop.estado not in ("EN_CAMINO", "LLEGADA"):
+        raise BusinessError("La parada no está en ruta.")
+    if not foto_path or not guia_path:
+        raise BusinessError("La evidencia de entrega requiere fotografía y guía firmada (IF §12.3).")
+    order = stop.order
+    parcial = False
+    for l in order.lines:
+        if not l.activa:
+            continue
+        q = l.despachado if not entregas or str(l.id) not in entregas else float(entregas[str(l.id)])
+        if q > l.despachado + 1e-9:
+            raise BusinessError(f"{l.product_code}: lo entregado no puede superar lo despachado ({l.despachado:g}).")
+        l.entregado = q
+        if q < l.cantidad - 1e-9:
+            parcial = True
+    stop.foto_path = foto_path
+    stop.guia_firmada_path = guia_path
+    stop.entrega_ts = now()
+    stop.observacion = observacion
+    stop.estado = "ENTREGA_PARCIAL" if parcial else "ENTREGADO"
+    order.estado = "ENTREGA_PARCIAL" if parcial else "ENTREGADA"
+    order.entrega_ts = now()
+    if parcial:
+        _incident(user, "ENTREGA_PARCIAL", stop, f"Entrega parcial registrada. {observacion}")
+    alerts.emit("DIST_AVANCE_RUTA", f"OV {order.numero} {'entregada parcialmente' if parcial else 'entregada'}",
+                f"{order.customer.nombre}. Evidencia: foto y guía firmada.", "Route", stop.route_id, creado_por=user)
+    audit(user, "ENTREGA_REGISTRADA", "SalesOrder", order.numero, {"parcial": parcial})
+    _maybe_close_route(stop.route)
+
+
+def _maybe_close_route(route):
+    if all(s.estado in ("ENTREGADO", "ENTREGA_PARCIAL", "RECHAZADO", "DEVUELTO", "NO_ENTREGADO") for s in route.stops):
+        route.estado = "CERRADA"
+        route.cierre_ts = now()
+
+
+def _incident(user, tipo, stop=None, descripcion="", order=None, route=None, cantidad=None):
+    order = order or (stop.order if stop else None)
+    route = route or (stop.route if stop else None)
+    inc = Incident(tipo=tipo, route_id=route.id if route else None, stop_id=stop.id if stop else None,
+                   order_id=order.id if order else None, descripcion=descripcion, cantidad_afectada=cantidad,
+                   user_id=user.id if user else None)
+    db().add(inc)
+    db().flush()
+    code = "INC_RECHAZO_CALIDAD" if tipo == "RECHAZO_CALIDAD" else "INC_GENERAL"
+    a = alerts.emit(code, f"{incident_type_name(tipo)}: {('OV ' + order.numero) if order else ('Ruta #' + str(route.id) if route else '')}",
+                    descripcion, "Incident", inc.id, extra_users=[order.vendedor_id] if order and order.vendedor_id else None,
+                    creado_por=user)
+    inc.alert_id = a.id if a else None
+    return inc
+
+
+def register_incident(user, tipo, descripcion, stop=None, order=None, route=None, cantidad=None):
+    """Registro de incidencias por el Auxiliar de Despacho (IF §12.3) y su efecto operativo."""
+    _req(user, "distribucion.incidencia")
+    from ..catalogs import INCIDENT_TYPES
+    if tipo not in dict(INCIDENT_TYPES):
+        raise BusinessError("Tipo de incidencia no válido.")
+    if not descripcion.strip():
+        raise BusinessError("Describa la incidencia.")
+    inc = _incident(user, tipo, stop, descripcion, order, route, cantidad)
+    o = inc.order
+    if stop is not None:
+        if tipo in ("RECHAZO_CALIDAD", "RECHAZO_OTRO"):
+            stop.estado = "RECHAZADO"
+            o.estado = "RECHAZADA"
+            _return_goods(o, user, f"Rechazo ({incident_type_name(tipo)})")
+        elif tipo == "DEVOLUCION":
+            stop.estado = "DEVUELTO"
+            o.estado = "DEVUELTA"
+            _return_goods(o, user, "Devolución")
+        elif tipo in ("CLIENTE_AUSENTE", "CLIENTE_NO_RETIRA"):
+            stop.estado = "NO_ENTREGADO"
+            o.estado = "DEVUELTA"
+            _return_goods(o, user, incident_type_name(tipo))
+        _maybe_close_route(stop.route)
+    if tipo == "CONDUCTOR_NO_DISPONIBLE" and route is not None and route.driver is not None:
+        route.driver.disponible = False
+        route.advertencias = (route.advertencias or []) + [f"Conductor {route.driver.nombre} no disponible: reasignar."]
+    audit(user, "INCIDENCIA", "Incident", inc.id, {"tipo": tipo, "descripcion": descripcion})
+    return inc
+
+
+def _return_goods(order, user, motivo):
+    """Producto que regresa: ingresa como 'Pendiente de revisión' para evaluación de Calidad (propuesto)."""
+    from .stock import add_or_increase_lot
+    for l in order.lines:
+        devuelto = l.despachado - l.entregado
+        if devuelto <= 1e-9:
+            continue
+        lotes = [r for r in l.reservations if r.estado == "CONSUMIDA"]
+        if not lotes:
+            continue
+        ref = lotes[0].lot
+        add_or_increase_lot(l.product_code, ref.warehouse_code, ref.lote, devuelto, "PENDIENTE_REVISION", ref.fecha_venc,
+                            ref.fecha_fab, origen=f"RETORNO-{order.numero}")
+    alerts.emit("STOCK_PENDIENTE_REVISION", f"Retorno de OV {order.numero}: {motivo}",
+                "Producto devuelto ingresó como Pendiente de revisión.", "SalesOrder", order.id, creado_por=user)

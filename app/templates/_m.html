@@ -1,0 +1,5 @@
+{% macro csrf() %}<input type="hidden" name="_csrf" value="{{ csrf_token() }}">{% endmacro %}
+{% macro b(v, cls=None) %}{% if v %}<span class="b {{ cls or v }}">{{ v|replace('_',' ') }}</span>{% endif %}{% endmacro %}
+{% macro bar(p) %}<div class="bar" title="{{ p }}%"><i style="width:{{ [p or 0,100]|min }}%"></i></div>{% endmacro %}
+{% macro post(url, label, cls='', confirm=None, fields=None) %}<form class="inline" method="post" action="{{ url }}"{% if confirm %} onsubmit="return confirm('{{ confirm }}')"{% endif %}>{{ csrf() }}{% if fields %}{% for k,v in fields.items() %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}{% endif %}<button class="{{ cls }}">{{ label }}</button></form>{% endmacro %}
+{% macro errs(lst, cls='err-list') %}{% if lst %}<ul class="{{ cls }}">{% for e in lst %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}{% endmacro %}

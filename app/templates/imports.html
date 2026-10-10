@@ -1,0 +1,10 @@
+{% extends "base.html" %}{% from "_m.html" import b, csrf %}
+{% block content %}<h1>Importaciones</h1>
+<p class="muted small">Primera etapa: seguimiento por fases configurables con fechas y recordatorios; alerta de fase fuera de fecha; aviso de llegada a Almacén y Logística y de modificaciones a Gerencia de Operaciones (IF §11).</p>
+{% if can('importaciones.gestionar') %}<form method="post" class="card">{{ csrf() }}<div class="row"><div><label>Referencia</label><input name="referencia" required></div><div><label>Proveedor</label><input name="proveedor" required></div>
+<div><label>Artículo</label><input name="product_code" list="prods" required></div><div><label>Cantidad</label><input type="number" step="any" name="cantidad" required></div>
+<div><label>Inicio (embarque)</label><input type="date" name="fecha_inicio" required></div><div><label>Llegada estimada (opcional)</label><input type="date" name="fecha_llegada"></div>
+<div><label>Almacén destino</label><select name="warehouse_code">{% for w in whs %}<option value="{{ w.code }}">{{ w.code }} {{ w.nombre }}</option>{% endfor %}</select></div><div><button>Registrar</button></div></div>
+<datalist id="prods">{% for p in prods %}<option value="{{ p.code }}">{{ p.descripcion }}</option>{% endfor %}</datalist></form>{% endif %}
+<table><tr><th>Referencia</th><th>Proveedor</th><th>Artículo</th><th class="r">Cantidad</th><th>Llegada estimada</th><th>Estado</th><th>Fases</th></tr>
+{% for s in rows %}<tr><td><a href="{{ url_for('buy.import_detail', sid=s.id) }}">{{ s.referencia }}</a></td><td>{{ s.proveedor }}</td><td>{{ s.product_code }}</td><td class="r">{{ s.cantidad|n }}</td><td>{{ s.fecha_llegada_estimada|d }}</td><td>{{ b(s.estado) }}</td><td>{{ s.phases|selectattr('fecha_real')|list|length }}/{{ s.phases|length }}</td></tr>{% else %}<tr><td colspan="7" class="muted">Sin importaciones</td></tr>{% endfor %}</table>{% endblock %}

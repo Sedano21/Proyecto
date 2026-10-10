@@ -1,0 +1,16 @@
+{% extends "base.html" %}{% from "_m.html" import b, csrf %}
+{% block content %}<h1>Usuarios y permisos</h1>
+<div class="note">"Acceso completo" de Sistemas y Gerencia General: pueden ejecutar todas las funciones, pero <b>no se omiten pasos de aprobación</b> y todo queda auditado (decisión pendiente, IF §15/§20).</div>
+<h2>Usuarios</h2>
+<div class="tbl"><div class="ftable"><div class="frow fh"><div class="fcell">Usuario</div><div class="fcell">Nombre</div><div class="fcell">Rol</div><div class="fcell">Correo</div><div class="fcell">Activo</div><div class="fcell">Nueva contraseña</div><div class="fcell"></div></div>
+{% for u in users %}<form class="frow" method="post">{{ csrf() }}<input type="hidden" name="id" value="{{ u.id }}"><div class="fcell mono">{{ u.username }}</div><div class="fcell">{{ u.nombre }}</div>
+<div class="fcell"><select name="role_code">{% for r in roles %}<option value="{{ r.code }}" {{ 'selected' if r.code==u.role_code }}>{{ r.nombre }}</option>{% endfor %}</select></div>
+<div class="fcell"><input name="email" value="{{ u.email }}" size="22"></div><div class="fcell"><select name="activo"><option value="1" {{ 'selected' if u.activo }}>Sí</option><option value="0" {{ 'selected' if not u.activo }}>No</option></select></div>
+<div class="fcell"><input type="password" name="password" size="10" placeholder="(sin cambio)"></div><div class="fcell"><button class="small">Guardar</button></div></form>{% endfor %}
+<form class="frow" method="post">{{ csrf() }}<div class="fcell"><input name="username" placeholder="usuario" size="12"></div><div class="fcell"><input name="nombre" placeholder="nombre"></div><div class="fcell"><select name="role_code">{% for r in roles %}<option value="{{ r.code }}">{{ r.nombre }}</option>{% endfor %}</select></div><div class="fcell"><input name="email" size="22"></div><div class="fcell"></div><div class="fcell"><input type="password" name="password" size="10" placeholder="mín. 10"></div><div class="fcell"><button class="small">Crear</button></div></form></div></div>
+<h2 id="matriz">Matriz de permisos por rol</h2>
+<p class="small muted">D = definido en la documentación · P = propuesto (derivado del alcance por área; validar). Clic para otorgar/retirar (queda auditado).</p>
+<div class="tbl" style="max-height:80vh"><table class="small"><tr><th>Permiso</th><th>Tipo</th>{% for r in roles %}<th title="{{ r.nombre }}" style="writing-mode:vertical-rl;transform:rotate(180deg);font-weight:500">{{ r.nombre }}</th>{% endfor %}</tr>
+{% for p in perms %}<tr><td title="{{ p.nombre }}">{{ p.code }}</td><td>{{ p.tipo }}</td>
+{% for r in roles %}{% set rp = matrix.get((r.code, p.code)) %}<td style="text-align:center"><form method="post" action="{{ url_for('main.perm_toggle') }}" class="inline">{{ csrf() }}<input type="hidden" name="role_code" value="{{ r.code }}"><input type="hidden" name="perm_code" value="{{ p.code }}">
+<button class="small {{ '' if rp else 'sec' }}" style="padding:0 5px" title="{{ rp.fuente if rp else 'sin permiso' }}">{{ ('D' if rp.origen=='DEFINIDO' else 'P') if rp else '·' }}</button></form></td>{% endfor %}</tr>{% endfor %}</table></div>{% endblock %}

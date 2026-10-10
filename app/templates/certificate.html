@@ -1,0 +1,20 @@
+{% extends "base.html" %}{% from "_m.html" import b, csrf %}
+{% block content %}
+{% set ro = c.estado=='APROBADO' or not can('calidad.certificado_revisar') %}
+<div class="noprint"><p>{{ b(c.estado) }} <a class="btn sec" href="javascript:window.print()">Imprimir / PDF</a> <span class="small muted">Fuentes: {{ d.fuente_produccion }} · {{ d.fuente_calidad }}</span></p></div>
+<form method="post" class="card">{{ csrf() }}
+<h2 style="text-align:center">CERTIFICADO DE CALIDAD N°{{ c.numero }}</h2>
+<h3 style="text-align:center">INFORME DE ENSAYOS FISICOQUÍMICO Y ORGANOLÉPTICO</h3>
+<h3>I. DATOS DEL PRODUCTO</h3><table class="kv">
+{% for k in editable if k not in ['inocuidad','conclusiones'] %}<tr><td>{{ k|replace('_',' ')|upper }}</td><td>{% if ro %}{{ d.get(k) }}{% else %}<input name="{{ k }}" value="{{ d.get(k) }}" style="width:100%">{% endif %}</td></tr>{% endfor %}</table>
+<h3>II. RESULTADOS</h3><b>1. Análisis organoléptico</b>
+<table><tr><th>Análisis</th><th>Resultado</th><th>Especificación</th><th>Conclusión</th></tr>
+{% for o in d.organoleptico %}{% set i = loop.index0 %}<tr><td>{{ o.analisis }}</td>{% for f in ['resultado','especificacion','conclusion'] %}<td>{% if ro %}{{ o[f] }}{% else %}<input name="org_{{ i }}_{{ f }}" value="{{ o[f] }}" style="width:100%">{% endif %}</td>{% endfor %}</tr>{% endfor %}</table>
+<b>2. Análisis fisicoquímico</b><table><tr><th>Análisis</th><th>Resultado</th><th>Especificación</th><th>Conclusión</th></tr><tr><td>HUMEDAD</td>{% for f in ['resultado','especificacion','conclusion'] %}<td>{% if ro %}{{ d.humedad[f] }}{% else %}<input name="hum_{{ f }}" value="{{ d.humedad[f] }}">{% endif %}</td>{% endfor %}</tr></table>
+<b>3. Sanidad y aspecto</b><table><tr><th>Análisis</th><th>Resultado (%)</th><th>Conclusión</th></tr>{% for s in d.sanidad %}<tr><td>{{ s.analisis }}</td><td>{{ s.resultado }}</td><td>{{ s.conclusion }}</td></tr>{% else %}<tr><td colspan="3" class="muted">Sin datos de sanidad registrados para el lote</td></tr>{% endfor %}</table>
+<b>4. Inocuidad</b>{% if ro %}<p>{{ d.inocuidad }}</p>{% else %}<textarea name="inocuidad">{{ d.inocuidad }}</textarea>{% endif %}
+<h3>III. CONCLUSIONES</h3>{% if ro %}<p>{{ d.conclusiones }}</p>{% else %}<textarea name="conclusiones">{{ d.conclusiones }}</textarea>{% endif %}
+{% if not ro %}<p class="noprint"><button class="sec" name="accion" value="guardar">Guardar correcciones</button> <button name="accion" value="aprobar">Aprobar certificado</button></p>{% endif %}
+</form>
+{% if c.cambios %}<div class="noprint"><h3>Correcciones registradas</h3><table class="small">{% for x in c.cambios %}<tr><td>{{ x.ts }}</td><td>{{ x.user }}</td><td>{{ x.campo }}</td><td>{{ x.antes }} → {{ x.despues }}</td></tr>{% endfor %}</table></div>{% endif %}
+{% endblock %}

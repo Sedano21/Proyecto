@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block public %}
+<div class="login card">
+  <h1>Módulo de Operaciones</h1>
+  <p class="muted">Corporación Productiva · prototipo funcional</p>
+  <form method="post">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <label>Usuario</label><input name="username" autofocus required style="width:100%">
+    <label>Contraseña</label><input name="password" type="password" required style="width:100%">
+    <p><button>Ingresar</button></p>
+  </form>
+  {% if demo_users %}
+  <details><summary>Usuarios de demostración (contraseña: Demo2026!)</summary>
+    <table class="small">{% for u in demo_users %}<tr><td class="mono">{{ u.username }}</td><td>{{ u.role.nombre }}</td></tr>{% endfor %}</table>
+  </details>{% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,31 @@
+{% extends "base.html" %}{% from "_m.html" import b, csrf, errs %}
+{% block content %}<h1>Solicitud de producción #{{ r.id }} {{ b(r.estado) }}</h1>
+<div class="card"><table class="kv"><tr><td>Producto / presentación</td><td>{{ r.product_code }} – {{ r.product.descripcion }} · {{ r.product.presentacion }}</td></tr>
+<tr><td>Cantidad a producir</td><td>{{ r.cantidad|n }} {{ r.product.um }} ({{ (r.cantidad * (r.product.peso_kg or 0))|n }} kg)</td></tr>
+<tr><td>OV relacionada / fecha requerida</td><td>{% if r.order %}<a href="{{ url_for('com.order_detail', oid=r.order_id) }}">{{ r.order.numero }}</a>{% else %}-{% endif %} / {{ r.fecha_requerida|d }}</td></tr>
+<tr><td>Lista de materiales</td><td>versión {{ a.version }} · merma en Excel: {{ a.incluye_merma }}</td></tr>
+<tr><td>Validación</td><td>{% if r.validacion %}{{ r.validacion }}{% else %}-{% endif %}</td></tr>
+<tr><td>Programación</td><td>{{ r.line.nombre if r.line }} {{ r.fecha_programada|d }} · inicio {{ r.inicio_ts|d }} · fin {{ r.fin_ts|d }}</td></tr></table>
+{{ errs(a.avisos, 'warn-list') }}</div>
+<h2>Análisis preliminar de materiales</h2>
+<table><tr><th>Componente</th><th>Tipo</th><th class="r">Por unidad</th><th class="r">Requerido base</th><th class="r">Merma %</th><th class="r">Requerido</th><th>Almacén</th><th class="r">Disponible (alm.)</th><th class="r">Disponible total</th><th class="r">Faltante</th></tr>
+{% for m in a.materiales or [] %}<tr><td>{{ m.componente }} <span class="small muted">{{ m.descripcion }}</span>{% if m.es_mp_granel %} <span class="b info">MP/granel</span>{% endif %}</td><td>{{ m.tipo }}</td><td class="r">{{ m.por_unidad|n(5) }}</td><td class="r">{{ m.requerido_base|n(3) }}</td><td class="r">{{ m.merma_pct|n }} <span class="small muted">{{ m.merma_nivel }}</span></td><td class="r"><b>{{ m.requerido|n(3) }}</b></td><td>{{ m.almacen }}</td><td class="r">{{ m.disponible_almacen|n }}</td><td class="r">{{ m.disponible_total|n }}</td><td class="r">{% if m.faltante > 0 %}<b style="color:#b3261e">{{ m.faltante|n(3) }}</b>{% else %}0{% endif %}</td></tr>
+{% else %}<tr><td colspan="10" class="muted">Sin lista de materiales para el producto.</td></tr>{% endfor %}</table>
+{% if a.recursos %}<p class="small muted">Recursos/costos (no inventariables, no se verifican contra stock): {% for x in a.recursos %}{{ x.componente }} {{ x.descripcion }} = {{ x.requerido|n(4) }}; {% endfor %}</p>{% endif %}
+<form method="post" class="inline">{{ csrf() }}{% if r.estado in ['BORRADOR','RECHAZADA','ENVIADA'] and can('produccion.solicitud') %}<button class="sec" name="accion" value="recalcular">Recalcular con stock actual</button>{% endif %}
+{% if r.estado in ['BORRADOR','RECHAZADA'] and can('produccion.solicitud') %}<button name="accion" value="enviar">Enviar a Producción</button>{% endif %}</form>
+{% if r.estado=='ENVIADA' and can('produccion.validar') %}<form method="post" class="card">{{ csrf() }}<h3>Validación de Producción</h3>
+<label><input type="checkbox" name="lista_ok" value="1"> Lista de insumos validada</label><label><input type="checkbox" name="disponibilidad_ok" value="1"> Disponibilidad real confirmada</label>
+<label><input type="checkbox" name="capacidad_ok" value="1"> Capacidad confirmada</label><label><input type="checkbox" name="plazo_ok" value="1"> Plazo confirmado</label>
+<label>Comentario</label><input name="comentario" style="width:100%"><p><button name="accion" value="validar">Validar</button> <button class="sec" name="accion" value="rechazar">Rechazar</button></p></form>{% endif %}
+{% if r.estado in ['VALIDADA','PROGRAMADA'] and can('produccion.programar') %}<form method="post" class="card row">{{ csrf() }}<div><label>Línea</label><select name="line_code">{% for l in lines %}<option value="{{ l.code }}" {{ 'selected' if l.code==r.line_code }}>{{ l.nombre }}{{ ' (' ~ (l.capacidad_kg_dia|n) ~ ' kg/día)' if l.capacidad_kg_dia }}</option>{% endfor %}</select></div>
+<div><label>Fecha</label><input type="date" name="fecha_programada" value="{{ r.fecha_programada.isoformat() if r.fecha_programada }}" required></div><div><button name="accion" value="programar">Programar</button></div></form>{% endif %}
+{% if can('produccion.registrar') %}<form method="post" class="inline">{{ csrf() }}{% if r.estado=='PROGRAMADA' %}<button name="accion" value="iniciar">Registrar inicio</button>{% endif %}{% if r.estado=='EN_PROCESO' %}<button name="accion" value="finalizar">Registrar fin</button>{% endif %}</form>{% endif %}
+{% if r.estado in ['EN_PROCESO','FINALIZADA'] and can('produccion.liquidar') %}<form method="post" class="card">{{ csrf() }}<h3>Liquidación (cierre)</h3><div class="row">
+<div><label>N° documento</label><input name="numero_documento" required></div><div><label>Cantidad completada</label><input type="number" step="any" name="cantidad_completada" required></div>
+<div><label>Lote PT</label><input name="lote" required></div><div><label>F. producción</label><input type="date" name="fecha_fab"></div><div><label>F. vencimiento</label><input type="date" name="fecha_venc"></div>
+<div><label>Merma MP (kg)</label><input type="number" step="any" name="merma_mp_kg"></div><div><label>Merma granel (kg)</label><input type="number" step="any" name="merma_granel_kg"></div></div>
+<label>Merma de insumos (código / cantidad)</label>{% for i in range(3) %}<input name="insumo_code" placeholder="código" size="8"> <input name="insumo_qty" size="6"> {% endfor %}
+<p><button name="accion" value="liquidar">Registrar liquidación</button></p></form>{% endif %}
+{% if liqs %}<h3>Liquidaciones</h3><table>{% for l in liqs %}<tr><td>{{ l.numero_documento }}</td><td>{{ l.lote }}</td><td>{{ l.cantidad_completada|n }}</td><td>{{ b(l.estado) }}</td></tr>{% endfor %}</table>{% endif %}
+{% endblock %}

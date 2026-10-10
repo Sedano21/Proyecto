@@ -1,0 +1,11 @@
+{% extends "base.html" %}{% from "_m.html" import b, csrf %}
+{% block content %}<h1>Traslados</h1>
+<p class="muted small">Logística decide; la Jefatura de Logística autoriza y coordina; el Coordinador de Almacén o su asistente confirma la recepción en destino (IF §6.2, §13).</p>
+<div class="tbl"><table><tr><th>#</th><th>Fecha</th><th>Artículo / lote</th><th>Origen → destino</th><th class="r">Cantidad</th><th>OV</th><th>Estado</th><th>Recibido / dif.</th><th>Observación</th><th>Acción</th></tr>
+{% for t in rows %}<tr><td>{{ t.id }}</td><td class="small">{{ t.ts|d }}</td><td>{{ t.lot.product_code }} / {{ t.lot.lote }}</td><td>{{ t.lot.warehouse_code }} → {{ t.destino_code }}</td><td class="r">{{ t.cantidad|n }}</td>
+<td>{% if t.order %}<a href="{{ url_for('com.order_detail', oid=t.order_id) }}">{{ t.order.numero }}</a>{% endif %}</td><td>{{ b(t.estado) }}</td><td>{{ t.cantidad_recibida|n }} {% if t.diferencia %}(dif. {{ t.diferencia|n }}){% endif %}</td><td class="small">{{ t.observacion }}</td>
+<td>{% if t.estado=='SOLICITADO' and can('traslado.autorizar') %}<form method="post" action="{{ url_for('alm.transfer_action', tid=t.id, accion='autorizar') }}">{{ csrf() }}<input name="observacion" size="10"><button class="small">Autorizar</button></form>
+<form method="post" action="{{ url_for('alm.transfer_action', tid=t.id, accion='rechazar') }}">{{ csrf() }}<input name="observacion" size="10" placeholder="motivo"><button class="small sec">Rechazar</button></form>{% endif %}
+{% if t.estado=='AUTORIZADO' and can('traslado.salida') %}<form method="post" action="{{ url_for('alm.transfer_action', tid=t.id, accion='salida') }}">{{ csrf() }}<button class="small">Registrar salida</button></form>{% endif %}
+{% if t.estado=='EN_TRANSITO' and can('traslado.recibir') %}<form method="post" action="{{ url_for('alm.transfer_action', tid=t.id, accion='recibir') }}">{{ csrf() }}<input type="number" step="any" name="cantidad_recibida" value="{{ t.cantidad }}" style="width:80px"><input name="observacion" size="10"><button class="small">Confirmar recepción</button></form>{% endif %}</td></tr>
+{% else %}<tr><td colspan="10" class="muted">Sin traslados</td></tr>{% endfor %}</table></div>{% endblock %}

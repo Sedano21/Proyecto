@@ -1,0 +1,518 @@
+"""Vistas generales: acceso, tablero, alertas, configuración, usuarios/permisos, auditoría y exportación."""
+import io
+import os
+import time
+from datetime import date
+
+from flask import (Blueprint, abort, flash, g, redirect, render_template, request, send_file, send_from_directory,
+                   session, url_for)
+from sqlalchemy import select
+from werkzeug.security import check_password_hash, generate_password_hash
+
+from ..db import db
+from ..models import (Alert, AlertType, AuditLog, Customer, EmailOutbox, GGAlertPreference, ImportPhaseTemplate,
+                      LeadTime, Param, ParamHistory, Permission, Product, ProductionLine, Role, RolePermission, User,
+                      Warehouse)
+from ..services import alerts as alert_svc
+from ..services.core import BusinessError, audit, coerce_param, set_param
+from .common import act, f_float, install, login_required, perm_required
+
+bp = Blueprint("main", __name__)
+_FAILS = {}
+
+
+def register_views(app):
+    install(app)
+    from . import calidad, comercial, compras, distribucion, produccion, almacen
+    app.register_blueprint(bp)
+    app.register_blueprint(comercial.bp)
+    app.register_blueprint(almacen.bp)
+    app.register_blueprint(produccion.bp)
+    app.register_blueprint(calidad.bp)
+    app.register_blueprint(compras.bp)
+    app.register_blueprint(distribucion.bp)
+
+    @app.errorhandler(403)
+    def _403(e):
+        return render_template("error.html", code=403, msg="Su rol no tiene permiso para esta función."), 403
+
+    @app.errorhandler(404)
+    def _404(e):
+        return render_template("error.html", code=404, msg="No encontrado."), 404
+
+    @app.errorhandler(400)
+    def _400(e):
+        return render_template("error.html", code=400, msg=str(getattr(e, "description", e))), 400
+
+
+# ------------------------------- acceso ------------------------------------
+@bp.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        username = (request.form.get("username") or "").strip().lower()
+        fails = _FAILS.get(username, [])
+        fails = [t for t in fails if time.time() - t < 300]
+        if len(fails) >= 5:
+            flash("Usuario bloqueado temporalmente por intentos fallidos (5 minutos).", "error")
+            return render_template("login.html")
+        u = db().execute(select(User).where(User.username == username)).scalars().first()
+        if u and u.activo and check_password_hash(u.password_hash, request.form.get("password") or ""):
+            tok = session.get("_csrf")
+            session.clear()
+            session["uid"] = u.id
+            if tok:
+                session["_csrf"] = tok
+            _FAILS.pop(username, None)
+            audit(u, "LOGIN", "User", u.id)
+            db().commit()
+            nxt = request.args.get("next") or url_for("main.dashboard")
+            return redirect(nxt if nxt.startswith("/") else url_for("main.dashboard"))
+        fails.append(time.time())
+        _FAILS[username] = fails
+        audit(None, "LOGIN_FALLIDO", "User", username)
+        db().commit()
+        flash("Usuario o contraseña incorrectos.", "error")
+    demo_users = []
+    if g.get("user") is None and _demo():
+        demo_users = list(db().execute(select(User).order_by(User.role_code)).scalars())
+    return render_template("login.html", demo_users=demo_users)
+
+
+def _demo():
+    from flask import current_app
+    return current_app.config.get("DEMO_MODE")
+
+
+@bp.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("main.login"))
+
+
+@bp.route("/cambiar-clave", methods=["GET", "POST"])
+@login_required
+def change_password():
+    if request.method == "POST":
+        def _do():
+            if not check_password_hash(g.user.password_hash, request.form.get("actual") or ""):
+                raise BusinessError("La contraseña actual no es correcta.")
+            nueva = request.form.get("nueva") or ""
+            if len(nueva) < 10:
+                raise BusinessError("La nueva contraseña debe tener al menos 10 caracteres.")
+            g.user.password_hash = generate_password_hash(nueva)
+            g.user.debe_cambiar_clave = False
+            audit(g.user, "CLAVE_CAMBIADA", "User", g.user.id)
+        return act(_do, "Contraseña actualizada.", url_for("main.dashboard"))
+    return render_template("change_password.html")
+
+
+# ------------------------------- tablero -----------------------------------
+@bp.route("/")
+@login_required
+def dashboard():
+    from ..services.kpis import compute
+    desde = request.args.get("desde")
+    hasta = request.args.get("hasta")
+    k = compute(date.fromisoformat(desde) if desde else None, date.fromisoformat(hasta) if hasta else None) \
+        if "dashboard.ver" in g.perms else None
+    mis = alert_svc.visible_alerts(g.user, solo_abiertas=True)[:12]
+    return render_template("dashboard.html", k=k, mis_alertas=mis, desde=desde or "", hasta=hasta or "")
+
+
+@bp.route("/verificaciones", methods=["POST"])
+@perm_required("alertas.configurar", "config.editar", "dashboard.ver")
+def run_checks():
+    from ..services.scheduler import run_checks as rc
+    return act(lambda: rc(g.user), lambda r: f"Verificaciones ejecutadas: {r}", request.referrer or url_for("main.dashboard"))
+
+
+# ------------------------------- alertas -----------------------------------
+@bp.route("/alertas")
+@login_required
+def alerts():
+    f = {k: request.args.get(k) or None for k in ("estado", "area", "prioridad", "grupo", "type_code")}
+    rows = alert_svc.visible_alerts(g.user, **f)
+    agrupar = request.args.get("agrupar")
+    grupos = {}
+    if agrupar:
+        for a in rows:
+            key = (a.area if agrupar == "area" else a.type.grupo if agrupar == "grupo" else a.type.nombre, a.prioridad)
+            grupos.setdefault(key, []).append(a)
+        grupos = dict(sorted(grupos.items(), key=lambda kv: (alert_svc.PRIORIDAD_ORDEN.get(kv[0][1], 9), kv[0][0])))
+    tipos = list(db().execute(select(AlertType).order_by(AlertType.area, AlertType.nombre)).scalars())
+    return render_template("alerts.html", rows=rows, f=f, tipos=tipos, agrupar=agrupar, grupos=grupos,
+                           areas=sorted({t.area for t in tipos}), grupos_tipo=sorted({t.grupo for t in tipos}))
+
+
+@bp.route("/alertas/<int:aid>")
+@login_required
+def alert_detail(aid):
+    a = db().get(Alert, aid) or abort(404)
+    if not alert_svc.can_see(g.user, a):
+        abort(403)
+    users = list(db().execute(select(User).where(User.activo.is_(True)).order_by(User.nombre)).scalars())
+    return render_template("alert_detail.html", a=a, users=users)
+
+
+@bp.route("/alertas/<int:aid>/<accion>", methods=["POST"])
+@login_required
+def alert_action(aid, accion):
+    a = db().get(Alert, aid) or abort(404)
+    fn = {
+        "asignar": lambda: alert_svc.assign(a, g.user, request.form.get("user_id"), request.form.get("comentario", "")),
+        "atender": lambda: alert_svc.attend(a, g.user, request.form.get("comentario", "")),
+        "comentar": lambda: alert_svc.comment(a, g.user, request.form.get("comentario", "")),
+        "cerrar": lambda: alert_svc.close(a, g.user, request.form.get("motivo", ""), request.form.get("accion", "")),
+    }.get(accion) or abort(404)
+    return act(fn, "Alerta actualizada.", url_for("main.alert_detail", aid=aid))
+
+
+@bp.route("/alertas/configuracion", methods=["GET", "POST"])
+@perm_required("alertas.configurar")
+def alert_config():
+    tipos = list(db().execute(select(AlertType).order_by(AlertType.area, AlertType.code)).scalars())
+    roles = list(db().execute(select(Role).order_by(Role.area, Role.nombre)).scalars())
+    users = list(db().execute(select(User).order_by(User.nombre)).scalars())
+    if request.method == "POST":
+        def _do():
+            t = db().get(AlertType, request.form["code"])
+            antes = {"roles": t.roles, "prioridad": t.prioridad, "correo": t.enviar_correo, "activo": t.activo,
+                     "usuarios": t.usuarios}
+            t.roles = request.form.getlist("roles")
+            t.usuarios = [int(x) for x in request.form.getlist("usuarios")]
+            t.prioridad = request.form.get("prioridad", t.prioridad)
+            t.enviar_correo = request.form.get("enviar_correo") == "1"
+            t.activo = request.form.get("activo") == "1"
+            t.origen_destinatarios = "DEFINIDO" if request.form.get("validado") == "1" else t.origen_destinatarios
+            audit(g.user, "ALERTA_TIPO_EDITADO", "AlertType", t.code, {"antes": antes, "despues": {
+                "roles": t.roles, "prioridad": t.prioridad, "correo": t.enviar_correo, "activo": t.activo, "usuarios": t.usuarios}})
+        return act(_do, "Configuración de alerta guardada.", url_for("main.alert_config") + f"#{request.form['code']}")
+    return render_template("alert_config.html", tipos=tipos, roles=roles, users=users)
+
+
+@bp.route("/alertas/preferencias", methods=["GET", "POST"])
+@login_required
+def gg_prefs():
+    if g.user.role_code != "GERENCIA_GENERAL":
+        abort(403)
+    tipos = list(db().execute(select(AlertType).order_by(AlertType.area, AlertType.nombre)).scalars())
+    if request.method == "POST":
+        def _do():
+            marcados = set(request.form.getlist("directo"))
+            for t in tipos:
+                p = db().execute(select(GGAlertPreference).where(GGAlertPreference.user_id == g.user.id,
+                                                                 GGAlertPreference.type_code == t.code)).scalars().first()
+                if p is None:
+                    p = GGAlertPreference(user_id=g.user.id, type_code=t.code)
+                    db().add(p)
+                p.recibir_directo = t.code in marcados
+            audit(g.user, "GG_PREFERENCIAS", "User", g.user.id, {"directas": sorted(marcados)})
+        return act(_do, "Preferencias guardadas.", url_for("main.gg_prefs"))
+    prefs = {p.type_code for p in db().execute(select(GGAlertPreference).where(
+        GGAlertPreference.user_id == g.user.id, GGAlertPreference.recibir_directo.is_(True))).scalars()}
+    return render_template("gg_prefs.html", tipos=tipos, prefs=prefs)
+
+
+@bp.route("/correo", methods=["GET", "POST"])
+@perm_required("alertas.configurar")
+def outbox():
+    from ..services.mailer import flush_outbox, smtp_configured
+    if request.method == "POST":
+        return act(flush_outbox, lambda r: f"Resultado: {r}", url_for("main.outbox"))
+    rows = list(db().execute(select(EmailOutbox).order_by(EmailOutbox.id.desc()).limit(300)).scalars())
+    return render_template("outbox.html", rows=rows, smtp=smtp_configured())
+
+
+# ------------------------------- configuración -----------------------------
+@bp.route("/configuracion")
+@perm_required("config.ver")
+def config():
+    s = db()
+    params = list(s.execute(select(Param).order_by(Param.grupo, Param.key)).scalars())
+    return render_template("config.html", params=params,
+                           warehouses=list(s.execute(select(Warehouse).order_by(Warehouse.uso, Warehouse.prioridad, Warehouse.code)).scalars()),
+                           lead_times=list(s.execute(select(LeadTime).order_by(LeadTime.categoria)).scalars()),
+                           lines=list(s.execute(select(ProductionLine)).scalars()),
+                           phases=list(s.execute(select(ImportPhaseTemplate).order_by(ImportPhaseTemplate.orden)).scalars()),
+                           roles=list(s.execute(select(Role).order_by(Role.nombre)).scalars()))
+
+
+@bp.route("/configuracion/param/<key>", methods=["POST"])
+@perm_required("config.editar")
+def param_edit(key):
+    p = db().get(Param, key) or abort(404)
+    def _do():
+        try:
+            val = coerce_param(p.tipo, request.form.get("valor"))
+        except Exception as e:  # noqa: BLE001
+            raise BusinessError(f"Valor inválido para {key} ({p.tipo}): {e}")
+        set_param(key, val, g.user, request.form.get("estado") or None)
+    return act(_do, f"Parámetro {key} actualizado (nueva versión).", url_for("main.config") + "#params")
+
+
+@bp.route("/configuracion/param/<key>/historial")
+@perm_required("config.ver")
+def param_history(key):
+    rows = list(db().execute(select(ParamHistory).where(ParamHistory.key == key).order_by(ParamHistory.version.desc())).scalars())
+    return render_template("simple_table.html", title=f"Historial del parámetro {key}",
+                           headers=["Versión", "Valor", "Estado", "Fecha", "Usuario"],
+                           rows=[[r.version, r.valor.get("v"), r.estado, r.ts, r.user_id] for r in rows])
+
+
+@bp.route("/configuracion/almacen", methods=["POST"])
+@perm_required("config.editar")
+def warehouse_edit():
+    def _do():
+        code = request.form["code"].strip()
+        w = db().get(Warehouse, code)
+        if w is None:
+            w = Warehouse(code=code, nombre=code)
+            db().add(w)
+        antes = {"nombre": w.nombre, "uso": w.uso, "prioridad": w.prioridad, "reservable": w.reservable}
+        w.nombre = request.form.get("nombre", w.nombre)
+        w.uso = request.form.get("uso", w.uso)
+        w.prioridad = int(request.form.get("prioridad") or 99)
+        w.reservable = request.form.get("reservable") == "1"
+        w.observacion = request.form.get("observacion", w.observacion)
+        audit(g.user, "ALMACEN_EDITADO", "Warehouse", code, {"antes": antes, "despues": {
+            "nombre": w.nombre, "uso": w.uso, "prioridad": w.prioridad, "reservable": w.reservable}})
+    return act(_do, "Almacén guardado.", url_for("main.config") + "#almacenes")
+
+
+@bp.route("/configuracion/plazo", methods=["POST"])
+@perm_required("config.editar")
+def leadtime_edit():
+    def _do():
+        lid = request.form.get("id")
+        lt = db().get(LeadTime, int(lid)) if lid else None
+        if lt is None:
+            lt = LeadTime(categoria=request.form["categoria"], dias_min=0, dias_max=0, fuente="Configuración")
+            db().add(lt)
+        lt.categoria = request.form.get("categoria", lt.categoria)
+        lt.dias_min = int(request.form.get("dias_min") or 0)
+        lt.dias_max = int(request.form.get("dias_max") or 0)
+        lt.mes_desde = int(request.form["mes_desde"]) if request.form.get("mes_desde") else None
+        lt.mes_hasta = int(request.form["mes_hasta"]) if request.form.get("mes_hasta") else None
+        if lt.dias_min > lt.dias_max:
+            raise BusinessError("Plazo mínimo mayor que el máximo.")
+        audit(g.user, "PLAZO_EDITADO", "LeadTime", lt.categoria, {"min": lt.dias_min, "max": lt.dias_max,
+                                                                  "meses": [lt.mes_desde, lt.mes_hasta]})
+    return act(_do, "Plazo guardado.", url_for("main.config") + "#plazos")
+
+
+@bp.route("/configuracion/linea", methods=["POST"])
+@perm_required("config.editar", "produccion.programar")
+def line_edit():
+    def _do():
+        ln = db().get(ProductionLine, request.form["code"]) or abort(404)
+        ln.capacidad_kg_dia = f_float("capacidad_kg_dia")
+        ln.activa = request.form.get("activa") == "1"
+        audit(g.user, "LINEA_EDITADA", "ProductionLine", ln.code, {"capacidad": ln.capacidad_kg_dia, "activa": ln.activa})
+    return act(_do, "Línea guardada.", request.referrer or url_for("main.config"))
+
+
+@bp.route("/configuracion/fase", methods=["POST"])
+@perm_required("config.editar", "importaciones.gestionar")
+def phase_edit():
+    def _do():
+        pid = request.form.get("id")
+        ph = db().get(ImportPhaseTemplate, int(pid)) if pid else None
+        if request.form.get("eliminar") == "1" and ph is not None:
+            db().delete(ph)
+            audit(g.user, "FASE_PLANTILLA_ELIMINADA", "ImportPhaseTemplate", pid)
+            return
+        if ph is None:
+            ph = ImportPhaseTemplate(orden=0, nombre="")
+            db().add(ph)
+        ph.orden = int(request.form.get("orden") or 0)
+        ph.nombre = request.form.get("nombre", "").strip()
+        ph.dias_desde_inicio = int(request.form.get("dias_desde_inicio") or 0)
+        ph.recordatorio_dias = int(request.form.get("recordatorio_dias") or 0)
+        ph.responsable_rol = request.form.get("responsable_rol") or "IMPORTACIONES"
+        ph.estado_def = request.form.get("estado_def") or "PROPUESTO"
+        if not ph.nombre:
+            raise BusinessError("Nombre de fase obligatorio.")
+        audit(g.user, "FASE_PLANTILLA_EDITADA", "ImportPhaseTemplate", ph.nombre)
+    return act(_do, "Fase guardada.", url_for("main.config") + "#fases")
+
+
+@bp.route("/configuracion/productos")
+@perm_required("config.ver")
+def products():
+    q = (request.args.get("q") or "").strip().upper()
+    stmt = select(Product).order_by(Product.code)
+    if q:
+        stmt = stmt.where((Product.code.like(f"%{q}%")) | (Product.descripcion.like(f"%{q}%")))
+    rows = list(db().execute(stmt.limit(300)).scalars())
+    from ..catalogs import PCC1_HUMEDAD
+    cats = [lt.categoria for lt in db().execute(select(LeadTime)).scalars()]
+    return render_template("products.html", rows=rows, q=q, cats=sorted(set(cats)), pcc1=PCC1_HUMEDAD)
+
+
+@bp.route("/configuracion/productos/<code>", methods=["POST"])
+@perm_required("config.editar")
+def product_edit(code):
+    p = db().get(Product, code) or abort(404)
+    def _do():
+        antes = {k: getattr(p, k) for k in ("peso_kg", "tipo", "um", "categoria_reposicion", "stock_minimo", "periodo_analisis_dias",
+                                            "margen_seguridad_dias", "merma_pct", "tiempo_max_almacen_dias", "grupo_humedad",
+                                            "producto_base", "calidad", "marca", "presentacion")}
+        for k in ("tipo", "um", "categoria_reposicion", "grupo_humedad", "producto_base", "calidad", "marca", "presentacion"):
+            if k in request.form:
+                setattr(p, k, request.form.get(k, "").strip())
+        for k in ("peso_kg", "stock_minimo", "merma_pct"):
+            if k in request.form:
+                setattr(p, k, f_float(k))
+        for k in ("periodo_analisis_dias", "margen_seguridad_dias", "tiempo_max_almacen_dias"):
+            if k in request.form:
+                v = request.form.get(k, "").strip()
+                setattr(p, k, int(v) if v else None)
+        audit(g.user, "PRODUCTO_EDITADO", "Product", code, {"antes": antes})
+    return act(_do, f"Producto {code} actualizado.", url_for("main.products", q=request.form.get("q", "")))
+
+
+@bp.route("/configuracion/clientes", methods=["GET", "POST"])
+@perm_required("config.ver", "ov.crear")
+def customers():
+    if request.method == "POST":
+        if "config.editar" not in g.perms and "ov.crear" not in g.perms:
+            abort(403)
+        def _do():
+            cid = request.form.get("id")
+            c = db().get(Customer, int(cid)) if cid else None
+            if c is None:
+                ruc = request.form.get("ruc", "").strip()
+                if not ruc:
+                    raise BusinessError("RUC obligatorio.")
+                if db().execute(select(Customer).where(Customer.ruc == ruc)).scalars().first():
+                    raise BusinessError("El RUC ya existe.")
+                c = Customer(ruc=ruc, nombre="")
+                db().add(c)
+            for k in ("nombre", "grupo", "direccion", "distrito", "provincia", "horario_recepcion"):
+                if k in request.form:
+                    setattr(c, k, request.form.get(k, "").strip())
+            c.requiere_cita = request.form.get("requiere_cita") == "1"
+            v = request.form.get("vida_util_min_dias", "").strip()
+            c.vida_util_min_dias = int(v) if v else None
+            if not c.nombre:
+                raise BusinessError("Nombre obligatorio.")
+            audit(g.user, "CLIENTE_GUARDADO", "Customer", c.ruc)
+        return act(_do, "Cliente guardado.", url_for("main.customers"))
+    rows = list(db().execute(select(Customer).order_by(Customer.nombre)).scalars())
+    return render_template("customers.html", rows=rows)
+
+
+# ------------------------------- usuarios ----------------------------------
+@bp.route("/usuarios", methods=["GET", "POST"])
+@perm_required("usuarios.administrar")
+def users():
+    s = db()
+    if request.method == "POST":
+        def _do():
+            uid = request.form.get("id")
+            if uid:
+                u = s.get(User, int(uid))
+                antes = {"rol": u.role_code, "activo": u.activo}
+                u.role_code = request.form.get("role_code", u.role_code)
+                u.activo = request.form.get("activo") == "1"
+                u.email = request.form.get("email", u.email)
+                if request.form.get("password"):
+                    if len(request.form["password"]) < 10:
+                        raise BusinessError("La contraseña debe tener al menos 10 caracteres.")
+                    u.password_hash = generate_password_hash(request.form["password"])
+                    u.debe_cambiar_clave = True
+                audit(g.user, "USUARIO_EDITADO", "User", u.username, {"antes": antes, "rol": u.role_code, "activo": u.activo})
+            else:
+                from ..seed import create_user
+                pwd = request.form.get("password") or ""
+                if len(pwd) < 10:
+                    raise BusinessError("La contraseña debe tener al menos 10 caracteres.")
+                un = request.form.get("username", "").strip().lower()
+                if not un or s.execute(select(User).where(User.username == un)).first():
+                    raise BusinessError("Usuario vacío o existente.")
+                u = create_user(un, request.form.get("nombre", un), request.form["role_code"], pwd, request.form.get("email"))
+                u.debe_cambiar_clave = True
+                audit(g.user, "USUARIO_CREADO", "User", un, {"rol": u.role_code})
+        return act(_do, "Usuario guardado.", url_for("main.users"))
+    roles = list(s.execute(select(Role).order_by(Role.area, Role.nombre)).scalars())
+    perms = list(s.execute(select(Permission).order_by(Permission.modulo, Permission.code)).scalars())
+    matrix = {}
+    for rp in s.execute(select(RolePermission)).scalars():
+        matrix[(rp.role_code, rp.perm_code)] = rp
+    return render_template("users.html", users=list(s.execute(select(User).order_by(User.role_code)).scalars()),
+                           roles=roles, perms=perms, matrix=matrix)
+
+
+@bp.route("/usuarios/permiso", methods=["POST"])
+@perm_required("usuarios.administrar")
+def perm_toggle():
+    def _do():
+        role, perm = request.form["role_code"], request.form["perm_code"]
+        rp = db().execute(select(RolePermission).where(RolePermission.role_code == role,
+                                                       RolePermission.perm_code == perm)).scalars().first()
+        if rp:
+            db().delete(rp)
+            audit(g.user, "PERMISO_RETIRADO", "RolePermission", f"{role}:{perm}", {"origen": rp.origen})
+        else:
+            db().add(RolePermission(role_code=role, perm_code=perm, origen="PROPUESTO",
+                                    fuente=f"Asignado por {g.user.nombre} (configuración)"))
+            audit(g.user, "PERMISO_OTORGADO", "RolePermission", f"{role}:{perm}")
+    return act(_do, "Matriz de permisos actualizada.", url_for("main.users") + "#matriz")
+
+
+# ------------------------------- auditoría ---------------------------------
+@bp.route("/auditoria", endpoint="audit")
+@perm_required("auditoria.ver")
+def audit_view():
+    q = select(AuditLog).order_by(AuditLog.id.desc())
+    ent = request.args.get("entidad")
+    acc = request.args.get("accion")
+    if ent:
+        q = q.where(AuditLog.entidad == ent)
+    if acc:
+        q = q.where(AuditLog.accion.like(f"%{acc.upper()}%"))
+    rows = list(db().execute(q.limit(500)).scalars())
+    return render_template("audit.html", rows=rows, ent=ent or "", acc=acc or "")
+
+
+# ------------------------------- exportación -------------------------------
+EXPORTS = {
+    "ov": ("ov.ver", "Órdenes de venta"), "stock": ("stock.ver", "Stock por lote"), "alertas": ("alertas.ver", "Alertas"),
+    "auditoria": ("auditoria.ver", "Auditoría"), "compras": ("compras.ver", "Compras"),
+    "produccion": ("produccion.ver", "Producción"), "incidencias": ("distribucion.ver", "Incidencias"),
+    "rutas": ("distribucion.ver", "Rutas"), "calidad": ("calidad.ver", "Registros de calidad"),
+    "liquidaciones": ("produccion.ver", "Liquidaciones"),
+}
+
+
+@bp.route("/exportar/<entidad>.xlsx")
+@login_required
+def export(entidad):
+    import openpyxl
+    from .exports import build_rows
+    if entidad not in EXPORTS:
+        abort(404)
+    perm, nombre = EXPORTS[entidad]
+    if perm not in g.perms or "export.datos" not in g.perms:
+        abort(403)
+    headers, rows = build_rows(entidad, g.user)
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = nombre[:30]
+    ws.append(headers)
+    for r in rows:
+        ws.append([v if not isinstance(v, (list, dict)) else str(v) for v in r])
+    bio = io.BytesIO()
+    wb.save(bio)
+    bio.seek(0)
+    audit(g.user, "EXPORTACION", entidad, "", {"filas": len(rows)})
+    db().commit()
+    return send_file(bio, as_attachment=True, download_name=f"{entidad}_{date.today():%Y%m%d}.xlsx",
+                     mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+
+@bp.route("/evidencias/<path:name>")
+@perm_required("distribucion.ver", "ov.ver")
+def evidence(name):
+    from flask import current_app
+    return send_from_directory(current_app.config["UPLOAD_DIR"], os.path.basename(name))

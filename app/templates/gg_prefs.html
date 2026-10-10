@@ -1,0 +1,6 @@
+{% extends "base.html" %}{% from "_m.html" import b, csrf %}
+{% block content %}<h1>Alertas que recibo directamente</h1>
+<p class="muted">Gerencia General ve todas las alertas en el panel; aquí elige cuáles recibe además por correo (IF §14).</p>
+<form method="post" class="card">{{ csrf() }}<table><tr><th>Recibir</th><th>Tipo</th><th>Área</th><th>Grupo</th><th>Urgencia</th></tr>
+{% for t in tipos %}<tr><td><input type="checkbox" name="directo" value="{{ t.code }}" {{ 'checked' if t.code in prefs }}></td><td>{{ t.nombre }}</td><td>{{ t.area }}</td><td>{{ t.grupo }}</td><td>{{ b(t.prioridad) }}</td></tr>{% endfor %}</table>
+<p><button>Guardar</button></p></form>{% endblock %}

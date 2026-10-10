@@ -1,0 +1,9 @@
+{% extends "base.html" %}{% from "_m.html" import b, bar %}
+{% block content %}
+<h1>Preparación por prioridad y corte</h1>
+<p class="muted small">Solo pedidos con cobertura completa o con despacho parcial aprobado. Los cortes organizan la preparación, no la evaluación ni la reserva (IF §5). Tiempos iniciales (AS-IS, provisionales): {% for k,v in tiempos.items() %}{{ k|lower }} {{ v }}; {% endfor %}</p>
+{% for corte, lista in cortes.items() %}<h2>Corte {{ corte }}</h2>
+<table><tr><th>Prioridad</th><th>OV</th><th>Cliente</th><th>Comprometida</th><th>Urg.</th><th>Cobertura</th><th>Kg</th><th>Avance</th><th>Estado</th></tr>
+{% for o in lista %}<tr><td>{{ loop.index }}</td><td><a href="{{ url_for('com.picking', oid=o.id) }}">{{ o.numero }}</a></td><td>{{ o.customer.nombre }}</td><td>{{ o.fecha_compromiso|d }}</td><td>{{ '⚑' if o.urgente }}</td><td>{{ b(o.estado_stock) }} {{ b(o.decision_parcial) }}</td><td class="r">{{ peso(o)|n }}</td><td>{{ bar(progress(o)) }}{{ progress(o) }}%</td><td>{{ b(o.estado) }}</td></tr>{% endfor %}</table>
+{% else %}<p class="muted">No hay pedidos listos para preparar.</p>{% endfor %}
+{% endblock %}

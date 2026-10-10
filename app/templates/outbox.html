@@ -1,0 +1,6 @@
+{% extends "base.html" %}{% from "_m.html" import b, csrf %}
+{% block content %}<h1>Bandeja de correo</h1>
+{% if not smtp %}<div class="note">SMTP <b>no configurado</b>: los correos quedan registrados con estado SIN_SMTP y <b>no se envían</b>. Configure SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, SMTP_FROM (ver docs/INSTALACION_DESPLIEGUE.md).</div>{% endif %}
+<form method="post">{{ csrf() }}<button>Procesar pendientes</button></form>
+<div class="tbl"><table><tr><th>#</th><th>Fecha</th><th>Para</th><th>Asunto</th><th>Estado</th><th>Detalle</th></tr>
+{% for m in rows %}<tr><td>{{ m.id }}</td><td class="small">{{ m.ts|d }}</td><td>{{ m.destinatario }}</td><td>{{ m.asunto }}</td><td>{{ b(m.estado) }}</td><td class="small">{{ m.error }}</td></tr>{% endfor %}</table></div>{% endblock %}

@@ -1,0 +1,16 @@
+{% extends "base.html" %}{% from "_m.html" import csrf %}
+{% block content %}<h1>{{ fdef[1] }} <span class="muted small">{{ fdef[0] }}</span></h1>
+{% if formato=='RECEPCION_MP' %}<div class="note info small">Límites críticos de humedad PCC1: {% for c, n, l in pcc1 %}{{ n }} ≤ {{ l }}%; {% endfor %}(REG-HACCP-CAL-002). La conformidad se evalúa automáticamente.</div>{% endif %}
+{% if formato in ['MUESTREO','RECEPCION_IMPORTADO','CONTROL_GRANOS'] %}<div class="note info small">Referencia automática: especificación "Calidad superior" (REG-CAL-005): {% for k, v in spec.items() %}{{ k }} ≤ {{ v }}; {% endfor %}La decisión final la registra Calidad.</div>{% endif %}
+{% if formato=='CONTROL_PESOS' %}<div class="note info small">Criterios de peso (REG-CAL-003): {% for k, v in pesos.items() %}{{ k }} kg → [{{ v[1] }}, {{ v[2] }}] kg; {% endfor %}{{ peso_pend }}</div>{% endif %}
+{% if formato=='FUMIGACION' %}<div class="note info small">Si se asocia un lote: con fecha de inicio pasa a "En fumigación"; con fecha de fin (desactivación) pasa a "Pendiente de revisión" para liberación.</div>{% endif %}
+<form method="post" class="card">{{ csrf() }}<div class="row">
+<div><label>Fecha</label><input type="date" name="fecha" value="{{ today.isoformat() }}"></div>
+<div><label>Lote en stock (opcional)</label><select name="lot_id"><option value="">(ninguno)</option>{% for l in lots %}<option value="{{ l.id }}" {{ 'selected' if lot_id==l.id|string }}>{{ l.product_code }} · {{ l.lote }} · {{ l.warehouse_code }} · {{ l.estado }}</option>{% endfor %}</select></div>
+<div><label>Producto (si no hay lote)</label><input name="product_code"></div><div><label>Lote (texto)</label><input name="lote"></div></div>
+<div class="row">{% for key, label, tipo in fdef[2] %}<div>
+<label>{{ label }}</label>{% if tipo=='textarea' %}<textarea name="{{ key }}" style="min-width:320px"></textarea>{% elif tipo=='bool' %}<select name="{{ key }}"><option value="">-</option><option value="1">Conforme / Sí</option><option value="0">No conforme / No</option></select>
+{% elif tipo=='pcc1' %}<select name="{{ key }}">{% for c, n, l in pcc1 %}<option value="{{ c }}">{{ n }} (≤{{ l }}%)</option>{% endfor %}</select>{% elif tipo=='date' %}<input type="date" name="{{ key }}">{% elif tipo=='number' %}<input type="number" step="any" name="{{ key }}">{% else %}<input name="{{ key }}">{% endif %}</div>{% endfor %}</div>
+<div class="row"><div><label>Resultado (vacío = evaluación automática)</label><select name="resultado"><option value="">(automático)</option><option>CONFORME</option><option>NO_CONFORME</option><option>APROBADO</option><option>DESAPROBADO</option></select></div>
+<div style="flex:1"><label>Observaciones / acciones correctivas</label><textarea name="observaciones"></textarea></div></div>
+<p><button>Guardar registro</button></p></form>{% endblock %}

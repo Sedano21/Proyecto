@@ -1,0 +1,17 @@
+{% extends "base.html" %}{% from "_m.html" import b, csrf %}
+{% block content %}
+<h1>Configuración de alertas</h1>
+<div class="note">La matriz exacta de destinatarios, prioridad y condición de envío está pendiente de validación con las áreas (IF §14). Las filas <b>DEFINIDO</b> provienen de reglas expresas; las <b>PROPUESTO/PENDIENTE</b> deben validarse.</div>
+{% for t in tipos %}
+<form id="{{ t.code }}" class="card" method="post">{{ csrf() }}<input type="hidden" name="code" value="{{ t.code }}">
+<div class="row"><div style="min-width:320px"><b>{{ t.nombre }}</b><br><span class="mono">{{ t.code }}</span> · {{ t.area }} / {{ t.grupo }} · origen destinatarios {{ b(t.origen_destinatarios) }}<br><span class="small muted">Condición: {{ t.condicion }} · Fuente: {{ t.fuente }}</span></div>
+<div><label>Prioridad</label><select name="prioridad">{% for p in ['ALTA','MEDIA','BAJA'] %}<option {{ 'selected' if t.prioridad==p }}>{{ p }}</option>{% endfor %}</select></div>
+<div><label>Correo</label><select name="enviar_correo"><option value="1" {{ 'selected' if t.enviar_correo }}>Sí</option><option value="0" {{ 'selected' if not t.enviar_correo }}>No (solo panel)</option></select></div>
+<div><label>Activa</label><select name="activo"><option value="1" {{ 'selected' if t.activo }}>Sí</option><option value="0" {{ 'selected' if not t.activo }}>No</option></select></div>
+<div><label><input type="checkbox" name="validado" value="1"> Marcar destinatarios como validados</label></div></div>
+<details><summary>Roles destinatarios ({{ t.roles|length }}) y usuarios autorizados</summary><div class="row">
+{% for r in roles %}<label style="min-width:220px"><input type="checkbox" name="roles" value="{{ r.code }}" {{ 'checked' if r.code in t.roles }}> {{ r.nombre }}</label>{% endfor %}</div>
+<label>Usuarios adicionales</label><select name="usuarios" multiple size="5">{% for u in users %}<option value="{{ u.id }}" {{ 'selected' if u.id in (t.usuarios or []) }}>{{ u.nombre }}</option>{% endfor %}</select></details>
+<button class="small">Guardar</button></form>
+{% endfor %}
+{% endblock %}

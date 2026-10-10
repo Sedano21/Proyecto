@@ -1,0 +1,45 @@
+{% extends "base.html" %}{% from "_m.html" import b, csrf %}
+{% block content %}
+<h1>Inicio</h1>
+{% if user.debe_cambiar_clave %}<div class="note">Debe <a href="{{ url_for('main.change_password') }}">cambiar su contraseña</a>.</div>{% endif %}
+{% if k %}
+<form class="row card noprint" method="get">
+  <div><label>Fecha comprometida desde</label><input type="date" name="desde" value="{{ desde }}"></div>
+  <div><label>hasta</label><input type="date" name="hasta" value="{{ hasta }}"></div>
+  <div><button class="sec">Filtrar</button></div>
+</form>
+<div class="grid g4">
+  <div class="tile"><div class="v">{{ k.pendientes }}</div><div class="l">Pedidos pendientes</div></div>
+  <div class="tile"><div class="v">{{ k.completos }}</div><div class="l">Pendientes completos (stock reservado 100 %)</div></div>
+  <div class="tile"><div class="v">{{ k.incompletos }}</div><div class="l">Pendientes incompletos</div></div>
+  <div class="tile"><div class="v">{% if k.cobertura_unidades_prom is not none %}{{ k.cobertura_unidades_prom }}% / {{ k.cobertura_lineas_prom }}%{% else %}—{% endif %}</div><div class="l">Cobertura promedio unidades / líneas</div></div>
+  <div class="tile"><div class="v">{% if k.otif_salida %}{{ k.otif_salida[0] }}%{% else %}—{% endif %}</div><div class="l">OTIF por salida ({% if k.otif_salida %}{{ k.otif_salida[1] }}/{{ k.otif_salida[2] }}{% else %}sin datos{% endif %})</div></div>
+  <div class="tile"><div class="v">{% if k.otif_entrega %}{{ k.otif_entrega[0] }}%{% else %}—{% endif %}</div><div class="l">OTIF por entrega en destino ({% if k.otif_entrega %}{{ k.otif_entrega[1] }}/{{ k.otif_entrega[2] }}{% else %}sin datos{% endif %})</div></div>
+  <div class="tile"><div class="v">S/ {{ k.monto_total|n }}</div><div class="l">Monto OV (pendiente S/ {{ k.monto_pendiente|n }})</div></div>
+  <div class="tile"><div class="v">{{ k.volumen_kg|n }} kg</div><div class="l">Volumen OV (pendiente {{ k.volumen_pendiente_kg|n }} kg)</div></div>
+  <div class="tile"><div class="v">{{ k.tiempo_preparacion_h if k.tiempo_preparacion_h is not none else '—' }} h</div><div class="l">Tiempo promedio de preparación</div></div>
+  <div class="tile"><div class="v">{{ k.tiempo_despacho_h if k.tiempo_despacho_h is not none else '—' }} h</div><div class="l">Tiempo preparado → salida</div></div>
+  <div class="tile"><div class="v">{{ k.compras_pendientes }} / {{ k.produccion_pendiente }}</div><div class="l">Compras / producción pendientes</div></div>
+  <div class="tile"><div class="v">{{ k.diferencias_inventario }}</div><div class="l">Diferencias de inventario (conteos) · {{ k.diferencias_liquidacion }} en recepción de PT</div></div>
+  <div class="tile"><div class="v">{{ k.rechazos }} / {{ k.devoluciones }} / {{ k.entregas_parciales }}</div><div class="l">Rechazos / devoluciones / entregas parciales</div></div>
+</div>
+<div class="note small">OTIF: la definición está pendiente (IF §17). Se muestran ambas variantes: <b>por salida</b> (pedido completo que salió en o antes de la fecha comprometida) y <b>por entrega</b> (entregado completo en destino a tiempo).</div>
+<div class="grid g2">
+  <div class="card"><h3>Faltantes por producto (unidades no reservadas)</h3>
+    <table>{% for p, q in k.faltantes %}<tr><td>{{ p }}</td><td class="r">{{ q|n }}</td></tr>{% else %}<tr><td class="muted">Sin faltantes</td></tr>{% endfor %}</table></div>
+  <div class="card"><h3>Pedidos detenidos y motivo</h3>
+    <table>{% for n, c, m in k.detenidos %}<tr><td>{{ n }}</td><td>{{ c }}</td><td class="small">{{ m }}</td></tr>{% else %}<tr><td class="muted">Ninguno</td></tr>{% endfor %}</table></div>
+  <div class="card"><h3>Estados de pedidos</h3><table>{% for e, n in k.estados.items() %}<tr><td>{{ b(e) }}</td><td class="r">{{ n }}</td></tr>{% endfor %}</table></div>
+  <div class="card"><h3>Incidencias por tipo</h3><table>{% for t, n in k.incidencias.items() %}<tr><td>{{ t }}</td><td class="r">{{ n }}</td></tr>{% else %}<tr><td class="muted">Sin incidencias</td></tr>{% endfor %}</table></div>
+  <div class="card"><h3>Merma prevista vs real (liquidaciones con dato)</h3>
+    <table><tr><th>Liquidación</th><th>Producto</th><th class="r">Prevista %</th><th class="r">Real %</th></tr>
+    {% for d, p, pr, r in k.merma %}<tr><td>{{ d }}</td><td>{{ p }}</td><td class="r">{{ pr if pr is not none else 'no definida' }}</td><td class="r">{{ r }}</td></tr>{% else %}<tr><td colspan="4" class="muted">Sin datos suficientes</td></tr>{% endfor %}</table></div>
+</div>
+{% endif %}
+<div class="card"><h3>Mis alertas abiertas</h3>
+<table><tr><th>#</th><th>Prioridad</th><th>Título</th><th>Área</th><th>Estado</th><th>Creada</th></tr>
+{% for a in mis_alertas %}<tr><td><a href="{{ url_for('main.alert_detail', aid=a.id) }}">{{ a.id }}</a></td><td>{{ b(a.prioridad) }}</td><td>{{ a.titulo }}</td><td>{{ a.area }}</td><td>{{ b(a.estado) }}</td><td>{{ a.creado_ts|d }}</td></tr>
+{% else %}<tr><td colspan="6" class="muted">Sin alertas abiertas</td></tr>{% endfor %}</table>
+<p><a href="{{ url_for('main.alerts') }}">Ver todas</a></p></div>
+{% if can('dashboard.ver') %}<form method="post" action="{{ url_for('main.run_checks') }}" class="noprint">{{ csrf() }}<button class="sec">Ejecutar verificaciones automáticas ahora</button> <span class="muted small">(retrasos, fases de importación, vencimientos, reposición, correo)</span></form>{% endif %}
+{% endblock %}

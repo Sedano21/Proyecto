@@ -1,0 +1,14 @@
+{% extends "base.html" %}{% from "_m.html" import csrf %}
+{% block content %}<h1>Catálogo de artículos</h1>
+<form class="row" method="get"><div><input name="q" value="{{ q }}" placeholder="código o descripción"></div><div><button class="sec">Buscar</button></div></form>
+<p class="small muted">Campos de configuración por producto/material (IF §16): categoría de reposición (vincula plazo), stock mínimo, período de análisis, margen por atrasos, merma %, tiempo máximo de almacenamiento, grupo PCC1 de humedad. Vacío = no definido.</p>
+<div class="tbl"><div class="ftable"><div class="frow fh"><div class="fcell">Código</div><div class="fcell">Descripción</div><div class="fcell">Tipo/UM/Peso kg</div><div class="fcell">Producto base / calidad</div><div class="fcell">Reposición</div><div class="fcell">Merma / Tmax / PCC1</div><div class="fcell"></div></div>
+{% for p in rows %}<form class="frow" method="post" action="{{ url_for('main.product_edit', code=p.code) }}">{{ csrf() }}<input type="hidden" name="q" value="{{ q }}">
+<div class="fcell mono">{{ p.code }}</div><div class="fcell small">{{ p.descripcion }}<br><span class="muted">{{ p.presentacion }}</span></div>
+<div class="fcell"><input name="tipo" value="{{ p.tipo }}" size="6"> <select name="um"><option {{ 'selected' if p.um=='UNIDAD' }}>UNIDAD</option><option {{ 'selected' if p.um=='KILOGRAMO' }}>KILOGRAMO</option></select><br><input name="peso_kg" value="{{ p.peso_kg if p.peso_kg is not none else '' }}" size="6" title="peso por unidad (kg)"></div>
+<div class="fcell"><input name="producto_base" value="{{ p.producto_base }}" size="18"><br><input name="calidad" value="{{ p.calidad }}" size="10"></div>
+<div class="fcell"><select name="categoria_reposicion"><option value="">(sin categoría)</option>{% for c in cats %}<option {{ 'selected' if c==p.categoria_reposicion }}>{{ c }}</option>{% endfor %}</select><br>
+mín <input name="stock_minimo" value="{{ p.stock_minimo if p.stock_minimo is not none else '' }}" size="5"> período <input name="periodo_analisis_dias" value="{{ p.periodo_analisis_dias or '' }}" size="3"> margen <input name="margen_seguridad_dias" value="{{ p.margen_seguridad_dias if p.margen_seguridad_dias is not none else '' }}" size="3"></div>
+<div class="fcell">merma % <input name="merma_pct" value="{{ p.merma_pct if p.merma_pct is not none else '' }}" size="4"> tmax <input name="tiempo_max_almacen_dias" value="{{ p.tiempo_max_almacen_dias or '' }}" size="4"><br>
+<select name="grupo_humedad"><option value="">(PCC1)</option>{% for c, n, l in pcc1 %}<option value="{{ c }}" {{ 'selected' if c==p.grupo_humedad }}>{{ n }} ≤{{ l }}%</option>{% endfor %}</select></div>
+<div class="fcell">{% if can('config.editar') %}<button class="small">Guardar</button>{% endif %}</div></form>{% endfor %}</div></div>{% endblock %}

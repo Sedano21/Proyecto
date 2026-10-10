@@ -1,0 +1,6 @@
+{% extends "base.html" %}{% from "_m.html" import b, csrf %}
+{% block content %}<h1>Certificados de calidad</h1>
+<p class="muted small">Se generan automáticamente con datos de Calidad, del lote/producto de Producción y del pedido listo para despacho; Supervisor o Jefatura de Calidad revisan, corrigen y aprueban (IF §9.4). Modelo según N°CP2026-PT3756 / MP276 / CA0764.</p>
+{% if can('calidad.certificado_revisar') or can('calidad.registrar') %}<form method="post" class="row card">{{ csrf() }}<div><label>Generar para lote</label><select name="lot_id">{% for l in lots %}<option value="{{ l.id }}">{{ l.product_code }} · {{ l.lote }} · {{ l.warehouse_code }}</option>{% endfor %}</select></div><div><button class="sec">Generar</button></div></form>{% endif %}
+<table><tr><th>N°</th><th>Producto</th><th>Lote</th><th>OV</th><th>Generado</th><th>Estado</th></tr>
+{% for c in rows %}<tr><td><a href="{{ url_for('cal.certificate_detail', cid=c.id) }}">{{ c.numero }}</a></td><td>{{ c.product_code }}</td><td>{{ c.datos.lote }}</td><td>{{ c.datos.pedido }}</td><td>{{ c.generado_ts|d }}</td><td>{{ b(c.estado) }}</td></tr>{% else %}<tr><td colspan="6" class="muted">Sin certificados</td></tr>{% endfor %}</table>{% endblock %}

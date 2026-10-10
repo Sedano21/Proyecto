@@ -1,0 +1,25 @@
+{% extends "base.html" %}{% from "_m.html" import csrf, errs %}
+{% block content %}
+<h1>Carga #{{ bt.id }}: {{ spec.nombre }} <span class="b {{ bt.estado }}">{{ bt.estado|replace('_',' ') }}</span></h1>
+<div class="card"><table class="kv"><tr><td>Archivo / hoja</td><td>{{ bt.archivo }} / {{ bt.hoja }}</td></tr><tr><td>Subido</td><td>{{ bt.ts|d }} por {{ bt.user.nombre if bt.user }}</td></tr>
+{% if bt.confirmado_ts %}<tr><td>Autorizada</td><td>{{ bt.confirmado_ts|d }}</td></tr>{% endif %}
+{% for k, v in bt.resumen.items() if not k.startswith('detalle') %}<tr><td>{{ k|replace('_',' ') }}</td><td class="mono">{{ v }}</td></tr>{% endfor %}</table>
+{{ errs(bt.errores_generales, 'warn-list') }}
+{% for k in ['detalle_modificados','detalle_ausentes','detalle_reservas_afectadas'] if bt.resumen.get(k) %}<details><summary>{{ k|replace('_',' ') }} ({{ bt.resumen[k]|length }})</summary><div class="mono small">{% for x in bt.resumen[k] %}{{ x }}<br>{% endfor %}</div></details>{% endfor %}
+</div>
+{% if bt.estado in ['LISTO','VALIDADO_CON_ERRORES'] %}
+<form method="post" action="{{ url_for('alm.upload_action', bid=bt.id, accion='confirmar') }}" class="card">{{ csrf() }}
+{% if bt.tipo == 'BOM' %}<label>¿El Excel ya incorpora pérdidas (merma)? (IF §8.1 – evita doble contabilización)</label><select name="incluye_merma"><option value="NO_VERIFICADO">No verificado (no se aplicará merma)</option><option value="SI">Sí, ya incluye (no se aplica merma)</option><option value="NO">No incluye (se aplicará la merma configurada)</option></select>{% endif %}
+{% if bt.tipo == 'LIQUIDACION' %}<label>Origen</label><select name="origen"><option>SAP</option><option>EXCEL</option></select>{% endif %}
+{% if bt.estado=='VALIDADO_CON_ERRORES' %}<div class="note">Hay filas con error: corríjalas o exclúyalas para poder autorizar.</div>{% endif %}
+<button {{ 'disabled' if bt.estado=='VALIDADO_CON_ERRORES' }}>Autorizar e incorporar</button></form>
+<form method="post" action="{{ url_for('alm.upload_action', bid=bt.id, accion='descartar') }}">{{ csrf() }}<button class="sec">Descartar carga</button></form>{% endif %}
+<h2>Filas {% if filtro=='problemas' %}con errores/advertencias/cambios <a class="small" href="?filtro=todas">(ver todas)</a>{% else %}<a class="small" href="?filtro=problemas">(solo problemas)</a>{% endif %}</h2>
+<div class="tbl"><table class="small"><tr><th>Fila</th><th>Datos (editables)</th><th>Errores / advertencias</th><th>Acción</th></tr>
+{% for r in rows %}<tr id="f{{ r.id }}" style="{{ 'opacity:.5' if r.excluida }}"><td>{{ r.fila }}{% if r.editada %}<br><span class="b info">editada</span>{% endif %}{% if r.excluida %}<br><span class="b warn">excluida</span><br>{{ r.motivo_exclusion }}{% endif %}</td>
+<td>{% if bt.estado in ['LISTO','VALIDADO_CON_ERRORES'] %}<form method="post" action="{{ url_for('alm.upload_row', bid=bt.id, rid=r.id) }}">{{ csrf() }}{% for k in spec.cols %}{% if k in r.datos %}<label style="display:inline-block;margin-right:6px">{{ k }}<br><input name="c_{{ k }}" value="{{ r.datos[k] if r.datos[k] is not none else '' }}" size="{{ 10 if k not in ['descripcion','padre_desc','componente_desc','cliente'] else 24 }}"></label>{% endif %}{% endfor %}<button class="small" name="accion" value="editar">Corregir</button></form>
+{% else %}<span class="mono">{{ r.datos|tojson|truncate(300) }}</span>{% endif %}</td>
+<td>{{ errs(r.errores) }}{{ errs(r.advertencias, 'warn-list') }}</td>
+<td>{% if bt.estado in ['LISTO','VALIDADO_CON_ERRORES'] %}{% if not r.excluida %}<form method="post" action="{{ url_for('alm.upload_row', bid=bt.id, rid=r.id) }}">{{ csrf() }}<input name="motivo" placeholder="motivo" size="10" required><button class="small sec" name="accion" value="excluir">Excluir</button></form>{% else %}<form method="post" action="{{ url_for('alm.upload_row', bid=bt.id, rid=r.id) }}">{{ csrf() }}<button class="small sec" name="accion" value="incluir">Incluir</button></form>{% endif %}{% endif %}</td></tr>
+{% else %}<tr><td colspan="4" class="muted">Sin filas con problemas.</td></tr>{% endfor %}</table></div>
+{% endblock %}

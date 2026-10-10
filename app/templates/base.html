@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{% block title %}Módulo de Operaciones{% endblock %} · Corporación Productiva</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+{% if user %}
+<div class="layout">
+  <nav class="side">
+    <div class="brand">Módulo de Operaciones<small>Corporación Productiva · prototipo v0.1</small></div>
+    <a href="{{ url_for('main.dashboard') }}">Inicio / Tablero</a>
+    <a href="{{ url_for('main.alerts') }}">Alertas{% if alertas_abiertas %}<span class="badge-al">{{ alertas_abiertas }}</span>{% endif %}</a>
+    {% if can('ov.ver') %}<h4>Comercial</h4>
+      <a href="{{ url_for('com.orders') }}">Órdenes de venta</a>
+      {% if can('ov.crear') %}<a href="{{ url_for('com.order_new') }}">Registrar OV</a>{% endif %}
+    {% endif %}
+    {% if can('stock.ver') %}<h4>Almacén</h4>
+      <a href="{{ url_for('alm.stock') }}">Stock y reservas</a>
+      {% if can('preparacion.registrar') or can('ov.ver') %}<a href="{{ url_for('com.preparation') }}">Preparación (picking)</a>{% endif %}
+      {% if can('stock.cargar') or can('produccion.bom_cargar') or can('ov.importar') or can('produccion.liquidar') or can('config.editar') %}<a href="{{ url_for('alm.uploads') }}">Cargas de archivos</a>{% endif %}
+      {% if can('stock.conteo') %}<a href="{{ url_for('alm.counts') }}">Conteos físicos</a>{% endif %}
+    {% endif %}
+    {% if can('traslados.ver') %}<a href="{{ url_for('alm.transfers') }}">Traslados</a>{% endif %}
+    {% if can('reempaque.ver') %}<a href="{{ url_for('alm.repacks') }}">Reempaque</a>{% endif %}
+    {% if can('produccion.ver') %}<h4>Producción</h4>
+      <a href="{{ url_for('prod.requests') }}">Solicitudes y programa</a>
+      <a href="{{ url_for('prod.bom') }}">Lista de materiales</a>
+      <a href="{{ url_for('prod.liquidations') }}">Liquidaciones</a>
+    {% endif %}
+    {% if can('calidad.ver') or can('distribucion.seguridad') %}<h4>Calidad</h4>
+      {% if can('calidad.ver') %}<a href="{{ url_for('cal.home') }}">Liberación y registros</a>
+      <a href="{{ url_for('cal.certificates') }}">Certificados</a>{% endif %}
+      {% if can('distribucion.seguridad') and not can('calidad.ver') %}<a href="{{ url_for('cal.new_record', formato='VEHICULO') }}">Control de vehículos</a>{% endif %}
+    {% endif %}
+    {% if can('compras.ver') or can('importaciones.ver') %}<h4>Abastecimiento</h4>
+      {% if can('compras.ver') %}<a href="{{ url_for('buy.purchases') }}">Compras nacionales</a>
+      <a href="{{ url_for('buy.replenishment') }}">Análisis de reposición</a>{% endif %}
+      {% if can('importaciones.ver') %}<a href="{{ url_for('buy.imports') }}">Importaciones</a>{% endif %}
+    {% endif %}
+    {% if can('distribucion.ver') %}<h4>Distribución</h4>
+      <a href="{{ url_for('dist.routes') }}">Programación y rutas</a>
+      <a href="{{ url_for('dist.incidents') }}">Incidencias</a>
+      {% if can('distribucion.flota') %}<a href="{{ url_for('dist.fleet') }}">Flota y conductores</a>{% endif %}
+    {% endif %}
+    {% if can('config.ver') or can('auditoria.ver') %}<h4>Administración</h4>
+      {% if can('config.ver') %}<a href="{{ url_for('main.config') }}">Configuración</a>{% endif %}
+      {% if can('usuarios.administrar') %}<a href="{{ url_for('main.users') }}">Usuarios y permisos</a>{% endif %}
+      {% if can('alertas.configurar') %}<a href="{{ url_for('main.alert_config') }}">Configurar alertas</a>
+      <a href="{{ url_for('main.outbox') }}">Bandeja de correo</a>{% endif %}
+      {% if can('auditoria.ver') %}<a href="{{ url_for('main.audit') }}">Auditoría</a>{% endif %}
+    {% endif %}
+    {% if user.role_code == 'GERENCIA_GENERAL' %}<a href="{{ url_for('main.gg_prefs') }}">Mis alertas directas</a>{% endif %}
+  </nav>
+  <div class="main">
+    <div class="top">
+      <div class="stockinfo">{% if stock_info %}Stock: última carga SAP <b>{{ stock_info.ts|d }}</b> ({{ stock_info.archivo }}, por {{ stock_info.usuario }}). <b>No es tiempo real.</b>{% else %}Stock: <b>sin carga SAP registrada</b>.{% endif %}</div>
+      <div class="who">{{ user.nombre }} · <b>{{ user.role.nombre }}</b> · <a href="{{ url_for('main.logout') }}">Salir</a></div>
+    </div>
+    <div class="content">
+      {% if demo_mode %}<div class="note info noprint">Entorno de demostración con datos ficticios. No conectado a SAP ni a sistemas productivos.</div>{% endif %}
+      {% with msgs = get_flashed_messages(with_categories=true) %}{% for c, m in msgs %}<div class="flash {{ c }}">{{ m }}</div>{% endfor %}{% endwith %}
+      {% block content %}{% endblock %}
+    </div>
+  </div>
+</div>
+{% else %}
+<div class="content">{% with msgs = get_flashed_messages(with_categories=true) %}{% for c, m in msgs %}<div class="flash {{ c }}">{{ m }}</div>{% endfor %}{% endwith %}{% block public %}{% endblock %}</div>
+{% endif %}
+</body>
+</html>

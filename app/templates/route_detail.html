@@ -1,0 +1,37 @@
+{% extends "base.html" %}{% from "_m.html" import b, csrf %}
+{% block content %}<h1>Ruta #{{ r.id }} · {{ r.fecha|d }} · {{ r.zona }} {{ b(r.estado) }}</h1>
+<div class="card"><p>Unidad: <b>{{ r.vehicle.placa if r.vehicle else '—' }}</b> {% if r.vehicle %}({{ r.vehicle.descripcion }}, {{ r.vehicle.capacidad_kg|n }} kg, {{ 'propia' if r.vehicle.propio else 'tercero' }}){% endif %} · Conductor: <b>{{ r.driver.nombre if r.driver else '—' }}</b> · Carga {{ r.peso_total|n }} kg {% if r.requiere_externo %}<span class="b warn">transporte externo</span>{% endif %}</p>
+{% for a in r.advertencias %}<div class="note small">{{ a }}</div>{% endfor %}
+{% if r.estado in ['PROPUESTA','CONFIRMADA'] and can('distribucion.programar') %}<form method="post" class="row">{{ csrf() }}<input type="hidden" name="accion" value="ajustar">
+<div><label>Unidad</label><select name="vehicle_id"><option value="">(sin cambio)</option>{% for v in vehicles %}<option value="{{ v.id }}">{{ v.placa }} · {{ v.capacidad_kg|n }} kg · {{ 'propia' if v.propio else 'tercero' }}</option>{% endfor %}</select></div>
+<div><label>Conductor</label><select name="driver_id"><option value="">(sin cambio)</option>{% for d in drivers %}<option value="{{ d.id }}">{{ d.nombre }}{{ ' (externo)' if d.externo }}</option>{% endfor %}</select></div><div><button class="sec">Ajustar</button></div></form>{% endif %}
+{% if r.estado=='PROPUESTA' and can('distribucion.programar') %}<form method="post">{{ csrf() }}<button name="accion" value="confirmar">Confirmar programación</button></form>{% endif %}</div>
+
+<h2>Paradas</h2>
+<table><tr><th>#</th><th>OV</th><th>Cliente / dirección</th><th>Cita</th><th class="r">Kg</th><th>Estado</th><th>Evidencia</th><th>Acciones</th></tr>
+{% for s in r.stops %}<tr><td>{{ s.orden }}</td><td><a href="{{ url_for('com.order_detail', oid=s.order_id) }}">{{ s.order.numero }}</a> {{ b(s.order.estado) }}</td><td>{{ s.order.customer.nombre }}<br><span class="small muted">{{ s.order.direccion }} · {{ s.order.distrito }} · horario {{ s.order.customer.horario_recepcion }}</span></td>
+<td>{{ s.order.hora_cita }} {{ '✓' if s.order.cita_confirmada }}</td><td class="r">{{ s.peso_kg|n }}</td><td>{{ b(s.estado) }}<br><span class="small">{{ s.llegada_ts|d }} {{ s.entrega_ts|d }}</span></td>
+<td class="small">{% if s.foto_path %}<a href="{{ url_for('main.evidence', name=s.foto_path) }}">foto</a> · <a href="{{ url_for('main.evidence', name=s.guia_firmada_path) }}">guía firmada</a>{% endif %}</td>
+<td>{% if r.estado in ['PROPUESTA','CONFIRMADA'] and others and can('distribucion.programar') %}<form method="post" class="inline">{{ csrf() }}<input type="hidden" name="stop_id" value="{{ s.id }}"><select name="target">{% for o in others %}<option value="{{ o.id }}">→ ruta #{{ o.id }} {{ o.zona }}</option>{% endfor %}</select><button class="small sec" name="accion" value="mover">Mover</button></form>{% endif %}
+{% if s.estado=='EN_CAMINO' and can('distribucion.entrega') %}<form method="post" class="inline">{{ csrf() }}<input type="hidden" name="stop_id" value="{{ s.id }}"><button class="small" name="accion" value="llegada">Llegada</button></form>{% endif %}
+{% if s.estado in ['EN_CAMINO','LLEGADA'] and can('distribucion.entrega') %}<details><summary>Registrar entrega</summary><form method="post" enctype="multipart/form-data">{{ csrf() }}<input type="hidden" name="stop_id" value="{{ s.id }}">
+<label>Fotografía (obligatoria)</label><input type="file" name="foto" accept="image/*,.pdf" required><label>Guía firmada (obligatoria)</label><input type="file" name="guia" accept="image/*,.pdf" required>
+{% for l in s.order.lines if l.activa %}<label>Entregado {{ l.product_code }} (despachado {{ l.despachado|n }})</label><input type="number" step="any" name="ent_{{ l.id }}" value="{{ l.despachado }}">{% endfor %}
+<label>Observación</label><input name="observacion"><p><button class="small" name="accion" value="entrega">Registrar entrega</button></p></form></details>{% endif %}
+{% if r.estado in ['CONFIRMADA','EN_RUTA'] and can('distribucion.incidencia') %}<details><summary>Incidencia</summary><form method="post">{{ csrf() }}<input type="hidden" name="stop_id" value="{{ s.id }}"><select name="tipo">{% for c, n in tipos %}<option value="{{ c }}">{{ n }}</option>{% endfor %}</select>
+<input name="descripcion" placeholder="descripción" required><input type="number" step="any" name="cantidad" placeholder="cant." style="width:70px"><button class="small" name="accion" value="incidencia">Registrar</button></form></details>{% endif %}</td></tr>{% endfor %}</table>
+
+{% if r.estado=='CONFIRMADA' %}
+<div class="grid g2">
+<div class="card"><h3>Seguridad: validación de carga contra guía</h3>
+{% if r.seguridad %}<p>Validado por {{ r.seguridad.user }} ({{ r.seguridad.ts }}), guía {{ r.guia_numero }}: {% if r.seguridad.discrepancias %}<span class="b ALTA">con discrepancias</span><ul class="err-list">{% for d in r.seguridad.discrepancias %}<li>{{ d }}</li>{% endfor %}</ul>{% else %}<span class="b ok">conforme</span>{% endif %}</p>{% endif %}
+{% if can('distribucion.seguridad') %}<form method="post">{{ csrf() }}<label>N° de guía</label><input name="guia_numero" value="{{ r.guia_numero }}" required>
+<table class="small"><tr><th>OV / producto</th><th class="r">Preparado</th><th>En guía</th><th>Cargado</th><th>Presentación</th></tr>
+{% for e in expected %}<tr><td>{{ e.ov }} · {{ e.producto }}</td><td class="r">{{ e.esperado|n }}</td><td><input type="number" step="any" name="guia_{{ e.order_line_id }}" value="{{ e.esperado }}" style="width:80px"></td><td><input type="number" step="any" name="cargado_{{ e.order_line_id }}" value="{{ e.esperado }}" style="width:80px"></td><td><select name="pres_{{ e.order_line_id }}"><option value="1">Coincide</option><option value="0">No coincide</option></select></td></tr>{% endfor %}</table>
+<button name="accion" value="seguridad">Registrar validación</button></form>{% endif %}
+<p class="small muted"><a href="{{ url_for('cal.new_record', formato='VEHICULO') }}">Control de vehículo (REG-BPM-CAL-011)</a> · <a href="{{ url_for('cal.new_record', formato='INSPECCION_CARGA') }}">Inspección de carga (Calidad)</a></p></div>
+<div class="card"><h3>Verificación y confirmación de salida</h3>
+{% if can('distribucion.confirmar_salida') %}<form method="post">{{ csrf() }}{% for k, l in checklist %}<label><input type="checkbox" name="{{ k }}" value="1"> {{ l }}</label>{% endfor %}
+<p class="small muted">Regla de bloqueo por discrepancia: pendiente de validar (IF §12.2); por defecto se advierte y alerta.</p><button name="accion" value="salida">Confirmar salida</button></form>{% else %}<p class="muted">La salida la confirma el Coordinador de Distribución.</p>{% endif %}</div></div>{% endif %}
+{% if r.checklist %}<p class="small">Salida confirmada {{ r.salida_ts|d }} · checklist {{ r.checklist }}</p>{% endif %}
+{% endblock %}
