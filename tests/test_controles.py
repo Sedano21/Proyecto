@@ -299,3 +299,11 @@ def test_salidas_no_descarta_lineas_legitimas_y_evita_recarga(s, U, tmp_path):
     assert r["registros"] == 2 and r["omitidos_sin_producto"] == 1
     r2 = up.confirm(up.create_batch(U("coord.almacen"), "SALIDAS", p, "qy.xlsx"), U("coord.almacen"))
     assert r2["registros"] == 0 and r2["omitidos_ya_cargados"] == 2
+
+
+def test_fechas_de_carga():
+    from datetime import date as d
+    assert up._date(46474) == d(2027, 3, 28)  # número de serie de Excel
+    assert up._date("21/08/2026") == d(2026, 8, 21)
+    with pytest.raises(ValueError):
+        up._date("01/01/0026")  # año inválido presente en el stock real

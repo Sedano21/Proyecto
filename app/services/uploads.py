@@ -167,9 +167,12 @@ def _date(v):
     s = str(v).strip()
     for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%d/%m/%y", "%d-%m-%y"):
         try:
-            return datetime.strptime(s[:10] if fmt == "%Y-%m-%d" else s, fmt).date()
+            d = datetime.strptime(s[:10] if fmt == "%Y-%m-%d" else s, fmt).date()
         except ValueError:
-            pass
+            continue
+        if not 1990 <= d.year <= 2100:
+            raise ValueError(f"fecha '{v}' fuera de rango")
+        return d
     raise ValueError(f"fecha '{v}' no reconocida")
 
 

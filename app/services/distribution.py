@@ -251,6 +251,9 @@ def confirm_departure(route, user, checklist):
     faltan = [lbl for k, lbl in CHECKLIST if not checklist.get(k)]
     if faltan:
         raise BusinessError("Antes de la salida verifique: " + ", ".join(faltan) + " (IF §12.2).")
+    no_prep = [st.order.numero for st in route.stops if st.order.estado not in ("PREPARADA", "PROGRAMADA")]
+    if no_prep:
+        raise BusinessError("Pedidos sin preparación completa: " + ", ".join(no_prep))
     if not route.seguridad:
         raise BusinessError("Falta la validación de Seguridad de carga contra guía.")
     if route.seguridad.get("discrepancias"):
