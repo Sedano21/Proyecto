@@ -34,10 +34,18 @@ RUC, precios, conductores y placas); solo se leyeron.
 | 28 | Linea cimbria.pdf | Formato de producción | Ídem con tipo de saco/etiqueta, % desmedro | Línea CIMBRIA |
 | 29 | SEL-MANUAL.pdf | Formato de producción | Selección manual por turno, operario, horas, kg | Línea SEL_MANUAL |
 
+## Archivo recibido el 11-oct-2026
+
+| # | Archivo | Tipo | Contenido identificado | Uso en el sistema |
+|---|---|---|---|---|
+| 30 | TO-BE-COPROD-ONE.drawio.zip → TO-BE-COPROD-ONE.drawio.png | Diagrama BPMN draw.io (PNG con el modelo `mxfile` embebido) | **TO-BE "L5 – Gestión de Pedidos y Despachos"**: 15 carriles (Asistente de ventas, Coordinador de ventas, Gerencia de operaciones, Jefe de logística, Coordinadores de almacén, Líder de almacén, Calidad, Producción, Compras, Coordinador de distribución, Facturación, Seguridad, Auxiliar de despacho, Montacarguista, Cliente) con sus actividades, decisiones y avisos | Flujo futuro de pedidos y despachos; análisis en `10_ANALISIS_TO_BE.md` |
+
+Se leyó el modelo completo (textos de cada actividad, compuertas y conectores) además de la imagen. El original no se modificó.
+
 ## Observaciones de la inspección
 
-- **No se recibió un archivo TO-BE independiente.** El TO-BE se tomó del Informe Funcional (§4 flujo integral y §5-§14).
-  El único AS-IS gráfico es el diagrama L5 (pedidos y despachos). Ver consulta Q1 en la especificación.
+- En la entrega inicial no venía un TO-BE gráfico y se usó el Informe Funcional (§4 y §5-§14). El 11-oct-2026 se recibió
+  el TO-BE L5 (archivo 30), que responde Q1 para pedidos y despachos; los demás subprocesos siguen el IF.
 - REG-HACCP-CAL-002 está duplicado (copia idéntica).
 - El `.xlsm` contiene macros que referencian hojas inexistentes (`TD_COMPACTADO`, `PROM_VTA`, `TD_STOCK_LOTE`, `TD_DETALLE`).
 - Los archivos Excel reales contienen datos personales y comerciales; por eso las pruebas y la demo usan datos ficticios

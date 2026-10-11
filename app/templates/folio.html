@@ -1,0 +1,15 @@
+{% extends "base.html" %}{% from "_m.html" import b %}
+{% block content %}
+<p class="noprint"><a class="btn sec" href="javascript:window.print()">Imprimir</a> <a href="{{ url_for('dist.route_detail', rid=r.id) }}">Volver a la ruta</a></p>
+{% for g in preguia %}{% set st = g.stop %}
+<div class="card" style="page-break-after:always">
+<h2>{{ 'PRE-GUÍA' if tipo=='preguia' else ('GUÍA ' ~ (st.guia_numero or '(sin número)')) }} · {{ empresa }} · RUC {{ ruc }}</h2>
+<table class="kv"><tr><td>Señor(es)</td><td>{{ g.order.customer.nombre }} · RUC {{ g.order.customer.ruc }}</td></tr>
+<tr><td>Punto de llegada</td><td>{{ g.order.direccion }} · {{ g.order.distrito }}</td></tr><tr><td>OV</td><td>{{ g.order.numero }}</td></tr>
+<tr><td>Fecha / ruta</td><td>{{ r.fecha|d }} · ruta #{{ r.id }}</td></tr><tr><td>Placa / conductor</td><td>{{ r.vehicle.placa if r.vehicle }} · {{ r.driver.nombre if r.driver }} {{ r.driver.licencia if r.driver }}</td></tr></table>
+<table><tr><th>Código</th><th>Descripción · lote · FP · FV</th><th class="r">Cantidad</th></tr>
+{% for it in g['items'] %}<tr><td>{{ it.codigo }}</td><td>{{ it.descripcion }}{% for lt in it.lotes %}<br><span class="small">LOTE {{ lt.lote }} FP {{ lt.fp|d }} FV {{ lt.fv|d }} × {{ lt.cantidad|n }}</span>{% endfor %}</td><td class="r">{{ it.cantidad|n }}</td></tr>{% endfor %}</table>
+{% if tipo != 'preguia' %}<h3>Folio de documentos</h3><ul><li>Guía: {{ st.guia_numero or 'PENDIENTE' }} {{ '(' ~ st.guia_origen ~ ')' if st.guia_origen }}</li>
+<li>Factura: {{ st.factura_numero or 'PENDIENTE' }}{{ ' (con modificaciones)' if st.factura_con_modificaciones }}</li>
+<li>Certificados: {% for c in certs[st.id] %}{{ c.numero }} ({{ c.estado }}) {% else %}PENDIENTE{% endfor %}</li></ul>{% endif %}
+</div>{% endfor %}{% endblock %}

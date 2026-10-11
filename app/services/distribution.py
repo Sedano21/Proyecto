@@ -66,10 +66,73 @@ def _busy(fecha):
     return vs, ds
 
 
-def propose_routes(fecha, user, orders=None, require_prepared=True):
-    """Genera rutas PROPUESTA para la fecha. Devuelve la lista de rutas creadas."""
-    if user is not None and not (has_perm(user, "distribucion.programar") or has_perm(user, "ov.aprobar_parcial")):
+def active_stop(order):
+    q = select(RouteStop).join(Route).where(RouteStop.order_id == order.id, Route.estado.in_(ACTIVE_ROUTE))
+    return db().execute(q).scalars().first()
+
+
+def sync_order_route(order, user, listo):
+    """TO-BE: 'Programar automáticamente la mejor ruta para el despacho' al quedar la OV completa
+    (o con parcial aprobado). Mantiene el peso de la parada al día y retira la OV de rutas propuestas si deja de estar lista."""
+    stop = active_stop(order)
+    if stop is not None:
+        route = stop.route
+        if not listo and route.estado == "PROPUESTA":
+            route.stops.remove(stop)
+            db().delete(stop)
+            route.peso_total = sum(x.peso_kg for x in route.stops)
+            if not route.stops:
+                route.estado = "ANULADA"
+            return None
+        peso = order_weight_kg(order)[0]
+        if abs(peso - stop.peso_kg) > 1e-9:
+            route.peso_total += peso - stop.peso_kg
+            stop.peso_kg = peso
+            if route.vehicle and route.peso_total > route.vehicle.capacidad_kg + 1e-9:
+                route.advertencias = (route.advertencias or []) + [
+                    f"OV {order.numero} cambió su peso: carga {route.peso_total:,.0f} kg supera la capacidad de la unidad."]
+        return route
+    if listo and param("programar_ruta_automatica", True) and order.estado in ("EVALUADA", "EN_PREPARACION", "PREPARADA"):
+        rutas = propose_routes(order.fecha_compromiso, user, orders=[order], require_prepared=False, automatico=True)
+        return rutas[0] if rutas else None
+    return None
+
+
+def _merge_into_existing(order, fecha, peso):
+    zona = _zone(order)
+    for r in db().execute(select(Route).where(Route.fecha == fecha, Route.estado == "PROPUESTA", Route.zona == zona)
+                          .order_by(Route.id)).scalars():
+        cap = r.vehicle.capacidad_kg if r.vehicle else None
+        if cap is not None and r.peso_total + peso <= cap + 1e-9:
+            r.stops.append(RouteStop(order=order, orden=len(r.stops) + 1, peso_kg=peso))
+            r.peso_total += peso
+            ordered = sorted(r.stops, key=lambda st: ((st.order.hora_cita or "99:99"), priority_key(st.order)))
+            for i, st in enumerate(ordered, 1):
+                st.orden = i
+            if order.customer.requiere_cita and not order.cita_confirmada:
+                r.advertencias = (r.advertencias or []) + [f"OV {order.numero}: cliente requiere cita y no está confirmada."]
+            return r
+    return None
+
+
+def propose_routes(fecha, user, orders=None, require_prepared=True, automatico=False):
+    """Genera rutas PROPUESTA para la fecha. Devuelve la lista de rutas creadas o ampliadas.
+    automatico=True: programación del sistema (TO-BE); intenta sumar a una ruta propuesta existente."""
+    if not automatico and user is not None and not (has_perm(user, "distribucion.programar") or has_perm(user, "ov.aprobar_parcial")):
         raise BusinessError("Su rol no genera programación de distribución.")
+    if automatico and orders:
+        ampliadas = []
+        pendientes = []
+        for o in orders:
+            r = _merge_into_existing(o, fecha, order_weight_kg(o)[0])
+            if r is not None:
+                ampliadas.append(r)
+                audit(user, "RUTA_AMPLIADA_AUTOMATICA", "Route", r.id, {"ov": o.numero})
+            else:
+                pendientes.append(o)
+        if not pendientes:
+            return ampliadas
+        orders = pendientes
     s = db()
     candidates = orders if orders is not None else dispatchable_orders(fecha, require_prepared)
     usados = orders_in_active_route()
@@ -135,7 +198,10 @@ def propose_routes(fecha, user, orders=None, require_prepared=True):
                 drivers.remove(driver)
             pending = resto
     for r in rutas:
-        audit(user, "RUTA_PROPUESTA", "Route", r.id, {"zona": r.zona, "peso": r.peso_total, "paradas": len(r.stops)})
+        audit(user, "RUTA_PROPUESTA_AUTOMATICA" if automatico else "RUTA_PROPUESTA", "Route", r.id,
+              {"zona": r.zona, "peso": r.peso_total, "paradas": len(r.stops)})
+    if automatico:
+        return rutas
     alerts.emit("DIST_PROGRAMACION", f"Programación de distribución {fecha:%d/%m/%Y}: {len(rutas)} ruta(s) propuesta(s)",
                 "; ".join(f"Ruta #{r.id} {r.zona} {r.peso_total:,.0f} kg ({len(r.stops)} paradas)"
                           + (" EXTERNO" if r.requiere_externo else "") for r in rutas),
@@ -203,9 +269,15 @@ def confirm_route(route, user):
     for st in route.stops:
         if st.order.estado == "PREPARADA":
             st.order.estado = "PROGRAMADA"
-    alerts.emit("DIST_PROGRAMACION", f"Ruta #{route.id} confirmada ({route.fecha:%d/%m/%Y})",
+    alerts.emit("DIST_PROGRAMACION", f"Ruta #{route.id} aprobada ({route.fecha:%d/%m/%Y})",
                 f"Unidad {route.vehicle.placa}; conductor {route.driver.nombre}; {len(route.stops)} paradas.",
                 "Route", route.id, creado_por=user)
+    # TO-BE: alerta al chofer y al auxiliar de las rutas asignadas, y al montacarguista para el traslado a despacho
+    alerts.emit("RUTA_ASIGNADA", f"Ruta #{route.id} asignada: {route.fecha:%d/%m/%Y} · {route.vehicle.placa}",
+                ", ".join(f"{st.order.numero} ({st.order.customer.nombre})" for st in route.stops), "Route", route.id,
+                extra_users=[route.driver.user_id] if route.driver.user_id else None, creado_por=user)
+    alerts.emit("MONTACARGUISTA_DESPACHO", f"Trasladar mercadería de la ruta #{route.id} a la zona de despacho",
+                ", ".join(st.order.numero for st in route.stops), "Route", route.id, creado_por=user)
     audit(user, "RUTA_CONFIRMADA", "Route", route.id)
 
 
@@ -256,6 +328,10 @@ def confirm_departure(route, user, checklist):
         raise BusinessError("Pedidos sin preparación completa: " + ", ".join(no_prep))
     if not route.seguridad:
         raise BusinessError("Falta la validación de Seguridad de carga contra guía.")
+    if not route.carga_validada:
+        raise BusinessError("Falta la validación de la carga por el auxiliar (camión cargado, TO-BE).")
+    if not route.autorizacion_seguridad:
+        raise BusinessError("Falta la autorización de salida de Seguridad (documentos completos, TO-BE).")
     if route.seguridad.get("discrepancias"):
         if param("bloquear_salida_con_discrepancia", False):
             raise BusinessError("Salida bloqueada: discrepancias entre carga y guía.")
@@ -264,11 +340,19 @@ def confirm_departure(route, user, checklist):
     route.estado = "EN_RUTA"
     route.salida_ts = now()
     route.salida_confirmada_por = user.id
+    saldos = []
     for st in route.stops:
         consume_order(st.order, user)
         st.order.estado = "DESPACHADA"
         st.order.salida_ts = now()
         st.estado = "EN_CAMINO"
+        if st.order.decision_parcial == "APROBADA":
+            from .orders import create_saldo
+            sal = create_saldo(st.order, user)  # decisión Q3: el saldo se reprograma
+            if sal is not None:
+                saldos.append(sal.numero)
+    if saldos:
+        route.advertencias = (route.advertencias or []) + [f"Saldos reprogramados: {', '.join(saldos)}"]
     alerts.emit("DIST_AVANCE_RUTA", f"Ruta #{route.id} salió ({route.vehicle.placa})",
                 ", ".join(f"OV {st.order.numero}" for st in route.stops), "Route", route.id, creado_por=user)
     audit(user, "SALIDA_CONFIRMADA", "Route", route.id, route.checklist)
@@ -280,7 +364,7 @@ def register_arrival(stop, user):
         raise BusinessError("La parada no está en camino.")
     stop.estado = "LLEGADA"
     stop.llegada_ts = now()
-    alerts.emit("DIST_AVANCE_RUTA", f"Llegada a cliente: OV {stop.order.numero}", stop.order.customer.nombre, "Route",
+    alerts.emit("DIST_LLEGADA", f"Llegada al punto de entrega: OV {stop.order.numero}", stop.order.customer.nombre, "Route",
                 stop.route_id, creado_por=user)
 
 
@@ -323,7 +407,7 @@ def register_delivery(stop, user, foto_path, guia_path, entregas=None, observaci
     order.entrega_ts = now()
     if parcial:
         _incident(user, "ENTREGA_PARCIAL", stop, f"Entrega parcial registrada. {observacion}")
-    alerts.emit("DIST_AVANCE_RUTA", f"OV {order.numero} {'entregada parcialmente' if parcial else 'entregada'}",
+    alerts.emit("DIST_ENTREGADO", f"OV {order.numero} {'entregada parcialmente' if parcial else 'entregada con conformidad'}",
                 f"{order.customer.nombre}. Evidencia: foto y guía firmada.", "Route", stop.route_id, creado_por=user)
     audit(user, "ENTREGA_REGISTRADA", "SalesOrder", order.numero, {"parcial": parcial})
     _maybe_close_route(stop.route)
@@ -370,7 +454,9 @@ def register_incident(user, tipo, descripcion, stop=None, order=None, route=None
             stop.estado = "DEVUELTO"
             o.estado = "DEVUELTA"
             _return_goods(o, user, "Devolución")
-        elif tipo in ("CLIENTE_AUSENTE", "CLIENTE_NO_RETIRA"):
+        elif tipo == "PARTICULARIDAD_DESCARGA":
+            pass  # se registra sobre la entrega ya realizada (TO-BE: detección en la misma descarga)
+        elif tipo in ("CLIENTE_AUSENTE", "CLIENTE_NO_RETIRA", "RECHAZO_CITA"):
             stop.estado = "NO_ENTREGADO"
             o.estado = "DEVUELTA"
             _return_goods(o, user, incident_type_name(tipo))

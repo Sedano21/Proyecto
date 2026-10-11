@@ -731,7 +731,7 @@ def _c_ov(b, user, opciones):
         if r.excluida or (_txt(r.datos.get("estado")) or "").lower() == "cerrado":
             continue
         grupos[_txt(r.datos["numero"])].append(r.datos)
-    creadas = modificadas = sin_cambio = 0
+    creadas = modificadas = sin_cambio = solicitudes = 0
     errores = []
     for numero, items in grupos.items():
         d0 = items[0]
@@ -770,11 +770,19 @@ def _c_ov(b, user, opciones):
                 if actual == nuevo and o.fecha_compromiso == _date(d0["fecha_compromiso"]):
                     sin_cambio += 1
                     continue
-                _apply_changes(o, user, {"fecha_compromiso": _date(d0["fecha_compromiso"]), "lines": lines})
-                modificadas += 1
+                cambios = {"fecha_compromiso": _date(d0["fecha_compromiso"]), "lines": lines}
+                if has_perm(user, "ov.modificar"):
+                    _apply_changes(o, user, cambios)
+                    modificadas += 1
+                else:
+                    # IF §5: el Asistente de Ventas modifica solo con autorización (TO-BE: carga el consolidado de cambios)
+                    from .orders import request_change
+                    request_change(o, user, cambios, f"Actualización desde consolidado SAP ({b.archivo})")
+                    solicitudes += 1
         except BusinessError as ex:
             errores.append(f"OV {numero}: {ex}")
-    return {"ov_creadas": creadas, "ov_modificadas": modificadas, "sin_cambio": sin_cambio, "errores": errores}
+    return {"ov_creadas": creadas, "ov_modificadas": modificadas, "solicitudes_de_modificacion": solicitudes,
+            "sin_cambio": sin_cambio, "errores": errores}
 
 
 def _c_liq(b, user, opciones):

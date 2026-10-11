@@ -3,10 +3,16 @@
 <h1>Preparación OV {{ o.numero }} {{ b(o.estado) }}</h1>
 <p>Cliente {{ o.customer.nombre }} · comprometida {{ o.fecha_compromiso|d }} · avance {{ bar(progress) }} <b>{{ progress }}%</b></p>
 <div class="note info small">Registre la cantidad preparada indicando el lote; el sistema verifica que corresponda a los lotes reservados (lote/vencimiento validados al reservar). Al llegar al 80 % se alerta a Distribución; al 100 % el pedido queda PREPARADO y se generan los certificados de Calidad.</div>
+{% if o.estado in ['EVALUADA','EN_PREPARACION'] %}<div class="card"><b>Planificación de picking pre-asignada por el sistema</b> (lotes reservados) —
+{% if o.plan_picking_validado %}<span class="b ok">validada</span>{% else %}<span class="b warn">pendiente de validación</span>
+{% if can('preparacion.registrar') %}<form method="post" class="inline">{{ csrf() }}<button name="accion" value="validar_plan">Validar planificación</button></form>{% endif %}{% endif %}
+<p class="small muted">TO-BE: si la planificación no es correcta, modifíquela cambiando el lote pre-asignado (solo antes de iniciar el picking de la línea).</p></div>{% endif %}
 <table><tr><th>Producto</th><th class="r">A preparar (reservado)</th><th class="r">Preparado</th><th>Lotes reservados</th><th>Registrar</th></tr>
 {% for l in o.lines if l.activa %}<tr><td>{{ l.product_code }} <span class="small muted">{{ l.product.descripcion }}</span></td><td class="r">{{ line_reserved(l)|n }}</td><td class="r">{{ l.preparado|n }}</td>
-<td class="small">{% for r in l.reservations if r.estado=='ACTIVA' %}{{ r.lot.lote }} × {{ r.cantidad|n }} (vence {{ r.lot.fecha_venc|d }})<br>{% endfor %}</td>
-<td>{% if can('preparacion.registrar') and o.estado in ['EVALUADA','EN_PREPARACION'] and line_reserved(l) - l.preparado > 0.0001 %}<form method="post" class="row">{{ csrf() }}<input type="hidden" name="line_id" value="{{ l.id }}">
+<td class="small">{% for r in l.reservations if r.estado=='ACTIVA' %}{{ r.lot.lote }} × {{ r.cantidad|n }} (vence {{ r.lot.fecha_venc|d }})
+{% if can('preparacion.registrar') and l.preparado == 0 and candidatos.get(l.id) and o.estado in ['EVALUADA','EN_PREPARACION'] %}
+<form method="post" class="inline">{{ csrf() }}<input type="hidden" name="reservation_id" value="{{ r.id }}"><select name="lot_id">{% for x in candidatos[l.id] if x.id != r.lot_id %}<option value="{{ x.id }}">{{ x.lote }} · libre {{ free(x)|n }} · vence {{ x.fecha_venc|d }}</option>{% endfor %}</select><button class="small sec" name="accion" value="cambiar_lote">Cambiar lote</button></form>{% endif %}<br>{% endfor %}</td>
+<td>{% if can('preparacion.registrar') and o.plan_picking_validado and o.estado in ['EVALUADA','EN_PREPARACION'] and line_reserved(l) - l.preparado > 0.0001 %}<form method="post" class="row">{{ csrf() }}<input type="hidden" name="line_id" value="{{ l.id }}">
 <select name="lote">{% for r in l.reservations if r.estado=='ACTIVA' %}<option>{{ r.lot.lote }}</option>{% endfor %}</select>
 <input type="number" step="any" name="cantidad" value="{{ line_reserved(l) - l.preparado }}" style="width:90px"><button class="small">Registrar</button></form>{% elif line_reserved(l) - l.preparado <= 0.0001 and line_reserved(l) > 0 %}<span class="b ok">completa</span>{% endif %}</td></tr>{% endfor %}</table>
 <p><a href="{{ url_for('com.order_detail', oid=o.id) }}">Ver OV</a></p>

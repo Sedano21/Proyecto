@@ -28,18 +28,37 @@ def lot(s, prod_code, lote, wh=None, estado=None):
     return q.one()
 
 
+def approve_certs(s, U, o):
+    for c in s.query(Certificate).filter_by(order_id=o.id, estado="BORRADOR"):
+        cambios = {f"org_{i}_resultado": "CONFORME" for i in range(3)}
+        cambios.update({"hum_resultado": "12%", "hum_conclusion": "CONFORME", "tamano_lote": "1000 kg",
+                        "fecha_analisis": date.today().isoformat()})
+        qual.review_certificate(c, U("superv.calidad"), cambios, aprobar=True)
+
+
 def dispatch(s, U, o, today):
-    """Prepara, programa, valida, despacha. Devuelve la parada."""
+    """Secuencia TO-BE: plan de picking → picking → ruta aprobada → fotos y validación de carga → guía y factura →
+    certificados aprobados → Seguridad (carga vs guía, documentos) → salida."""
+    from app.services import despacho as dsp
+    osvc.validate_picking_plan(o, U("lider.almacen"))
     for l in o.lines:
         for r in [r for r in l.reservations if r.estado == "ACTIVA"]:
             osvc.register_picking(o, U("lider.almacen"), l.id, r.cantidad, r.lot.lote)
     s.commit()
     assert o.estado == "PREPARADA"
-    rutas = dist.propose_routes(o.fecha_compromiso, U("coord.distribucion"), orders=[o])
-    r = rutas[0]
+    r = dist.active_stop(o).route  # programada automáticamente al quedar la OV completa (TO-BE)
     dist.confirm_route(r, U("coord.distribucion"))
+    dsp.add_photo(r, U("aux.despacho"), "vehiculo", "veh.jpg")
+    dsp.add_photo(r, U("seguridad"), "inicio_carga", "ini.jpg")
     lines = [{**e, "guia": e["esperado"], "cargado": e["esperado"], "presentacion_ok": True} for e in dist.expected_lines(r)]
     assert dist.register_security_check(r, U("seguridad"), "T001-DEMO", lines) == []
+    dsp.add_photo(r, U("aux.despacho"), "mercaderia_cargada", "carga.jpg")
+    assert dsp.validate_load(r, U("aux.despacho"), {}) == []
+    for st in r.stops:
+        dsp.set_guide(st, U("coord.distribucion"), "", "SISTEMA")
+        dsp.set_invoice(st, U("facturacion"), f"F001-{st.order.numero}", "fact.pdf")
+        approve_certs(s, U, st.order)
+    assert dsp.authorize_exit(r, U("seguridad"), impresos=True) == []
     dist.confirm_departure(r, U("coord.distribucion"), {k: True for k, _ in dist.CHECKLIST})
     s.commit()
     return r.stops[0]
@@ -92,17 +111,45 @@ def test_faltante_cobertura_alertas_y_alternativas(s, U, new_order):
     assert s.query(Transfer).count() == 0
 
 
-def test_despacho_parcial_requiere_rol_y_genera_ruta(s, U, new_order):
+def test_despacho_parcial_aprobacion_conjunta_y_saldo(s, U, new_order, today):
+    """Q3: aprueban Gerencia de Operaciones y Jefatura de Logística; el saldo se reprograma."""
     o = new_order([("PT-901", 450)])
-    with pytest.raises(BusinessError):
-        osvc.decide_partial(o, U("vendedor1"), True)
-    rutas = osvc.decide_partial(o, U("jefe.logistica"), True, "Cliente acepta parcial")
+    assert dist.active_stop(o) is None  # incompleta: aún no se programa ruta
+    for quien in ("vendedor1", "coord.ventas", "jefe.ventas", "sistemas"):
+        with pytest.raises(BusinessError):
+            osvc.decide_partial(o, U(quien), True, fecha_saldo=today + timedelta(days=7))
+    with pytest.raises(BusinessError):  # fecha del saldo obligatoria
+        osvc.decide_partial(o, U("jefe.logistica"), True)
+    r1 = osvc.decide_partial(o, U("jefe.logistica"), True, "ok logística", today + timedelta(days=7))
     s.commit()
-    assert o.decision_parcial == "APROBADA"
+    assert r1 == [] and o.decision_parcial == "PENDIENTE" and list(o.parcial_aprobaciones) == ["JEFE_LOGISTICA"]
+    with pytest.raises(BusinessError):  # no puede aprobar dos veces
+        osvc.decide_partial(o, U("jefe.logistica"), True)
+    rutas = osvc.decide_partial(o, U("gerente.operaciones"), True, "ok GO")
+    s.commit()
+    assert o.decision_parcial == "APROBADA" and set(o.parcial_aprobaciones) == {"GERENCIA_OPERACIONES", "JEFE_LOGISTICA"}
     assert alerts_of(s, "OV_PARCIAL_APROBADO", o.id)
-    assert rutas and rutas[0].stops[0].order_id == o.id
-    assert rutas[0].stops[0].peso_kg == pytest.approx(400 * 0.5)
-    assert alerts_of(s, "DIST_PROGRAMACION")
+    assert rutas and rutas[0].stops[0].order_id == o.id and rutas[0].stops[0].peso_kg == pytest.approx(400 * 0.5)
+    # despacho del parcial -> OV de saldo con la fecha reprogramada
+    dispatch(s, U, o, today)
+    from app.models import SalesOrder
+    saldo = s.query(SalesOrder).filter_by(parent_id=o.id).one()
+    assert saldo.numero == f"{o.numero}-S1" and saldo.fecha_compromiso == today + timedelta(days=7)
+    assert saldo.lines[0].product_code == "PT-901" and saldo.lines[0].cantidad == 50
+    assert saldo.estado_stock in ("COMPLETA", "INCOMPLETA", "SIN_STOCK") and alerts_of(s, "OV_SALDO_REPROGRAMADO", saldo.id)
+
+
+def test_gerencia_general_aprueba_en_nombre_y_rechazo(s, U, new_order, today):
+    """Q4: Gerencia General puede aprobar en nombre de los roles pendientes; cualquiera de ellos puede rechazar."""
+    o = new_order([("PT-901", 450)])
+    osvc.decide_partial(o, U("gerente.general"), True, "aprueba GG", today + timedelta(days=5))
+    s.commit()
+    assert o.decision_parcial == "APROBADA" and all(v["rol_usuario"] == "GERENCIA_GENERAL" for v in o.parcial_aprobaciones.values())
+    o2 = new_order([("PT-901", 450)])
+    with pytest.raises(BusinessError):
+        osvc.decide_partial(o2, U("gerente.operaciones"), False, "")
+    osvc.decide_partial(o2, U("gerente.operaciones"), False, "Cliente no acepta parcial")
+    assert o2.decision_parcial == "RECHAZADA"
 
 
 # 3. Vencimiento y condición del cliente --------------------------------------
@@ -152,8 +199,7 @@ def test_cancelacion_libera_reserva_y_ruta(s, U, new_order):
     o = new_order([("PT-905", 100)])
     l905 = o.lines[0].reservations[0].lot
     libre = free_qty(l905)
-    dist.propose_routes(o.fecha_compromiso, U("coord.distribucion"), orders=[o], require_prepared=False)
-    s.commit()
+    s.commit()  # la ruta se programó automáticamente (TO-BE)
     assert s.query(RouteStop).filter_by(order_id=o.id).count() == 1
     with pytest.raises(BusinessError):
         osvc.cancel_order(o, U("asist.ventas"), "x")

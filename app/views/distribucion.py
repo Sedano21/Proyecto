@@ -6,8 +6,10 @@ from sqlalchemy import select
 
 from ..catalogs import INCIDENT_TYPES
 from ..db import db
-from ..models import Driver, Incident, Route, RouteStop, SalesOrder, Vehicle
+from ..models import Certificate, Driver, Incident, Route, RouteStop, SalesOrder, Vehicle
+from ..services import despacho as dsp
 from ..services import distribution as dsvc
+from ..services.core import BusinessError
 from ..services.core import audit
 from .common import act, f_bool, f_date, f_float, perm_required
 
@@ -66,19 +68,70 @@ def route_detail(rid):
                 guia = dsvc.save_upload(request.files.get("guia"), updir, f"guia_{stop.order.numero}")
                 entregas = {k[4:]: v for k, v in f.items() if k.startswith("ent_") and v != ""}
                 dsvc.register_delivery(stop, u, foto, guia, entregas, f.get("observacion", ""))
+        elif acc == "foto":
+            def fn():
+                arch = dsvc.save_upload(request.files.get("archivo"), current_app.config["UPLOAD_DIR"], f"ruta{r.id}_{f.get('etapa')}")
+                dsp.add_photo(r, u, f.get("etapa"), arch, f.get("nota", ""))
+        elif acc == "incidencia_carga":
+            def fn():
+                arch = dsvc.save_upload(request.files.get("archivo"), current_app.config["UPLOAD_DIR"], f"ruta{r.id}_incid")
+                if not arch:
+                    raise BusinessError("Adjunte la foto de la incidencia.")
+                dsp.register_loading_incident(r, u, arch, f.get("motivo", ""), f.get("hora", ""))
+        elif acc == "validar_carga":
+            lineas = {k[4:]: {"cargado": v, "correcto": f.get(f"ok_{k[4:]}", "1") == "1"} for k, v in f.items() if k.startswith("car_")}
+            fn = lambda: dsp.validate_load(r, u, lineas, f.get("observacion", ""))  # noqa: E731
+        elif acc == "guia":
+            stop = db().get(RouteStop, int(f["stop_id"]))
+
+            def fn():
+                arch = dsvc.save_upload(request.files.get("archivo"), current_app.config["UPLOAD_DIR"], f"guia_{stop.order.numero}")
+                dsp.set_guide(stop, u, f.get("numero", ""), f.get("origen", "SISTEMA"), arch)
+        elif acc == "factura":
+            stop = db().get(RouteStop, int(f["stop_id"]))
+
+            def fn():
+                arch = dsvc.save_upload(request.files.get("archivo"), current_app.config["UPLOAD_DIR"], f"factura_{stop.order.numero}")
+                return dsp.set_invoice(stop, u, f.get("numero", ""), arch)
+        elif acc == "autorizar_salida":
+            fn = lambda: dsp.authorize_exit(r, u, f_bool("impresos"))  # noqa: E731
+        elif acc == "retorno":
+            fn = lambda: dsp.register_return(r, u)  # noqa: E731
         elif acc == "incidencia":
             stop = db().get(RouteStop, int(f["stop_id"])) if f.get("stop_id") else None
             fn = lambda: dsvc.register_incident(u, f.get("tipo"), f.get("descripcion", ""), stop=stop, route=r,  # noqa: E731
                                                 cantidad=f_float("cantidad"))
         else:
             abort(404)
-        return act(fn, "Ruta actualizada.", back)
+        msgs = {"validar_carga": lambda res: ("Incongruencias: " + "; ".join(res) + ". Se avisó al almacén.") if res else
+                "Carga validada: camión cargado (alerta enviada).",
+                "autorizar_salida": lambda res: ("Documentos faltantes: " + "; ".join(res) + ". Se reportó a las áreas.") if res
+                else "Salida autorizada por Seguridad.",
+                "factura": lambda res: "Factura cargada" + (" (con modificaciones respecto a la OV: " + "; ".join(res) + ")" if res else ".")}
+        return act(fn, msgs.get(acc, "Ruta actualizada."), back)
     vehicles = list(db().execute(select(Vehicle).where(Vehicle.disponible.is_(True)).order_by(Vehicle.capacidad_kg)).scalars())
     drivers = list(db().execute(select(Driver).where(Driver.disponible.is_(True))).scalars())
     others = list(db().execute(select(Route).where(Route.fecha == r.fecha, Route.id != r.id,
                                                    Route.estado.in_(["PROPUESTA", "CONFIRMADA"]))).scalars())
+    certs = {st.id: list(db().execute(select(Certificate).where(Certificate.order_id == st.order_id,
+                                                                  Certificate.estado != "ANULADO")).scalars()) for st in r.stops}
     return render_template("route_detail.html", r=r, vehicles=vehicles, drivers=drivers, others=others,
-                           checklist=dsvc.CHECKLIST, expected=dsvc.expected_lines(r), tipos=INCIDENT_TYPES)
+                           checklist=dsvc.CHECKLIST, expected=dsvc.expected_lines(r), tipos=INCIDENT_TYPES,
+                           preguia=dsp.preguia(r), etapas=dsp.ETAPAS_FOTO, certs=certs,
+                           faltan=dsp.missing_documents(r) if r.estado == "CONFIRMADA" else [],
+                           billing=dsp.billing_status)
+
+
+@bp.route("/ruta/<int:rid>/folio")
+@perm_required("distribucion.ver")
+def folio(rid):
+    """Pre-guía / guía del sistema y folio de documentos por pedido (imprimible)."""
+    r = db().get(Route, rid) or abort(404)
+    certs = {st.id: list(db().execute(select(Certificate).where(Certificate.order_id == st.order_id,
+                                                                  Certificate.estado != "ANULADO")).scalars()) for st in r.stops}
+    from ..services.core import param
+    return render_template("folio.html", r=r, preguia=dsp.preguia(r), certs=certs, empresa=param("empresa_razon_social", ""),
+                           ruc=param("empresa_ruc", ""), tipo=request.args.get("tipo", "folio"))
 
 
 @bp.route("/incidencias", methods=["GET", "POST"])

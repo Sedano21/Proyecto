@@ -326,9 +326,17 @@ class SalesOrder(Base):
     entrega_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     corte: Mapped[str] = mapped_column(String(10), default="")
     alerta80_emitida: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Despacho parcial (decisión Q3, 11-oct-2026): aprobación de Gerencia de Operaciones y Jefatura de Logística;
+    # el saldo no despachado se reprograma en una OV de saldo.
+    parcial_aprobaciones: Mapped[dict] = mapped_column(JSON, default=dict)
+    fecha_saldo: Mapped[date | None] = mapped_column(Date, nullable=True)
+    parent_id: Mapped[int | None] = mapped_column(ForeignKey("sales_orders.id"), nullable=True)
+    completa_notificada: Mapped[bool] = mapped_column(Boolean, default=False)
+    plan_picking_validado: Mapped[bool] = mapped_column(Boolean, default=False)
     customer = relationship("Customer")
     lines = relationship("SalesOrderLine", back_populates="order", cascade="all, delete-orphan",
                          order_by="SalesOrderLine.id")
+    parent = relationship("SalesOrder", remote_side="SalesOrder.id")
 
 
 class SalesOrderLine(Base):
@@ -726,6 +734,12 @@ class Route(Base):
     peso_total: Mapped[float] = mapped_column(Float, default=0)
     advertencias: Mapped[list] = mapped_column(JSON, default=list)
     checklist: Mapped[dict] = mapped_column(JSON, default=dict)  # verificación de salida
+    # Etapa de carga (TO-BE): fotos, validación del auxiliar, autorización de Seguridad, retorno
+    fotos: Mapped[dict] = mapped_column(JSON, default=dict)  # {etapa: [{archivo, user, ts, nota}]}
+    carga: Mapped[dict] = mapped_column(JSON, default=dict)  # validación de productos vs pre-guía
+    carga_validada: Mapped[bool] = mapped_column(Boolean, default=False)
+    autorizacion_seguridad: Mapped[dict] = mapped_column(JSON, default=dict)
+    retorno_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     guia_numero: Mapped[str] = mapped_column(String(40), default="")
     seguridad: Mapped[dict] = mapped_column(JSON, default=dict)  # validación carga vs guía
     salida_confirmada_por: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
@@ -752,6 +766,14 @@ class RouteStop(Base):
     entrega_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     foto_path: Mapped[str] = mapped_column(String(250), default="")
     guia_firmada_path: Mapped[str] = mapped_column(String(250), default="")
+    # Documentos del pedido (TO-BE: guía en SAP o en el sistema, factura, certificados)
+    guia_numero: Mapped[str] = mapped_column(String(40), default="")
+    guia_origen: Mapped[str] = mapped_column(String(10), default="")  # SAP / SISTEMA
+    guia_path: Mapped[str] = mapped_column(String(250), default="")
+    factura_numero: Mapped[str] = mapped_column(String(40), default="")
+    factura_path: Mapped[str] = mapped_column(String(250), default="")
+    factura_con_modificaciones: Mapped[bool] = mapped_column(Boolean, default=False)
+    factura_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     observacion: Mapped[str] = mapped_column(Text, default="")
     route = relationship("Route", back_populates="stops")
     order = relationship("SalesOrder")

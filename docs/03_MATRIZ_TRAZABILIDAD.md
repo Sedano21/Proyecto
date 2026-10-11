@@ -4,7 +4,8 @@
 🟡 Parcial · ⏸️ Pendiente de decisión (implementado configurable/inactivo) · ⛔ Bloqueado (requiere acceso/autorización externa) · 🔜 Etapa futura (así lo indica el IF).
 
 **Tipo:** D = definido · P = propuesto · PEND = pendiente · AS = AS-IS observado.
-**Pruebas:** `F:` tests/test_flujos.py · `C:` tests/test_controles.py · `W:` tests/test_web.py · `K:` tests/test_config.py.
+**Pruebas:** `F:` tests/test_flujos.py · `C:` tests/test_controles.py · `W:` tests/test_web.py · `K:` tests/test_config.py · `T:` tests/test_tobe.py.
+**Fuentes nuevas:** `TO-BE` = diagrama TO-BE-COPROD-ONE (L5) · `Q3`/`Q4` = decisiones del 11-oct-2026.
 Código: `svc/` = `app/services/`, `vw/` = `app/views/`.
 
 ## Generales y controles (IF §1, §2, §19)
@@ -49,8 +50,9 @@ Código: `svc/` = `app/services/`, `vw/` = `app/views/`.
 | ALM-06 | Reservar solo stock físico verificado y utilizable | IF §6.3, §22 | D | `lot_usable` (estado, verificado, vencimiento, vida útil del cliente) | F: vencimiento; C: estados | ✅ |
 | ALM-07 | Cobertura % unidades y % líneas totalmente cubiertas | IF §6.3, §22 | D | `evaluate_order` | F: faltante | ✅ |
 | ALM-08 | Faltante: alerta inmediata a Coord. Almacén, Logística y GO | IF §6.3 | D | Alerta OV_FALTANTE | F: faltante | ✅ |
-| ALM-09 | Decidir despacho parcial: alerta a Jefatura Log., GO y Comercial | IF §6.3 | D | OV_DECISION_PARCIAL + `decide_partial` | F: despacho parcial | ✅ (aprobador único/conjunto Q3) |
-| ALM-10 | Parcial aprobado: alerta a Distribución y propuesta de ruta | IF §6.3 | D | OV_PARCIAL_APROBADO + `propose_routes` | F: despacho parcial | ✅ |
+| ALM-09 | Decidir despacho parcial: alerta a Jefatura Log., GO y Comercial; aprueban GO y Jefatura de Logística | IF §6.3, Q3 | D | OV_DECISION_PARCIAL + `decide_partial` (aprobación de ambos; GG puede aprobar en nombre de) | F: parcial conjunta y saldo | ✅ |
+| ALM-10 | Parcial aprobado: alerta a Distribución y propuesta de ruta | IF §6.3 | D | OV_PARCIAL_APROBADO + `propose_routes` | F: parcial conjunta y saldo | ✅ |
+| ALM-18 | Lo que falta despachar se reprograma | Q3 | D | `create_saldo`: OV `<OV>-S1` con la fecha de saldo, al confirmar la salida; alerta OV_SALDO_REPROGRAMADO | F: parcial conjunta y saldo | ✅ |
 | ALM-11 | Cambio de OV tras reserva: conservar válidas, recalcular, alertar Log./Alm./GO | IF §6.3 | D | `_apply_changes` + OV_CAMBIO | F: cambio de OV | ✅ |
 | ALM-12 | Base inicial y cargas de stock SAP | IF §6.4 | D | Carga STOCK (formato STOCK_LOTE) | C: cargas; real 1 234 lotes | ✅ |
 | ALM-13 | Validar formato, duplicados y diferencias antes de confirmar; quien carga corrige y autoriza | IF §6.4 | D | Resumen de diferencias (nuevos, modificados, ausentes, reservas afectadas) | C: carga con errores, reducción | ✅ |
@@ -159,6 +161,29 @@ Código: `svc/` = `app/services/`, `vw/` = `app/views/`.
 | TRS-02 | Coord. Almacén o asistente confirma recepción | IF §6.2, §13 | D | `receive` | F: alternativo | ✅ |
 | TRS-03 | Registrar origen, destino, producto, cantidad, autorización, salida, recepción y diferencias | IF §13 | D | Tabla `transfers` | F: traslado con diferencia | ✅ |
 
+## TO-BE L5 Gestión de pedidos y despachos (recibido 11-oct-2026)
+
+| ID | Requerimiento | Fuente | Tipo | Implementación | Prueba | Estado |
+|---|---|---|---|---|---|---|
+| TB-01 | Asistente de ventas carga el consolidado de OV; cambios a OV existentes requieren autorización | TO-BE | D | Carga OV con `ov.importar`; sin `ov.modificar` crea solicitudes de modificación | T: asistente carga consolidado | ✅ |
+| TB-02 | OV completa: aviso a Jefe de logística, Jefe de ventas y Coord. almacén | TO-BE | D | Alerta OV_COMPLETA | T: OV completa | ✅ |
+| TB-03 | Certificado elaborado antes del picking y aviso al aprobarse | TO-BE | D | Certificados BORRADOR al quedar reservada; CERTIFICADO_LISTO | T: OV completa | ✅ |
+| TB-04 | Programación de ruta automática al completar la OV | TO-BE | D | `sync_order_route` (parámetro `programar_ruta_automatica`) | T: OV completa | ✅ |
+| TB-05 | Líder de almacén valida o modifica el plan de picking (cambio de lote) | TO-BE | D | `validate_picking_plan`, `reassign_pick_lot`; anula certificado del lote anterior | T: modificar plan | ✅ |
+| TB-06 | Ruta asignada: aviso al auxiliar/conductor y al montacarguista | TO-BE | D | RUTA_ASIGNADA, MONTACARGUISTA_DESPACHO | T: carga incongruente | ✅ |
+| TB-07 | Fotos: vehículo antes de cargar, inicio de carga (Seguridad), mercadería cargada | TO-BE | D | `despacho.add_photo` por etapa y rol | T: carga incongruente | ✅ |
+| TB-08 | Incidencias en carga con foto y hora | TO-BE | D | INCIDENCIA_CARGA + INC_CARGA | T: carga incongruente | ✅ |
+| TB-09 | Validar carga vs pedido; incongruencia avisa a Líder y Coord. almacén; camión cargado avisa a Facturación | TO-BE | D | `validate_load`; CARGA_INCONGRUENCIA, CAMION_CARGADO | T: carga incongruente | ✅ |
+| TB-10 | Guía de remisión (sistema o SAP con archivo) y pre-guía/folio imprimible | TO-BE | D | `set_guide`, `/distribucion/ruta/<id>/folio` | T, W: ruta y folio | ✅ |
+| TB-11 | Facturación carga la factura; indica modificaciones si el pedido va incompleto | TO-BE | D | Rol FACTURACION, `set_invoice` | T: factura con modificaciones | ✅ |
+| TB-12 | Seguridad revisa documentos impresos; faltantes avisan a las áreas; autoriza la salida | TO-BE | D | `authorize_exit`; DOCUMENTOS_FALTANTES; la salida exige autorización | T: carga incongruente | ✅ (doble control, Q16) |
+| TB-13 | Llegada y entrega avisan a Distribución, Logística y GO; rechazo por cita | TO-BE | D | DIST_LLEGADA, DIST_ENTREGADO, incidencia RECHAZO_CITA | T: carga incongruente | ✅ |
+| TB-14 | Retorno a base | TO-BE | D | `register_return` | E2E navegador | ☑️ |
+| TB-15 | Reempaque remitido por el sistema a Calidad | TO-BE | Contradice IF §9.1 | Almacén lo inicia | — | ⏸️ Q12 |
+| TB-16 | Traslado aprobado por Coord. almacén | TO-BE | Contradice IF §6.2 | Jefatura de Logística (matriz editable) | — | ⏸️ Q13 |
+| TB-17 | Logística aprueba la pre-solicitud de compra | TO-BE | Contradice IF §10 | Sin aprobación de Logística | — | ⏸️ Q14 |
+| TB-18 | Pre-solicitudes generadas automáticamente | TO-BE | Falta criterio | Se generan con un clic desde la alternativa | — | ⏸️ Q15 |
+
 ## Alertas (IF §14)
 
 | ID | Requerimiento | Fuente | Tipo | Implementación | Prueba | Estado |
@@ -168,7 +193,7 @@ Código: `svc/` = `app/services/`, `vw/` = `app/views/`.
 | ALR-03 | GG agrupa por área/tipo y urgencia | IF §14, §15 | D | `/alertas?agrupar=…` | W: recorrido; C: filtros | ✅ |
 | ALR-04 | GG configura cuáles recibe directamente | IF §14 | D | Preferencias GG | K: preferencias; F: rechazo | ✅ |
 | ALR-05 | Destinatarios y reglas de correo configurables por alerta, rol y usuario | IF §14 | D | Configurar alertas | W: recorrido | ☑️ |
-| ALR-06 | Alertas contempladas (cambios/estados OV, 80 %, faltantes, cobertura, reservas, diferencias, retrasos, cancelaciones, rutas, incidencias, solicitudes, fechas, fumigación, no utilizables, certificados, guías, vehículo esperando, traslados, devoluciones, rechazos, cliente no retira, merma) | IF §14 | D | 47 tipos (ver doc 07) | F/C/K | ✅ |
+| ALR-06 | Alertas contempladas (cambios/estados OV, 80 %, faltantes, cobertura, reservas, diferencias, retrasos, cancelaciones, rutas, incidencias, solicitudes, fechas, fumigación, no utilizables, certificados, guías, vehículo esperando, traslados, devoluciones, rechazos, cliente no retira, merma) | IF §14 | D | 58 tipos (ver doc 07) | F/C/K | ✅ |
 | ALR-07 | Matriz exacta de destinatarios, prioridad y condición a validar | IF §14, §20 | PEND | Marcados DEFINIDO/PROPUESTO/PENDIENTE | — | ⏸️ |
 
 ## Roles, configuración e indicadores (IF §15-§17)
@@ -177,9 +202,9 @@ Código: `svc/` = `app/services/`, `vw/` = `app/views/`.
 |---|---|---|---|---|---|---|
 | ROL-01 | GG acceso a todas las áreas | IF §15 | D | Todos los permisos | C: matriz | ✅ |
 | ROL-02 | GO información y acciones de Operaciones | IF §15 | D (detalle P) | Permisos propuestos + aprobaciones definidas | C: matriz | ✅ |
-| ROL-03 | Sistemas acceso completo | IF §15 | D | Todos los permisos | C: matriz | ✅ |
-| ROL-04 | Roles operativos detallados en la matriz (Comercial, Almacén, Distribución, Logística, Producción, Calidad, Compras, Importaciones, Seguridad) | IF §15 | D (permisos P) | 28 roles (25 operativos + GG, GO, Sistemas) y matriz editable | C: matriz | ✅ (validar Q4) |
-| ROL-05 | Significado de "acceso completo" y auditoría de acciones críticas | IF §15, §20 | PEND | Sin omisión de aprobaciones; todo auditado | — | ⏸️ |
+| ROL-03 | Sistemas acceso completo sin aprobar en nombre de otros roles | IF §15, Q4 | D | Todos los permisos salvo los de aprobación | C: matriz; T: Sistemas no aprueba | ✅ |
+| ROL-04 | Roles operativos detallados en la matriz (Comercial, Almacén, Distribución, Logística, Producción, Calidad, Compras, Importaciones, Seguridad; Facturación por TO-BE) | IF §15, TO-BE | D (permisos P) | 29 roles (26 operativos incl. Facturación + GG, GO, Sistemas) y matriz editable | C: matriz | ✅ |
+| ROL-05 | Significado de "acceso completo" y auditoría de acciones críticas | IF §15, Q4 | D | GG aprueba (auditado "en nombre de"); Sistemas no aprueba; parámetro `acceso_completo_omite_aprobaciones` DEFINIDO | T: Sistemas no aprueba | ✅ |
 | CFG-01..10 | Márgenes, plazos y estacionalidad, stock mínimo/períodos/umbrales, cortes y tiempos, merma, versiones de BOM, fases, flota, alertas, otras reglas | IF §16 | D | Pantalla Configuración + catálogo + flota + alertas | K: parámetros | ✅ |
 | CFG-11 | Reparto de responsabilidades de configuración entre Sistemas y GG | IF §16 | PEND | Ambos con `config.editar` | — | ⏸️ |
 | KPI-01 | Pedidos pendientes, completos e incompletos | IF §17 | D | Tablero | F: pedido completo | ✅ |

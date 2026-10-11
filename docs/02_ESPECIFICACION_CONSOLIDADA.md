@@ -80,10 +80,10 @@ cuando ingresa stock (carga, traslado, liberación de Calidad) → preparación 
 
 Solo se listan decisiones de negocio que afectan reglas; el desarrollo continuó con los valores configurables indicados.
 
-- **Q1.** ¿Existen diagramas TO-BE (o AS-IS de otros subprocesos además de L5) que debían incluirse? Se usó el IF como TO-BE.
+- ~~**Q1.**~~ **Respondida (11-oct-2026):** se recibió el TO-BE L5 (pedidos y despachos). Ver `10_ANALISIS_TO_BE.md`.
 - **Q2.** OTIF: ¿salida completa a tiempo, entrega completa a tiempo en destino, o la fórmula SAP actual con crédito parcial?
-- **Q3.** Despacho parcial: ¿lo aprueba una sola persona (¿cuál?) o requiere aprobación conjunta de Logística, GO y Comercial? ¿El saldo no despachado queda como pedido pendiente (back-order) o se cierra/renegocia?
-- **Q4.** "Acceso completo" de GG y Sistemas: ¿pueden aprobar en nombre de otros roles (como está hoy, auditado) o solo consultar/administrar?
+- ~~**Q3.**~~ **Respondida (11-oct-2026):** el parcial lo aprueban Gerencia de Operaciones y Jefatura de Logística; lo que falta despachar se reprograma. Implementado como aprobación de ambos (parámetro `parcial_aprobadores`) y OV de saldo `<OV>-S1` con fecha reprogramada al confirmar la salida.
+- ~~**Q4.**~~ **Respondida (11-oct-2026):** Gerencia General tiene acceso completo y puede aprobar (queda registrado "en nombre de"); Sistemas tiene acceso a todo pero **no** aprueba. Implementado: Sistemas recibe todos los permisos salvo los de tipo aprobación.
 - **Q5.** Mapeo de almacenes SAP: ¿qué uso tienen ALM-002/003/004/005/006/007/010/012, EXT-007/013 y PRO-*? ¿Cuáles son reservables para MP/insumos?
 - **Q6.** En cargas SAP posteriores a la base inicial, ¿un lote nuevo entra Disponible o Pendiente de revisión?
 - **Q7.** Valores para: margen de reposición, umbral de mayor volumen, merma por defecto y umbral de alerta, horarios de corte, días de "vencimiento próximo", tiempos máximos de almacenamiento por producto.
@@ -91,3 +91,12 @@ Solo se listan decisiones de negocio que afectan reglas; el desarrollo continuó
 - **Q9.** En la liquidación SAP, ¿la clave es documento+lote y la cantidad se repite por lote o debe repartirse?
 - **Q10.** Fases de importación definitivas y responsable por hito.
 - **Q11.** Fuente oficial de precios/montos y confirmación de que "Fecha de Vencimiento" de la OV es la fecha comprometida de despacho.
+
+Nuevas preguntas surgidas del TO-BE (detalle en `10_ANALISIS_TO_BE.md` §4):
+
+- **Q12.** Reempaque: ¿lo inicia Almacén (IF §9.1) o el sistema lo remite a Calidad tras analizar el stock (TO-BE)?
+- **Q13.** Traslado: ¿lo aprueba la Jefatura de Logística (IF) o el Coordinador de almacén (TO-BE)?
+- **Q14.** Compra: ¿Logística aprueba la pre-solicitud antes de Compras (TO-BE) o pasa directo (IF)?
+- **Q15.** Pre-solicitudes automáticas: si hay varias opciones viables, ¿cuál genera el sistema?
+- **Q16.** Salida: ¿autoriza Seguridad (TO-BE), confirma el Coordinador de Distribución (IF) o ambos (implementado)?
+- **Q17.** ¿Los dos coordinadores de almacén del TO-BE son roles distintos?

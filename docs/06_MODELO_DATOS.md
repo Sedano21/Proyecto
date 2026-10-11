@@ -358,6 +358,11 @@ Conteo físico periódico (IF §6.3/§6.4; formato 'Inven. bobinas 1524.xlsx').
 | entrega_ts | DATETIME | sí |  |
 | corte | VARCHAR(10) | no |  |
 | alerta80_emitida | BOOLEAN | no |  |
+| parcial_aprobaciones | JSON | no |  |
+| fecha_saldo | DATE | sí |  |
+| parent_id | INTEGER | sí | → sales_orders.id |
+| completa_notificada | BOOLEAN | no |  |
+| plan_picking_validado | BOOLEAN | no |  |
 
 Restricción única: (numero)
 
@@ -733,6 +738,11 @@ Registro de Calidad genérico por formato: MUESTREO (REG-CAL-002 / CP-FOR-CAL-10
 | peso_total | FLOAT | no |  |
 | advertencias | JSON | no |  |
 | checklist | JSON | no |  |
+| fotos | JSON | no |  |
+| carga | JSON | no |  |
+| carga_validada | BOOLEAN | no |  |
+| autorizacion_seguridad | JSON | no |  |
+| retorno_ts | DATETIME | sí |  |
 | guia_numero | VARCHAR(40) | no |  |
 | seguridad | JSON | no |  |
 | salida_confirmada_por | INTEGER | sí | → users.id |
@@ -808,6 +818,13 @@ Solicitud preliminar de producción (IF §8.2).
 | entrega_ts | DATETIME | sí |  |
 | foto_path | VARCHAR(250) | no |  |
 | guia_firmada_path | VARCHAR(250) | no |  |
+| guia_numero | VARCHAR(40) | no |  |
+| guia_origen | VARCHAR(10) | no |  |
+| guia_path | VARCHAR(250) | no |  |
+| factura_numero | VARCHAR(40) | no |  |
+| factura_path | VARCHAR(250) | no |  |
+| factura_con_modificaciones | BOOLEAN | no |  |
+| factura_ts | DATETIME | sí |  |
 | observacion | TEXT | no |  |
 
 ## `incidents`

@@ -17,10 +17,15 @@
 <p>Unidades: <b>{{ o.cobertura_unidades }}%</b> {{ bar(o.cobertura_unidades) }} Líneas totalmente cubiertas: <b>{{ o.cobertura_lineas }}%</b> {{ bar(o.cobertura_lineas) }}</p>
 <p>Evaluada: {{ o.evaluado_ts|d }} · Preparación: {{ prep }}%</p>
 {% if o.motivo_detencion %}<div class="note">{{ o.motivo_detencion }}</div>{% endif %}
-{% if o.decision_parcial %}<p>Despacho parcial: {{ b(o.decision_parcial) }}</p>{% endif %}
-{% if can('ov.aprobar_parcial') and o.estado_stock in ['INCOMPLETA'] and o.decision_parcial in ['PENDIENTE','RECHAZADA',''] %}
-<form method="post" action="{{ url_for('com.order_action', oid=o.id, accion='parcial_si') }}">{{ csrf() }}<input name="comentario" placeholder="comentario"> <button>Aprobar despacho parcial</button></form>
-<form method="post" action="{{ url_for('com.order_action', oid=o.id, accion='parcial_no') }}">{{ csrf() }}<input name="comentario" placeholder="motivo"> <button class="sec">Rechazar parcial</button></form>{% endif %}
+{% if o.decision_parcial %}<p>Despacho parcial: {{ b(o.decision_parcial) }}{% if o.fecha_saldo %} · saldo reprogramado al <b>{{ o.fecha_saldo|d }}</b>{% endif %}</p>
+<table class="small">{% for r in aprobadores %}<tr><td>{{ r|replace('_',' ') }}</td><td>{% if r in (o.parcial_aprobaciones or {}) %}{% set ap = o.parcial_aprobaciones[r] %}✔ {{ ap.user }}{% if ap.rol_usuario != r %} (en nombre, {{ ap.rol_usuario|replace('_',' ') }}){% endif %} · {{ ap.ts[:16]|replace('T',' ') }}{% else %}pendiente{% endif %}</td></tr>{% endfor %}</table>{% endif %}
+{% if can('ov.aprobar_parcial') and o.estado_stock in ['INCOMPLETA'] and o.decision_parcial in ['PENDIENTE','RECHAZADA',''] and (user.role_code in pendientes_parcial or user.role_code == 'GERENCIA_GENERAL') %}
+<form method="post" action="{{ url_for('com.order_action', oid=o.id, accion='parcial_si') }}" class="card">{{ csrf() }}<b>Aprobar despacho parcial</b> <span class="small muted">(aprueban {{ aprobadores|join(' y ')|replace('_',' ') }}{{ '; usted aprueba en nombre de los pendientes' if user.role_code=='GERENCIA_GENERAL' }})</span>
+<label>Fecha a la que se reprograma el saldo no despachado</label><input type="date" name="fecha_saldo" value="{{ o.fecha_saldo.isoformat() if o.fecha_saldo }}" {{ 'required' if not o.fecha_saldo }}>
+<label>Comentario</label><input name="comentario" style="width:100%"><p><button>Aprobar</button></p></form>
+<form method="post" action="{{ url_for('com.order_action', oid=o.id, accion='parcial_no') }}">{{ csrf() }}<input name="comentario" placeholder="motivo del rechazo" required> <button class="sec">Rechazar parcial</button></form>{% endif %}
+{% if o.parent %}<p>Saldo de la OV <a href="{{ url_for('com.order_detail', oid=o.parent_id) }}">{{ o.parent.numero }}</a></p>{% endif %}
+{% if saldos %}<p>Saldos reprogramados: {% for x in saldos %}<a href="{{ url_for('com.order_detail', oid=x.id) }}">{{ x.numero }}</a> ({{ x.fecha_compromiso|d }}, {{ x.estado }}) {% endfor %}</p>{% endif %}
 {% if o.estado not in ['CANCELADA','DESPACHADA','ENTREGADA','ENTREGA_PARCIAL','RECHAZADA','DEVUELTA','EN_RUTA'] %}{{ post(url_for('com.order_action', oid=o.id, accion='reevaluar'), 'Reevaluar stock', 'sec') }}{% endif %}
 {% if certs %}<p>Certificados: {% for c in certs %}<a href="{{ url_for('cal.certificate_detail', cid=c.id) }}">{{ c.numero }}</a> {{ b(c.estado) }} {% endfor %}</p>{% endif %}
 </div></div>

@@ -57,34 +57,39 @@ def test_exportaciones(app):
     assert c2.get("/exportar/ov.xlsx").status_code == 403
 
 
-def test_propuesta_rutas_capacidad_y_externo(s, U, new_order):
-    # pedidos grandes que superan unidades propias disponibles en una zona
+def test_ruta_automatica_capacidad_y_externo(s, U, new_order):
+    """TO-BE: el sistema programa la mejor ruta al quedar la OV completa; agrupa por zona si hay capacidad."""
     o1 = new_order([("PT-905", 900)], ruc="20000000001")   # 225 kg, ATE
     o2 = new_order([("PT-902", 40)], ruc="20000000004")    # 200 kg, ATE
-    rutas = dist.propose_routes(o1.fecha_compromiso, U("coord.distribucion"), orders=[o1, o2], require_prepared=False)
     s.commit()
-    assert len(rutas) == 1 and rutas[0].vehicle.capacidad_kg >= 425  # agrupa la zona ATE en una unidad suficiente
-    assert rutas[0].vehicle.placa == "DEM-450"
+    r1, r2 = dist.active_stop(o1).route, dist.active_stop(o2).route
+    assert r1.id == r2.id and r1.vehicle.placa == "DEM-450" and r1.peso_total == pytest.approx(425)
+    o3 = new_order([("PT-904", 10)], ruc="20000000001")    # +50 kg ATE: ya no cabe en 450 kg -> nueva ruta
+    assert dist.active_stop(o3).route.id != r1.id
     from app.models import Vehicle
     for v in s.query(Vehicle):
         v.disponible = False
-    o3 = new_order([("PT-905", 50)], ruc="20000000005")
-    r3 = dist.propose_routes(o3.fecha_compromiso, U("coord.distribucion"), orders=[o3], require_prepared=False)
-    assert r3[0].vehicle_id is None and r3[0].requiere_externo
-    assert any("transporte externo" in a for a in r3[0].advertencias)
+    o4 = new_order([("PT-905", 50)], ruc="20000000005")
+    r4 = dist.active_stop(o4).route
+    assert r4.vehicle_id is None and r4.requiere_externo
+    assert any("transporte externo" in a for a in r4.advertencias)
     with pytest.raises(BusinessError):
-        dist.confirm_route(r3[0], U("coord.distribucion"))
+        dist.confirm_route(r4, U("coord.distribucion"))
+    # una OV que deja de estar completa sale de la ruta propuesta
+    from app.services import orders as osvc
+    osvc.modify_order(o1, U("coord.ventas"), {"lines": [{"product_code": "PT-905", "cantidad": 5000}]})
+    s.commit()
+    assert dist.active_stop(o1) is None
 
 
 def test_cita_no_confirmada_advierte(s, U, new_order):
     o = new_order([("PT-905", 10)], ruc="20000000002")
-    r = dist.propose_routes(o.fecha_compromiso, U("coord.distribucion"), orders=[o], require_prepared=False)
-    assert any("cita" in a for a in r[0].advertencias)
+    assert any("cita" in a for a in dist.active_stop(o).route.advertencias)
 
 
 def test_salida_exige_pedidos_preparados(s, U, new_order):
     o = new_order([("PT-905", 10)])
-    r = dist.propose_routes(o.fecha_compromiso, U("coord.distribucion"), orders=[o], require_prepared=False)[0]
+    r = dist.active_stop(o).route
     dist.confirm_route(r, U("coord.distribucion"))
     lines = [{**e, "guia": e["esperado"], "cargado": e["esperado"]} for e in dist.expected_lines(r)]
     dist.register_security_check(r, U("seguridad"), "G1", lines)

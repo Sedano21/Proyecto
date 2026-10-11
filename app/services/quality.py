@@ -348,6 +348,11 @@ def autogenerate_for_order(order, user=None):
     """Genera certificados para los lotes de un pedido listo para despacho (IF §9.4)."""
     out = []
     s = db()
+    lotes_activos = {r.lot_id for l in order.lines for r in l.reservations if r.estado == "ACTIVA"}
+    for c in s.execute(select(Certificate).where(Certificate.order_id == order.id, Certificate.estado == "BORRADOR")).scalars():
+        if c.lot_id not in lotes_activos:
+            c.estado = "ANULADO"  # el lote ya no forma parte del pedido (cambio de reserva o de OV)
+            alerts.close_by_system(f"CERT:{c.id}", "Certificado anulado: el lote ya no está en el pedido")
     for line in order.lines:
         for r in line.reservations:
             if r.estado != "ACTIVA":
@@ -407,5 +412,8 @@ def review_certificate(cert, user, cambios, aprobar=False):
         cert.revisado_por = user.id
         cert.revisado_ts = now()
         alerts.close_by_system(f"CERT:{cert.id}", "Certificado aprobado")
+        alerts.emit("CERTIFICADO_LISTO", f"Certificado {cert.numero} aprobado y cargado",
+                    f"Lote {datos.get('lote')} · {cert.product_code}" + (f" · OV {datos.get('pedido')}" if datos.get("pedido") else "")
+                    + (" (con correcciones manuales)" if log else ""), "Certificate", cert.id, creado_por=user)
     audit(user, "CERTIFICADO_APROBADO" if aprobar else "CERTIFICADO_EDITADO", "Certificate", cert.numero,
           {"cambios": len(log)})

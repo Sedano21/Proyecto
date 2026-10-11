@@ -114,3 +114,28 @@ def test_carga_por_web_y_entrega_con_evidencia(app, tmp_path):
                    content_type="multipart/form-data", follow_redirects=True)
     html = r.get_data(as_text=True)
     assert "VALIDADO CON ERRORES" in html and "Cantidad negativa" in html
+
+
+def test_pantallas_ruta_y_folio_en_cada_etapa(app):
+    """Renderiza la ruta (propuesta, confirmada) y el folio para los roles del despacho TO-BE."""
+    from app.models import Route
+    from app.services import distribution as dist
+    from app.services.orders import create_order
+    from app.models import Customer, User
+    s = SessionLocal()
+    u = s.query(User).filter_by(username="coord.ventas").one()
+    c = s.query(Customer).first()
+    o = create_order(u, "WEB-R1", c.id, date.today() + timedelta(days=1), [{"product_code": "PT-905", "cantidad": 20}])
+    s.commit()
+    r = dist.active_stop(o).route
+    for estado_paso in ("PROPUESTA", "CONFIRMADA"):
+        if estado_paso == "CONFIRMADA":
+            dist.confirm_route(r, s.query(User).filter_by(username="coord.distribucion").one())
+            s.commit()
+        for user in ("coord.distribucion", "aux.despacho", "seguridad", "facturacion", "gerente.general", "lider.almacen"):
+            cl = app.test_client()
+            login(cl, user)
+            for path in (f"/distribucion/ruta/{r.id}", f"/distribucion/ruta/{r.id}/folio", f"/distribucion/ruta/{r.id}/folio?tipo=preguia",
+                         f"/ov/preparacion/{o.id}"):
+                resp = cl.get(path)
+                assert resp.status_code in (200, 403), (user, path, resp.status_code)

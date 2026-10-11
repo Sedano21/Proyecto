@@ -89,9 +89,11 @@ def order_detail(oid):
     certs = list(db().execute(select(Certificate).where(Certificate.order_id == o.id)).scalars())
     products = list(db().execute(select(Product).where(Product.tipo.in_(["PT", "GR", "MP"])).order_by(Product.code)).scalars())
     peso, sin_peso = osvc.order_weight_kg(o, "solicitado")
+    saldos = list(db().execute(select(SalesOrder).where(SalesOrder.parent_id == o.id)).scalars())
     return render_template("ov_detail.html", o=o, alts=alts, whs=whs, reqs=reqs, decs=decs, hist=hist, certs=certs,
                            products=products, line_reserved=line_reserved, monto=osvc.order_amount(o), peso=peso,
-                           sin_peso=sin_peso, can_auth=osvc.can_authorize_change(g.user, o), prep=osvc.prep_progress(o))
+                           sin_peso=sin_peso, can_auth=osvc.can_authorize_change(g.user, o), prep=osvc.prep_progress(o),
+                           saldos=saldos, aprobadores=osvc.partial_approvers(), pendientes_parcial=osvc.partial_pending_roles(o))
 
 
 @bp.route("/<int:oid>/accion/<accion>", methods=["POST"])
@@ -115,7 +117,9 @@ def order_action(oid, accion):
         "solicitar": (lambda: osvc.request_change(o, u, changes(), f.get("motivo", "")), "Solicitud enviada para autorización."),
         "cancelar": (lambda: osvc.cancel_order(o, u, f.get("motivo", "")), "OV cancelada: reservas y ruta liberadas."),
         "reevaluar": (lambda: __import__("app.services.stock", fromlist=["x"]).evaluate_order(o, u, "REEVALUACION"), "OV reevaluada."),
-        "parcial_si": (lambda: osvc.decide_partial(o, u, True, f.get("comentario", "")), "Despacho parcial aprobado; propuesta de ruta generada."),
+        "parcial_si": (lambda: osvc.decide_partial(o, u, True, f.get("comentario", ""), f_date("fecha_saldo")),
+                       lambda r: "Despacho parcial aprobado por todos; ruta programada." if o.decision_parcial == "APROBADA"
+                       else "Aprobación registrada; falta: " + ", ".join(osvc.partial_pending_roles(o))),
         "parcial_no": (lambda: osvc.decide_partial(o, u, False, f.get("comentario", "")), "Despacho parcial rechazado."),
         "renegociar": (lambda: osvc.renegotiate_date(o, u, f_date("nueva_fecha", True), f.get("comentario", "")), "Fecha renegociada; OV reevaluada."),
         "cambiar_producto": (lambda: osvc.change_product(o, u, f.get("line_id"), f.get("nuevo_codigo", "").strip().upper(),
@@ -161,7 +165,23 @@ def preparation():
 def picking(oid):
     o = db().get(SalesOrder, oid) or abort(404)
     if request.method == "POST":
+        acc = request.form.get("accion", "picking")
+        back = url_for("com.picking", oid=oid)
+        if acc == "validar_plan":
+            return act(lambda: osvc.validate_picking_plan(o, g.user), "Planificación de picking validada.", back)
+        if acc == "cambiar_lote":
+            return act(lambda: osvc.reassign_pick_lot(o, g.user, request.form.get("reservation_id"), request.form.get("lot_id"),
+                                                      request.form.get("cantidad") or None),
+                       "Planificación modificada: lote cambiado.", back)
         return act(lambda: osvc.register_picking(o, g.user, request.form.get("line_id"), f_float("cantidad", True),
                                                  request.form.get("lote", "").strip()),
-                   lambda p: f"Picking registrado. Avance {p}%.", url_for("com.picking", oid=oid))
-    return render_template("prep_detail.html", o=o, progress=osvc.prep_progress(o), line_reserved=line_reserved)
+                   lambda p: f"Picking registrado. Avance {p}%.", back)
+    from ..services.stock import free_qty, lot_usable, lots_of, principal_warehouses
+    candidatos = {}
+    for l in o.lines:
+        if l.activa:
+            whs = [w.code for w in principal_warehouses(l.product)]
+            candidatos[l.id] = [x for x in lots_of(l.product_code, whs)
+                                if lot_usable(x, o.fecha_compromiso, o.customer)[0] and free_qty(x) > 0]
+    return render_template("prep_detail.html", o=o, progress=osvc.prep_progress(o), line_reserved=line_reserved,
+                           candidatos=candidatos, free=free_qty)

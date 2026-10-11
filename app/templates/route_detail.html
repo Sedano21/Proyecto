@@ -18,20 +18,57 @@
 <label>Fotografía (obligatoria)</label><input type="file" name="foto" accept="image/*,.pdf" required><label>Guía firmada (obligatoria)</label><input type="file" name="guia" accept="image/*,.pdf" required>
 {% for l in s.order.lines if l.activa %}<label>Entregado {{ l.product_code }} (despachado {{ l.despachado|n }})</label><input type="number" step="any" name="ent_{{ l.id }}" value="{{ l.despachado }}">{% endfor %}
 <label>Observación</label><input name="observacion"><p><button class="small" name="accion" value="entrega">Registrar entrega</button></p></form></details>{% endif %}
-{% if r.estado in ['CONFIRMADA','EN_RUTA'] and can('distribucion.incidencia') %}<details><summary>Incidencia</summary><form method="post">{{ csrf() }}<input type="hidden" name="stop_id" value="{{ s.id }}"><select name="tipo">{% for c, n in tipos %}<option value="{{ c }}">{{ n }}</option>{% endfor %}</select>
+{% if r.estado in ['CONFIRMADA','EN_RUTA','CERRADA'] and can('distribucion.incidencia') %}<details><summary>Incidencia</summary><form method="post">{{ csrf() }}<input type="hidden" name="stop_id" value="{{ s.id }}"><select name="tipo">{% for c, n in tipos %}<option value="{{ c }}">{{ n }}</option>{% endfor %}</select>
 <input name="descripcion" placeholder="descripción" required><input type="number" step="any" name="cantidad" placeholder="cant." style="width:70px"><button class="small" name="accion" value="incidencia">Registrar</button></form></details>{% endif %}</td></tr>{% endfor %}</table>
 
-{% if r.estado=='CONFIRMADA' %}
+{% if r.estado in ['CONFIRMADA','EN_RUTA','CERRADA'] %}
+<h2>Despacho (TO-BE): carga, documentos y salida</h2>
+<p><a class="btn sec" href="{{ url_for('dist.folio', rid=r.id, tipo='preguia') }}" target="_blank">Ver / imprimir pre-guía</a>
+<a class="btn sec" href="{{ url_for('dist.folio', rid=r.id) }}" target="_blank">Imprimir folio de documentos</a></p>
 <div class="grid g2">
-<div class="card"><h3>Seguridad: validación de carga contra guía</h3>
-{% if r.seguridad %}<p>Validado por {{ r.seguridad.user }} ({{ r.seguridad.ts }}), guía {{ r.guia_numero }}: {% if r.seguridad.discrepancias %}<span class="b ALTA">con discrepancias</span><ul class="err-list">{% for d in r.seguridad.discrepancias %}<li>{{ d }}</li>{% endfor %}</ul>{% else %}<span class="b ok">conforme</span>{% endif %}</p>{% endif %}
-{% if can('distribucion.seguridad') %}<form method="post">{{ csrf() }}<label>N° de guía</label><input name="guia_numero" value="{{ r.guia_numero }}" required>
+<div class="card"><h3>1. Fotos de la carga</h3>
+{% for k, v in etapas.items() %}<p class="small"><b>{{ v[0] }}</b>: {% for f in (r.fotos or {}).get(k, []) %}<a href="{{ url_for('main.evidence', name=f.archivo) }}">foto</a> ({{ f.user }} {{ f.ts[11:16] }}{{ ' · ' ~ f.nota if f.nota }}) {% else %}<span class="muted">sin foto</span>{% endfor %}</p>{% endfor %}
+{% if r.estado=='CONFIRMADA' %}{% if can('distribucion.carga') or can('distribucion.seguridad') %}<form method="post" enctype="multipart/form-data" class="row">{{ csrf() }}<input type="hidden" name="accion" value="foto">
+<div><select name="etapa">{% for k, v in etapas.items() if k != 'incidencia_carga' and can(v[1]) %}<option value="{{ k }}">{{ v[0] }}</option>{% endfor %}</select></div>
+<div><input type="file" name="archivo" accept="image/*,.pdf" required></div><div><button class="small">Subir foto</button></div></form>{% endif %}
+{% if can('distribucion.seguridad') %}<details><summary>Seguridad: registrar incidencia durante la carga</summary><form method="post" enctype="multipart/form-data">{{ csrf() }}<input type="hidden" name="accion" value="incidencia_carga">
+<label>Foto</label><input type="file" name="archivo" accept="image/*,.pdf" required><label>Motivo</label><input name="motivo" required style="width:100%"><label>Hora</label><input name="hora" placeholder="HH:MM"><p><button class="small">Registrar incidencia</button></p></form></details>{% endif %}{% endif %}</div>
+
+<div class="card"><h3>2. Validación de la carga (auxiliar y chofer) {% if r.carga_validada %}<span class="b ok">camión cargado</span>{% endif %}</h3>
+{% if r.carga and r.carga.incongruencias %}<ul class="err-list">{% for x in r.carga.incongruencias %}<li>{{ x }}</li>{% endfor %}</ul><p class="small">Se avisó al almacenero para la validación cruzada (cambiar producto observado o regresar sobrante).</p>{% endif %}
+{% if r.estado=='CONFIRMADA' and can('distribucion.carga') and not r.carga_validada %}<form method="post">{{ csrf() }}<input type="hidden" name="accion" value="validar_carga">
+<table class="small"><tr><th>OV / producto</th><th class="r">Pre-guía</th><th>Cargado</th><th>¿Correcto?</th></tr>
+{% for g in preguia %}{% for it in g['items'] %}<tr><td>{{ g.order.numero }} · {{ it.codigo }}</td><td class="r">{{ it.cantidad|n }}</td><td><input type="number" step="any" name="car_{{ it.order_line_id }}" value="{{ it.cantidad }}" style="width:80px"></td>
+<td><select name="ok_{{ it.order_line_id }}"><option value="1">Sí</option><option value="0">No (producto/presentación)</option></select></td></tr>{% endfor %}{% endfor %}</table>
+<label>Observación</label><input name="observacion" style="width:100%"><p><button>Validar carga</button></p><p class="small muted">Requiere la foto del vehículo antes de la estiba y, si todo es correcto, la foto de la mercadería cargada.</p></form>{% endif %}</div>
+
+<div class="card"><h3>3. Documentos por pedido</h3>
+<table class="small"><tr><th>OV</th><th>Guía</th><th>Factura</th><th>Certificados</th></tr>
+{% for st in r.stops %}<tr><td>{{ st.order.numero }}</td>
+<td>{% if st.guia_numero %}{{ st.guia_numero }} ({{ st.guia_origen }}){% if st.guia_path %} <a href="{{ url_for('main.evidence', name=st.guia_path) }}">archivo</a>{% endif %}{% endif %}
+{% if r.estado=='CONFIRMADA' and can('distribucion.documentos') %}<form method="post" enctype="multipart/form-data">{{ csrf() }}<input type="hidden" name="accion" value="guia"><input type="hidden" name="stop_id" value="{{ st.id }}">
+<select name="origen"><option value="SISTEMA">Generar en el sistema</option><option value="SAP">Guía de SAP (cargar)</option></select><input name="numero" placeholder="N° guía" size="10"><input type="file" name="archivo" accept="image/*,.pdf"><button class="small">Registrar guía</button></form>{% endif %}</td>
+<td>{% if st.factura_numero %}{{ st.factura_numero }} <a href="{{ url_for('main.evidence', name=st.factura_path) }}">archivo</a>{% if st.factura_con_modificaciones %} <span class="b warn">con modificaciones</span>{% endif %}{% endif %}
+{% if r.estado=='CONFIRMADA' and can('facturacion.cargar') %}{% set dif = billing(st) %}<div class="small">{{ 'Completo según la OV' if not dif else 'Difiere de la OV: ' ~ dif|join('; ') }}</div>
+<form method="post" enctype="multipart/form-data">{{ csrf() }}<input type="hidden" name="accion" value="factura"><input type="hidden" name="stop_id" value="{{ st.id }}"><input name="numero" placeholder="N° factura (SAP)" size="12" required><input type="file" name="archivo" accept="image/*,.pdf" required><button class="small">Cargar factura</button></form>{% endif %}</td>
+<td>{% for c in certs[st.id] %}<a href="{{ url_for('cal.certificate_detail', cid=c.id) }}">{{ c.numero }}</a> {{ b(c.estado) }}<br>{% else %}<span class="muted">sin certificado</span>{% endfor %}</td></tr>{% endfor %}</table></div>
+
+<div class="card"><h3>4. Seguridad: carga vs guía y documentos</h3>
+{% if r.seguridad %}<p>Carga vs guía validada por {{ r.seguridad.user }}: {% if r.seguridad.discrepancias %}<span class="b ALTA">con discrepancias</span><ul class="err-list">{% for d in r.seguridad.discrepancias %}<li>{{ d }}</li>{% endfor %}</ul>{% else %}<span class="b ok">conforme</span>{% endif %}</p>{% endif %}
+{% if r.estado=='CONFIRMADA' and can('distribucion.seguridad') %}<details {{ 'open' if not r.seguridad }}><summary>Validar cantidades y presentación contra la pre-guía / guía</summary><form method="post">{{ csrf() }}<label>N° de guía (o pre-guía mientras la guía no esté emitida)</label><input name="guia_numero" value="{{ r.guia_numero or ('PRE-GUIA-' ~ r.id) }}" required>
 <table class="small"><tr><th>OV / producto</th><th class="r">Preparado</th><th>En guía</th><th>Cargado</th><th>Presentación</th></tr>
 {% for e in expected %}<tr><td>{{ e.ov }} · {{ e.producto }}</td><td class="r">{{ e.esperado|n }}</td><td><input type="number" step="any" name="guia_{{ e.order_line_id }}" value="{{ e.esperado }}" style="width:80px"></td><td><input type="number" step="any" name="cargado_{{ e.order_line_id }}" value="{{ e.esperado }}" style="width:80px"></td><td><select name="pres_{{ e.order_line_id }}"><option value="1">Coincide</option><option value="0">No coincide</option></select></td></tr>{% endfor %}</table>
-<button name="accion" value="seguridad">Registrar validación</button></form>{% endif %}
+<button name="accion" value="seguridad">Registrar validación</button></form></details>{% endif %}
+{% if r.autorizacion_seguridad %}<p><span class="b ok">Salida autorizada</span> por {{ r.autorizacion_seguridad.user }} ({{ r.autorizacion_seguridad.ts[:16]|replace('T',' ') }})</p>
+{% elif r.estado=='CONFIRMADA' %}{% if faltan %}<p class="small">Pendiente: {{ faltan|join('; ') }}</p>{% endif %}
+{% if can('distribucion.autorizar_salida') %}<form method="post">{{ csrf() }}<label><input type="checkbox" name="impresos" value="1"> Documentos impresos en físico (folio)</label><button name="accion" value="autorizar_salida">Revisar documentos y autorizar salida</button></form>{% endif %}{% endif %}
 <p class="small muted"><a href="{{ url_for('cal.new_record', formato='VEHICULO') }}">Control de vehículo (REG-BPM-CAL-011)</a> · <a href="{{ url_for('cal.new_record', formato='INSPECCION_CARGA') }}">Inspección de carga (Calidad)</a></p></div>
-<div class="card"><h3>Verificación y confirmación de salida</h3>
-{% if can('distribucion.confirmar_salida') %}<form method="post">{{ csrf() }}{% for k, l in checklist %}<label><input type="checkbox" name="{{ k }}" value="1"> {{ l }}</label>{% endfor %}
-<p class="small muted">Regla de bloqueo por discrepancia: pendiente de validar (IF §12.2); por defecto se advierte y alerta.</p><button name="accion" value="salida">Confirmar salida</button></form>{% else %}<p class="muted">La salida la confirma el Coordinador de Distribución.</p>{% endif %}</div></div>{% endif %}
+
+<div class="card"><h3>5. Confirmación de salida (Coordinador de Distribución)</h3>
+{% if r.estado=='CONFIRMADA' %}{% if can('distribucion.confirmar_salida') %}<form method="post">{{ csrf() }}{% for k, l in checklist %}<label><input type="checkbox" name="{{ k }}" value="1"> {{ l }}</label>{% endfor %}
+<p class="small muted">Requiere: pedidos preparados, carga validada, validación carga vs guía y autorización de Seguridad.</p><button name="accion" value="salida">Confirmar salida</button></form>{% else %}<p class="muted">La salida la confirma el Coordinador de Distribución.</p>{% endif %}
+{% else %}<p>Salida {{ r.salida_ts|d }}{% if r.retorno_ts %} · retorno a base {{ r.retorno_ts|d }}{% endif %}</p>
+{% if not r.retorno_ts and (can('distribucion.entrega') or can('distribucion.carga')) %}<form method="post">{{ csrf() }}<button class="sec" name="accion" value="retorno">Registrar retorno a base</button></form>{% endif %}{% endif %}</div>
+</div>{% endif %}
 {% if r.checklist %}<p class="small">Salida confirmada {{ r.salida_ts|d }} · checklist {{ r.checklist }}</p>{% endif %}
 {% endblock %}

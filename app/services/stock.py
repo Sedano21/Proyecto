@@ -208,7 +208,7 @@ def evaluate_order(order, user=None, motivo="CREACION"):
                 if libre <= 1e-9:
                     continue
                 tomar = min(libre, necesario - reservado)
-                res = Reservation(ov_line_id=line.id, lot_id=lot.id, cantidad=tomar)
+                res = Reservation(ov_line_id=line.id, lot_id=lot.id, cantidad=tomar, estado="ACTIVA")
                 s.add(res)
                 line.reservations.append(res)
                 lot.reservations.append(res)
@@ -239,7 +239,23 @@ def evaluate_order(order, user=None, motivo="CREACION"):
     audit(user, f"OV_EVALUADA_{motivo}", "SalesOrder", order.numero,
           {"cobertura_unidades": order.cobertura_unidades, "cobertura_lineas": order.cobertura_lineas,
            "lineas": resumen})
+    _after_evaluation(order, user)
     return resumen
+
+
+def _after_evaluation(order, user):
+    """Acciones del TO-BE al quedar la OV completa: aviso, certificado pre-elaborado y ruta automática."""
+    from .distribution import sync_order_route
+    listo = order.estado_stock == "COMPLETA" or order.decision_parcial == "APROBADA"
+    if order.estado_stock == "COMPLETA" and not order.completa_notificada:
+        order.completa_notificada = True
+        alerts.emit("OV_COMPLETA", f"OV {order.numero} completa: stock reservado al 100 %",
+                    f"Cliente {order.customer.nombre}; fecha comprometida {order.fecha_compromiso:%d/%m/%Y}.",
+                    "SalesOrder", order.id, creado_por=user)
+    if listo and param("certificado_previo_al_picking", True):
+        from .quality import autogenerate_for_order
+        autogenerate_for_order(order, user)
+    sync_order_route(order, user, listo)
 
 
 def _emit_evaluation_alerts(order, resumen, user, motivo, tenia_reservas):
@@ -262,6 +278,7 @@ def _emit_evaluation_alerts(order, resumen, user, motivo, tenia_reservas):
             db().add(AlertEvent(alert_id=a.id, accion="ACTUALIZADA", comentario=f"Reevaluación ({motivo}): {detalle}"))
         if order.cobertura_unidades > 0 and order.decision_parcial in ("", "RECHAZADA"):
             order.decision_parcial = "PENDIENTE"
+            order.parcial_aprobaciones = {}
             alerts.emit("OV_DECISION_PARCIAL", f"Decidir despacho parcial de OV {order.numero}",
                         f"Hay {order.cobertura_unidades}% de unidades reservadas. Decidir despacho parcial, renegociar "
                         f"fecha o cambiar producto.", "SalesOrder", order.id, extra_users=vendedor,

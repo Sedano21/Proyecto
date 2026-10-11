@@ -5,7 +5,7 @@ from datetime import date, datetime
 from sqlalchemy import select
 
 from ..db import db
-from ..models import (Customer, OVChangeRequest, OVDecision, Product, RouteStop, SalesOrder, SalesOrderLine, User, now)
+from ..models import (Alert, Customer, OVChangeRequest, OVDecision, Product, RouteStop, SalesOrder, SalesOrderLine, User, now)
 from . import alerts
 from .core import BusinessError, audit, has_perm, param
 from .stock import (ORDEN_ESTADOS_CERRADOS, evaluate_order, line_reserved, priority_key, release_order)
@@ -52,7 +52,7 @@ def next_cutoff(ts=None):
 
 def create_order(user, numero, customer_id, fecha_compromiso, lines, urgente=False, comentarios="", hora_cita="",
                  cita_confirmada=False, vendedor_id=None, fecha_emision=None, origen="MODULO", evaluar=True):
-    if not has_perm(user, "ov.crear") and origen == "MODULO":
+    if origen == "MODULO" and not has_perm(user, "ov.crear"):
         raise BusinessError("Su rol no puede registrar OV.")
     numero = (numero or "").strip()
     if not numero:
@@ -213,28 +213,112 @@ def cancel_order(order, user, motivo):
 
 
 # ------------------------------ decisiones ----------------------------------
-def decide_partial(order, user, aprobar, comentario=""):
+def partial_approvers():
+    return list(param("parcial_aprobadores", ["GERENCIA_OPERACIONES", "JEFE_LOGISTICA"]) or [])
+
+
+def partial_pending_roles(order):
+    hechas = order.parcial_aprobaciones or {}
+    return [r for r in partial_approvers() if r not in hechas]
+
+
+def decide_partial(order, user, aprobar, comentario="", fecha_saldo=None):
+    """Despacho parcial (IF §6.3; decisión Q3): deben aprobar Gerencia de Operaciones y Jefatura de Logística.
+    Gerencia General (acceso completo, Q4) puede aprobar en nombre de los roles pendientes. Cualquier aprobador
+    puede rechazar. El saldo no despachado se reprograma en una OV de saldo (fecha obligatoria)."""
     if not has_perm(user, "ov.aprobar_parcial"):
-        raise BusinessError("Su rol no decide despachos parciales.")
+        raise BusinessError("El despacho parcial lo aprueban Gerencia de Operaciones y Jefatura de Logística (Q3).")
     if order.estado_stock == "COMPLETA":
         raise BusinessError("La OV está completa; no requiere despacho parcial.")
-    if aprobar and order.cobertura_unidades <= 0:
+    if order.decision_parcial == "APROBADA":
+        raise BusinessError("El despacho parcial ya fue aprobado.")
+    pendientes = partial_pending_roles(order)
+    if user.role_code == "GERENCIA_GENERAL":
+        en_nombre = pendientes
+    elif user.role_code in pendientes:
+        en_nombre = [user.role_code]
+    elif user.role_code in partial_approvers():
+        raise BusinessError("Su rol ya registró su aprobación; falta: " + ", ".join(pendientes))
+    else:
+        raise BusinessError("Su rol no figura entre los aprobadores del despacho parcial.")
+    if not aprobar:
+        if not comentario.strip():
+            raise BusinessError("Indique el motivo del rechazo.")
+        order.decision_parcial = "RECHAZADA"
+        order.parcial_aprobaciones = {}
+        order.motivo_detencion = "Despacho parcial rechazado: requiere renegociación, alternativa o reposición."
+        db().add(OVDecision(order_id=order.id, tipo="DESPACHO_PARCIAL", estado="RECHAZADA", comentario=comentario,
+                            detalle={"rol": user.role_code}, user_id=user.id))
+        alerts.close_by_system(f"OV_DECISION_PARCIAL:{order.id}", "Despacho parcial rechazado")
+        audit(user, "OV_PARCIAL_RECHAZADA", "SalesOrder", order.numero, {"comentario": comentario})
+        return []
+    if order.cobertura_unidades <= 0:
         raise BusinessError("No hay stock reservado para un despacho parcial.")
-    order.decision_parcial = "APROBADA" if aprobar else "RECHAZADA"
-    db().add(OVDecision(order_id=order.id, tipo="DESPACHO_PARCIAL", estado=order.decision_parcial,
-                        detalle={"cobertura_unidades": order.cobertura_unidades, "cobertura_lineas": order.cobertura_lineas},
-                        comentario=comentario, user_id=user.id))
-    alerts.close_by_system(f"OV_DECISION_PARCIAL:{order.id}", f"Decisión registrada: {order.decision_parcial}")
-    audit(user, f"OV_PARCIAL_{order.decision_parcial}", "SalesOrder", order.numero, {"comentario": comentario})
-    if aprobar:
-        order.motivo_detencion = ""
-        alerts.emit("OV_PARCIAL_APROBADO", f"Despacho parcial aprobado: OV {order.numero}",
-                    f"Cobertura {order.cobertura_unidades}% unidades. Se generó propuesta de ruta.", "SalesOrder", order.id,
-                    creado_por=user)
-        from .distribution import propose_routes
-        return propose_routes(order.fecha_compromiso, user, orders=[order], require_prepared=False)
-    order.motivo_detencion = "Despacho parcial rechazado: requiere renegociación, alternativa o reposición."
-    return []
+    if fecha_saldo is None and order.fecha_saldo is None:
+        raise BusinessError("Indique la fecha a la que se reprograma el saldo no despachado (Q3).")
+    if fecha_saldo is not None:
+        if fecha_saldo < date.today():
+            raise BusinessError("La fecha reprogramada del saldo no puede ser anterior a hoy.")
+        order.fecha_saldo = fecha_saldo
+    aprob = dict(order.parcial_aprobaciones or {})
+    for rol in en_nombre:
+        aprob[rol] = {"user": user.nombre, "user_id": user.id, "rol_usuario": user.role_code,
+                      "ts": now().isoformat(), "comentario": comentario}
+    order.parcial_aprobaciones = aprob
+    faltan = partial_pending_roles(order)
+    db().add(OVDecision(order_id=order.id, tipo="DESPACHO_PARCIAL", estado="APROBACION_REGISTRADA",
+                        detalle={"en_nombre_de": en_nombre, "faltan": faltan, "fecha_saldo": order.fecha_saldo.isoformat(),
+                                 "cobertura_unidades": order.cobertura_unidades}, comentario=comentario, user_id=user.id))
+    audit(user, "OV_PARCIAL_APROBACION", "SalesOrder", order.numero, {"en_nombre_de": en_nombre, "faltan": faltan,
+                                                                      "fecha_saldo": order.fecha_saldo})
+    if faltan:
+        order.decision_parcial = "PENDIENTE"
+        a = db().execute(select(Alert).where(Alert.dedup_key == f"OV_DECISION_PARCIAL:{order.id}",
+                                             Alert.estado != "CERRADA")).scalars().first()
+        if a is not None:
+            from ..models import AlertEvent
+            db().add(AlertEvent(alert_id=a.id, user_id=user.id, accion="APROBACION_PARCIAL",
+                                comentario=f"Aprobó {user.nombre} ({', '.join(en_nombre)}). Falta: {', '.join(faltan)}."))
+        return []
+    order.decision_parcial = "APROBADA"
+    order.motivo_detencion = ""
+    alerts.close_by_system(f"OV_DECISION_PARCIAL:{order.id}", "Despacho parcial aprobado por " + ", ".join(aprob))
+    alerts.emit("OV_PARCIAL_APROBADO", f"Despacho parcial aprobado: OV {order.numero}",
+                f"Cobertura {order.cobertura_unidades}% unidades. Saldo reprogramado al {order.fecha_saldo:%d/%m/%Y}. "
+                "Se generó propuesta de ruta.", "SalesOrder", order.id, creado_por=user)
+    from .distribution import active_stop, propose_routes
+    from .stock import _after_evaluation
+    _after_evaluation(order, user)  # certificado pre-elaborado y programación automática (TO-BE)
+    st = active_stop(order)
+    if st is not None:
+        return [st.route]
+    return propose_routes(order.fecha_compromiso, user, orders=[order], require_prepared=False)
+
+
+def create_saldo(order, user):
+    """Crea la OV de saldo con lo no despachado de un despacho parcial (decisión Q3)."""
+    s = db()
+    lines = [{"product_code": l.product_code, "cantidad": l.cantidad - l.despachado, "precio_unitario": l.precio_unitario}
+             for l in order.lines if l.activa and l.cantidad - l.despachado > 1e-9]
+    if not lines:
+        return None
+    n = s.execute(select(SalesOrder).where(SalesOrder.parent_id == order.id)).scalars().all()
+    numero = f"{order.numero}-S{len(n) + 1}"
+    fecha = order.fecha_saldo or order.fecha_compromiso
+    saldo = create_order(user, numero, order.customer_id, fecha, lines, urgente=order.urgente,
+                         comentarios=f"Saldo reprogramado del despacho parcial de la OV {order.numero}",
+                         hora_cita=order.hora_cita, vendedor_id=order.vendedor_id, origen="SALDO", evaluar=False)
+    saldo.parent_id = order.id
+    saldo.vendedor_nombre = order.vendedor_nombre
+    s.flush()
+    from .stock import evaluate_order
+    evaluate_order(saldo, user, "CREACION")
+    alerts.emit("OV_SALDO_REPROGRAMADO", f"Saldo de OV {order.numero} reprogramado: OV {numero} para el {fecha:%d/%m/%Y}",
+                "; ".join("%s × %g" % (l["product_code"], l["cantidad"]) for l in lines)
+                + f". Cobertura actual del saldo: {saldo.cobertura_unidades}%.", "SalesOrder", saldo.id,
+                extra_users=[order.vendedor_id] if order.vendedor_id else None, creado_por=user)
+    audit(user, "OV_SALDO_CREADA", "SalesOrder", numero, {"origen": order.numero, "lineas": lines})
+    return saldo
 
 
 def renegotiate_date(order, user, nueva_fecha, comentario=""):
@@ -292,11 +376,61 @@ def _prep_target(line):
     return line_reserved(line) + 0.0
 
 
+def validate_picking_plan(order, user):
+    """TO-BE: el sistema pre-asigna el picking (lotes reservados) y el Líder Operativo lo valida."""
+    if not has_perm(user, "preparacion.registrar"):
+        raise BusinessError("Su rol no valida la planificación del picking.")
+    if not ready_for_preparation(order):
+        raise BusinessError("La OV no está lista para preparar (requiere cobertura completa o despacho parcial aprobado).")
+    order.plan_picking_validado = True
+    audit(user, "PLAN_PICKING_VALIDADO", "SalesOrder", order.numero,
+          {"lotes": [(l.product_code, r.lot.lote, r.cantidad) for l in order.lines for r in l.reservations if r.estado == "ACTIVA"]})
+
+
+def reassign_pick_lot(order, user, reservation_id, new_lot_id, cantidad=None):
+    """TO-BE: 'Modificar planificación del picking' — cambia el lote pre-asignado por otro apto del mismo artículo."""
+    from ..models import Reservation, StockLot
+    from .stock import _release, free_qty, lot_usable
+    if not has_perm(user, "preparacion.registrar"):
+        raise BusinessError("Su rol no modifica la planificación del picking.")
+    res = db().get(Reservation, int(reservation_id))
+    if res is None or res.estado != "ACTIVA" or res.line.order_id != order.id:
+        raise BusinessError("Reserva no válida.")
+    if res.line.preparado > 1e-9:
+        raise BusinessError("La línea ya tiene picking registrado; no se puede cambiar el lote.")
+    lot = db().get(StockLot, int(new_lot_id))
+    if lot is None or lot.product_code != res.lot.product_code or lot.id == res.lot_id:
+        raise BusinessError("Seleccione otro lote del mismo artículo.")
+    ok, why = lot_usable(lot, order.fecha_compromiso, order.customer)
+    if not ok:
+        raise BusinessError(f"Lote no apto: {why}")
+    q = res.cantidad if cantidad in (None, "") else float(cantidad)
+    if q <= 0 or q > res.cantidad + 1e-9:
+        raise BusinessError("Cantidad inválida.")
+    if q > free_qty(lot) + 1e-9:
+        raise BusinessError(f"El lote {lot.lote} solo tiene {free_qty(lot):g} libres.")
+    if abs(q - res.cantidad) < 1e-9:
+        _release(res, f"Cambio de lote en planificación de picking → {lot.lote}")
+    else:
+        res.cantidad -= q
+    nueva = Reservation(ov_line_id=res.ov_line_id, lot_id=lot.id, cantidad=q, estado="ACTIVA")
+    db().add(nueva)
+    res.line.reservations.append(nueva)
+    lot.reservations.append(nueva)
+    order.plan_picking_validado = False
+    audit(user, "PLAN_PICKING_MODIFICADO", "SalesOrder", order.numero, {"de": res.lot.lote, "a": lot.lote, "cantidad": q})
+    from .quality import autogenerate_for_order
+    if param("certificado_previo_al_picking", True):
+        autogenerate_for_order(order, user)
+
+
 def register_picking(order, user, line_id, cantidad, lote):
     if not has_perm(user, "preparacion.registrar"):
         raise BusinessError("Su rol no registra preparación.")
     if not ready_for_preparation(order):
         raise BusinessError("La OV no está lista para preparar (requiere cobertura completa o despacho parcial aprobado).")
+    if not order.plan_picking_validado:
+        raise BusinessError("Primero valide la planificación de picking pre-asignada por el sistema (TO-BE).")
     line = next((l for l in order.lines if l.id == int(line_id) and l.activa), None)
     if line is None:
         raise BusinessError("Línea no encontrada.")

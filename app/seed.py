@@ -44,6 +44,7 @@ DEMO_USERS = [
     ("compras", "Coordinador de Compras (demo)", "COMPRAS"),
     ("importaciones", "Importaciones (demo)", "IMPORTACIONES"),
     ("seguridad", "Seguridad (demo)", "SEGURIDAD"),
+    ("facturacion", "Facturación (demo)", "FACTURACION"),
 ]
 
 
@@ -146,10 +147,12 @@ def seed_demo(upload_dir=None, today=None):
     # archivos ficticios procesados por el mismo flujo de validación/autorización
     folder = upload_dir or tempfile.mkdtemp(prefix="demo_")
     files = write_all(folder, today)
-    for tipo, key, opts in (("PRODUCTOS", "productos", {}), ("STOCK", "stock", {}), ("BOM", "bom", {"incluye_merma": "NO"}),
-                            ("SALIDAS", "salidas", {})):
-        b = uploads.create_batch(admin, tipo, files[key], os.path.basename(files[key]))
-        uploads.confirm(b, admin, opts)
+    # Cada carga la autoriza el rol responsable (Sistemas administra pero no aprueba, decisión Q4)
+    for tipo, key, opts, quien in (("PRODUCTOS", "productos", {}, "sistemas"), ("STOCK", "stock", {}, "coord.almacen"),
+                                   ("BOM", "bom", {"incluye_merma": "NO"}, "jefe.produccion"),
+                                   ("SALIDAS", "salidas", {}, "coord.almacen")):
+        b = uploads.create_batch(users[quien], tipo, files[key], os.path.basename(files[key]))
+        uploads.confirm(b, users[quien], opts)
     # completar catálogo de insumos y parámetros por producto
     for code, desc, cat in INSUMOS:
         p = s.get(Product, code)

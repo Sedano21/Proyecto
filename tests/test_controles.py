@@ -6,7 +6,7 @@ from datetime import date, timedelta
 import openpyxl
 import pytest
 
-from app.models import Alert, AlertEvent, EmailOutbox, RolePermission, StockLot, UploadBatch
+from app.models import Alert, AlertEvent, EmailOutbox, Permission, RolePermission, StockLot, UploadBatch
 from app.services import alerts as al
 from app.services import inventory as inv
 from app.services import purchasing as buy
@@ -231,6 +231,10 @@ def test_correo_sin_smtp_no_se_simula(s, U, new_order, monkeypatch):
 def test_alerta_80_por_ciento(s, U, new_order):
     from app.services.orders import register_picking
     o = new_order([("PT-905", 100)])
+    from app.services.orders import validate_picking_plan
+    with pytest.raises(BusinessError):  # TO-BE: primero se valida el plan de picking
+        register_picking(o, U("lider.almacen"), o.lines[0].id, 1, "L905A")
+    validate_picking_plan(o, U("lider.almacen"))
     register_picking(o, U("lider.almacen"), o.lines[0].id, 85, "L905A")
     s.commit()
     assert alerts_of(s, "OV_80_PREPARACION", o.id)
@@ -274,13 +278,20 @@ def test_verificaciones_periodicas(s, U, new_order, today):
 def test_matriz_permisos_reglas_documentadas(s):
     def roles_con(perm):
         return {rp.role_code for rp in s.query(RolePermission).filter_by(perm_code=perm)}
-    assert roles_con("ov.cancelar") == {"COORD_VENTAS", "JEFE_VENTAS", "GERENCIA_GENERAL", "SISTEMAS"}
-    assert roles_con("traslado.autorizar") == {"JEFE_LOGISTICA", "GERENCIA_GENERAL", "SISTEMAS"}
-    assert roles_con("calidad.certificado_revisar") == {"JEFE_CALIDAD", "SUPERV_CALIDAD", "GERENCIA_GENERAL", "SISTEMAS"}
-    assert roles_con("distribucion.confirmar_salida") == {"COORD_DISTRIBUCION", "GERENCIA_GENERAL", "SISTEMAS"}
+    # Q4: Gerencia General aprueba; Sistemas tiene acceso pero no aprueba
+    assert roles_con("ov.cancelar") == {"COORD_VENTAS", "JEFE_VENTAS", "GERENCIA_GENERAL"}
+    assert roles_con("traslado.autorizar") == {"JEFE_LOGISTICA", "GERENCIA_GENERAL"}
+    assert roles_con("calidad.certificado_revisar") == {"JEFE_CALIDAD", "SUPERV_CALIDAD", "GERENCIA_GENERAL"}
+    assert roles_con("distribucion.confirmar_salida") == {"COORD_DISTRIBUCION", "GERENCIA_GENERAL"}
+    # Q3: despacho parcial lo aprueban GO y Jefatura de Logística (y GG por acceso completo)
+    assert roles_con("ov.aprobar_parcial") == {"GERENCIA_OPERACIONES", "JEFE_LOGISTICA", "GERENCIA_GENERAL"}
+    aprob = {p.code for p in s.query(Permission).filter_by(tipo="aprobacion")}
+    sist = {rp.perm_code for rp in s.query(RolePermission).filter_by(role_code="SISTEMAS")}
+    assert not (aprob & sist) and "config.editar" in sist and "usuarios.administrar" in sist and "ov.ver" in sist
     assert "ASIST_VENTAS" not in roles_con("ov.modificar")
-    assert "ASIST_VENTAS" in roles_con("ov.solicitar_modificacion")
+    assert {"ov.solicitar_modificacion", "ov.importar"} <= {rp.perm_code for rp in s.query(RolePermission).filter_by(role_code="ASIST_VENTAS")}
     assert "COMPRAS" not in roles_con("compras.solicitar")
+    assert roles_con("facturacion.cargar") == {"FACTURACION", "GERENCIA_GENERAL", "SISTEMAS"}
     rp = s.query(RolePermission).filter_by(role_code="JEFE_VENTAS", perm_code="ov.cancelar").one()
     assert rp.origen == "DEFINIDO"
 

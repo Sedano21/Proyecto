@@ -1,0 +1,212 @@
+"""Etapa de carga y documentos del despacho según el TO-BE COPROD-ONE (L5).
+
+Secuencia TO-BE: ruta aprobada → montacarguista traslada → auxiliar sube foto del vehículo antes de la estiba y genera
+pre-guía → Seguridad visualiza pre-guía, sigue la carga (foto de inicio) y registra incidencias con foto, motivo y hora →
+auxiliar valida productos (si hay incongruencias avisa al almacenero para validación cruzada) → valida carga completa con
+foto de mercadería cargada → alerta de camión cargado → Facturación factura y carga la factura; Distribución genera/carga la
+guía e imprime el folio → Seguridad revisa que los documentos estén completos (si faltan, reporta) y autoriza la salida.
+"""
+from sqlalchemy import select
+
+from ..db import db
+from ..models import Certificate, Incident, now
+from . import alerts
+from .core import BusinessError, audit, has_perm, param
+
+ETAPAS_FOTO = {
+    "vehiculo": ("Foto del vehículo antes de la estiba", "distribucion.carga"),
+    "inicio_carga": ("Foto del inicio de la carga (Seguridad)", "distribucion.seguridad"),
+    "mercaderia_cargada": ("Foto de la mercadería cargada", "distribucion.carga"),
+    "incidencia_carga": ("Foto de incidencia durante la carga (Seguridad)", "distribucion.seguridad"),
+}
+
+
+def _route_ready(route):
+    if route.estado != "CONFIRMADA":
+        raise BusinessError("La ruta debe estar aprobada (confirmada) por Distribución.")
+
+
+def add_photo(route, user, etapa, archivo, nota=""):
+    if etapa not in ETAPAS_FOTO:
+        raise BusinessError("Etapa de foto no válida.")
+    nombre, perm = ETAPAS_FOTO[etapa]
+    if not has_perm(user, perm):
+        raise BusinessError(f"Su rol no registra: {nombre}.")
+    _route_ready(route)
+    if not archivo:
+        raise BusinessError("Adjunte la fotografía.")
+    fotos = dict(route.fotos or {})
+    fotos.setdefault(etapa, []).append({"archivo": archivo, "user": user.nombre, "ts": now().isoformat(), "nota": nota})
+    route.fotos = fotos
+    audit(user, "RUTA_FOTO", "Route", route.id, {"etapa": etapa, "archivo": archivo})
+
+
+def register_loading_incident(route, user, archivo, motivo, hora=""):
+    """Seguridad: incidencia durante la carga con foto, motivo y hora (TO-BE)."""
+    if not motivo.strip():
+        raise BusinessError("Indique el motivo de la incidencia.")
+    hora = hora or f"{now():%H:%M}"
+    add_photo(route, user, "incidencia_carga", archivo, f"{hora} {motivo}")
+    inc = Incident(tipo="INCIDENCIA_CARGA", route_id=route.id, descripcion=f"{motivo} (hora {hora}; foto {archivo})",
+                   user_id=user.id)
+    db().add(inc)
+    db().flush()
+    a = alerts.emit("INC_CARGA", f"Incidencia durante la carga de la ruta #{route.id}", f"{motivo} (hora {hora})", "Route",
+                    route.id, creado_por=user)
+    inc.alert_id = a.id if a else None
+    return inc
+
+
+def preguia(route):
+    """Pre-guía: productos, cantidades preparadas, lotes y fechas por pedido."""
+    out = []
+    for st in route.stops:
+        o = st.order
+        items = []
+        for l in o.lines:
+            if not l.activa:
+                continue
+            res = [r for r in l.reservations if r.estado in ("ACTIVA", "CONSUMIDA")]
+            items.append({"order_line_id": l.id, "codigo": l.product_code, "descripcion": l.product.descripcion,
+                          "cantidad": l.preparado if l.preparado > 0 else sum(r.cantidad for r in res if r.estado == "ACTIVA"),
+                          "lotes": [{"lote": r.lot.lote, "fp": r.lot.fecha_fab, "fv": r.lot.fecha_venc, "cantidad": r.cantidad}
+                                    for r in res]})
+        out.append({"stop": st, "order": o, "items": items})
+    return out
+
+
+def validate_load(route, user, lineas, observacion=""):
+    """Auxiliar (y chofer): ¿productos correctos o completos? lineas: {order_line_id: {cargado, correcto}}.
+    Si hay incongruencias se avisa al almacenero (validación cruzada); si todo está correcto se exige la foto de la
+    mercadería cargada y se emite la alerta de camión cargado."""
+    if not has_perm(user, "distribucion.carga"):
+        raise BusinessError("La validación de la carga la realiza el auxiliar de despacho (y el chofer).")
+    _route_ready(route)
+    if not (route.fotos or {}).get("vehiculo"):
+        raise BusinessError("Primero suba la foto del vehículo antes de la estiba (TO-BE).")
+    incongruencias = []
+    detalle = []
+    for grupo in preguia(route):
+        for it in grupo["items"]:
+            v = lineas.get(str(it["order_line_id"]), {})
+            cargado = float(v.get("cargado") if v.get("cargado") not in (None, "") else it["cantidad"])
+            correcto = v.get("correcto", True)
+            detalle.append({"ov": grupo["order"].numero, "producto": it["codigo"], "preguia": it["cantidad"], "cargado": cargado,
+                            "correcto": bool(correcto)})
+            if abs(cargado - it["cantidad"]) > 1e-9 or not correcto:
+                incongruencias.append(f"OV {grupo['order'].numero} {it['codigo']}: pre-guía {it['cantidad']:g}, cargado {cargado:g}"
+                                      + ("" if correcto else ", producto/presentación incorrecta"))
+    route.carga = {"user": user.nombre, "ts": now().isoformat(), "lineas": detalle, "incongruencias": incongruencias,
+                   "observacion": observacion}
+    if incongruencias:
+        route.carga_validada = False
+        alerts.emit("CARGA_INCONGRUENCIA", f"Ruta #{route.id}: incongruencias en el pedido picado",
+                    "; ".join(incongruencias) + ". Cambiar producto observado o regresar sobrante y volver a validar.",
+                    "Route", route.id, creado_por=user)
+        audit(user, "CARGA_INCONGRUENCIA", "Route", route.id, route.carga)
+        return incongruencias
+    if not (route.fotos or {}).get("mercaderia_cargada"):
+        raise BusinessError("Suba la foto de la mercadería cargada para validar la carga completa (TO-BE).")
+    route.carga_validada = True
+    alerts.emit("CAMION_CARGADO", f"Camión cargado: ruta #{route.id} ({route.vehicle.placa if route.vehicle else '-'})",
+                ", ".join(f"OV {st.order.numero}" for st in route.stops) + ". Facturación: evaluar pedidos y cargar facturas.",
+                "Route", route.id, creado_por=user)
+    audit(user, "CAMION_CARGADO", "Route", route.id, route.carga)
+    return []
+
+
+def set_guide(stop, user, numero, origen, archivo=""):
+    """Distribución: generar guía en el sistema o registrar la guía generada en SAP (con archivo)."""
+    if not has_perm(user, "distribucion.documentos"):
+        raise BusinessError("La guía la genera o carga Distribución.")
+    if origen not in ("SAP", "SISTEMA"):
+        raise BusinessError("Origen de guía no válido.")
+    if origen == "SAP" and not (numero.strip() and archivo):
+        raise BusinessError("Para una guía de SAP registre el número y cargue el archivo.")
+    if origen == "SISTEMA" and not numero.strip():
+        numero = f"GS-{stop.route_id}-{stop.order.numero}"
+    stop.guia_numero = numero.strip()
+    stop.guia_origen = origen
+    if archivo:
+        stop.guia_path = archivo
+    if not stop.route.guia_numero or stop.route.guia_numero.startswith("PRE-GUIA"):
+        stop.route.guia_numero = stop.guia_numero
+    audit(user, "GUIA_REGISTRADA", "SalesOrder", stop.order.numero, {"guia": stop.guia_numero, "origen": origen})
+
+
+def billing_status(stop):
+    """¿Está completo según la OV? (despachado/preparado vs solicitado)."""
+    o = stop.order
+    dif = []
+    for l in o.lines:
+        if not l.activa:
+            continue
+        q = l.despachado if l.despachado > 0 else l.preparado
+        if abs(q - l.cantidad) > 1e-9:
+            dif.append(f"{l.product_code}: OV {l.cantidad:g} / cargado {q:g}")
+    return dif
+
+
+def set_invoice(stop, user, numero, archivo):
+    """Facturación: evalúa el pedido validado, genera la factura en SAP (con modificaciones si no está completo) y la carga."""
+    if not has_perm(user, "facturacion.cargar"):
+        raise BusinessError("La factura la carga Facturación.")
+    if not stop.route.carga_validada:
+        raise BusinessError("La carga aún no está validada (camión cargado).")
+    if not numero.strip() or not archivo:
+        raise BusinessError("Registre el número de factura y cargue el archivo.")
+    dif = billing_status(stop)
+    stop.factura_numero = numero.strip()
+    stop.factura_path = archivo
+    stop.factura_con_modificaciones = bool(dif)
+    stop.factura_ts = now()
+    audit(user, "FACTURA_CARGADA", "SalesOrder", stop.order.numero, {"factura": numero, "con_modificaciones": dif})
+    return dif
+
+
+def missing_documents(route):
+    req = param("documentos_salida", ["GUIA", "FACTURA", "CERTIFICADO"]) or []
+    faltan = []
+    for st in route.stops:
+        o = st.order
+        if "GUIA" in req and not st.guia_numero:
+            faltan.append(f"OV {o.numero}: guía")
+        if "FACTURA" in req and not st.factura_numero:
+            faltan.append(f"OV {o.numero}: factura")
+        if "CERTIFICADO" in req:
+            certs = list(db().execute(select(Certificate).where(Certificate.order_id == o.id, Certificate.estado != "ANULADO")).scalars())
+            if not certs:
+                faltan.append(f"OV {o.numero}: certificado de calidad")
+            elif any(c.estado != "APROBADO" for c in certs):
+                faltan.append(f"OV {o.numero}: certificado sin aprobar por Calidad")
+    return faltan
+
+
+def authorize_exit(route, user, impresos=False):
+    """Seguridad: revisa en el sistema que todos los documentos estén cargados e impresos y autoriza la salida."""
+    if not has_perm(user, "distribucion.autorizar_salida"):
+        raise BusinessError("La salida del camión la autoriza Seguridad (TO-BE).")
+    _route_ready(route)
+    if not route.carga_validada:
+        raise BusinessError("La carga no está validada por el auxiliar.")
+    faltan = missing_documents(route)
+    if not impresos:
+        faltan.append("Folio de documentos impreso (confirmar)")
+    if faltan:
+        alerts.emit("DOCUMENTOS_FALTANTES", f"Ruta #{route.id}: documentos faltantes para la salida", "; ".join(faltan),
+                    "Route", route.id, dedup_key=f"DOCS:{route.id}", creado_por=user)
+        audit(user, "DOCUMENTOS_FALTANTES", "Route", route.id, {"faltan": faltan})
+        return faltan
+    alerts.close_by_system(f"DOCS:{route.id}", "Documentos completos")
+    route.autorizacion_seguridad = {"user": user.nombre, "ts": now().isoformat()}
+    audit(user, "SALIDA_AUTORIZADA_SEGURIDAD", "Route", route.id)
+    return []
+
+
+def register_return(route, user):
+    if not (has_perm(user, "distribucion.entrega") or has_perm(user, "distribucion.carga")):
+        raise BusinessError("Sin permiso.")
+    if route.estado not in ("EN_RUTA", "CERRADA"):
+        raise BusinessError("La ruta no está en curso.")
+    route.retorno_ts = now()
+    audit(user, "RETORNO_BASE", "Route", route.id)

@@ -1,7 +1,7 @@
 # Resultados de las pruebas
 
-Fecha de ejecución: 10-oct-2026 · Python 3.13 · SQLite · datos **ficticios** (`app/demo_data.py`).
-Comando: `python -m pytest tests -v` → **55 pruebas, 55 aprobadas, 0 fallidas** (≈30 s).
+Fecha de ejecución: 11-oct-2026 (tras incorporar el TO-BE y las decisiones Q3/Q4) · Python 3.13 · SQLite · datos **ficticios** (`app/demo_data.py`).
+Comando: `python -m pytest tests -v` → **63 pruebas, 63 aprobadas, 0 fallidas** (≈38 s).
 
 ## 1. Pruebas automatizadas
 
@@ -13,7 +13,7 @@ con validación** que usará la organización, y ejecuta la lógica real (no hay
 | Caso IF §21 | Prueba | Qué verifica |
 |---|---|---|
 | Pedido completo | `test_pedido_completo_flujo_hasta_entrega` | Reserva 100 %, picking por lote, certificado autogenerado, ruta, Seguridad, salida con descarga de stock, entrega con foto + guía, OTIF |
-| Faltante | `test_faltante_cobertura_alertas_y_alternativas`, `test_despacho_parcial_requiere_rol_y_genera_ruta` | FEFO, cobertura unidades/líneas, alertas y destinatarios, alternativas sin ejecución automática, decisión de parcial con rol y propuesta de ruta |
+| Faltante | `test_faltante_cobertura_alertas_y_alternativas`, `test_despacho_parcial_aprobacion_conjunta_y_saldo` | FEFO, cobertura unidades/líneas, alertas y destinatarios, alternativas sin ejecución automática; parcial aprobado por GO **y** Jefatura de Logística (Q3), Comercial/Sistemas no aprueban, ruta y OV de saldo reprogramada al salir |
 | Cambio de OV | `test_cambio_ov_conserva_reservas_y_alerta`, `test_asistente_modifica_solo_con_autorizacion`, `test_cancelacion_libera_reserva_y_ruta` | Reservas válidas conservadas, recálculo, alerta OV_CAMBIO; autorización del Asistente; cancelación libera reserva y ruta |
 | Almacén alternativo | `test_almacen_alternativo_traslado_autorizado`, `test_traslado_con_diferencia` | Solo Jefatura de Logística autoriza; recepción en destino; reevaluación de la OV; diferencias alertadas |
 | Vencimiento | `test_vencimiento_y_vida_util_cliente` | No reserva vencidos; respeta vida útil mínima del cliente; propone actualización de fecha |
@@ -22,6 +22,7 @@ con validación** que usará la organización, y ejecuta la lógica real (no hay
 | Compra | `test_compra_nacional_flujo` | Origen en Almacén, muestra a Calidad, aprobación GO por mayor volumen, OC, cambio de fecha, recepción con diferencias, autorización bajo observación solo por GO |
 | Rechazo | `test_rechazo_por_calidad_alerta_gerencia_general` | Destinatarios definidos (incluye GG), estado de OV, reingreso como pendiente de revisión, correo directo a GG según preferencia |
 | Devolución | `test_devolucion_y_entrega_parcial` | INC_GENERAL sin GG; entrega parcial con incidencia automática |
+| TO-BE / Q4 (nuevo) | `test_tobe.py` (6 pruebas) | OV completa → aviso, certificado previo y ruta automática; cambio de lote en el plan de picking; fotos por etapa, incidencia de carga, carga incongruente, guía, factura, documentos faltantes, autorización de Seguridad, llegada y rechazo por cita; factura con modificaciones; Sistemas no aprueba y GG sí; carga del consolidado por el Asistente con cambios sujetos a autorización |
 | Cambio de fecha | `test_importacion_fases_y_cambio_fecha`, `test_renegociar_fecha_ov`, (compra) | Fases, recordatorios, fase vencida sin duplicar alertas, alerta a GO, recepción con diferencias; renegociación de fecha |
 
 ### 1.2 Detalle de ejecución
@@ -31,7 +32,7 @@ test_config.py::test_parametros_versionados_y_auditados ✔
 test_config.py::test_merma_fuera_de_parametro ✔
 test_config.py::test_gg_preferencias_por_web ✔
 test_config.py::test_exportaciones ✔
-test_config.py::test_propuesta_rutas_capacidad_y_externo ✔
+test_config.py::test_ruta_automatica_capacidad_y_externo ✔
 test_config.py::test_cita_no_confirmada_advierte ✔
 test_config.py::test_salida_exige_pedidos_preparados ✔
 test_controles.py::test_carga_stock_con_errores_se_corrige_antes_de_autorizar ✔
@@ -53,7 +54,8 @@ test_controles.py::test_salidas_no_descarta_lineas_legitimas_y_evita_recarga ✔
 test_controles.py::test_fechas_de_carga ✔
 test_flujos.py::test_pedido_completo_flujo_hasta_entrega ✔
 test_flujos.py::test_faltante_cobertura_alertas_y_alternativas ✔
-test_flujos.py::test_despacho_parcial_requiere_rol_y_genera_ruta ✔
+test_flujos.py::test_despacho_parcial_aprobacion_conjunta_y_saldo ✔
+test_flujos.py::test_gerencia_general_aprueba_en_nombre_y_rechazo ✔
 test_flujos.py::test_vencimiento_y_vida_util_cliente ✔
 test_flujos.py::test_cambio_ov_conserva_reservas_y_alerta ✔
 test_flujos.py::test_asistente_modifica_solo_con_autorizacion ✔
@@ -68,6 +70,12 @@ test_flujos.py::test_rechazo_por_calidad_alerta_gerencia_general ✔
 test_flujos.py::test_devolucion_y_entrega_parcial ✔
 test_flujos.py::test_importacion_fases_y_cambio_fecha ✔
 test_flujos.py::test_renegociar_fecha_ov ✔
+test_tobe.py::test_ov_completa_avisa_certifica_y_programa_ruta ✔
+test_tobe.py::test_modificar_plan_de_picking_cambia_lote ✔
+test_tobe.py::test_carga_incongruente_y_documentos_faltantes ✔
+test_tobe.py::test_factura_con_modificaciones_si_incompleto ✔
+test_tobe.py::test_sistemas_no_aprueba_gerencia_general_si ✔
+test_tobe.py::test_asistente_carga_consolidado_cambios_requieren_autorizacion ✔
 test_web.py::test_login_y_bloqueo ✔
 test_web.py::test_csrf_obligatorio ✔
 test_web.py::test_permiso_por_pantalla ✔
@@ -82,7 +90,8 @@ test_web.py::test_recorrido_pantallas_sin_errores[seguridad] ✔
 test_web.py::test_recorrido_pantallas_sin_errores[vendedor1] ✔
 test_web.py::test_flujo_web_ov_y_detalles ✔
 test_web.py::test_carga_por_web_y_entrega_con_evidencia ✔
-============================= 55 passed in 29.99s ==============================
+test_web.py::test_pantallas_ruta_y_folio_en_cada_etapa ✔
+============================= 63 passed in 37.87s ==============================
 ```
 
 ## 2. Recorrido de la aplicación en ejecución (navegador)
@@ -104,6 +113,20 @@ guía → `coord.distribucion` confirma la salida con los 5 controles → `aux.d
 firmada → la ruta queda CERRADA y la OV en ENTREGA PARCIAL; el tablero de Gerencia General muestra OTIF 0 % (entrega
 incompleta, correcto). **0 respuestas 500 en el registro del servidor.**
 Hallazgo corregido: en preparación, el formulario de una línea ya completa seguía visible; ahora se oculta.
+
+### 2.2 Recorrido TO-BE con las decisiones Q3/Q4 (11-oct-2026)
+
+Con 13 usuarios en Chromium: `coord.ventas` registra DEMO-001 (no ve el botón de aprobar parcial) → `coord.logistica`
+solicita traslado → `sistemas` **no** ve "Autorizar" → `jefe.logistica` autoriza, `coord.almacen` recibe →
+`jefe.logistica` aprueba el parcial con fecha de saldo (queda pendiente GO) → `gerente.operaciones` aprueba (parcial
+aprobado) → `lider.almacen` valida el plan y registra el picking → `coord.distribucion` confirma la ruta →
+`aux.despacho` foto del vehículo → `seguridad` foto de inicio de carga y validación vs guía → `aux.despacho` foto de
+mercadería y valida la carga (aviso a Facturación) → `coord.distribucion` registra la guía → `facturacion` carga la
+factura (marcada "con modificaciones" por ir incompleta) → `seguridad` revisa documentos: faltan certificados (aviso a
+las áreas) → `superv.calidad` aprueba los certificados → `seguridad` autoriza la salida → `coord.distribucion` confirma
+la salida → `aux.despacho` llegada, entrega con evidencia y retorno a base → la OV muestra el saldo **DEMO-001-S1**
+reprogramado. **0 respuestas 500.** Hallazgo corregido: el formulario de Seguridad quedaba bloqueado por el número de
+guía vacío; ahora se precarga la pre-guía `PRE-GUIA-<ruta>`.
 
 ## 3. Compatibilidad con los archivos reales (solo lectura, base temporal descartada)
 
@@ -137,6 +160,10 @@ Hallazgo corregido durante esta prueba: la primera versión de la deduplicación
 | Deduplicación de salidas descartaba líneas legítimas | Deduplicación solo contra cargas anteriores |
 | Se podía confirmar la salida de una ruta con pedidos aún no preparados | Validación agregada (prueba `test_salida_exige_pedidos_preparados`) |
 | Formulario de picking visible en líneas ya completas | Se oculta y se marca "completa" |
+| (TO-BE) Una parada nueva en una ruta existente se creaba sin la OV asociada | Se crea con la OV |
+| (Q3) El saldo no se generaba al salir la ruta | `confirm_departure` crea la OV de saldo |
+| (TO-BE) Reservas nuevas sin estado antes de guardarse no se contaban | Estado ACTIVA explícito |
+| (TO-BE) Validación de Seguridad bloqueada por guía vacía | Pre-guía precargada |
 
 ## 5. Limitaciones de las pruebas
 
@@ -157,3 +184,6 @@ Hallazgo corregido durante esta prueba: la primera versión de la deduplicación
 | [07](capturas/07_bom_calculo.png) | Calculadora de materiales con merma |
 | [08](capturas/08_matriz_permisos.png) | Matriz de permisos D/P |
 | [11](capturas/11_ruta_entregada.png) | Ruta cerrada con evidencia de entrega |
+| [13](capturas/13_ruta_tobe.png) | Ruta con las etapas TO-BE: fotos, validación de carga, documentos, autorización de Seguridad, retorno |
+| [14](capturas/14_ov_con_saldo.png) | OV con aprobación conjunta del parcial y saldo reprogramado |
+| [15](capturas/15_alertas_tobe.png) | Alertas TO-BE vistas por Gerencia General |
