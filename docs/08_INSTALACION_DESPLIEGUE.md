@@ -153,3 +153,21 @@ scripts/gen_docs.py  regenera docs/06 y docs/07 desde el código
 - Ambos scripts se probaron en esta entrega con PostgreSQL 16 y GPG: respaldo cifrado, verificación y restauración correctas.
 - Depuración de datos personales: `python -m app.cli depurar` lista las fotos de entrega más antiguas que el plazo
   `retencion_datos_personales_dias` (vacío = no depura); con `--aplicar` las elimina y lo registra en la auditoría.
+
+## 11. Actualización a v0.6 (migraciones 0002 y 0003)
+
+En una instalación existente con PostgreSQL: respaldo (§10) y luego `alembic upgrade head`. Se agregan costos, precios
+de mercado, fichas y lugares de entrega de clientes, plan de producción, costos de importación y campos nuevos de OV,
+traslados, rutas e incidencias. En la demostración local con SQLite basta recrear la base: borrar
+`instance\operaciones.db` y ejecutar `python -m app.cli demo`.
+
+## 12. Servicio de mapas (opcional) y firma del certificado
+
+- **Mapa embebido, tiempo con tráfico y alertas de tráfico:** Sistemas crea una clave de Google Maps Platform (APIs
+  *Distance Matrix* y *Maps Embed*), la restringe por IP del servidor y la define como variable de entorno
+  `GOOGLE_MAPS_API_KEY`. Sin la clave, la ruta muestra el enlace «Abrir la ruta en Google Maps» y un tiempo
+  estimado aproximado sin tráfico. El servicio tiene costo por consulta según el plan de Google.
+- **Firma del certificado de calidad:** Sistemas la carga en *Calidad → Certificados* (PNG). Se guarda en
+  `instance/firmas/` (fuera del repositorio) y solo se imprime en certificados aprobados.
+- **Logos:** `app/static/img/` (recortados del certificado CA0764). Si se dispone de los archivos originales en alta
+  resolución, reemplazarlos con el mismo nombre.

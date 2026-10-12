@@ -1,0 +1,11 @@
+{% extends "base.html" %}{% from "_informe.html" import cabecera %}
+{% block content %}{{ cabecera('de distribución', d, items, actual) }}
+<div class="kpis"><div class="kpi"><b>{{ d.rutas }}</b><span>Rutas</span></div>
+<div class="kpi"><b>{{ d.tot.PROPIO.rutas }}</b><span>Transporte propio</span><small>{{ d.tot.PROPIO.pedidos }} pedidos · {{ d.tot.PROPIO.kg|n }} kg</small></div>
+<div class="kpi"><b>{{ d.tot.EXTERNO.rutas }}</b><span>Transporte externo</span><small>{{ d.pct_externo or 0 }} % · {{ d.tot.EXTERNO.pedidos }} pedidos · {{ d.tot.EXTERNO.kg|n }} kg</small></div>
+<div class="kpi"><b>{{ d.sin_validar|length }}</b><span>Externos sin validar</span><small>{{ d.externo_no_validado }} no validados</small></div>
+<div class="kpi"><b>{{ d.incidencias }}</b><span>Incidencias</span></div></div>
+<div class="grid g2"><div class="card"><h3>Rutas por semana: propio vs externo</h3>{{ charts.line([('Propio', d.serie_propio), ('Externo', d.serie_externo)], 'rutas') }}</div>
+<div class="card"><h3>Incidencias por tipo</h3>{{ charts.bars(d.por_tipo, '', color=1) }}<h4>Por subtipo</h4>{{ charts.bars(d.por_subtipo, '', color=7) }}</div></div>
+{% if d.sin_validar %}<div class="card"><h3>Rutas con transporte externo por validar</h3><ul>{% for r in d.sin_validar %}<li><a href="{{ url_for('dist.route_detail', rid=r.id) }}">Ruta #{{ r.id }}</a> · {{ r.fecha|d }} · {{ r.zona }} · {{ r.peso_total|n }} kg</li>{% endfor %}</ul></div>{% endif %}
+{% endblock %}

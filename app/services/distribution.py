@@ -207,6 +207,11 @@ def propose_routes(fecha, user, orders=None, require_prepared=True, automatico=F
     for r in rutas:
         audit(user, "RUTA_PROPUESTA_AUTOMATICA" if automatico else "RUTA_PROPUESTA", "Route", r.id,
               {"zona": r.zona, "peso": r.peso_total, "paradas": len(r.stops)})
+        if r.requiere_externo:
+            alerts.emit("RUTA_EXTERNO_VALIDAR", f"Ruta #{r.id}: validar transporte externo",
+                        f"{r.zona} · {r.peso_total:,.0f} kg · {len(r.stops)} parada(s)"
+                        + (f" · unidad {r.vehicle.placa}" if r.vehicle else " · sin unidad propia con capacidad"),
+                        "Route", r.id, dedup_key=f"EXTERNO:{r.id}", creado_por=user)
     if automatico:
         return rutas
     alerts.emit("DIST_PROGRAMACION", f"Programación de distribución {fecha:%d/%m/%Y}: {len(rutas)} ruta(s) propuesta(s)",
@@ -234,6 +239,8 @@ def update_route(route, user, vehicle_id=None, driver_id=None):
         busy_v, _ = _busy(route.fecha)
         if v.id in busy_v and v.id != route.vehicle_id:
             raise BusinessError("La unidad ya está asignada a otra ruta ese día.")
+        if route.vehicle_id != v.id:
+            route.externo_validacion = {}
         route.vehicle_id = v.id
         route.requiere_externo = not v.propio
     if driver_id:
@@ -245,6 +252,24 @@ def update_route(route, user, vehicle_id=None, driver_id=None):
             raise BusinessError("El conductor ya está asignado a otra ruta ese día.")
         route.driver_id = d.id
     audit(user, "RUTA_AJUSTADA", "Route", route.id, {"vehicle": vehicle_id, "driver": driver_id})
+
+
+def validate_external(route, user, aprobar, comentario=""):
+    """El sistema puede asignar transporte externo, pero lo valida el Coordinador de Distribución (13-oct)."""
+    if not has_perm(user, "distribucion.validar_externo"):
+        raise BusinessError("El transporte externo lo valida el Coordinador de Distribución.")
+    if not route.requiere_externo:
+        raise BusinessError("La ruta no usa transporte externo.")
+    if route.estado not in ("PROPUESTA", "CONFIRMADA"):
+        raise BusinessError("La ruta ya salió.")
+    if not aprobar and not (comentario or "").strip():
+        raise BusinessError("Indique por qué no se valida el transporte externo.")
+    route.externo_validacion = {"validado": bool(aprobar), "user": user.nombre, "ts": now().isoformat(timespec="minutes"),
+                                "comentario": (comentario or "").strip(),
+                                "vehiculo": route.vehicle.placa if route.vehicle else None}
+    if aprobar:
+        alerts.close_by_system(f"EXTERNO:{route.id}", f"Validado por {user.nombre}")
+    audit(user, "RUTA_EXTERNO_VALIDACION", "Route", route.id, route.externo_validacion)
 
 
 def move_stop(stop, user, target_route):
@@ -272,6 +297,8 @@ def confirm_route(route, user):
         raise BusinessError("Asigne una unidad (propia o tercera registrada) antes de confirmar.")
     if route.driver_id is None:
         raise BusinessError("Asigne un conductor antes de confirmar.")
+    if route.requiere_externo and not (route.externo_validacion or {}).get("validado"):
+        raise BusinessError("La ruta usa transporte externo: debe validarlo el Coordinador de Distribución antes de confirmar.")
     route.estado = "CONFIRMADA"
     for st in route.stops:
         if st.order.estado == "PREPARADA":
@@ -450,12 +477,13 @@ def _maybe_close_route(route):
 def _incident(user, tipo, stop=None, descripcion="", order=None, route=None, cantidad=None):
     order = order or (stop.order if stop else None)
     route = route or (stop.route if stop else None)
-    inc = Incident(tipo=tipo, route_id=route.id if route else None, stop_id=stop.id if stop else None,
+    from .catalogs_helpers import incident_group
+    inc = Incident(tipo=tipo, grupo=incident_group(tipo), route_id=route.id if route else None, stop_id=stop.id if stop else None,
                    order_id=order.id if order else None, descripcion=descripcion, cantidad_afectada=cantidad,
                    user_id=user.id if user else None)
     db().add(inc)
     db().flush()
-    code = "INC_RECHAZO_CALIDAD" if tipo == "RECHAZO_CALIDAD" else "INC_GENERAL"
+    code = "INC_RECHAZO_CALIDAD" if inc.grupo == "CALIDAD" else "INC_GENERAL"
     a = alerts.emit(code, f"{incident_type_name(tipo)}: {('OV ' + order.numero) if order else ('Ruta #' + str(route.id) if route else '')}",
                     descripcion, "Incident", inc.id, extra_users=[order.vendedor_id] if order and order.vendedor_id else None,
                     creado_por=user)
@@ -466,9 +494,10 @@ def _incident(user, tipo, stop=None, descripcion="", order=None, route=None, can
 def register_incident(user, tipo, descripcion, stop=None, order=None, route=None, cantidad=None):
     """Registro de incidencias por el Auxiliar de Despacho (IF §12.3) y su efecto operativo."""
     _req(user, "distribucion.incidencia")
-    from ..catalogs import INCIDENT_TYPES
+    from ..catalogs import INCIDENT_ALIASES, INCIDENT_TYPES
+    tipo = INCIDENT_ALIASES.get(tipo, tipo)
     if tipo not in dict(INCIDENT_TYPES):
-        raise BusinessError("Tipo de incidencia no válido.")
+        raise BusinessError("Subtipo de incidencia no válido.")
     if not descripcion.strip():
         raise BusinessError("Describa la incidencia.")
     inc = _incident(user, tipo, stop, descripcion, order, route, cantidad)
@@ -482,9 +511,11 @@ def register_incident(user, tipo, descripcion, stop=None, order=None, route=None
             stop.estado = "DEVUELTO"
             o.estado = "DEVUELTA"
             _return_goods(o, user, "Devolución")
-        elif tipo == "PARTICULARIDAD_DESCARGA":
-            pass  # se registra sobre la entrega ya realizada (TO-BE: detección en la misma descarga)
-        elif tipo in ("CLIENTE_AUSENTE", "CLIENTE_NO_RETIRA", "RECHAZO_CITA"):
+        elif tipo in ("PARTICULARIDAD_DESCARGA", "INFESTACION_INTERNA", "INFESTACION_EXTERNA", "FUERA_CARACTERISTICAS",
+                      "PRODUCTO_ROTO"):
+            pass  # se registra sobre la entrega; Calidad evalúa (alerta de incidencia de calidad)
+        elif tipo in ("CLIENTE_AUSENTE", "CLIENTE_NO_RETIRA") or (tipo == "LLEGADA_TARDE" and stop.estado != "ENTREGADO"):
+            # llegada tarde = rechazo por cita fuera de hora: si no se recibió, el pedido vuelve
             stop.estado = "NO_ENTREGADO"
             o.estado = "DEVUELTA"
             _return_goods(o, user, incident_type_name(tipo))

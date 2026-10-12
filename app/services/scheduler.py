@@ -58,6 +58,8 @@ def run_checks(user=None, today=None):
     from .prices import check_validity
     out["listas_precio_por_vencer"] = check_validity(today)
     out["cargas_desactualizadas"] = check_upload_freshness()
+    from .maps import check_active_routes
+    out["rutas_trafico"] = check_active_routes(today)
     from .quality import fumigation_alerts
     out["avisos_fumigacion"] = fumigation_alerts(today)
     from .transfers import remind_arrivals

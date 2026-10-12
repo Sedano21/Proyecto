@@ -591,5 +591,6 @@ def complete_report(r, user, **valores):
                             valores.get("operarios"), datos["cliente"], datos["mp_codigo"], datos["lote"], estado,
                             datos["observacion"])
     db().delete(r)
+    db().flush()
     audit(user, "PARTE_PROGRAMADO_COMPLETADO", "ProductionReport", nuevo.id, {"programado": r.id})
     return nuevo

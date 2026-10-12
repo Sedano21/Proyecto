@@ -1,0 +1,24 @@
+{% extends "base.html" %}{% from "_m.html" import csrf %}
+{% block content %}<h1>Permisos por rol</h1>
+<p class="small muted">Active o desactive cada permiso con el interruptor (queda auditado). <span class="b ok">D</span> definido en la documentación · <span class="b warn">P</span> propuesto (validar). Los permisos <b>exclusivos</b> no se heredan a Gerencia General ni a Sistemas.</p>
+<p class="tabs"><a class="btn {{ '' if vista == 'rol' else 'sec' }}" href="{{ url_for('main.permissions', rol=rol) }}">Por rol</a> <a class="btn {{ '' if vista == 'matriz' else 'sec' }}" href="{{ url_for('main.permissions', vista='matriz') }}">Matriz compacta</a> <a class="btn sec" href="{{ url_for('main.users') }}">Usuarios</a></p>
+{% set tipos = {'consulta': '👁 consulta', 'edicion': '✎ edición', 'aprobacion': '✔ aprobación', 'administracion': '⚙ administración', 'exclusivo': '★ exclusivo'} %}
+{% if vista == 'rol' %}
+<div class="perm-layout"><div class="card perm-roles"><input type="search" placeholder="Buscar rol…" oninput="var q=this.value.toLowerCase();document.querySelectorAll('.perm-roles a').forEach(function(a){a.style.display=a.textContent.toLowerCase().indexOf(q)<0?'none':'';})">
+{% for a in areas %}<h4>{{ a }}</h4>{% for r in roles if r.area == a %}<a href="{{ url_for('main.permissions', rol=r.code) }}" class="{{ 'on' if r.code == rol }}">{{ r.nombre }} <span class="muted small">({{ conteo[r.code] }})</span></a>{% endfor %}{% endfor %}</div>
+<div>{% set rr = roles|selectattr('code', 'equalto', rol)|first %}{% if rr %}<div class="card"><h2 style="margin-top:0">{{ rr.nombre }}</h2><p class="small muted">Área {{ rr.area }} · {{ conteo[rol] }} permisos de {{ perms|length }}</p>
+<input type="search" id="pq" placeholder="Buscar permiso…" oninput="var q=this.value.toLowerCase();document.querySelectorAll('.perm-item').forEach(function(x){x.style.display=x.textContent.toLowerCase().indexOf(q)<0?'none':'';})"></div>
+<div class="grid g2">{% for m, ps in modulos.items() %}<div class="card">{% set ns = namespace(n=0) %}{% for p in ps %}{% if matrix.get((rol, p.code)) %}{% set ns.n = ns.n + 1 %}{% endif %}{% endfor %}<h3>{{ m }} <span class="muted small">{{ ns.n }}/{{ ps|length }}</span></h3>
+{% for p in ps %}{% set rp = matrix.get((rol, p.code)) %}<form method="post" action="{{ url_for('main.perm_toggle') }}" class="perm-item">{{ csrf() }}<input type="hidden" name="role_code" value="{{ rol }}"><input type="hidden" name="perm_code" value="{{ p.code }}"><input type="hidden" name="volver" value="{{ url_for('main.permissions', rol=rol) }}">
+<label class="switch"><input type="checkbox" {{ 'checked' if rp }} onchange="this.form.submit()"><span></span></label>
+<div><b>{{ p.nombre }}</b>{% if rp %} <span class="b {{ 'ok' if rp.origen == 'DEFINIDO' else 'warn' }}" title="{{ rp.fuente }}">{{ 'D' if rp.origen == 'DEFINIDO' else 'P' }}</span>{% endif %}<br><span class="small muted">{{ tipos.get(p.tipo, p.tipo) }} · {{ p.code }}</span>{% if rp and rp.fuente %}<br><span class="small muted">{{ rp.fuente[:140] }}</span>{% endif %}</div></form>{% endfor %}</div>{% endfor %}</div>{% endif %}</div></div>
+{% else %}
+<form class="row card" method="get"><input type="hidden" name="vista" value="matriz"><div><label>Área de los roles</label><select name="area" onchange="this.form.submit()"><option value="">(todas)</option>{% for a in areas %}<option {{ 'selected' if a == area }}>{{ a }}</option>{% endfor %}</select></div>
+<div class="grow"><label>Buscar permiso</label><input type="search" oninput="var q=this.value.toLowerCase();document.querySelectorAll('tr.pr').forEach(function(x){x.style.display=x.textContent.toLowerCase().indexOf(q)<0?'none':'';})"></div></form>
+{% set rs = roles|selectattr('area', 'equalto', area)|list if area else roles %}
+<div class="tbl" style="max-height:78vh"><table class="small matriz"><tr><th class="stick">Permiso</th>{% for r in rs %}<th title="{{ r.nombre }} ({{ r.area }})" class="vert">{{ r.nombre }}</th>{% endfor %}</tr>
+{% for m, ps in modulos.items() %}<tr><td class="stick mod" colspan="{{ rs|length + 1 }}"><b>{{ m }}</b></td></tr>
+{% for p in ps %}<tr class="pr"><td class="stick" title="{{ p.code }}">{{ p.nombre }} <span class="muted">· {{ tipos.get(p.tipo, p.tipo) }}</span></td>
+{% for r in rs %}{% set rp = matrix.get((r.code, p.code)) %}<td style="text-align:center"><form method="post" action="{{ url_for('main.perm_toggle') }}" class="inline">{{ csrf() }}<input type="hidden" name="role_code" value="{{ r.code }}"><input type="hidden" name="perm_code" value="{{ p.code }}"><input type="hidden" name="volver" value="{{ url_for('main.permissions', vista='matriz', area=area) }}">
+<button class="cell {{ ('d' if rp.origen == 'DEFINIDO' else 'p') if rp else '' }}" title="{{ r.nombre }} · {{ p.nombre }}{{ ' · ' ~ rp.fuente if rp }}">{{ '✔' if rp else '' }}</button></form></td>{% endfor %}</tr>{% endfor %}{% endfor %}</table></div>
+{% endif %}{% endblock %}

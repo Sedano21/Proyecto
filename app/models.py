@@ -854,8 +854,8 @@ class Incident(Base):
     """Incidencias de distribución (IF §12.3), clasificadas por tipo y subtipo (observaciones al demo v0.5)."""
     __tablename__ = "incidents"
     id: Mapped[int] = mapped_column(primary_key=True)
-    tipo: Mapped[str] = mapped_column(String(30))
-    subtipo: Mapped[str] = mapped_column(String(40), default="")
+    tipo: Mapped[str] = mapped_column(String(30))  # subtipo (código detallado, p. ej. INFESTACION_INTERNA)
+    grupo: Mapped[str] = mapped_column(String(20), default="")  # tipo: CALIDAD / LOGISTICA / CLIENTE
     route_id: Mapped[int | None] = mapped_column(ForeignKey("routes.id"), nullable=True)
     stop_id: Mapped[int | None] = mapped_column(ForeignKey("route_stops.id"), nullable=True)
     order_id: Mapped[int | None] = mapped_column(ForeignKey("sales_orders.id"), nullable=True)

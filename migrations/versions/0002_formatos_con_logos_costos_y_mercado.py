@@ -49,15 +49,15 @@ def upgrade():
     )
     op.create_index(op.f('ix_product_costs_product_code'), 'product_costs', ['product_code'], unique=False)
     op.create_index(op.f('ix_product_costs_vigente'), 'product_costs', ['vigente'], unique=False)
-    op.add_column('customer_conditions', sa.Column('ruc', sa.String(length=20), nullable=False))
+    op.add_column('customer_conditions', sa.Column('ruc', sa.String(length=20), nullable=False, server_default=''))
     op.create_index(op.f('ix_customer_conditions_ruc'), 'customer_conditions', ['ruc'], unique=False)
-    op.add_column('sales_order_lines', sa.Column('descuento', sa.Float(), nullable=False))
-    op.add_column('sales_order_lines', sa.Column('tax_code', sa.String(length=10), nullable=False))
-    op.add_column('sales_order_lines', sa.Column('um_venta', sa.String(length=10), nullable=False))
-    op.add_column('sales_orders', sa.Column('provincia', sa.String(length=80), nullable=False))
-    op.add_column('sales_orders', sa.Column('lugar_entrega', sa.String(length=120), nullable=False))
-    op.add_column('sales_orders', sa.Column('forma_pago', sa.String(length=60), nullable=False))
-    op.add_column('sales_orders', sa.Column('moneda', sa.String(length=10), nullable=False))
+    op.add_column('sales_order_lines', sa.Column('descuento', sa.Float(), nullable=False, server_default='0'))
+    op.add_column('sales_order_lines', sa.Column('tax_code', sa.String(length=10), nullable=False, server_default=''))
+    op.add_column('sales_order_lines', sa.Column('um_venta', sa.String(length=10), nullable=False, server_default=''))
+    op.add_column('sales_orders', sa.Column('provincia', sa.String(length=80), nullable=False, server_default=''))
+    op.add_column('sales_orders', sa.Column('lugar_entrega', sa.String(length=120), nullable=False, server_default=''))
+    op.add_column('sales_orders', sa.Column('forma_pago', sa.String(length=60), nullable=False, server_default=''))
+    op.add_column('sales_orders', sa.Column('moneda', sa.String(length=10), nullable=False, server_default='SOLES'))
     # ### end Alembic commands ###
 
 

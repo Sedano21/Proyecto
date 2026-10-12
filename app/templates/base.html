@@ -9,7 +9,7 @@
 {% if user %}
 <div class="layout">
   <nav class="side">
-    <div class="brand">Módulo de Operaciones<small>Corporación Productiva · prototipo v0.5</small></div>
+    <div class="brand">Módulo de Operaciones<small>Corporación Productiva · prototipo v0.6</small></div>
     <a href="{{ url_for('main.dashboard') }}">Inicio / Tablero</a>
     <a href="{{ url_for('rep.home') }}">Informes</a>
     <a href="{{ url_for('main.alerts') }}">Alertas{% if alertas_abiertas %}<span class="badge-al">{{ alertas_abiertas }}</span>{% endif %}</a>
@@ -54,7 +54,8 @@
     {% if can('config.ver') or can('auditoria.ver') %}<h4>Administración</h4>
       {% if can('config.ver') %}<a href="{{ url_for('main.config') }}">Configuración</a>{% endif %}
       {% if can('config.editar') %}<a href="{{ url_for('alm.uploads', area='Configuración') }}">Cargas de configuración</a>{% endif %}
-      {% if can('usuarios.administrar') %}<a href="{{ url_for('main.users') }}">Usuarios y permisos</a>{% endif %}
+      {% if can('usuarios.administrar') %}<a href="{{ url_for('main.users') }}">Usuarios</a>
+      <a href="{{ url_for('main.permissions') }}">Permisos por rol</a>{% endif %}
       {% if can('alertas.configurar') %}<a href="{{ url_for('main.alert_config') }}">Configurar alertas</a>
       <a href="{{ url_for('main.outbox') }}">Bandeja de correo</a>{% endif %}
       {% if can('auditoria.ver') %}<a href="{{ url_for('main.audit') }}">Auditoría</a>{% endif %}
@@ -63,6 +64,7 @@
   </nav>
   <div class="main">
     <div class="top">
+      <button type="button" class="menu-btn noprint" aria-label="Menú" onclick="document.body.classList.toggle('menu-open')">☰</button>
       <div class="stockinfo">{% if stock_info %}Stock: última carga SAP <b>{{ stock_info.ts|d }}</b> ({{ stock_info.archivo }}, por {{ stock_info.usuario }}). <b>No es tiempo real.</b>{% else %}Stock: <b>sin carga SAP registrada</b>.{% endif %}</div>
       <div class="who">{{ user.nombre }} · <b>{{ user.role.nombre }}</b> · <a href="{{ url_for('main.logout') }}">Salir</a></div>
     </div>
@@ -76,5 +78,16 @@
 {% else %}
 <div class="content">{% with msgs = get_flashed_messages(with_categories=true) %}{% for c, m in msgs %}<div class="flash {{ c }}">{{ m }}</div>{% endfor %}{% endwith %}{% block public %}{% endblock %}</div>
 {% endif %}
+<script>
+(function(){
+  // menú: marca la opción actual y cierra el panel lateral al tocar fuera (celular / tablet)
+  var p = location.pathname + location.search;
+  var best = null;
+  document.querySelectorAll('.side a').forEach(function(a){ var h = a.getAttribute('href') || '';
+    if (h === p || (h.indexOf('?') < 0 && h !== '/' && location.pathname.indexOf(h) === 0)) { if (!best || h.length > best.getAttribute('href').length) best = a; } });
+  if (best) best.classList.add('on');
+  document.addEventListener('click', function(e){ if (document.body.classList.contains('menu-open') && !e.target.closest('.side') && !e.target.closest('.menu-btn')) document.body.classList.remove('menu-open'); });
+})();
+</script>
 </body>
 </html>

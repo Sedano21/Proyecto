@@ -106,6 +106,7 @@ def quote(r, user, proveedor, cotizacion, precio=None, requiere_muestra=False):
     r.precio = precio
     r.requiere_muestra = bool(requiere_muestra)
     r.mayor_volumen = is_mayor_volumen(r.cantidad, r.product, precio)
+    check_max_cost(r, user)
     if requiere_muestra:
         r.estado = "MUESTRA_EN_CALIDAD"
         r.resultado_muestra = ""
@@ -115,6 +116,21 @@ def quote(r, user, proveedor, cotizacion, precio=None, requiere_muestra=False):
         r.estado = "EN_COTIZACION"
     audit(user, "COMPRA_COTIZADA", "PurchaseRequest", r.id, {"proveedor": proveedor, "precio": precio,
                                                              "requiere_muestra": requiere_muestra})
+
+
+def check_max_cost(r, user=None):
+    """Costo máximo de compra configurable por artículo (observaciones al demo v0.5): si la cotización lo supera se
+    alerta a Compras y Logística antes de generar la OC, para no comprar a pérdida."""
+    p = r.product
+    key = f"COMPRA_COSTO_MAX:{r.id}"
+    if p is not None and p.costo_max_compra and r.precio and r.precio > p.costo_max_compra + 1e-9:
+        alerts.emit("COMPRA_SOBRE_COSTO_MAXIMO", f"Compra #{r.id}: precio sobre el costo máximo ({r.product_code})",
+                    f"Cotización {r.precio:.4f} vs costo máximo {p.costo_max_compra:.4f} por {p.um.lower()}. Proveedor "
+                    f"{r.proveedor or '-'}. Revisar antes de generar la orden de compra.", "PurchaseRequest", r.id,
+                    dedup_key=key, creado_por=user)
+        return True
+    alerts.close_by_system(key, "Precio dentro del costo máximo")
+    return False
 
 
 def evaluate_sample(r, user, aprobar, observacion):

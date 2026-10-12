@@ -4,7 +4,7 @@ from datetime import date, timedelta
 from sqlalchemy import select
 
 from ..db import db
-from ..models import DateChange, ImportPhase, ImportPhaseTemplate, ImportShipment, Product
+from ..models import DateChange, ImportPhase, ImportPhaseTemplate, ImportShipment, Product, Warehouse
 from . import alerts
 from .core import BusinessError, audit, has_perm
 from .stock import add_or_increase_lot
@@ -15,14 +15,16 @@ def _req(user):
         raise BusinessError("Gestiona el área de Importaciones (IF §11).")
 
 
-def create_shipment(user, referencia, proveedor, product_code, cantidad, fecha_inicio, fecha_llegada=None, warehouse_code=None):
+def create_shipment(user, referencia, proveedor, product_code, cantidad, fecha_inicio, fecha_llegada=None, warehouse_code=None,
+                    contenedor="", tipo_contenedor=""):
     _req(user)
     if not referencia.strip() or db().get(Product, product_code) is None or not cantidad or cantidad <= 0:
         raise BusinessError("Referencia, producto y cantidad son obligatorios.")
     if db().execute(select(ImportShipment).where(ImportShipment.referencia == referencia.strip())).scalars().first():
         raise BusinessError("La referencia ya existe.")
     sh = ImportShipment(referencia=referencia.strip(), proveedor=proveedor, product_code=product_code, cantidad=cantidad,
-                        warehouse_code=warehouse_code, creado_por=user.id)
+                        warehouse_code=warehouse_code, contenedor=(contenedor or "").strip().upper(),
+                        tipo_contenedor=tipo_contenedor or "", creado_por=user.id)
     templates = list(db().execute(select(ImportPhaseTemplate).order_by(ImportPhaseTemplate.orden)).scalars())
     for t in templates:
         sh.phases.append(ImportPhase(orden=t.orden, nombre=t.nombre, fecha_prevista=fecha_inicio + timedelta(days=t.dias_desde_inicio),
@@ -34,6 +36,50 @@ def create_shipment(user, referencia, proveedor, product_code, cantidad, fecha_i
                 f"{product_code} × {cantidad:g} de {proveedor}.", "ImportShipment", sh.id, creado_por=user)
     audit(user, "IMPORTACION_CREADA", "ImportShipment", sh.id, {"referencia": referencia, "fases": len(sh.phases)})
     return sh
+
+
+def update_logistics(sh, user, contenedor, tipo_contenedor, warehouse_code):
+    """Contenedor y lugar donde se almacenará (observaciones al demo v0.5)."""
+    _req(user)
+    if warehouse_code and db().get(Warehouse, warehouse_code) is None:
+        raise BusinessError("Almacén no válido.")
+    antes = {"contenedor": sh.contenedor, "tipo": sh.tipo_contenedor, "almacen": sh.warehouse_code}
+    sh.contenedor = (contenedor or "").strip().upper()
+    sh.tipo_contenedor = tipo_contenedor or ""
+    sh.warehouse_code = warehouse_code or None
+    audit(user, "IMPORTACION_CONTENEDOR", "ImportShipment", sh.id, {"antes": antes, "despues": {
+        "contenedor": sh.contenedor, "tipo": sh.tipo_contenedor, "almacen": sh.warehouse_code}})
+
+
+def add_cost(sh, user, concepto, monto, moneda="USD", tipo_cambio=None, documento=""):
+    """Costos asociados a la importación; el costo total en soles y el costo por unidad recibida se calculan."""
+    from ..models import ImportCost
+    _req(user)
+    if not (concepto or "").strip():
+        raise BusinessError("Indique el concepto del costo.")
+    if monto is None or monto <= 0:
+        raise BusinessError("El monto debe ser mayor que cero.")
+    moneda = (moneda or "USD").upper()
+    if moneda not in ("USD", "PEN"):
+        raise BusinessError("Moneda: USD o PEN.")
+    if moneda == "USD" and not tipo_cambio:
+        raise BusinessError("Indique el tipo de cambio para convertir a soles.")
+    c = ImportCost(shipment_id=sh.id, concepto=concepto.strip(), monto=monto, moneda=moneda,
+                   tipo_cambio=tipo_cambio if moneda == "USD" else None, documento=documento or "", user_id=user.id)
+    db().add(c)
+    db().flush()
+    audit(user, "IMPORTACION_COSTO", "ImportShipment", sh.id, {"concepto": c.concepto, "monto": monto, "moneda": moneda})
+    return c
+
+
+def cost_summary(sh):
+    total = sum(c.monto * (c.tipo_cambio or 1) if c.moneda == "USD" else c.monto for c in sh.costs)
+    base = sh.cantidad_recibida or sh.cantidad
+    por_concepto = {}
+    for c in sh.costs:
+        por_concepto[c.concepto] = por_concepto.get(c.concepto, 0) + (c.monto * (c.tipo_cambio or 1) if c.moneda == "USD" else c.monto)
+    return {"total_pen": round(total, 2), "por_unidad": round(total / base, 4) if base else None, "por_concepto": por_concepto,
+            "base": base}
 
 
 def change_arrival(sh, user, nueva, motivo):

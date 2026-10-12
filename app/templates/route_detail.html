@@ -5,7 +5,17 @@
 {% if r.estado in ['PROPUESTA','CONFIRMADA'] and can('distribucion.programar') %}<form method="post" class="row">{{ csrf() }}<input type="hidden" name="accion" value="ajustar">
 <div><label>Unidad</label><select name="vehicle_id"><option value="">(sin cambio)</option>{% for v in vehicles %}<option value="{{ v.id }}">{{ v.placa }} · {{ v.capacidad_kg|n }} kg · {{ 'propia' if v.propio else 'tercero' }}</option>{% endfor %}</select></div>
 <div><label>Conductor</label><select name="driver_id"><option value="">(sin cambio)</option>{% for d in drivers %}<option value="{{ d.id }}">{{ d.nombre }}{{ ' (externo)' if d.externo }}</option>{% endfor %}</select></div><div><button class="sec">Ajustar</button></div></form>{% endif %}
+{% if r.requiere_externo %}{% set ev = r.externo_validacion or {} %}<div class="note small"><b>Transporte externo</b> asignado por el sistema: {% if ev.validado %}✔ validado por {{ ev.user }} ({{ ev.ts|replace('T',' ') }}){{ ': ' ~ ev.comentario if ev.comentario }}{% elif ev %}✖ no validado por {{ ev.user }}: {{ ev.comentario }}{% else %}pendiente de validación del Coordinador de Distribución.{% endif %}
+{% if can('distribucion.validar_externo') and r.estado in ['PROPUESTA','CONFIRMADA'] %}<form method="post" class="row">{{ csrf() }}<div class="grow"><input name="comentario" placeholder="comentario (obligatorio si no valida)"></div><div><button name="accion" value="externo_ok">Validar externo</button> <button class="sec" name="accion" value="externo_no">No validar</button></div></form>{% endif %}</div>{% endif %}
 {% if r.estado=='PROPUESTA' and can('distribucion.programar') %}<form method="post">{{ csrf() }}<button name="accion" value="confirmar">Confirmar programación</button></form>{% endif %}</div>
+<div class="card"><h3>Mapa y tiempo estimado</h3>
+<p>Clientes que transporta: {% for s in r.stops|sort(attribute='orden') %}<b>{{ s.orden }}.</b> {{ s.order.customer.nombre }} ({{ s.order.distrito }}{{ ', cita ' ~ s.order.hora_cita if s.order.hora_cita }}){{ ' · ' if not loop.last }}{% endfor %}</p>
+<p>Unidad <b>{{ r.vehicle.placa if r.vehicle else '—' }}</b> · Chofer <b>{{ r.driver.nombre if r.driver else '—' }}</b>{% if r.driver %} · licencia {{ r.driver.licencia }}{% endif %}</p>
+{% if embed %}<iframe src="{{ embed }}" style="width:100%;height:320px;border:0" loading="lazy" referrerpolicy="no-referrer-when-downgrade" title="Mapa de la ruta"></iframe>{% endif %}
+{% if gmaps %}<p><a class="btn sec" href="{{ gmaps }}" target="_blank" rel="noopener">Abrir la ruta en Google Maps</a></p>{% endif %}
+{% if r.trafico %}<p>Distancia {{ r.trafico.km }} km · tiempo estimado <b>{{ r.trafico.min_con_trafico }} min</b> con tráfico ({{ r.trafico.min_sin_trafico }} sin tráfico) · consultado {{ r.trafico.ts|replace('T',' ') }}</p>{% for x in r.trafico.riesgo %}<div class="note small">⚠ {{ x }}</div>{% endfor %}
+{% elif estimado %}<p>Tiempo estimado ≈ <b>{{ estimado.min_sin_trafico|int }} min</b> <span class="small muted">({{ estimado.fuente }})</span></p>{% endif %}
+{% if maps_ok %}<form method="post">{{ csrf() }}<button class="sec" name="accion" value="trafico">Consultar tráfico ahora</button></form>{% else %}<p class="small muted">Para el mapa embebido, el tiempo con tráfico y las alertas de tráfico, Sistemas configura la variable GOOGLE_MAPS_API_KEY en el servidor (ver guía de instalación).</p>{% endif %}</div>
 
 <h2>Paradas</h2>
 <table><tr><th>#</th><th>OV</th><th>Cliente / dirección</th><th>Cita</th><th class="r">Kg</th><th>Estado</th><th>Evidencia</th><th>Acciones</th></tr>
@@ -18,7 +28,7 @@
 <label>Fotografía (obligatoria)</label><input type="file" name="foto" accept="image/*,.pdf" required><label>Guía firmada (obligatoria)</label><input type="file" name="guia" accept="image/*,.pdf" required>
 {% for l in s.order.lines if l.activa %}<label>Entregado {{ l.product_code }} (despachado {{ l.despachado|n }})</label><input type="number" step="any" name="ent_{{ l.id }}" value="{{ l.despachado }}">{% endfor %}
 <label>Observación</label><input name="observacion"><p><button class="small" name="accion" value="entrega">Registrar entrega</button></p></form></details>{% endif %}
-{% if r.estado in ['CONFIRMADA','EN_RUTA','CERRADA'] and can('distribucion.incidencia') %}<details><summary>Incidencia</summary><form method="post">{{ csrf() }}<input type="hidden" name="stop_id" value="{{ s.id }}"><select name="tipo">{% for c, n in tipos %}<option value="{{ c }}">{{ n }}</option>{% endfor %}</select>
+{% if r.estado in ['CONFIRMADA','EN_RUTA','CERRADA'] and can('distribucion.incidencia') %}<details><summary>Incidencia</summary><form method="post">{{ csrf() }}<input type="hidden" name="stop_id" value="{{ s.id }}"><select name="tipo">{% for g, gn in grupos %}<optgroup label="{{ gn }}">{% for c, nn, gg in subtipos if gg == g %}<option value="{{ c }}">{{ nn }}</option>{% endfor %}</optgroup>{% endfor %}</select>
 <input name="descripcion" placeholder="descripción" required><input type="number" step="any" name="cantidad" placeholder="cant." style="width:70px"><button class="small" name="accion" value="incidencia">Registrar</button></form></details>{% endif %}</td></tr>{% endfor %}</table>
 
 {% if r.estado in ['CONFIRMADA','EN_RUTA','CERRADA'] %}

@@ -88,3 +88,9 @@ ALR-07 matriz final de alertas · CFG-11 reparto de configuración Sistemas/GG. 
 3. Prueba piloto con exportaciones reales en un servidor aprobado por TI (PostgreSQL, HTTPS, SMTP).
 4. Medir tiempos reales por etapa y ajustar cortes y tiempos de preparación.
 5. Mejoras: múltiples viajes por unidad, adjuntos en Calidad, migraciones de base de datos (Alembic), SSO.
+
+## Cambios v0.6
+
+Implementado: ver `docs/14_DECISIONES_13OCT_PARTE3_Y_OBSERVACIONES_DEMO.md` §1–§2. Parcial: precios de mercado (carga
+y análisis listos; sin fuente automática verificada), tráfico (requiere `GOOGLE_MAPS_API_KEY`), costos (falta el
+Excel real). Bloqueado por respuesta: vida útil de 12 meses (§4-1 del documento 14).

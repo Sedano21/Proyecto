@@ -43,7 +43,7 @@ Origen: **D** = definido expresamente en la documentación; **P** = propuesto (d
 | dashboard.ver | Ver tablero de indicadores | Gerencial | consulta |
 | ov.ver | Consultar órdenes de venta | Comercial | consulta |
 | ov.crear | Registrar OV | Comercial | edicion |
-| ov.modificar | Modificar OV directamente | Comercial | edicion |
+| ov.modificar | Modificar OV directamente (solo Ejecutivo de cuenta, Coordinador y Jefe Comercial) | Comercial | exclusivo |
 | ov.solicitar_modificacion | Solicitar modificación de OV (requiere autorización) | Comercial | edicion |
 | ov.autorizar_modificacion | Autorizar modificación de OV solicitada por Asistente | Comercial | aprobacion |
 | ov.cancelar | Cancelar OV | Comercial | aprobacion |
@@ -53,6 +53,8 @@ Origen: **D** = definido expresamente en la documentación; **P** = propuesto (d
 | ov.importar | Importar OV desde exportación SAP | Comercial | edicion |
 | precios.ver | Consultar listas de precios | Comercial | consulta |
 | precios.editar | Cargar y modificar listas de precios mínimos y su vigencia (solo Jefe Comercial) | Comercial | exclusivo |
+| costos.ver | Ver costos de la empresa y el análisis costo vs mercado | Comercial | exclusivo |
+| costos.cargar | Cargar costos y precios de mercado | Comercial | exclusivo |
 | ov.aprobar_precio | Liberar una OV retenida por precio en el límite o bajo el mínimo | Comercial | exclusivo |
 | clientes.canal | Asignar canal de precios y cargar condiciones de clientes (penalidades, lotes) | Comercial | exclusivo |
 | stock.ver | Consultar stock y reservas | Almacén | consulta |
@@ -96,6 +98,7 @@ Origen: **D** = definido expresamente en la documentación; **P** = propuesto (d
 | distribucion.ver | Consultar distribución | Distribución | consulta |
 | distribucion.programar | Generar/ajustar programación de rutas | Distribución | edicion |
 | distribucion.flota | Mantener flota y conductores | Distribución | edicion |
+| distribucion.validar_externo | Validar el transporte externo asignado a una ruta | Distribución | aprobacion |
 | distribucion.confirmar_salida | Autorizar y confirmar la salida del camión | Almacén | aprobacion |
 | distribucion.visto_bueno_salida | Dar visto bueno a la salida del camión (Auxiliar de Despacho) | Distribución | aprobacion |
 | distribucion.aprobar_salida_discrepancia | Aprobar la salida con discrepancia de guía mientras se resuelve | Logística | aprobacion |
@@ -119,11 +122,11 @@ Origen: **D** = definido expresamente en la documentación; **P** = propuesto (d
 
 ### Gerencia General
 
-Todos los permisos (70) — D: Informe Funcional §15; Decisión del usuario Q4 (11-oct-2026): acceso completo, incluso aprobar en nombre de otros roles (salvo los permisos exclusivos: precios y venta bajo mínimo del Jefe Comercial, Decisión del usuario (13-oct-2026) Q11; configuración de Sistemas, Decisión del usuario (13-oct-2026, segunda parte)). Las aprobaciones no se omiten; quedan auditadas (decisión pendiente IF §15).
+Todos los permisos (71) — D: Respuestas del 13-oct (R4): visibilidad del costo – propuesto. Las aprobaciones no se omiten; quedan auditadas (decisión pendiente IF §15).
 
 ### Sistemas
 
-Todos los permisos (54) — D: Decisión del usuario (13-oct-2026, segunda parte): Sistemas tiene todo el panel de configuración. Las aprobaciones no se omiten; quedan auditadas (decisión pendiente IF §15).
+Todos los permisos (53) — D: Decisión del usuario (13-oct-2026, segunda parte): Sistemas tiene todo el panel de configuración. Las aprobaciones no se omiten; quedan auditadas (decisión pendiente IF §15).
 
 ### Gerencia de Operaciones
 
@@ -150,6 +153,7 @@ Todos los permisos (54) — D: Decisión del usuario (13-oct-2026, segunda parte
 
 - `alertas.gestionar` – Asignar, atender, comentar y cerrar alertas (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `alertas.ver` – Ver alertas propias/del rol (**P**; Informe Funcional §3 (alcance por área) – propuesto)
+- `costos.ver` – Ver costos de la empresa y el análisis costo vs mercado (**P**; Respuestas del 13-oct (R4): visibilidad del costo – propuesto)
 - `dashboard.ver` – Ver tablero de indicadores (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `distribucion.ver` – Consultar distribución (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `export.datos` – Exportar registros (**P**; Informe Funcional §3 (alcance por área) – propuesto)
@@ -162,6 +166,8 @@ Todos los permisos (54) — D: Decisión del usuario (13-oct-2026, segunda parte
 - `alertas.gestionar` – Asignar, atender, comentar y cerrar alertas (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `alertas.ver` – Ver alertas propias/del rol (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `clientes.canal` – Asignar canal de precios y cargar condiciones de clientes (penalidades, lotes) (**D**; Decisión del usuario (13-oct-2026, segunda parte): el Jefe Comercial asigna y traslada clientes de canal)
+- `costos.cargar` – Cargar costos y precios de mercado (**P**; Respuestas del 13-oct (R4, R5): costos y precios de mercado los gestiona Comercial – propuesto)
+- `costos.ver` – Ver costos de la empresa y el análisis costo vs mercado (**P**; Respuestas del 13-oct (R4, R5): costos y precios de mercado los gestiona Comercial – propuesto)
 - `dashboard.ver` – Ver tablero de indicadores (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `distribucion.ver` – Consultar distribución (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `export.datos` – Exportar registros (**P**; Informe Funcional §3 (alcance por área) – propuesto)
@@ -170,7 +176,7 @@ Todos los permisos (54) — D: Decisión del usuario (13-oct-2026, segunda parte
 - `ov.cancelar` – Cancelar OV (**D**; Informe Funcional §5)
 - `ov.crear` – Registrar OV (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `ov.importar` – Importar OV desde exportación SAP (**P**; Informe Funcional §3 (alcance por área) – propuesto)
-- `ov.modificar` – Modificar OV directamente (**P**; Informe Funcional §3 (alcance por área) – propuesto)
+- `ov.modificar` – Modificar OV directamente (solo Ejecutivo de cuenta, Coordinador y Jefe Comercial) (**D**; Observaciones al demo v0.5 (13-oct): modificar OV solo Ejecutivo de cuenta, Coordinador y Jefe Comercial)
 - `ov.renegociar` – Registrar renegociación de fecha / cambio de producto (**D**; Informe Funcional §4.5, §5 (Comercial participa))
 - `ov.ver` – Consultar órdenes de venta (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `precios.editar` – Cargar y modificar listas de precios mínimos y su vigencia (solo Jefe Comercial) (**D**; Decisión del usuario (13-oct-2026) Q11: único con autorización para modificar precios)
@@ -181,6 +187,7 @@ Todos los permisos (54) — D: Decisión del usuario (13-oct-2026, segunda parte
 
 - `alertas.gestionar` – Asignar, atender, comentar y cerrar alertas (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `alertas.ver` – Ver alertas propias/del rol (**P**; Informe Funcional §3 (alcance por área) – propuesto)
+- `costos.ver` – Ver costos de la empresa y el análisis costo vs mercado (**P**; Respuestas del 13-oct (R4): confirma OV bajo costo – propuesto)
 - `dashboard.ver` – Ver tablero de indicadores (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `distribucion.ver` – Consultar distribución (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `export.datos` – Exportar registros (**P**; Informe Funcional §3 (alcance por área) – propuesto)
@@ -189,7 +196,7 @@ Todos los permisos (54) — D: Decisión del usuario (13-oct-2026, segunda parte
 - `ov.cancelar` – Cancelar OV (**D**; Informe Funcional §5)
 - `ov.crear` – Registrar OV (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `ov.importar` – Importar OV desde exportación SAP (**P**; Informe Funcional §3 (alcance por área) – propuesto)
-- `ov.modificar` – Modificar OV directamente (**P**; Informe Funcional §3 (alcance por área) – propuesto)
+- `ov.modificar` – Modificar OV directamente (solo Ejecutivo de cuenta, Coordinador y Jefe Comercial) (**D**; Observaciones al demo v0.5 (13-oct): modificar OV solo Ejecutivo de cuenta, Coordinador y Jefe Comercial)
 - `ov.renegociar` – Registrar renegociación de fecha / cambio de producto (**D**; Informe Funcional §4.5, §5 (Comercial participa))
 - `ov.ver` – Consultar órdenes de venta (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `precios.ver` – Consultar listas de precios (**P**; Informe Funcional §3 (alcance por área) – propuesto)
@@ -211,7 +218,7 @@ Todos los permisos (54) — D: Decisión del usuario (13-oct-2026, segunda parte
 - `distribucion.ver` – Consultar distribución (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `ov.autorizar_modificacion` – Autorizar modificación de OV solicitada por Asistente (**D**; Informe Funcional §5 (vendedor responsable autoriza; solo sus OV))
 - `ov.crear` – Registrar OV (**P**; Informe Funcional §3 (alcance por área) – propuesto)
-- `ov.modificar` – Modificar OV directamente (**P**; Informe Funcional §3 (alcance por área) – propuesto)
+- `ov.modificar` – Modificar OV directamente (solo Ejecutivo de cuenta, Coordinador y Jefe Comercial) (**D**; Observaciones al demo v0.5 (13-oct): modificar OV solo Ejecutivo de cuenta, Coordinador y Jefe Comercial)
 - `ov.renegociar` – Registrar renegociación de fecha / cambio de producto (**D**; Informe Funcional §5 (Comercial puede renegociar))
 - `ov.ver` – Consultar órdenes de venta (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `stock.ver` – Consultar stock y reservas (**P**; Informe Funcional §3 (alcance por área) – propuesto)
@@ -310,6 +317,7 @@ Todos los permisos (54) — D: Decisión del usuario (13-oct-2026, segunda parte
 - `distribucion.flota` – Mantener flota y conductores (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `distribucion.incidencia` – Registrar incidencias (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `distribucion.programar` – Generar/ajustar programación de rutas (**P**; Informe Funcional §3 (alcance por área) – propuesto)
+- `distribucion.validar_externo` – Validar el transporte externo asignado a una ruta (**D**; Observaciones al demo v0.5 (13-oct): el sistema puede asignar transporte externo pero lo valida el coordinador de distribución)
 - `distribucion.ver` – Consultar distribución (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `export.datos` – Exportar registros (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `ov.ver` – Consultar órdenes de venta (**P**; Informe Funcional §3 (alcance por área) – propuesto)
@@ -562,8 +570,16 @@ Canales: panel del módulo y correo (si hay SMTP). Ciclo: Nueva → Asignada →
 | VENCIMIENTO_PROXIMO | Lote próximo a vencer | Almacén / Faltantes y cobertura | MEDIA | COORD_ALMACEN, COORD_ALMACEN_MP, COORD_VENTAS | PENDIENTE | no | Solo si se configura 'dias_vencimiento_proximo'. | Informe Funcional §21 (caso 'vencimiento'); umbral no definido |
 | TRASLADO_SOLICITADO | Traslado pendiente de autorización | Logística / Traslados | MEDIA | JEFE_LOGISTICA, COORD_LOGISTICA | DEFINIDO | sí | Se solicita (o el sistema pre-solicita) un traslado desde almacén alternativo. | Informe Funcional §6.2, §13; Decisión del usuario (12-oct-2026) Q13 |
 | TRASLADO_AUTORIZADO | Traslado autorizado | Almacén / Traslados | MEDIA | COORD_ALMACEN, COORD_ALMACEN_MP, AUX_ALMACEN | PROPUESTO | no | Logística autoriza el traslado. | Informe Funcional §13 |
+| TRASLADO_LLEGADA | Llegada programada de traslado | Almacén / Traslados | MEDIA | COORD_ALMACEN, COORD_ALMACEN_MP, AUX_ALMACEN, JEFE_CALIDAD, SUPERV_CALIDAD, ASIST_CALIDAD | DEFINIDO | no | Se registra o cambia la fecha y hora de llegada de un traslado autorizado; se repite el día de la llegada si no se recibió. | Observaciones al demo v0.5 (13-oct): al autorizar se ingresa fecha y hora de llegada para alertar a Calidad (revisión) y Almacén (almacenamiento) |
+| COMPRA_SOBRE_COSTO_MAXIMO | Cotización sobre el costo máximo de compra | Compras / Compras | ALTA | COMPRAS, JEFE_LOGISTICA, COORD_LOGISTICA | DEFINIDO | no | El precio cotizado supera el costo máximo de compra configurado para el artículo. | Observaciones al demo v0.5 (13-oct): costo máximo a que se debe comprar para no caer en pérdida (configurable) |
+| FUMIGACION_PROXIMA | Fumigación próxima (7 días, 3 días y el mismo día) | Calidad / Calidad | ALTA | JEFE_CALIDAD, SUPERV_CALIDAD, ASIST_CALIDAD, COORD_ALMACEN, COORD_ALMACEN_MP | DEFINIDO | no | Lote con fumigación programada o con fin del tiempo máximo de almacenamiento a 7, 3 o 0 días. | Observaciones al demo v0.5 (13-oct): alerta a Calidad 7 días antes, 3 días antes y el mismo día para planear la fumigación |
+| RUTA_EXTERNO_VALIDAR | Ruta con transporte externo por validar | Distribución / Programación | ALTA | COORD_DISTRIBUCION | DEFINIDO | no | La programación asigna transporte externo (sin unidad propia con capacidad o unidad de tercero). | Observaciones al demo v0.5 (13-oct): el transporte externo lo valida el coordinador de distribución |
+| RUTA_TRAFICO | Tráfico que puede comprometer la entrega | Distribución / Programación | ALTA | COORD_DISTRIBUCION, ASIST_DISTRIBUCION, JEFE_LOGISTICA, COORD_LOGISTICA | DEFINIDO | no | Con el servicio de mapas configurado: el tráfico agrega más del umbral o una cita ya no se alcanza. Se avisa también al vendedor. | Observaciones al demo v0.5 (13-oct): alertas de tráfico que podrían comprometer la entrega |
+| BOM_OBSERVADA | Lista de materiales observada por Producción | Producción / Solicitudes | MEDIA | JEFE_PRODUCCION, SISTEMAS | DEFINIDO | no | Producción indica que la lista de materiales de una solicitud no es la correcta. | Observaciones al demo v0.5 (13-oct): Producción visualiza si la lista de materiales asignada es la correcta |
 | TRASLADO_DIFERENCIA | Diferencia en recepción de traslado | Logística / Traslados | ALTA | JEFE_LOGISTICA, COORD_ALMACEN, COORD_ALMACEN_MP, GERENCIA_OPERACIONES | PROPUESTO | sí | Cantidad recibida distinta a la enviada. | Informe Funcional §13 |
 | OV_PRECIO_BAJO_MINIMO | OV detenida: precio en el límite o por debajo de la lista | Comercial / Cambios de OV | ALTA | JEFE_VENTAS, COORD_VENTAS, GERENTE_COMERCIAL | DEFINIDO | sí | Línea de OV (incluidas las muestras comerciales) con precio igual o menor al mínimo de lista del canal. También se avisa al vendedor de la OV. | Decisión del usuario (13-oct-2026) Q11; Decisión del usuario (13-oct-2026, segunda parte): se alerta y queda detenida hasta la confirmación del Coordinador o Jefe Comercial |
+| OV_PRECIO_BAJO_COSTO | OV detenida: precio de venta por debajo del costo | Comercial / Cambios de OV | ALTA | JEFE_VENTAS, COORD_VENTAS, GERENTE_COMERCIAL | DEFINIDO | sí | Línea de OV con precio menor al costo vigente del artículo en la unidad de venta. La OV queda detenida hasta la confirmación del Coordinador o Jefe Comercial. El mensaje no muestra el costo a quien no tiene 'costos.ver'. | Respuestas del 13-oct (R4): 'validar que ninguna venta se realice por debajo' del costo |
+| COSTO_SOBRE_MERCADO | Costo de la empresa sobre o cerca del precio de mercado | Comercial / Indicadores | MEDIA | JEFE_VENTAS, GERENTE_COMERCIAL | DEFINIDO | sí | Comparación automática diaria: costo por kg del artículo vs último precio mayorista del producto base, con tendencia y recomendación. | Respuestas del 13-oct (R4): comparar automáticamente contra costos de mercado y tendencias |
 | PRECIO_FALTANTE | Producto o cliente sin precio mínimo | Comercial / Cambios de OV | MEDIA | JEFE_VENTAS | DEFINIDO | sí | Una OV trae un producto sin precio mínimo para el canal del cliente, o un cliente sin canal de precios asignado. | Decisión del usuario (13-oct-2026, segunda parte): 'el sistema debe botar una alerta y en base a eso ir completando' |
 | LISTA_PRECIOS_VENCIDA | Lista de precios vencida o por vencer | Comercial / Cambios de fechas | MEDIA | JEFE_VENTAS | DEFINIDO | sí | Fecha de vencimiento de la lista alcanzada (o dentro del aviso). | Decisión del usuario (13-oct-2026, segunda parte): 'se avisa pero no se bloquea' |
 | CARGA_SAP_DESACTUALIZADA | Carga de SAP sin actualizar | Sistemas / Diferencias de inventario | ALTA | SISTEMAS | DEFINIDO | no | La última carga autorizada de un tipo supera las horas configuradas; se avisa al área responsable y a Sistemas. | Decisión del usuario (13-oct-2026, segunda parte): cada área exporta a diario, con cortes de 2 veces al día como mínimo |
@@ -602,7 +618,7 @@ Canales: panel del módulo y correo (si hay SMTP). Ciclo: Nueva → Asignada →
 | DIST_AVANCE_RUTA | Avance de ruta | Distribución / Rutas | BAJA | JEFE_VENTAS, COORD_VENTAS, JEFE_LOGISTICA, COORD_LOGISTICA, COORD_DISTRIBUCION | DEFINIDO | no | Salida, llegada, entrega. | Informe Funcional §12.3 |
 | GUIA_DISCREPANCIA | Discrepancia entre carga y guía: salida bloqueada | Seguridad / Guías | ALTA | COORD_DISTRIBUCION, SEGURIDAD, JEFE_LOGISTICA, COORD_LOGISTICA | DEFINIDO | sí | Cantidad cargada ≠ guía o presentación no coincide. Bloquea la salida salvo aprobación de Logística. | Informe Funcional §12.2, §14; Decisión del usuario (12-oct-2026) Q8 |
 | SALIDA_CON_DISCREPANCIA | Salida aprobada con guía por resolver | Logística / Guías | ALTA | COORD_DISTRIBUCION, SEGURIDAD, LIDER_ALMACEN, JEFE_LOGISTICA, COORD_LOGISTICA, GERENCIA_OPERACIONES | DEFINIDO | sí | Jefe o Coordinador de Logística aprueba la salida mientras se resuelve la guía. | Decisión del usuario (12-oct-2026) Q8 |
-| INC_RECHAZO_CALIDAD | Rechazo por calidad | Distribución / Incidencias | ALTA | GERENCIA_GENERAL, GERENCIA_OPERACIONES, JEFE_LOGISTICA, COORD_LOGISTICA, COORD_ALMACEN, COORD_ALMACEN_MP, JEFE_VENTAS, COORD_VENTAS, COORD_DISTRIBUCION | DEFINIDO | sí | Incidencia tipo rechazo por calidad. | Informe Funcional §12.3 (tabla de destinatarios); TO-BE (coord. distribución) |
+| INC_RECHAZO_CALIDAD | Incidencia de calidad (rechazo, infestación, fuera de características) | Distribución / Incidencias | ALTA | GERENCIA_GENERAL, GERENCIA_OPERACIONES, JEFE_LOGISTICA, COORD_LOGISTICA, COORD_ALMACEN, COORD_ALMACEN_MP, JEFE_VENTAS, COORD_VENTAS, COORD_DISTRIBUCION, JEFE_CALIDAD, SUPERV_CALIDAD | DEFINIDO | sí | Incidencia de tipo Calidad. | Informe Funcional §12.3 (tabla de destinatarios); TO-BE (coord. distribución); observaciones al demo v0.5 (tipo Calidad: también a Calidad) |
 | INC_GENERAL | Incidencia de distribución (llegada tarde u otra condición) | Distribución / Incidencias | ALTA | GERENCIA_OPERACIONES, JEFE_LOGISTICA, COORD_LOGISTICA, COORD_ALMACEN, COORD_ALMACEN_MP, JEFE_VENTAS, COORD_VENTAS, COORD_DISTRIBUCION | DEFINIDO | sí | Retraso, rechazo por cita, devolución, parcial, vehículo esperando, etc. | Informe Funcional §12.3 (tabla de destinatarios); TO-BE (coord. distribución) |
 | CERTIFICADO_REVISION | Certificado pre-elaborado pendiente de revisión | Calidad / Certificados | MEDIA | JEFE_CALIDAD, SUPERV_CALIDAD | DEFINIDO | no | Se genera el certificado cuando la OV queda completa (TO-BE) o al terminar la preparación. | Informe Funcional §9.3, §9.4; TO-BE: 'Informar a Calidad para la validación del certificado pre-elaborado' |
 | CERTIFICADO_LISTO | Certificado aprobado y cargado | Calidad / Certificados | MEDIA | COORD_DISTRIBUCION, GERENCIA_OPERACIONES, JEFE_LOGISTICA | DEFINIDO | no | Calidad aprueba el certificado. | TO-BE COPROD-ONE: 'Notifica a distribución, GO, jefe de logística que el certificado fue cargado' |
@@ -610,21 +626,24 @@ Canales: panel del módulo y correo (si hay SMTP). Ciclo: Nueva → Asignada →
 
 ## Tipos de incidencia (IF §12.3)
 
-- RETRASO: Retraso
-- LLEGADA_TARDE: Llegada tarde
-- CLIENTE_AUSENTE: Cliente ausente
+- INFESTACION_INTERNA: Infestación interna
+- INFESTACION_EXTERNA: Infestación externa
+- FUERA_CARACTERISTICAS: Producto fuera de características
 - RECHAZO_CALIDAD: Rechazo por calidad
-- RECHAZO_OTRO: Rechazo (otro motivo)
+- PARTICULARIDAD_DESCARGA: Particularidad detectada en la mercadería en la misma descarga
+- LLEGADA_TARDE: Llegada tarde / rechazo por cita fuera de hora
 - ENTREGA_PARCIAL: Entrega parcial
+- PRODUCTO_ROTO: Producto roto
+- RETRASO: Retraso en ruta
+- VEHICULO_ESPERANDO: Vehículo esperando
+- CAMBIO_RUTA: Cambio de ruta
+- CONDUCTOR_NO_DISPONIBLE: Falta de disponibilidad del conductor
+- INCIDENCIA_CARGA: Incidencia durante la carga, registrada por Seguridad
+- CLIENTE_AUSENTE: Cliente ausente
+- CLIENTE_NO_RETIRA: Cliente que no retira pedido
+- RECHAZO_OTRO: Rechazo (otro motivo)
 - DEVOLUCION: Devolución
 - CANCELACION: Cancelación
-- CAMBIO_RUTA: Cambio de ruta
-- VEHICULO_ESPERANDO: Vehículo esperando
-- CLIENTE_NO_RETIRA: Cliente que no retira pedido
-- CONDUCTOR_NO_DISPONIBLE: Falta de disponibilidad del conductor
-- RECHAZO_CITA: Rechazo por cita fuera de hora (TO-BE)
-- PARTICULARIDAD_DESCARGA: Particularidad detectada en la mercadería en la misma descarga (TO-BE)
-- INCIDENCIA_CARGA: Incidencia durante la carga, registrada por Seguridad (TO-BE)
 
 ## Parámetros configurables (IF §16)
 
@@ -644,9 +663,9 @@ Canales: panel del módulo y correo (si hay SMTP). Ciclo: Nueva → Asignada →
 | tiempos_preparacion | `{'PEQUENO': '20-30 min', 'MEDIANO': '1 h - 1 h 30', 'GRANDE': '4 h (requiere 2 días de anticipación)'}` | AS-IS | Tiempos de preparación iniciales por tamaño de pedido (provisionales; medir y ajustar). | Diagrama AS-IS L5 (Revisar el stock físico vs. lo solicitado); IF §20 |
 | umbrales_tamano_pedido_kg | `None` | PENDIENTE | Límites en kg para clasificar pedido pequeño/mediano/grande. | No definido en la documentación |
 | umbral_alerta_preparacion_pct | `80` | DEFINIDO | Avance de preparación que dispara la alerta. | Informe Funcional §14 |
-| orden_prioridad | `['fecha_compromiso', 'penalidad', 'completitud', 'urgencia']` | PROPUESTO | Criterios de prioridad en el orden aplicado. 'penalidad': a igual fecha, primero el cliente con penalidades más severas (lista de clientes con penalidades). El orden de desempate es propuesto. | Informe Funcional §1, §5, §12.1; Decisión del usuario (13-oct-2026, segunda parte) (lista de clientes con penalidades para priorizar) |
-| peso_penalidad | `{'RETIRO_PROVEEDOR': 5, 'FECHA_ENTREGA': 4, 'FILL_RATE': 4, 'ENTREGA_PARCIAL': 3, 'RUPTURA_STOCK': 3, 'VENTANA_HORARIA': 2, 'PESO': 2, 'PALETIZADO': 2, 'DOCUMENTOS': 1, 'NO_CONFORMIDADES': 1}` | PROPUESTO | Peso de cada tipo de penalidad del cliente para la prioridad (suma). Valores propuestos para validar con Comercial. | Decisión del usuario (13-oct-2026, segunda parte) |
-| aplicar_vida_util_cliente | `False` | PENDIENTE | Si 'vida útil 12 meses' de la lista de clientes significa vida útil RESTANTE mínima al despacho, activar: la reserva excluye lotes con menos meses de vida. Pendiente de confirmar. | Decisión del usuario (13-oct-2026, segunda parte) |
+| orden_prioridad | `['fecha_compromiso', 'penalidad', 'completitud', 'urgencia']` | DEFINIDO | Criterios de prioridad en el orden aplicado. 'penalidad': a igual fecha, primero el cliente con penalidades más severas (lista de clientes con penalidades). Validado el 13-oct (R3). | Informe Funcional §1, §5, §12.1; Decisión del usuario (13-oct-2026, segunda parte) (lista de clientes con penalidades para priorizar) |
+| peso_penalidad | `{'RETIRO_PROVEEDOR': 5, 'FECHA_ENTREGA': 4, 'FILL_RATE': 4, 'ENTREGA_PARCIAL': 3, 'RUPTURA_STOCK': 3, 'VENTANA_HORARIA': 2, 'PESO': 2, 'PALETIZADO': 2, 'DOCUMENTOS': 1, 'NO_CONFORMIDADES': 1}` | DEFINIDO | Peso de cada tipo de penalidad del cliente para la prioridad (suma). Validados el 13-oct (R3). | Decisión del usuario (13-oct-2026, segunda parte); respuesta del 13-oct (R3) |
+| aplicar_vida_util_cliente | `True` | DEFINIDO | La vida útil de la lista de clientes es la vida útil RESTANTE mínima al despacho (meses calendario; admite excepciones como '6 MESES HARINAS'): la reserva excluye lotes que no la cumplen. | Decisión del usuario (13-oct-2026, segunda parte); respuesta del 13-oct (R1) |
 | almacen_transito_produccion | `ALM-003` | DEFINIDO | Almacén virtual de tránsito donde Producción deja el producto terminado hasta la validación de Almacén. | Decisión del usuario (12-oct-2026) Q5 |
 | uso_almacen_por_tipo | `{'PT': 'PT', 'GR': 'MP_INSUMOS', 'MP': 'MP_INSUMOS', 'INSUMO': 'MP_INSUMOS'}` | DEFINIDO | Almacén principal según tipo de artículo (TIPO de la tabla DATA: PT/GR/MP; insumos EN-/SU- = INSUMO). | Informe Funcional §6.2 (1560 = PT; 1524 = materia prima, granel e insumos) |
 | politica_lotes | `FEFO` | PROPUESTO | Orden de consumo de lotes al reservar (FEFO = primero en vencer, primero en salir). | Informe Funcional §22 (respetar lote y vencimiento) |
@@ -669,7 +688,7 @@ Canales: panel del módulo y correo (si hay SMTP). Ciclo: Nueva → Asignada →
 | zonas_distrito | `{}` | PENDIENTE | Agrupación de distritos en zonas de reparto (si está vacío se agrupa por distrito). | Informe Funcional §12.1 |
 | capacidad_externo_kg | `[2000, 25000]` | AS-IS | Rango de capacidad de transportes externos (kg). | Imagen tabla de transportes (2 TN a 25 TN) |
 | otif_definicion | `SALIDA` | DEFINIDO | OTIF = pedido que sale del almacén completo y a tiempo (la variante ENTREGA queda como referencia). | Informe Funcional §17; Decisión del usuario (12-oct-2026) Q2 |
-| etapa_por_incidencia | `{'SALIDA_INCOMPLETA': 'Abastecimiento (stock, producción, compras)', 'SALIDA_TARDIA': 'Preparación y despacho', 'RECHAZO_CALIDAD': 'Calidad', 'PARTICULARIDAD_DESCARGA': 'Almacén (preparación/carga)', 'INCIDENCIA_CARGA': 'Almacén (preparación/carga)', 'RECHAZO_CITA': 'Distribución', 'LLEGADA_TARDE': 'Distribución', 'RETRASO': 'Distribución', 'VEHICULO_ESPERANDO': 'Distribución', 'CAMBIO_RUTA': 'Distribución', 'CONDUCTOR_NO_DISPONIBLE': 'Distribución', 'CLIENTE_AUSENTE': 'Cliente / Comercial', 'CLIENTE_NO_RETIRA': 'Cliente / Comercial', 'CANCELACION': 'Cliente / Comercial', 'ENTREGA_PARCIAL': 'Distribución', 'DEVOLUCION': 'Sin clasificar', 'RECHAZO_OTRO': 'Sin clasificar'}` | PROPUESTO | Etapa del proceso a la que se atribuye cada motivo de rechazo/incidencia en el análisis del fill rate. | Decisión del usuario (12-oct-2026) Q2 ('identificar en qué parte del proceso están los mayores errores') |
+| etapa_por_incidencia | `{'SALIDA_INCOMPLETA': 'Abastecimiento (stock, producción, compras)', 'SALIDA_TARDIA': 'Preparación y despacho', 'RECHAZO_CALIDAD': 'Calidad', 'PARTICULARIDAD_DESCARGA': 'Almacén (preparación/carga)', 'INCIDENCIA_CARGA': 'Almacén (preparación/carga)', 'INFESTACION_INTERNA': 'Calidad', 'INFESTACION_EXTERNA': 'Calidad', 'FUERA_CARACTERISTICAS': 'Calidad', 'PRODUCTO_ROTO': 'Distribución', 'LLEGADA_TARDE': 'Distribución', 'RETRASO': 'Distribución', 'VEHICULO_ESPERANDO': 'Distribución', 'CAMBIO_RUTA': 'Distribución', 'CONDUCTOR_NO_DISPONIBLE': 'Distribución', 'CLIENTE_AUSENTE': 'Cliente / Comercial', 'CLIENTE_NO_RETIRA': 'Cliente / Comercial', 'CANCELACION': 'Cliente / Comercial', 'ENTREGA_PARCIAL': 'Distribución', 'DEVOLUCION': 'Sin clasificar', 'RECHAZO_OTRO': 'Sin clasificar'}` | PROPUESTO | Etapa del proceso a la que se atribuye cada motivo de rechazo/incidencia en el análisis del fill rate. | Decisión del usuario (12-oct-2026) Q2 ('identificar en qué parte del proceso están los mayores errores') |
 | ambito_gerencia_operaciones | `['Almacén', 'Distribución', 'Logística', 'Producción', 'Calidad', 'Compras', 'Importaciones', 'Seguridad', 'Comercial', 'Gerencia']` | PENDIENTE | Áreas cuyas alertas ve Gerencia de Operaciones. | Informe Funcional §14 ('alertas de su ámbito') |
 | acceso_completo_omite_aprobaciones | `False` | DEFINIDO | Gerencia General tiene acceso completo y puede aprobar en nombre de otros roles (queda auditado como tal); Sistemas tiene acceso completo pero no aprueba. Ningún paso se omite. | Informe Funcional §15; Decisión del usuario Q4 (11-oct-2026) |
 | parcial_aprobadores | `['GERENCIA_OPERACIONES', 'JEFE_LOGISTICA']` | DEFINIDO | Roles que pueden aprobar el despacho parcial. Gerencia General puede aprobar en nombre de ellos. | Decisión del usuario Q3 (11 y 12-oct-2026) |
@@ -689,7 +708,30 @@ Canales: panel del módulo y correo (si hay SMTP). Ciclo: Nueva → Asignada →
 | empresa_razon_social | `CORPORACION PRODUCTIVA S.A.C.` | DEFINIDO | Procesado por (certificados). | Certificados N°CP2026-PT3756 / MP276 / CA0764 |
 | empresa_ruc | `20517540341` | DEFINIDO | RUC del emisor (certificados). | Certificados N°CP2026-* |
 | autorizacion_sanitaria | `Nº000502- MIDAGRI-SENASA-LIMA CALLAO` | PENDIENTE | Autorización sanitaria (los modelos muestran 'MIDAGRI' y 'MINAGRI'; confirmar). | Certificados N°CP2026-MP276 y PT3756 |
-| series_certificado | `{'PT': 'PT', 'MQ': 'PT', 'AB': 'PT', 'MP': 'MP', 'GR': 'MP'}` | PENDIENTE | Serie de numeración por tipo de artículo (CP{año}-{serie}{correlativo}). La serie 'CA' existe en los modelos pero su criterio no está documentado. | Certificados N°CP2026-PT3756 / MP276 / CA0764 |
+| conceptos_costo_importacion | `['Flete internacional', 'Seguro', 'Derechos y aranceles', 'Agente de aduanas', 'Almacenaje / depósito temporal', 'Transporte local', 'Otros']` | PROPUESTO | Conceptos sugeridos para los costos asociados a la importación (lista editable). | Observaciones al demo v0.5 (13-oct): en importaciones tener en cuenta el contenedor, el lugar de almacenamiento y los costos asociados |
+| pct_externo_alerta | `30` | PROPUESTO | En el informe de distribución se recomienda revisar la flota cuando el % de rutas con transporte externo supera este valor. | Observaciones al demo v0.5 (13-oct): cuántos fueron con transporte propio y cuántos con externo |
+| tiempo_por_parada_min | `30` | PROPUESTO | Minutos de descarga por parada para el tiempo estimado de la ruta. | Observaciones al demo v0.5 (13-oct): tiempo estimado de la ruta |
+| tiempo_traslado_base_min | `45` | PROPUESTO | Minutos por tramo cuando no hay servicio de mapas configurado (estimación sin tráfico). | Observaciones al demo v0.5 (13-oct): tiempo estimado de la ruta |
+| umbral_trafico_pct | `25` | PROPUESTO | % de tiempo adicional por tráfico a partir del cual se alerta. | Observaciones al demo v0.5 (13-oct): alertas de tráfico |
+| dias_aviso_fumigacion | `[7, 3, 0]` | DEFINIDO | Días de anticipación de los avisos de fumigación a Calidad. | Observaciones al demo v0.5 (13-oct) |
+| prefijos_desmedro_bom | `['ME-']` | DEFINIDO | Prefijos de los artículos de desmedro (= merma) en la lista de materiales; no se tratan como material a consumir. | LISTA DE MATERIALES 2026 (componentes 'X - DESMEDRO'); observaciones al demo v0.5 (13-oct) |
+| tolerancia_merma_pp | `1` | PROPUESTO | Diferencia (puntos porcentuales) entre merma ejecutada y proyectada a partir de la cual se marca la desviación. | Observaciones al demo v0.5 (13-oct): contrastar merma proyectada vs ejecutada |
+| margen_minimo_reporte_pct | `10` | PROPUESTO | En el informe comercial se recomienda revisar los productos con margen menor a este %. | Observaciones al demo v0.5 (13-oct): margen promedio y por producto |
+| margen_alerta_costo_mercado_pct | `0` | PROPUESTO | Alerta cuando el precio de mercado supera al costo por kg en menos de este % (0 = solo si el costo supera al mercado). | Respuestas del 13-oct (R4) |
+| tendencia_mercado_umbral_pct | `5` | PROPUESTO | Variación del precio de mercado (último vs promedio de 90 días) a partir de la cual se considera alza o baja. | Respuestas del 13-oct (R4: tendencias) |
+| antiguedad_max_precio_mercado_dias | `45` | PROPUESTO | Antigüedad máxima del precio de mercado antes de recomendar su actualización. | Respuestas del 13-oct (R5) |
+| retener_ov_bajo_costo | `True` | DEFINIDO | La OV con precio menor al costo queda detenida hasta la confirmación del Coordinador o Jefe Comercial. | Respuestas del 13-oct (R4): ninguna venta por debajo del costo |
+| series_certificado | `{'PT': 'PT', 'MQ': 'PT', 'AB': 'PT', 'MP': 'MP', 'GR': 'MP'}` | DEFINIDO | Tipo/serie de certificado por tipo de artículo (CP{año}-{serie}{correlativo}). Tipos con formato propio: PT, MP y CA. | Certificados N°CP2026-PT3756 / MP276 / CA0764; respuesta 13-oct (diversos tipos de certificado) |
+| tipo_certificado_por_marca | `{'COSECHA ANDINA': 'CA'}` | PROPUESTO | Marca que usa un tipo de certificado propio (prevalece sobre el tipo de artículo). Calidad puede regenerar un borrador con otro tipo. | Certificado N°CP2026-CA0764 (marca COSECHA ANDINA); criterio de la serie CA no documentado |
+| humedad_maxima_por_tipo | `{'PT': 15, 'CA': 21}` | PROPUESTO | Especificación de humedad máxima (%) que se propone en el certificado según su tipo; editable en el borrador. | Certificados PT3756 (MAX. 15%) y CA0764 (MÁX. 21 %); MP276 no muestra especificación |
+| referencias_ntp | `{'FRIJOL': 'NTP-205.015.2015 LEGUMINOSAS DE GRANO SECO. Frijol', 'LENTEJA': 'NTP-205.022.2014 LEGUMINOSA. Lenteja'}` | PROPUESTO | Norma técnica de referencia por producto base (se busca la palabra en el producto declarado). Productos sin norma: Calidad la completa. | Certificados PT3756 (frijol) y MP276 (lenteja) |
+| certificado_firmante | `{'nombre': 'Ing. Liesbet Cordova Garcia', 'cargo': 'Jefe de Aseguramiento de Calidad'}` | DEFINIDO | Firmante del certificado. La imagen de la firma no se guarda en el repositorio: la carga Sistemas en el servidor y se imprime solo en certificados aprobados. | Certificados N°CP2026-PT3756 / MP276 / CA0764 |
+| documentos_pie | `['Av. Aviación Nº1560 - La Victoria - Lima / Telf: 303-6446 / Cel.: 998 256 589 / 984 173 183', 'E-mail: ventas1@corporacionproductiva.com / ventas2@corporacionproductiva.com', 'ventas3@corporacionproductiva.com / gvila@corporacionproductiva.com', 'www.corporacionproductiva.com / www.cosechaandina.com']` | DEFINIDO | Pie de página de los documentos impresos (certificado). | Certificados N°CP2026-* (membrete) |
+| empresa_razon_social_completa | `CORPORACION PRODUCTIVA SOCIEDAD ANONIMA CERRADA` | DEFINIDO | Razón social en la cabecera de la OV. | Formato de OV N° 1635389 (foto, 13-oct) |
+| empresa_direccion | `['AV. AVIACION NRO. 1560 (FRENTE AL GRIFO PRIMAX)', 'LIMA - LIMA - LA VICTORIA']` | DEFINIDO | Dirección del emisor en la cabecera de la OV y guía. | Formato de OV N° 1635389 (foto, 13-oct) |
+| ov_cuentas_bancarias | `[{'banco': 'BBVA', 'soles': '0011-0163-37-0100043731 CÓDIGO DE RECAUDO (6721)', 'dolares': '0011-0163-0100043758'}, {'banco': 'BCP', 'soles': '194-2211886-0-81', 'dolares': '194-2190284-1-89'}, {'banco': 'Banco de la Nación', 'soles': '00-098-054618 (CUENTA DE DETRACCIONES)', 'dolares': '-'}, {'banco': 'Scotiabank', 'soles': '000-2171108', 'dolares': '000-5130001'}, {'banco': 'BanBif', 'soles': '7000729570', 'dolares': '7000729589'}, {'banco': 'Interbank', 'soles': '200-3004622764', 'dolares': '200-3004622771'}]` | DEFINIDO | Cuentas bancarias impresas en la OV. | Formato de OV N° 1635389 (foto, 13-oct) |
+| ov_instrucciones_pago | `['Instrucciones de pago para clientes de provincia:', 'Realizar el depósito a nuestra cuenta con el código de recaudo "6721".', 'Si paga por aplicativo, seleccionar "Pago de servicios" y colocar como nombre de empresa Corporación Productiva.', 'Detracciones: Realizar el abono únicamente a nuestra cuenta del Banco de la Nación.']` | DEFINIDO | Instrucciones de pago impresas en la OV. | Formato de OV N° 1635389 (foto, 13-oct) |
+| ov_servicios_asistencia | `[{'telefono': '+51 959 393 886', 'area': 'Asistencia Logistica'}, {'telefono': '+51 971 442 700', 'area': 'Asistencia Calidad'}]` | DEFINIDO | Servicios de asistencia impresos en la OV. | Formato de OV N° 1635389 (foto, 13-oct) |
 | muestreo_tiempo_min_por_lote | `30` | AS-IS | Tiempo orientativo de muestreo por lote en reempaque. | Informe Funcional §9.2 (orientativo) |
 
 Valores de demostración aplicados por `seed_demo` (estado DEMO): `cortes_preparacion` = 09:00/13:00/16:00, `dias_vencimiento_proximo` = 30. Plantilla de fases de importación: DEMO.

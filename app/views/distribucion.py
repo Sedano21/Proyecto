@@ -5,6 +5,7 @@ from flask import Blueprint, abort, current_app, g, render_template, request, ur
 from sqlalchemy import select
 
 from ..catalogs import INCIDENT_TYPES
+from ..services.core import BusinessError
 from ..db import db
 from ..models import Certificate, Driver, Incident, Route, RouteStop, SalesOrder, Vehicle
 from ..services import despacho as dsp
@@ -103,6 +104,17 @@ def route_detail(rid):
             fn = lambda: dsp.resolve_guide_discrepancy(r, u, f.get("detalle", ""))  # noqa: E731
         elif acc == "retorno":
             fn = lambda: dsp.register_return(r, u)  # noqa: E731
+        elif acc in ("externo_ok", "externo_no"):
+            fn = lambda: dsvc.validate_external(r, u, acc == "externo_ok", f.get("comentario", ""))  # noqa: E731
+        elif acc == "trafico":
+            from ..services import maps
+            if "distribucion.ver" not in g.perms:
+                abort(403)
+            def fn():
+                res = maps.check_traffic(r, u)
+                if res is None:
+                    raise BusinessError("El servicio de mapas no está configurado (GOOGLE_MAPS_API_KEY): no hay datos de tráfico.")
+                return res
         elif acc == "incidencia":
             stop = db().get(RouteStop, int(f["stop_id"])) if f.get("stop_id") else None
             fn = lambda: dsvc.register_incident(u, f.get("tipo"), f.get("descripcion", ""), stop=stop, route=r,  # noqa: E731
@@ -121,8 +133,13 @@ def route_detail(rid):
                                                    Route.estado.in_(["PROPUESTA", "CONFIRMADA"]))).scalars())
     certs = {st.id: list(db().execute(select(Certificate).where(Certificate.order_id == st.order_id,
                                                                   Certificate.estado != "ANULADO")).scalars()) for st in r.stops}
+    from ..services import maps
     return render_template("route_detail.html", r=r, vehicles=vehicles, drivers=drivers, others=others,
+                           gmaps=maps.gmaps_link(r), embed=maps.embed_url(r), estimado=maps.estimate(r) if not maps.api_key() else None,
+                           maps_ok=bool(maps.api_key()),
                            checklist=dsvc.CHECKLIST, expected=dsvc.expected_lines(r), tipos=INCIDENT_TYPES,
+                           grupos=__import__("app.catalogs", fromlist=["x"]).INCIDENT_GROUPS,
+                           subtipos=__import__("app.catalogs", fromlist=["x"]).INCIDENT_SUBTYPES,
                            preguia=dsp.preguia(r), etapas=dsp.ETAPAS_FOTO, certs=certs,
                            faltan=dsp.missing_documents(r) if r.estado == "CONFIRMADA" else [],
                            billing=dsp.billing_status, vb_req=dsp.required_exit_approvals(), vb_label=dsp.VB_LABEL)
@@ -149,7 +166,10 @@ def incidents():
                                                   cantidad=f_float("cantidad")), "Incidencia registrada y alertada.",
                    url_for("dist.incidents"))
     rows = list(db().execute(select(Incident).order_by(Incident.id.desc())).scalars())
-    return render_template("incidents.html", rows=rows, tipos=INCIDENT_TYPES)
+    from ..catalogs import INCIDENT_GROUPS, INCIDENT_SUBTYPES
+    from ..services.catalogs_helpers import incident_group_name, incident_type_name
+    return render_template("incidents.html", rows=rows, tipos=INCIDENT_TYPES, grupos=INCIDENT_GROUPS, subtipos=INCIDENT_SUBTYPES,
+                           nombre=incident_type_name, grupo_nombre=incident_group_name)
 
 
 @bp.route("/flota", methods=["GET", "POST"])

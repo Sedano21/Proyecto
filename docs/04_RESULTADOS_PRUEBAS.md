@@ -278,3 +278,15 @@ Hallazgo corregido durante esta prueba: la primera versión de la deduplicación
 | [19](capturas/19_ov_precio_bajo_minimo.png) | OV con precio en el límite del mínimo (Q11) |
 | [20](capturas/20_ov_detenida_condiciones.png) | OV detenida por precio con las condiciones del cliente |
 | [21](capturas/21_partes_produccion.png) | Parte de producción (Cimbria) con rendimiento y desmedro |
+
+## Versión 0.6 (13-oct, tercera parte y observaciones al demo v0.5)
+
+- **140 pruebas automatizadas** en SQLite (incluye `test_respuestas_13oct_c.py`, 15 pruebas: formatos con logos, tipos
+  de certificado, vida útil en meses, RUC, venta bajo costo, costo vs mercado; y `test_observaciones_demo_v05.py`,
+  20 pruebas: cita 24 h, lugar de entrega, venta por saco, ficha y maestro de clientes, informes, traslado con llegada,
+  plan vs liquidación, parte programado, desmedro como merma, fumigación 7/3/0, costo máximo, importación con costos,
+  validación de transporte externo, tráfico con servicio simulado, incidencias por tipo/subtipo, permisos y diseño
+  adaptable). Migraciones 0002 y 0003 verificadas contra el modelo.
+- **Recorrido en navegador** (Chromium) en 1366 px y 390 px: OV impresa, certificado, pre-guía, ficha de cliente,
+  informes, costos vs mercado, plan de producción, ruta, permisos y menú en celular.
+- **PostgreSQL 16:** las 140 pruebas pasan; además se verificó la migración 0001 → 0003 sobre una base con datos existentes (las columnas nuevas obligatorias tienen valor por defecto).

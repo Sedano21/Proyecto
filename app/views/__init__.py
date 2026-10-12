@@ -364,12 +364,12 @@ def product_edit(code):
     def _do():
         antes = {k: getattr(p, k) for k in ("peso_kg", "tipo", "um", "categoria_reposicion", "stock_minimo", "periodo_analisis_dias",
                                             "margen_seguridad_dias", "merma_pct", "tiempo_max_almacen_dias", "grupo_humedad",
-                                            "producto_base", "calidad", "marca", "presentacion")}
+                                            "producto_base", "calidad", "marca", "presentacion", "costo_max_compra")}
         for k in ("tipo", "um", "categoria_reposicion", "grupo_humedad", "producto_base", "calidad", "marca", "presentacion",
                   "proveedor_habitual"):
             if k in request.form:
                 setattr(p, k, request.form.get(k, "").strip())
-        for k in ("peso_kg", "stock_minimo", "merma_pct"):
+        for k in ("peso_kg", "stock_minimo", "merma_pct", "costo_max_compra"):
             if k in request.form:
                 setattr(p, k, f_float(k))
         for k in ("periodo_analisis_dias", "margen_seguridad_dias", "tiempo_max_almacen_dias"):
@@ -452,12 +452,29 @@ def users():
                 audit(g.user, "USUARIO_CREADO", "User", un, {"rol": u.role_code})
         return act(_do, "Usuario guardado.", url_for("main.users"))
     roles = list(s.execute(select(Role).order_by(Role.area, Role.nombre)).scalars())
+    return render_template("users.html", users=list(s.execute(select(User).order_by(User.role_code)).scalars()), roles=roles)
+
+
+@bp.route("/usuarios/permisos")
+@perm_required("usuarios.administrar")
+def permissions():
+    """Permisos por rol con una vista amigable (observaciones al demo v0.5): por rol con interruptores agrupados por
+    módulo, o matriz compacta filtrable por área."""
+    s = db()
+    roles = list(s.execute(select(Role).order_by(Role.area, Role.nombre)).scalars())
     perms = list(s.execute(select(Permission).order_by(Permission.modulo, Permission.code)).scalars())
     matrix = {}
     for rp in s.execute(select(RolePermission)).scalars():
         matrix[(rp.role_code, rp.perm_code)] = rp
-    return render_template("users.html", users=list(s.execute(select(User).order_by(User.role_code)).scalars()),
-                           roles=roles, perms=perms, matrix=matrix)
+    rol = request.args.get("rol") or (roles[0].code if roles else "")
+    modulos = {}
+    for p in perms:
+        modulos.setdefault(p.modulo, []).append(p)
+    conteo = {r.code: sum(1 for (rc, _pc) in matrix if rc == r.code) for r in roles}
+    areas = sorted({r.area for r in roles})
+    return render_template("permissions.html", roles=roles, perms=perms, matrix=matrix, rol=rol, modulos=modulos,
+                           conteo=conteo, areas=areas, vista=request.args.get("vista", "rol"),
+                           area=request.args.get("area", ""))
 
 
 @bp.route("/usuarios/permiso", methods=["POST"])
@@ -474,7 +491,8 @@ def perm_toggle():
             db().add(RolePermission(role_code=role, perm_code=perm, origen="PROPUESTO",
                                     fuente=f"Asignado por {g.user.nombre} (configuración)"))
             audit(g.user, "PERMISO_OTORGADO", "RolePermission", f"{role}:{perm}")
-    return act(_do, "Matriz de permisos actualizada.", url_for("main.users") + "#matriz")
+    volver = request.form.get("volver") or ""
+    return act(_do, "Permisos actualizados.", volver if volver.startswith("/usuarios/permisos") else url_for("main.permissions"))
 
 
 # ------------------------------- auditoría ---------------------------------

@@ -293,3 +293,47 @@ def produccion(desde=None, hasta=None):
             "serie_und": [(f"{d:%d/%m}", dia_und[d]) for d in dias],
             "productos": sorted(((k, v[0], v[1]) for k, v in prod.items()), key=lambda x: -x[2])[:15],
             "lineas": lin, "plan": plan, "merma": merma[:40], "programados": programados, "recomendaciones": reco}
+
+
+# ------------------------------------------------------------------ distribución
+def distribucion(desde=None, hasta=None):
+    """Rutas con transporte propio vs externo (con su validación), carga y pedidos, incidencias por tipo y subtipo."""
+    from ..models import Incident, Route
+    from .catalogs_helpers import incident_group_name, incident_type_name
+    desde, hasta = periodo(desde, hasta, dias=30)
+    s = db()
+    rutas = [r for r in s.execute(select(Route).where(Route.fecha >= desde, Route.fecha <= hasta, Route.estado != "ANULADA")).scalars()]
+    tot = {"PROPIO": {"rutas": 0, "kg": 0.0, "pedidos": 0}, "EXTERNO": {"rutas": 0, "kg": 0.0, "pedidos": 0}}
+    sem = defaultdict(lambda: {"PROPIO": 0, "EXTERNO": 0})
+    sin_validar, rechazadas = [], 0
+    for r in rutas:
+        k = "EXTERNO" if r.requiere_externo else "PROPIO"
+        tot[k]["rutas"] += 1
+        tot[k]["kg"] += r.peso_total or 0
+        tot[k]["pedidos"] += len(r.stops)
+        sem[semana(r.fecha)][k] += 1
+        if r.requiere_externo:
+            ev = r.externo_validacion or {}
+            if not ev:
+                sin_validar.append(r)
+            elif not ev.get("validado"):
+                rechazadas += 1
+    incs = [i for i in s.execute(select(Incident)).scalars() if desde <= i.ts.date() <= hasta]
+    por_tipo = Counter(incident_group_name(i.tipo) or "Sin tipo" for i in incs)
+    por_sub = Counter(f"{incident_group_name(i.tipo)} · {incident_type_name(i.tipo)}" for i in incs)
+    n = len(rutas)
+    pct_ext = _pct(tot["EXTERNO"]["rutas"], n)
+    reco = []
+    if pct_ext is not None and pct_ext > float(param("pct_externo_alerta", 30) or 30):
+        reco.append(f"{pct_ext} % de las rutas usan transporte externo: revisar disponibilidad y capacidad de la flota propia.")
+    if sin_validar:
+        reco.append(f"{len(sin_validar)} ruta(s) con transporte externo sin validar por el Coordinador de Distribución.")
+    if incs:
+        k, v = por_sub.most_common(1)[0]
+        reco.append(f"Incidencia más frecuente: {k} ({v}). Atacar su causa reduce rechazos y reprogramaciones.")
+    semanas = sorted(sem)
+    return {"desde": desde, "hasta": hasta, "rutas": n, "tot": tot, "pct_externo": pct_ext,
+            "serie_propio": [(f"{w:%d/%m}", sem[w]["PROPIO"]) for w in semanas],
+            "serie_externo": [(f"{w:%d/%m}", sem[w]["EXTERNO"]) for w in semanas],
+            "sin_validar": sin_validar, "externo_no_validado": rechazadas, "incidencias": len(incs),
+            "por_tipo": por_tipo.most_common(), "por_subtipo": por_sub.most_common(12), "recomendaciones": reco}

@@ -39,6 +39,11 @@ Las tablas se crean al iniciar la aplicación (`create_all`). Para producción s
 | requiere_cita | BOOLEAN | no |  |
 | vida_util_min_dias | INTEGER | sí |  |
 | canal_precio | VARCHAR(60) | no |  |
+| contacto | VARCHAR(120) | no |  |
+| telefono | VARCHAR(60) | no |  |
+| correo | VARCHAR(160) | no |  |
+| codigo_sap | VARCHAR(30) | no |  |
+| observaciones | TEXT | no |  |
 
 Restricción única: (ruc)
 
@@ -135,6 +140,7 @@ Artículo (formato TABLA_DATA de 'PCP 2026 - J.xlsm' y columnas de OVS/BOM).
 | proveedor_habitual | VARCHAR(160) | no |  |
 | merma_pct | FLOAT | sí |  |
 | tiempo_max_almacen_dias | INTEGER | sí |  |
+| costo_max_compra | FLOAT | sí |  |
 | origen | VARCHAR(40) | no |  |
 
 ## `roles`
@@ -165,7 +171,7 @@ Almacén (IF §6.2). uso: PT / MP_INSUMOS / ALTERNATIVO / OTRO.
 
 ## `customer_conditions`
 
-Condiciones comerciales del cliente (LISTA DE CLIENTES - CON PENALIDADES Y LOTES): ejecutivo, canal, tipo de solicitud, lotes por SKU, vida útil y penalidades. El archivo no trae RUC: se vincula por nombre normalizado.
+Condiciones comerciales del cliente (LISTA DE CLIENTES - CON PENALIDADES Y LOTES): ejecutivo, canal, tipo de solicitud, lotes por SKU, vida útil y penalidades. Se vincula por RUC si la fila lo trae; si no, por nombre normalizado.
 
 | Columna | Tipo | Nulo | Clave / referencia |
 |---|---|---|---|
@@ -173,6 +179,7 @@ Condiciones comerciales del cliente (LISTA DE CLIENTES - CON PENALIDADES Y LOTES
 | nombre | VARCHAR(250) | no |  |
 | nombre_norm | VARCHAR(250) | no |  |
 | customer_id | INTEGER | sí | → customers.id |
+| ruc | VARCHAR(20) | no |  |
 | ejecutivo | VARCHAR(120) | no |  |
 | canal_comercial | VARCHAR(80) | no |  |
 | solicitud | VARCHAR(60) | no |  |
@@ -185,6 +192,24 @@ Condiciones comerciales del cliente (LISTA DE CLIENTES - CON PENALIDADES Y LOTES
 | fill_rate_min_pct | FLOAT | sí |  |
 | origen | VARCHAR(200) | no |  |
 | ts | DATETIME | no |  |
+
+## `customer_sites`
+
+Lugar de entrega del cliente (almacén, tienda, sede). La OV elige uno o registra 'otro' con su dirección.
+
+| Columna | Tipo | Nulo | Clave / referencia |
+|---|---|---|---|
+| id | INTEGER | no | PK |
+| customer_id | INTEGER | no | → customers.id |
+| nombre | VARCHAR(120) | no |  |
+| direccion | VARCHAR(250) | no |  |
+| distrito | VARCHAR(80) | no |  |
+| provincia | VARCHAR(80) | no |  |
+| referencia | VARCHAR(250) | no |  |
+| horario_recepcion | VARCHAR(60) | no |  |
+| contacto | VARCHAR(120) | no |  |
+| telefono | VARCHAR(60) | no |  |
+| activo | BOOLEAN | no |  |
 
 ## `role_permissions`
 
@@ -315,10 +340,31 @@ Restricción única: (user_id, type_code)
 | cantidad_recibida | FLOAT | sí |  |
 | lote_recibido | VARCHAR(60) | no |  |
 | diferencias | TEXT | no |  |
+| contenedor | VARCHAR(40) | no |  |
+| tipo_contenedor | VARCHAR(20) | no |  |
 | creado_por | INTEGER | sí | → users.id |
 | ts | DATETIME | no |  |
 
 Restricción única: (referencia)
+
+## `market_prices`
+
+Precio de mercado de referencia (R5, 13-oct): mayorista / minorista / importación, con fuente y fecha del dato.
+
+| Columna | Tipo | Nulo | Clave / referencia |
+|---|---|---|---|
+| id | INTEGER | no | PK |
+| producto | VARCHAR(120) | no |  |
+| variedad | VARCHAR(120) | no |  |
+| precio_kg | FLOAT | no |  |
+| tipo_precio | VARCHAR(20) | no |  |
+| mercado | VARCHAR(160) | no |  |
+| fecha | DATE | no |  |
+| fuente | VARCHAR(250) | no |  |
+| url | TEXT | no |  |
+| origen | VARCHAR(160) | no |  |
+| user_id | INTEGER | sí | → users.id |
+| ts | DATETIME | no |  |
 
 ## `param_history`
 
@@ -349,7 +395,7 @@ Conteo físico periódico (IF §6.3/§6.4; formato 'Inven. bobinas 1524.xlsx').
 
 ## `price_items`
 
-Lista de precios (decisión Q11, 13-oct-2026). Cada cambio crea una versión nueva; la anterior queda con 'hasta'. lista GENERAL: precio por canal (columnas de PRICE_LIST); lista GRANEL: precio por kg y por saco (mayorista granel). El costo de la empresa NO se guarda.
+Lista de precios (decisión Q11, 13-oct-2026). Cada cambio crea una versión nueva; la anterior queda con 'hasta'. lista GENERAL: precio por canal (columnas de PRICE_LIST); lista GRANEL: precio por kg y por saco (mayorista granel). El costo de la empresa se guarda aparte (ProductCost, visibilidad restringida; respuestas del 13-oct).
 
 | Columna | Tipo | Nulo | Clave / referencia |
 |---|---|---|---|
@@ -379,6 +425,39 @@ Vigencia de cada lista de precios (se avisa al vencer; no se bloquea).
 | archivo | VARCHAR(200) | no |  |
 | vigencia_desde | DATE | sí |  |
 | vigencia_hasta | DATE | sí |  |
+| user_id | INTEGER | sí | → users.id |
+| ts | DATETIME | no |  |
+
+## `product_costs`
+
+Costo de la empresa por artículo (R4 y observaciones del 13-oct): sirve para (1) impedir ventas por debajo del costo y (2) compararlo automáticamente con precios de mercado y su tendencia. Versionado como los precios.
+
+| Columna | Tipo | Nulo | Clave / referencia |
+|---|---|---|---|
+| id | INTEGER | no | PK |
+| product_code | VARCHAR(40) | no |  |
+| descripcion | VARCHAR(250) | no |  |
+| costo | FLOAT | no |  |
+| unidad | VARCHAR(10) | no |  |
+| vigente | BOOLEAN | no |  |
+| desde | DATETIME | no |  |
+| hasta | DATETIME | sí |  |
+| origen | VARCHAR(160) | no |  |
+| user_id | INTEGER | sí | → users.id |
+
+## `production_plans`
+
+Planeamiento de producción ingresado por Producción (día, semana o mes) para contrastarlo con la liquidación.
+
+| Columna | Tipo | Nulo | Clave / referencia |
+|---|---|---|---|
+| id | INTEGER | no | PK |
+| periodo | VARCHAR(10) | no |  |
+| fecha | DATE | no |  |
+| product_code | VARCHAR(30) | no | → products.code |
+| cantidad | FLOAT | no |  |
+| line_code | VARCHAR(20) | sí | → production_lines.code |
+| comentario | TEXT | no |  |
 | user_id | INTEGER | sí | → users.id |
 | ts | DATETIME | no |  |
 
@@ -436,6 +515,9 @@ Parte de producción por línea (formatos LINEA TRUER, LINEA CIMBRIA, ENVASADOS 
 | urgente | BOOLEAN | no |  |
 | direccion | VARCHAR(250) | no |  |
 | distrito | VARCHAR(80) | no |  |
+| provincia | VARCHAR(80) | no |  |
+| lugar_entrega | VARCHAR(120) | no |  |
+| site_id | INTEGER | sí | → customer_sites.id |
 | hora_cita | VARCHAR(20) | no |  |
 | cita_confirmada | BOOLEAN | no |  |
 | comentarios | TEXT | no |  |
@@ -447,6 +529,8 @@ Parte de producción por línea (formatos LINEA TRUER, LINEA CIMBRIA, ENVASADOS 
 | motivo_detencion | VARCHAR(250) | no |  |
 | origen | VARCHAR(20) | no |  |
 | tipo_venta | VARCHAR(40) | no |  |
+| forma_pago | VARCHAR(60) | no |  |
+| moneda | VARCHAR(10) | no |  |
 | retenida_precio | BOOLEAN | no |  |
 | precio_observado | JSON | no |  |
 | aprobacion_precio | JSON | no |  |
@@ -531,6 +615,22 @@ Bandeja de salida de correo. Si no hay SMTP configurado, queda en estado SIN_SMT
 | error | TEXT | no |  |
 | ts | DATETIME | no |  |
 | enviado_ts | DATETIME | sí |  |
+
+## `import_costs`
+
+Costos asociados a la importación (flete, seguro, aduana, almacenaje, transporte local, otros).
+
+| Columna | Tipo | Nulo | Clave / referencia |
+|---|---|---|---|
+| id | INTEGER | no | PK |
+| shipment_id | INTEGER | no | → import_shipments.id |
+| concepto | VARCHAR(60) | no |  |
+| monto | FLOAT | no |  |
+| moneda | VARCHAR(5) | no |  |
+| tipo_cambio | FLOAT | sí |  |
+| documento | VARCHAR(80) | no |  |
+| user_id | INTEGER | sí | → users.id |
+| ts | DATETIME | no |  |
 
 ## `import_phases`
 
@@ -638,6 +738,10 @@ Historial de salidas/ventas para análisis de reposición (formato hoja 'Qy' de 
 | precio_unitario | FLOAT | no |  |
 | precio_minimo | FLOAT | sí |  |
 | precio_origen | VARCHAR(160) | no |  |
+| descuento | FLOAT | no |  |
+| tax_code | VARCHAR(10) | no |  |
+| um_venta | VARCHAR(10) | no |  |
+| cantidad_venta | FLOAT | sí |  |
 | preparado | FLOAT | no |  |
 | despachado | FLOAT | no |  |
 | entregado | FLOAT | no |  |
@@ -665,6 +769,7 @@ Existencia por artículo/lote/almacén (formato STOCK_LOTE de SAP).
 | fecha_verificacion | DATETIME | sí |  |
 | origen | VARCHAR(60) | no |  |
 | upload_id | INTEGER | sí | → upload_batches.id |
+| fumigacion_programada | DATE | sí |  |
 
 Restricción única: (product_code, warehouse_code, lote, estado)
 
@@ -850,6 +955,10 @@ Registro de Calidad genérico por formato: MUESTREO (REG-CAL-002 / CP-FOR-CAL-10
 | aprobacion_discrepancia | JSON | no |  |
 | vistos_buenos | JSON | no |  |
 | retorno_ts | DATETIME | sí |  |
+| externo_validacion | JSON | no |  |
+| distancia_km | FLOAT | sí |  |
+| tiempo_estimado_min | FLOAT | sí |  |
+| trafico | JSON | no |  |
 | guia_numero | VARCHAR(40) | no |  |
 | seguridad | JSON | no |  |
 | salida_confirmada_por | INTEGER | sí | → users.id |
@@ -880,6 +989,7 @@ Registro de Calidad genérico por formato: MUESTREO (REG-CAL-002 / CP-FOR-CAL-10
 | cantidad_recibida | FLOAT | sí |  |
 | diferencia | FLOAT | no |  |
 | observacion | TEXT | no |  |
+| llegada_estimada | DATETIME | sí |  |
 | ts | DATETIME | no |  |
 
 ## `production_requests`
@@ -907,6 +1017,7 @@ Solicitud preliminar de producción (IF §8.2).
 | inicio_ts | DATETIME | sí |  |
 | fin_ts | DATETIME | sí |  |
 | observacion | TEXT | no |  |
+| bom_revision | JSON | no |  |
 | ts | DATETIME | no |  |
 
 ## `route_stops`
@@ -936,12 +1047,13 @@ Solicitud preliminar de producción (IF §8.2).
 
 ## `incidents`
 
-Incidencias de distribución (IF §12.3).
+Incidencias de distribución (IF §12.3), clasificadas por tipo y subtipo (observaciones al demo v0.5).
 
 | Columna | Tipo | Nulo | Clave / referencia |
 |---|---|---|---|
 | id | INTEGER | no | PK |
 | tipo | VARCHAR(30) | no |  |
+| grupo | VARCHAR(20) | no |  |
 | route_id | INTEGER | sí | → routes.id |
 | stop_id | INTEGER | sí | → route_stops.id |
 | order_id | INTEGER | sí | → sales_orders.id |

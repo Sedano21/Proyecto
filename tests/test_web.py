@@ -56,7 +56,13 @@ PAGES = ["/", "/alertas", "/alertas?agrupar=area", "/alertas?agrupar=grupo&prior
          "/distribucion/flota", "/configuracion", "/configuracion/productos", "/configuracion/clientes", "/usuarios",
          "/alertas/configuracion", "/correo", "/auditoria", "/alertas/preferencias",
          "/configuracion/param/cortes_preparacion/historial", "/ov/precios", "/ov/precios?lista=GRANEL",
-         "/ov/precios?sku=PT-901", "/almacen/cargas/nueva?tipo=PRECIOS"] + \
+         "/ov/precios?sku=PT-901", "/almacen/cargas/nueva?tipo=PRECIOS",
+         # v0.6: informes, fichas de cliente, costos, plan de producción, permisos, cargas por área
+         "/informes/", "/informes/comercial", "/informes/reempaque", "/informes/produccion", "/informes/distribucion",
+         "/ov/clientes", "/ov/clientes/1", "/ov/costos", "/produccion/plan", "/produccion/plan?periodo=SEMANA",
+         "/usuarios/permisos", "/usuarios/permisos?vista=matriz", "/almacen/cargas?area=Comercial",
+         "/almacen/cargas?area=Producción", "/almacen/cargas/nueva?tipo=CLIENTES", "/almacen/cargas/nueva?tipo=COSTOS",
+         "/almacen/cargas/nueva?tipo=MERCADO"] + \
         [f"/calidad/registro/nuevo/{f}" for f in ["MUESTREO", "RECEPCION_MP", "FUMIGACION", "NO_CONFORME", "QUEJA", "NC_ACCION",
                                                   "CONTROL_PESOS", "CONTROL_GRANOS", "RECEPCION_IMPORTADO", "VEHICULO",
                                                   "DISENO_BOBINA", "PROCESO", "INSPECCION_CARGA"]]

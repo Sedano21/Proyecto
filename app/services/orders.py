@@ -77,8 +77,11 @@ def resolve_delivery(customer, site_id=None, lugar="", direccion="", distrito=""
     if site is not None:
         datos = {"site_id": site.id, "lugar_entrega": site.nombre, "direccion": site.direccion, "distrito": site.distrito,
                  "provincia": site.provincia}
+    elif (lugar or "").strip():  # "otro" lugar: su dirección se ingresa completa (no se toma la fiscal)
+        datos = {"site_id": None, "lugar_entrega": lugar.strip(), "direccion": (direccion or "").strip(),
+                 "distrito": (distrito or "").strip(), "provincia": (provincia or "").strip()}
     else:
-        datos = {"site_id": None, "lugar_entrega": (lugar or "").strip(),
+        datos = {"site_id": None, "lugar_entrega": "",
                  "direccion": (direccion or customer.direccion or "").strip(),
                  "distrito": (distrito or customer.distrito or "").strip(),
                  "provincia": (provincia or customer.provincia or "").strip()}

@@ -68,8 +68,10 @@ def replenishment():
     prods = list(db().execute(select(Product).where((Product.categoria_reposicion != "") | (Product.stock_minimo.is_not(None)))
                               .order_by(Product.code)).scalars())
     analisis = [psvc.analyze_product(p) for p in prods]
+    from ..models import LeadTime
+    plazos = list(db().execute(select(LeadTime).order_by(LeadTime.categoria, LeadTime.mes_desde)).scalars())
     return render_template("replenishment.html", analisis=analisis, margen=param("margen_reposicion_dias"),
-                           abc=psvc.abc_classes())
+                           abc=psvc.abc_classes(), plazos=plazos)
 
 
 @bp.route("/importaciones", methods=["GET", "POST"])
@@ -81,7 +83,8 @@ def imports():
         def _do():
             holder["s"] = isvc.create_shipment(g.user, request.form.get("referencia", ""), request.form.get("proveedor", ""),
                                                request.form.get("product_code", "").strip().upper(), f_float("cantidad", True),
-                                               f_date("fecha_inicio", True), f_date("fecha_llegada"), request.form.get("warehouse_code") or None)
+                                               f_date("fecha_inicio", True), f_date("fecha_llegada"), request.form.get("warehouse_code") or None,
+                                               request.form.get("contenedor", ""), request.form.get("tipo_contenedor", ""))
         resp = act(_do, "Importación registrada.", url_for("buy.imports"))
         if "s" in holder and holder["s"].id:
             return redirect(url_for("buy.import_detail", sid=holder["s"].id))
@@ -105,6 +108,10 @@ def import_detail(sid):
             "llegada": lambda: isvc.change_arrival(sh, u, f_date("nueva_fecha", True), f.get("motivo", "")),
             "fase_fecha": lambda: isvc.change_phase_date(ph, u, f_date("nueva_fecha", True), f.get("motivo", "")),
             "fase_ok": lambda: isvc.complete_phase(ph, u, f_date("fecha_real")),
+            "logistica": lambda: isvc.update_logistics(sh, u, f.get("contenedor", ""), f.get("tipo_contenedor", ""),
+                                                       f.get("warehouse_code") or None),
+            "costo": lambda: isvc.add_cost(sh, u, f.get("concepto", ""), f_float("monto", True), f.get("moneda", "USD"),
+                                           f_float("tipo_cambio"), f.get("documento", "")),
             "recibir": lambda: isvc.receive(sh, u, f_float("cantidad", True), f.get("lote", "").strip(), f.get("warehouse_code"),
                                             f_date("fecha_venc"), f.get("diferencias", "")),
         }
@@ -116,4 +123,6 @@ def import_detail(sid):
     cambios = [c for c in cambios if (c.entidad == "IMPORTACION" and c.entidad_id == sh.id) or (c.entidad == "FASE" and c.entidad_id in phase_ids)]
     whs = list(db().execute(select(Warehouse).order_by(Warehouse.prioridad)).scalars())
     from datetime import date
-    return render_template("import_detail.html", sh=sh, cambios=cambios, whs=whs, hoy=date.today())
+    from ..services.core import param as _param
+    return render_template("import_detail.html", sh=sh, cambios=cambios, whs=whs, hoy=date.today(), costos=isvc.cost_summary(sh),
+                           conceptos=_param("conceptos_costo_importacion", []) or [])
