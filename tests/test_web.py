@@ -142,3 +142,16 @@ def test_pantallas_ruta_y_folio_en_cada_etapa(app):
                          f"/ov/preparacion/{o.id}"):
                 resp = cl.get(path)
                 assert resp.status_code in (200, 403), (user, path, resp.status_code)
+
+
+def test_detalle_de_todas_las_alertas_incluidas_las_sin_documento(app):
+    """Regresión: las alertas sin documento asociado (carga SAP atrasada, merma de un parte) rompían su detalle."""
+    from app.models import Alert, User
+    from app.services.scheduler import run_checks
+    s = SessionLocal()
+    run_checks(s.query(User).filter_by(username="sistemas").one())
+    s.commit()
+    c = app.test_client()
+    login(c, "gerente.general")
+    for a in s.query(Alert):
+        assert c.get(f"/alertas/{a.id}").status_code == 200, (a.type_code, a.entidad, a.entidad_id)
