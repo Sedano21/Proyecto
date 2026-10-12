@@ -94,4 +94,4 @@ def test_salida_exige_pedidos_preparados(s, U, new_order):
     lines = [{**e, "guia": e["esperado"], "cargado": e["esperado"]} for e in dist.expected_lines(r)]
     dist.register_security_check(r, U("seguridad"), "G1", lines)
     with pytest.raises(BusinessError):
-        dist.confirm_departure(r, U("coord.distribucion"), {k: True for k, _ in dist.CHECKLIST})
+        dist.confirm_departure(r, U("lider.almacen"), {k: True for k, _ in dist.CHECKLIST})

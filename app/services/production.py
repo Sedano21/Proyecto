@@ -6,7 +6,7 @@ from sqlalchemy import func, select
 
 from ..db import db
 from ..models import (BOMLine, BOMVersion, Liquidation, Product, ProductionLine, ProductionRequest, SalesHistory,
-                      StockLot, now)
+                      StockLot, Warehouse, now)
 from . import alerts
 from .core import BusinessError, audit, param
 
@@ -235,8 +235,16 @@ def register_liquidation(user, numero_documento, product_code, cantidad_completa
     for m in req_mat.get("materiales", []):
         s.add(SalesHistory(product_code=m["componente"], fecha=liq.fecha, cantidad=m["requerido_base"],
                            documento=f"LIQ-{liq.numero_documento}", origen="CONSUMO_PRODUCCION"))
+    transito = _transit_wh()
+    if transito and cantidad_completada > 0:
+        # Q5: Producción deja el producto terminado en el almacén virtual de tránsito (ALM-003) hasta que
+        # Almacén lo valida y lo pasa al almacén de producto terminado.
+        from .stock import add_or_increase_lot
+        add_or_increase_lot(product_code, transito, lote, cantidad_completada, "PENDIENTE_REVISION", fecha_venc, fecha_fab,
+                            origen=f"LIQ-{liq.numero_documento}")
     alerts.emit("LIQUIDACION_MONTACARGUISTA", f"Liquidación {liq.numero_documento}: mover PT {product_code}",
-                f"Lote {lote}, cantidad {cantidad_completada:g}. Trasladar producto terminado a almacén.",
+                f"Lote {lote}, cantidad {cantidad_completada:g}"
+                + (f" en tránsito {transito}" if transito else "") + ". Trasladar producto terminado a almacén para su validación.",
                 "Liquidation", liq.id, creado_por=user)
     _check_merma(liq, user)
     audit(user, "LIQUIDACION_REGISTRADA", "Liquidation", liq.numero_documento,
@@ -264,6 +272,11 @@ def _check_merma(liq, user):
                     creado_por=user)
 
 
+def _transit_wh():
+    code = param("almacen_transito_produccion", "ALM-003")
+    return code if code and db().get(Warehouse, code) is not None else None
+
+
 def receive_pt(liq, user, cantidad_recibida, presentacion_ok=True, observacion="", warehouse_code=None):
     """Almacén valida cantidades/presentación y registra diferencias (IF §8.3; cruce AS-IS 'Recep. pt.xlsx')."""
     from .stock import add_or_increase_lot, principal_warehouses
@@ -284,7 +297,16 @@ def receive_pt(liq, user, cantidad_recibida, presentacion_ok=True, observacion="
         if not whs:
             raise BusinessError("No hay almacén principal configurado para el tipo de artículo.")
         warehouse_code = whs[0].code
+    from .core import check_warehouse_scope
+    check_warehouse_scope(user, warehouse_code)
     liq.warehouse_code = warehouse_code
+    transito = _transit_wh()
+    if transito:  # Q5: sale del tránsito de Producción todo lo liquidado; lo recibido entra al almacén de PT
+        t_lot = db().execute(select(StockLot).where(StockLot.product_code == liq.product_code,
+                                                    StockLot.warehouse_code == transito, StockLot.lote == liq.lote)
+                             ).scalars().first()
+        if t_lot is not None:
+            t_lot.cantidad = max(t_lot.cantidad - liq.cantidad_completada, 0)
     if cantidad_recibida > 0:
         lot = add_or_increase_lot(liq.product_code, warehouse_code, liq.lote, cantidad_recibida, "PENDIENTE_REVISION",
                                   liq.fecha_venc, liq.fecha_fab, origen=f"LIQ-{liq.numero_documento}")

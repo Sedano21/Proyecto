@@ -4,7 +4,9 @@ Secuencia TO-BE: ruta aprobada → montacarguista traslada → auxiliar sube fot
 pre-guía → Seguridad visualiza pre-guía, sigue la carga (foto de inicio) y registra incidencias con foto, motivo y hora →
 auxiliar valida productos (si hay incongruencias avisa al almacenero para validación cruzada) → valida carga completa con
 foto de mercadería cargada → alerta de camión cargado → Facturación factura y carga la factura; Distribución genera/carga la
-guía e imprime el folio → Seguridad revisa que los documentos estén completos (si faltan, reporta) y autoriza la salida.
+guía e imprime el folio → Seguridad revisa que los documentos estén completos (si faltan, reporta) → el Líder Operativo
+autoriza la salida (decisión Q16, 12-oct-2026). Una discrepancia carga vs guía bloquea la salida salvo que el Jefe o el
+Coordinador de Logística la apruebe mientras se resuelve la guía (Q8).
 """
 from sqlalchemy import select
 
@@ -182,10 +184,11 @@ def missing_documents(route):
     return faltan
 
 
-def authorize_exit(route, user, impresos=False):
-    """Seguridad: revisa en el sistema que todos los documentos estén cargados e impresos y autoriza la salida."""
-    if not has_perm(user, "distribucion.autorizar_salida"):
-        raise BusinessError("La salida del camión la autoriza Seguridad (TO-BE).")
+def review_documents(route, user, impresos=False):
+    """Seguridad: revisa en el sistema que todos los documentos estén cargados e impresos (TO-BE).
+    La autorización de la salida la da después el Líder Operativo (Q16)."""
+    if not has_perm(user, "distribucion.seguridad"):
+        raise BusinessError("La revisión de documentos la hace Seguridad (TO-BE).")
     _route_ready(route)
     if not route.carga_validada:
         raise BusinessError("La carga no está validada por el auxiliar.")
@@ -199,8 +202,41 @@ def authorize_exit(route, user, impresos=False):
         return faltan
     alerts.close_by_system(f"DOCS:{route.id}", "Documentos completos")
     route.autorizacion_seguridad = {"user": user.nombre, "ts": now().isoformat()}
-    audit(user, "SALIDA_AUTORIZADA_SEGURIDAD", "Route", route.id)
+    audit(user, "DOCUMENTOS_REVISADOS_SEGURIDAD", "Route", route.id)
     return []
+
+
+def approve_exit_with_discrepancy(route, user, motivo):
+    """Q8: la discrepancia con la guía bloquea la salida; el Jefe o el Coordinador de Logística puede aprobarla
+    mientras se resuelve la guía. La alerta de discrepancia queda abierta hasta registrar la resolución."""
+    if not has_perm(user, "distribucion.aprobar_salida_discrepancia"):
+        raise BusinessError("La salida con discrepancia la aprueba el Jefe o el Coordinador de Logística (Q8).")
+    _route_ready(route)
+    if not (route.seguridad or {}).get("discrepancias"):
+        raise BusinessError("La ruta no tiene discrepancias carga vs guía.")
+    if not (motivo or "").strip():
+        raise BusinessError("Indique el motivo y cómo se resolverá la guía.")
+    route.aprobacion_discrepancia = {"user": user.nombre, "user_id": user.id, "rol": user.role_code,
+                                     "ts": now().isoformat(), "motivo": motivo.strip(), "resuelta": False}
+    alerts.emit("SALIDA_CON_DISCREPANCIA", f"Ruta #{route.id}: salida aprobada con guía por resolver",
+                f"Aprobó {user.nombre}. Motivo: {motivo}. Discrepancias: " + "; ".join(route.seguridad["discrepancias"]),
+                "Route", route.id, creado_por=user)
+    audit(user, "SALIDA_DISCREPANCIA_APROBADA", "Route", route.id, route.aprobacion_discrepancia)
+
+
+def resolve_guide_discrepancy(route, user, detalle):
+    """Registra que la guía observada quedó resuelta (cierra la alerta de discrepancia)."""
+    if not (has_perm(user, "distribucion.documentos") or has_perm(user, "distribucion.aprobar_salida_discrepancia")):
+        raise BusinessError("Registra la resolución Distribución o Logística.")
+    ap = dict(route.aprobacion_discrepancia or {})
+    if not ap or ap.get("resuelta"):
+        raise BusinessError("No hay una discrepancia de guía pendiente de resolver.")
+    if not (detalle or "").strip():
+        raise BusinessError("Describa cómo se resolvió la guía.")
+    ap.update({"resuelta": True, "resuelta_por": user.nombre, "resuelta_ts": now().isoformat(), "resolucion": detalle.strip()})
+    route.aprobacion_discrepancia = ap
+    alerts.close_by_system(f"GUIA:{route.id}", f"Guía resuelta: {detalle}")
+    audit(user, "GUIA_DISCREPANCIA_RESUELTA", "Route", route.id, ap)
 
 
 def register_return(route, user):

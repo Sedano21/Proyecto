@@ -4,7 +4,7 @@ from sqlalchemy import select
 from ..db import db
 from ..models import OVDecision, StockLot, Transfer, Warehouse, now
 from . import alerts
-from .core import BusinessError, audit, has_perm
+from .core import BusinessError, audit, check_warehouse_scope, has_perm
 from .stock import add_or_increase_lot, free_qty, lot_usable, reevaluate_pending
 
 
@@ -20,8 +20,9 @@ def transferable_qty(lot):
     return max(free_qty(lot) - pending_transfer_qty(lot), 0.0)
 
 
-def request_transfer(user, lot_id, destino_code, cantidad, order=None, observacion=""):
-    if not (has_perm(user, "traslado.solicitar") or has_perm(user, "ov.decidir_alternativa")):
+def request_transfer(user, lot_id, destino_code, cantidad, order=None, observacion="", sistema=False):
+    """sistema=True: pre-solicitud automática (Q15); la aprueba el Jefe o el Coordinador de Logística (Q13)."""
+    if not sistema and not (has_perm(user, "traslado.solicitar") or has_perm(user, "ov.decidir_alternativa")):
         raise BusinessError("Su rol no puede solicitar traslados (Logística decide, IF §6.2).")
     lot = db().get(StockLot, int(lot_id))
     if lot is None:
@@ -34,13 +35,14 @@ def request_transfer(user, lot_id, destino_code, cantidad, order=None, observaci
     if cantidad <= 0 or cantidad > disp + 1e-9:
         raise BusinessError(f"Cantidad no disponible para traslado (máximo {disp:g}).")
     t = Transfer(origen_lot_id=lot.id, destino_code=destino_code, cantidad=cantidad, order_id=order.id if order else None,
-                 solicitado_por=user.id, observacion=observacion)
+                 solicitado_por=user.id if user else None, observacion=observacion)
     db().add(t)
     db().flush()
     if order is not None:
         db().add(OVDecision(order_id=order.id, tipo="USO_ALMACEN_ALTERNATIVO", estado="REGISTRADA",
                             detalle={"traslado": t.id, "lote": lot.lote, "origen": lot.warehouse_code,
-                                     "destino": destino_code, "cantidad": cantidad}, comentario=observacion, user_id=user.id))
+                                     "destino": destino_code, "cantidad": cantidad, "automatica": sistema},
+                            comentario=observacion, user_id=user.id if user else None))
     alerts.emit("TRASLADO_SOLICITADO", f"Autorizar traslado #{t.id}: {lot.product_code} × {cantidad:g}",
                 f"{lot.warehouse_code} → {destino_code}, lote {lot.lote}. OV: {order.numero if order else '-'}.",
                 "Transfer", t.id, dedup_key=f"TRASLADO_SOL:{t.id}", creado_por=user)
@@ -50,7 +52,7 @@ def request_transfer(user, lot_id, destino_code, cantidad, order=None, observaci
 
 def authorize(t, user, aprobar, observacion=""):
     if not has_perm(user, "traslado.autorizar"):
-        raise BusinessError("Solo la Jefatura de Logística autoriza traslados (IF §6.2, §13).")
+        raise BusinessError("El traslado lo aprueba el Jefe o el Coordinador de Logística (IF §6.2, §13; Q13).")
     if t.estado != "SOLICITADO":
         raise BusinessError("El traslado no está pendiente de autorización.")
     if aprobar:
@@ -74,6 +76,7 @@ def ship(t, user):
         raise BusinessError("Su rol no registra salidas de traslado.")
     if t.estado != "AUTORIZADO":
         raise BusinessError("Solo se despachan traslados autorizados.")
+    check_warehouse_scope(user, t.lot.warehouse_code)
     if t.cantidad > free_qty(t.lot) + 1e-9:
         raise BusinessError("El lote de origen ya no tiene la cantidad libre.")
     t.lot.cantidad -= t.cantidad
@@ -90,6 +93,7 @@ def receive(t, user, cantidad_recibida, observacion=""):
         raise BusinessError("La recepción la confirma el Coordinador de Almacén o su asistente (IF §6.2).")
     if t.estado != "EN_TRANSITO":
         raise BusinessError("El traslado no está en tránsito.")
+    check_warehouse_scope(user, t.destino_code)
     if cantidad_recibida < 0:
         raise BusinessError("Cantidad inválida.")
     t.cantidad_recibida = cantidad_recibida

@@ -1,7 +1,7 @@
 # Resultados de las pruebas
 
-Fecha de ejecución: 11-oct-2026 (tras incorporar el TO-BE y las decisiones Q3/Q4) · Python 3.13 · SQLite · datos **ficticios** (`app/demo_data.py`).
-Comando: `python -m pytest tests -v` → **63 pruebas, 63 aprobadas, 0 fallidas** (≈38 s).
+Fecha de ejecución: 12-oct-2026 (tras aplicar las decisiones del 12-oct: Q2, Q3, Q5, Q8, Q12–Q17) · Python 3.13 · SQLite · datos **ficticios** (`app/demo_data.py`).
+Comando: `python -m pytest tests -v` → **71 pruebas, 71 aprobadas, 0 fallidas** (≈44 s).
 
 ## 1. Pruebas automatizadas
 
@@ -13,7 +13,7 @@ con validación** que usará la organización, y ejecuta la lógica real (no hay
 | Caso IF §21 | Prueba | Qué verifica |
 |---|---|---|
 | Pedido completo | `test_pedido_completo_flujo_hasta_entrega` | Reserva 100 %, picking por lote, certificado autogenerado, ruta, Seguridad, salida con descarga de stock, entrega con foto + guía, OTIF |
-| Faltante | `test_faltante_cobertura_alertas_y_alternativas`, `test_despacho_parcial_aprobacion_conjunta_y_saldo` | FEFO, cobertura unidades/líneas, alertas y destinatarios, alternativas sin ejecución automática; parcial aprobado por GO **y** Jefatura de Logística (Q3), Comercial/Sistemas no aprueban, ruta y OV de saldo reprogramada al salir |
+| Faltante | `test_faltante_cobertura_alertas_y_alternativas`, `test_despacho_parcial_aprobacion_y_saldo` | FEFO, cobertura unidades/líneas, alertas y destinatarios, pre-solicitudes automáticas (nada se ejecuta solo); parcial aprobado por GO **o** Jefatura de Logística (Q3; con `parcial_modo` = TODOS se exigen ambos), Comercial/Sistemas/Coord. Logística no aprueban, ruta y OV de saldo reprogramada al salir |
 | Cambio de OV | `test_cambio_ov_conserva_reservas_y_alerta`, `test_asistente_modifica_solo_con_autorizacion`, `test_cancelacion_libera_reserva_y_ruta` | Reservas válidas conservadas, recálculo, alerta OV_CAMBIO; autorización del Asistente; cancelación libera reserva y ruta |
 | Almacén alternativo | `test_almacen_alternativo_traslado_autorizado`, `test_traslado_con_diferencia` | Solo Jefatura de Logística autoriza; recepción en destino; reevaluación de la OV; diferencias alertadas |
 | Vencimiento | `test_vencimiento_y_vida_util_cliente` | No reserva vencidos; respeta vida útil mínima del cliente; propone actualización de fecha |
@@ -23,6 +23,7 @@ con validación** que usará la organización, y ejecuta la lógica real (no hay
 | Rechazo | `test_rechazo_por_calidad_alerta_gerencia_general` | Destinatarios definidos (incluye GG), estado de OV, reingreso como pendiente de revisión, correo directo a GG según preferencia |
 | Devolución | `test_devolucion_y_entrega_parcial` | INC_GENERAL sin GG; entrega parcial con incidencia automática |
 | TO-BE / Q4 (nuevo) | `test_tobe.py` (6 pruebas) | OV completa → aviso, certificado previo y ruta automática; cambio de lote en el plan de picking; fotos por etapa, incidencia de carga, carga incongruente, guía, factura, documentos faltantes, autorización de Seguridad, llegada y rechazo por cita; factura con modificaciones; Sistemas no aprueba y GG sí; carga del consolidado por el Asistente con cambios sujetos a autorización |
+| Decisiones 12-oct (nuevo) | `test_respuestas_12oct.py` (8 pruebas) | Q16 Líder Operativo autoriza la salida (Distribución, Seguridad y Sistemas no); Q8 discrepancia bloquea, Logística aprueba con motivo, guía resuelta cierra la alerta, revalidar sin diferencias desbloquea; Q2 OTIF por salida, fill rate, rechazo posterior y causas por etapa; Q15 orden producir → reempaque → traslado → compra con cascada y sin duplicar; Q12 pre-solicitud de reempaque aprobada por el coordinador; Q17 alertas y acciones por almacén; Q5 ALM-003/ALM-010 |
 | Cambio de fecha | `test_importacion_fases_y_cambio_fecha`, `test_renegociar_fecha_ov`, (compra) | Fases, recordatorios, fase vencida sin duplicar alertas, alerta a GO, recepción con diferencias; renegociación de fecha |
 
 ### 1.2 Detalle de ejecución
@@ -54,7 +55,7 @@ test_controles.py::test_salidas_no_descarta_lineas_legitimas_y_evita_recarga ✔
 test_controles.py::test_fechas_de_carga ✔
 test_flujos.py::test_pedido_completo_flujo_hasta_entrega ✔
 test_flujos.py::test_faltante_cobertura_alertas_y_alternativas ✔
-test_flujos.py::test_despacho_parcial_aprobacion_conjunta_y_saldo ✔
+test_flujos.py::test_despacho_parcial_aprobacion_y_saldo ✔
 test_flujos.py::test_gerencia_general_aprueba_en_nombre_y_rechazo ✔
 test_flujos.py::test_vencimiento_y_vida_util_cliente ✔
 test_flujos.py::test_cambio_ov_conserva_reservas_y_alerta ✔
@@ -70,6 +71,14 @@ test_flujos.py::test_rechazo_por_calidad_alerta_gerencia_general ✔
 test_flujos.py::test_devolucion_y_entrega_parcial ✔
 test_flujos.py::test_importacion_fases_y_cambio_fecha ✔
 test_flujos.py::test_renegociar_fecha_ov ✔
+test_respuestas_12oct.py::test_q16_lider_operativo_autoriza_salida ✔
+test_respuestas_12oct.py::test_q8_discrepancia_bloquea_y_logistica_aprueba ✔
+test_respuestas_12oct.py::test_q8_corregir_y_validar_de_nuevo_desbloquea ✔
+test_respuestas_12oct.py::test_q2_otif_por_salida_y_fill_rate ✔
+test_respuestas_12oct.py::test_q15_presolicitudes_en_orden_producir_reempaque_traslado_compra ✔
+test_respuestas_12oct.py::test_q12_reempaque_presolicitud_aprobada_por_coordinador ✔
+test_respuestas_12oct.py::test_q17_alertas_y_acciones_por_almacen ✔
+test_respuestas_12oct.py::test_q5_transito_produccion_y_almacen_no_utilizado ✔
 test_tobe.py::test_ov_completa_avisa_certifica_y_programa_ruta ✔
 test_tobe.py::test_modificar_plan_de_picking_cambia_lote ✔
 test_tobe.py::test_carga_incongruente_y_documentos_faltantes ✔
@@ -91,7 +100,7 @@ test_web.py::test_recorrido_pantallas_sin_errores[vendedor1] ✔
 test_web.py::test_flujo_web_ov_y_detalles ✔
 test_web.py::test_carga_por_web_y_entrega_con_evidencia ✔
 test_web.py::test_pantallas_ruta_y_folio_en_cada_etapa ✔
-============================= 63 passed in 37.87s ==============================
+============================= 71 passed in 43.82s ==============================
 ```
 
 ## 2. Recorrido de la aplicación en ejecución (navegador)
@@ -127,6 +136,18 @@ las áreas) → `superv.calidad` aprueba los certificados → `seguridad` autori
 la salida → `aux.despacho` llegada, entrega con evidencia y retorno a base → la OV muestra el saldo **DEMO-001-S1**
 reprogramado. **0 respuestas 500.** Hallazgo corregido: el formulario de Seguridad quedaba bloqueado por el número de
 guía vacío; ahora se precarga la pre-guía `PRE-GUIA-<ruta>`.
+
+### 2.3 Recorrido con las decisiones del 12-oct-2026
+
+Base de demostración nueva y 14 usuarios en Chromium: `coord.ventas` registra DEMO-001 → la OV lista las
+pre-solicitudes generadas por el sistema (producción, por ser la primera opción viable) → `jefe.logistica` aprueba solo
+el parcial (Q3: Gerencia de Operaciones ya no ve el botón) → picking y carga → `seguridad` registra la validación con 1
+unidad de diferencia → `lider.almacen` intenta autorizar: **"Salida bloqueada: discrepancias entre carga y guía"** →
+`coord.logistica` aprueba la salida con motivo → `lider.almacen` autoriza la salida (Q16; `coord.distribucion` ya no ve
+el botón) → `coord.distribucion` registra la guía resuelta → entrega, retorno y saldo DEMO-001-S1 → `coord.ventas`
+registra DEMO-002 de un insumo (EN-903) → el sistema pre-solicita la compra → `jefe.logistica` la aprueba y pasa a
+Compras (Q14) → el tablero de Gerencia General muestra OTIF por salida, fill rate 78,9 % y la tabla de causas por
+etapa. **0 respuestas 500.**
 
 ## 3. Compatibilidad con los archivos reales (solo lectura, base temporal descartada)
 
@@ -164,6 +185,7 @@ Hallazgo corregido durante esta prueba: la primera versión de la deduplicación
 | (Q3) El saldo no se generaba al salir la ruta | `confirm_departure` crea la OV de saldo |
 | (TO-BE) Reservas nuevas sin estado antes de guardarse no se contaban | Estado ACTIVA explícito |
 | (TO-BE) Validación de Seguridad bloqueada por guía vacía | Pre-guía precargada |
+| (12-oct) Mensajes de pantalla aún decían "aprobado por todos" y "autoriza Jefatura de Logística" | Textos actualizados a Q3/Q13 |
 
 ## 5. Limitaciones de las pruebas
 
@@ -187,3 +209,5 @@ Hallazgo corregido durante esta prueba: la primera versión de la deduplicación
 | [13](capturas/13_ruta_tobe.png) | Ruta con las etapas TO-BE: fotos, validación de carga, documentos, autorización de Seguridad, retorno |
 | [14](capturas/14_ov_con_saldo.png) | OV con aprobación conjunta del parcial y saldo reprogramado |
 | [15](capturas/15_alertas_tobe.png) | Alertas TO-BE vistas por Gerencia General |
+| [16](capturas/16_tablero_fillrate.png) | Tablero con OTIF por salida, fill rate y causas por etapa (Q2) |
+| [17](capturas/17_ov_presolicitud.png) | OV de insumo con pre-solicitud de compra automática (Q15) |

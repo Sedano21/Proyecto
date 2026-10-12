@@ -59,14 +59,19 @@
 <table class="small"><tr><th>OV / producto</th><th class="r">Preparado</th><th>En guía</th><th>Cargado</th><th>Presentación</th></tr>
 {% for e in expected %}<tr><td>{{ e.ov }} · {{ e.producto }}</td><td class="r">{{ e.esperado|n }}</td><td><input type="number" step="any" name="guia_{{ e.order_line_id }}" value="{{ e.esperado }}" style="width:80px"></td><td><input type="number" step="any" name="cargado_{{ e.order_line_id }}" value="{{ e.esperado }}" style="width:80px"></td><td><select name="pres_{{ e.order_line_id }}"><option value="1">Coincide</option><option value="0">No coincide</option></select></td></tr>{% endfor %}</table>
 <button name="accion" value="seguridad">Registrar validación</button></form></details>{% endif %}
-{% if r.autorizacion_seguridad %}<p><span class="b ok">Salida autorizada</span> por {{ r.autorizacion_seguridad.user }} ({{ r.autorizacion_seguridad.ts[:16]|replace('T',' ') }})</p>
+{% if r.seguridad and r.seguridad.discrepancias %}
+{% if r.aprobacion_discrepancia %}<p><span class="b MEDIA">Salida aprobada con guía por resolver</span> por {{ r.aprobacion_discrepancia.user }}: {{ r.aprobacion_discrepancia.motivo }}{% if r.aprobacion_discrepancia.resuelta %} · <span class="b ok">guía resuelta</span> por {{ r.aprobacion_discrepancia.resuelta_por }}: {{ r.aprobacion_discrepancia.resolucion }}{% endif %}</p>
+{% if not r.aprobacion_discrepancia.resuelta and (can('distribucion.documentos') or can('distribucion.aprobar_salida_discrepancia')) %}<form method="post" class="row">{{ csrf() }}<input name="detalle" placeholder="Cómo se resolvió la guía" required><button class="sec" name="accion" value="resolver_guia">Registrar guía resuelta</button></form>{% endif %}
+{% elif r.estado=='CONFIRMADA' %}<p class="small"><span class="b ALTA">Salida bloqueada por discrepancia</span> (Q8): corrija y vuelva a validar, o Logística aprueba la salida.</p>
+{% if can('distribucion.aprobar_salida_discrepancia') %}<form method="post" class="row">{{ csrf() }}<input name="motivo" placeholder="Motivo y cómo se resolverá la guía" required><button name="accion" value="aprobar_discrepancia">Aprobar salida mientras se resuelve la guía</button></form>{% endif %}{% endif %}{% endif %}
+{% if r.autorizacion_seguridad %}<p><span class="b ok">Documentos completos</span> revisados por {{ r.autorizacion_seguridad.user }} ({{ r.autorizacion_seguridad.ts[:16]|replace('T',' ') }})</p>
 {% elif r.estado=='CONFIRMADA' %}{% if faltan %}<p class="small">Pendiente: {{ faltan|join('; ') }}</p>{% endif %}
-{% if can('distribucion.autorizar_salida') %}<form method="post">{{ csrf() }}<label><input type="checkbox" name="impresos" value="1"> Documentos impresos en físico (folio)</label><button name="accion" value="autorizar_salida">Revisar documentos y autorizar salida</button></form>{% endif %}{% endif %}
+{% if can('distribucion.seguridad') %}<form method="post">{{ csrf() }}<label><input type="checkbox" name="impresos" value="1"> Documentos impresos en físico (folio)</label><button name="accion" value="revisar_documentos">Revisar documentos</button></form>{% endif %}{% endif %}
 <p class="small muted"><a href="{{ url_for('cal.new_record', formato='VEHICULO') }}">Control de vehículo (REG-BPM-CAL-011)</a> · <a href="{{ url_for('cal.new_record', formato='INSPECCION_CARGA') }}">Inspección de carga (Calidad)</a></p></div>
 
-<div class="card"><h3>5. Confirmación de salida (Coordinador de Distribución)</h3>
+<div class="card"><h3>5. Autorización de salida (Líder Operativo)</h3>
 {% if r.estado=='CONFIRMADA' %}{% if can('distribucion.confirmar_salida') %}<form method="post">{{ csrf() }}{% for k, l in checklist %}<label><input type="checkbox" name="{{ k }}" value="1"> {{ l }}</label>{% endfor %}
-<p class="small muted">Requiere: pedidos preparados, carga validada, validación carga vs guía y autorización de Seguridad.</p><button name="accion" value="salida">Confirmar salida</button></form>{% else %}<p class="muted">La salida la confirma el Coordinador de Distribución.</p>{% endif %}
+<p class="small muted">Requiere: pedidos preparados, carga validada, validación carga vs guía sin discrepancias (o aprobada por Logística) y documentos revisados por Seguridad.</p><button name="accion" value="salida">Autorizar salida</button></form>{% else %}<p class="muted">La salida la autoriza el Líder Operativo (Q16).</p>{% endif %}
 {% else %}<p>Salida {{ r.salida_ts|d }}{% if r.retorno_ts %} · retorno a base {{ r.retorno_ts|d }}{% endif %}</p>
 {% if not r.retorno_ts and (can('distribucion.entrega') or can('distribucion.carga')) %}<form method="post">{{ csrf() }}<button class="sec" name="accion" value="retorno">Registrar retorno a base</button></form>{% endif %}{% endif %}</div>
 </div>{% endif %}

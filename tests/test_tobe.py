@@ -77,12 +77,12 @@ def test_carga_incongruente_y_documentos_faltantes(s, U, new_order):
     dsp.add_photo(r, U("aux.despacho"), "mercaderia_cargada", "m.jpg")
     assert dsp.validate_load(r, U("aux.despacho"), {line_id: {"cargado": "60"}}) == []
     assert "FACTURACION" in alerts_of(s, "CAMION_CARGADO")[0].roles
-    faltan = dsp.authorize_exit(r, U("seguridad"), impresos=True)
+    faltan = dsp.review_documents(r, U("seguridad"), impresos=True)
     assert any("guía" in f for f in faltan) and any("factura" in f for f in faltan) and any("certificado" in f for f in faltan)
     a = alerts_of(s, "DOCUMENTOS_FALTANTES")[0]
     assert {"COORD_DISTRIBUCION", "FACTURACION", "JEFE_CALIDAD", "JEFE_LOGISTICA", "GERENCIA_OPERACIONES"} <= set(a.roles)
     with pytest.raises(BusinessError):  # sin autorización de Seguridad no hay salida
-        dist.confirm_departure(r, U("coord.distribucion"), {k: True for k, _ in dist.CHECKLIST})
+        dist.confirm_departure(r, U("lider.almacen"), {k: True for k, _ in dist.CHECKLIST})
     st = r.stops[0]
     with pytest.raises(BusinessError):  # guía de SAP exige archivo
         dsp.set_guide(st, U("coord.distribucion"), "T001-1", "SAP")
@@ -91,10 +91,10 @@ def test_carga_incongruente_y_documentos_faltantes(s, U, new_order):
         dsp.set_invoice(st, U("coord.distribucion"), "F1", "f.pdf")
     dsp.set_invoice(st, U("facturacion"), "F001-9", "f.pdf")
     approve_certs(s, U, o)
-    assert dsp.authorize_exit(r, U("seguridad"), impresos=True) == []
+    assert dsp.review_documents(r, U("seguridad"), impresos=True) == []
     lines = [{**e, "guia": e["esperado"], "cargado": e["esperado"]} for e in dist.expected_lines(r)]
     dist.register_security_check(r, U("seguridad"), "T001-1", lines)
-    dist.confirm_departure(r, U("coord.distribucion"), {k: True for k, _ in dist.CHECKLIST})
+    dist.confirm_departure(r, U("lider.almacen"), {k: True for k, _ in dist.CHECKLIST})
     s.commit()
     assert o.estado == "DESPACHADA"
     assert alerts_of(s, "RUTA_ASIGNADA") and alerts_of(s, "MONTACARGUISTA_DESPACHO")

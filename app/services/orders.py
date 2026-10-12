@@ -219,22 +219,25 @@ def partial_approvers():
 
 def partial_pending_roles(order):
     hechas = order.parcial_aprobaciones or {}
+    if hechas and str(param("parcial_modo", "CUALQUIERA")).upper() != "TODOS":
+        return []  # Q3 (12-oct-2026): basta Gerencia de Operaciones o Jefatura de Logística
     return [r for r in partial_approvers() if r not in hechas]
 
 
 def decide_partial(order, user, aprobar, comentario="", fecha_saldo=None):
-    """Despacho parcial (IF §6.3; decisión Q3): deben aprobar Gerencia de Operaciones y Jefatura de Logística.
-    Gerencia General (acceso completo, Q4) puede aprobar en nombre de los roles pendientes. Cualquier aprobador
-    puede rechazar. El saldo no despachado se reprograma en una OV de saldo (fecha obligatoria)."""
+    """Despacho parcial (IF §6.3; decisión Q3): aprueba Gerencia de Operaciones o Jefatura de Logística (parámetro
+    'parcial_modo' = CUALQUIERA; con TODOS se exige la aprobación de cada rol). Gerencia General (acceso completo, Q4)
+    puede aprobar en nombre de ellos. Cualquier aprobador puede rechazar. El saldo no despachado se reprograma en una
+    OV de saldo para una próxima entrega (fecha obligatoria)."""
     if not has_perm(user, "ov.aprobar_parcial"):
-        raise BusinessError("El despacho parcial lo aprueban Gerencia de Operaciones y Jefatura de Logística (Q3).")
+        raise BusinessError("El despacho parcial lo aprueba Gerencia de Operaciones o Jefatura de Logística (Q3).")
     if order.estado_stock == "COMPLETA":
         raise BusinessError("La OV está completa; no requiere despacho parcial.")
     if order.decision_parcial == "APROBADA":
         raise BusinessError("El despacho parcial ya fue aprobado.")
     pendientes = partial_pending_roles(order)
     if user.role_code == "GERENCIA_GENERAL":
-        en_nombre = pendientes
+        en_nombre = pendientes if str(param("parcial_modo", "CUALQUIERA")).upper() == "TODOS" else pendientes[:1]
     elif user.role_code in pendientes:
         en_nombre = [user.role_code]
     elif user.role_code in partial_approvers():

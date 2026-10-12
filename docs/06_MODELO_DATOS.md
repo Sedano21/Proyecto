@@ -494,6 +494,7 @@ Decisiones humanas ante faltantes (IF §4.5, §5, §6.3): despacho parcial, rene
 | resultado_muestra | VARCHAR(20) | no |  |
 | mayor_volumen | BOOLEAN | no |  |
 | aprobado_gerencia_por | INTEGER | sí | → users.id |
+| aprobado_logistica_por | INTEGER | sí | → users.id |
 | proveedor | VARCHAR(160) | no |  |
 | cotizacion | TEXT | no |  |
 | precio | FLOAT | sí |  |
@@ -742,6 +743,7 @@ Registro de Calidad genérico por formato: MUESTREO (REG-CAL-002 / CP-FOR-CAL-10
 | carga | JSON | no |  |
 | carga_validada | BOOLEAN | no |  |
 | autorizacion_seguridad | JSON | no |  |
+| aprobacion_discrepancia | JSON | no |  |
 | retorno_ts | DATETIME | sí |  |
 | guia_numero | VARCHAR(40) | no |  |
 | seguridad | JSON | no |  |

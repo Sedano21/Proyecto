@@ -38,10 +38,10 @@ Estado: ✅ implementado y probado · ☑️ implementado (verificado en pantall
 | Informar a Calidad para validar el certificado pre-elaborado | Certificados generados al quedar la OV completa (antes del picking); alerta `CERTIFICADO_REVISION`; se anulan si cambia el lote | ✅ `test_ov_completa_avisa_certifica_y_programa_ruta` |
 | Pre-asignar picking | Los lotes reservados constituyen el plan de picking | ✅ |
 | ¿OV completa? NO → Analizar las opciones viables (producción, reempaque, traslado, compra) | `alternatives_for_order` presenta las 4 opciones con su viabilidad | ✅ |
-| Generar pre-solicitud de producción con info de la OV y materiales | Solicitud preliminar con análisis de materiales (se crea con un clic desde la alternativa) | ☑️ / ❓ Q15 (generación automática) |
-| Analizar stock existente y remitir solicitud de reempaque a Calidad | Hoy la inicia Almacén con un clic (IF §9.1) | ❓ Q12 |
-| Generar pre-solicitud de traslado indicando SKU | Solicitud de traslado desde la alternativa; la cantidad queda comprometida | ☑️ / ❓ Q13 (aprobador) |
-| Generar pre-solicitud de OC | Solicitud de compra desde la alternativa | ☑️ / ❓ Q14 (aprobación de Logística) |
+| Generar pre-solicitud de producción con info de la OV y materiales | Solicitud preliminar con análisis de materiales (se crea con un clic desde la alternativa) | ✅ Automática desde el 12-oct (Q15) |
+| Analizar stock existente y remitir solicitud de reempaque a Calidad | Pre-solicitud automática; el Coordinador de Almacén aprueba y envía (Q12) | ✅ |
+| Generar pre-solicitud de traslado indicando SKU | Solicitud de traslado desde la alternativa; la cantidad queda comprometida | ✅ Automática; aprueba Jefe o Coordinador de Logística (Q13) |
+| Generar pre-solicitud de OC | Solicitud de compra desde la alternativa | ✅ Automática; aprueba el Jefe de Logística (Q14) |
 
 ### Líder Operativo y montacarguista
 | Actividad TO-BE | Implementación | Estado |
@@ -94,12 +94,14 @@ Estado: ✅ implementado y probado · ☑️ implementado (verificado en pantall
 | Calidad: SÍ → notifica a almacén y producción para programar el reempaque | `REEMPAQUE_APROBADO` | ✅ |
 | Calidad evalúa el certificado pre-elaborado; NO → modificar manualmente | Revisión con correcciones registradas | ✅ |
 | Calidad notifica a distribución, GO y JL que el certificado fue cargado | `CERTIFICADO_LISTO` | ✅ |
-| Coord. almacén (Gaiden) aprueba el traslado; NO → se desestima y libera stock comprometido | Hoy autoriza la Jefatura de Logística (IF §6.2) | ❓ Q13 |
-| Logística aprueba la pre-solicitud de OC → genera solicitud de compra | Hoy la solicitud nace en Almacén y va directo a Compras (IF §10) | ❓ Q14 |
+| Coord. almacén (Gaiden) aprueba el traslado; NO → se desestima y libera stock comprometido | Aprueba el Jefe o el Coordinador de Logística (Q13); el rechazo libera la cantidad comprometida | ✅ |
+| Logística aprueba la pre-solicitud de OC → genera solicitud de compra | Estado PENDIENTE_LOGISTICA antes de Compras (Q14) | ✅ |
 | Compras ingresa la OC en SAP → subproceso 7.1 Gestionar compra | Flujo de compras del módulo (OC registrada) | ✅ |
 | Facturación evalúa el pedido validado: ¿completo según la OV? → factura (con modificaciones si no) → cargar al sistema | Rol **Facturación** nuevo; carga de factura por pedido con detección automática de diferencias contra la OV | ✅ `test_factura_con_modificaciones_si_incompleto` |
 
-## 3. Diferencias entre el TO-BE y el Informe Funcional que requieren su decisión
+## 3. Diferencias entre el TO-BE y el Informe Funcional (Q12–Q17 respondidas el 12-oct-2026; ver `11_DECISIONES_12OCT.md`)
+
+La tabla conserva el planteamiento original; las respuestas y su implementación están en `11_DECISIONES_12OCT.md` §1.
 
 | # | Tema | Informe Funcional | TO-BE | Comportamiento actual |
 |---|---|---|---|---|

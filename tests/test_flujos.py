@@ -58,8 +58,8 @@ def dispatch(s, U, o, today):
         dsp.set_guide(st, U("coord.distribucion"), "", "SISTEMA")
         dsp.set_invoice(st, U("facturacion"), f"F001-{st.order.numero}", "fact.pdf")
         approve_certs(s, U, st.order)
-    assert dsp.authorize_exit(r, U("seguridad"), impresos=True) == []
-    dist.confirm_departure(r, U("coord.distribucion"), {k: True for k, _ in dist.CHECKLIST})
+    assert dsp.review_documents(r, U("seguridad"), impresos=True) == []
+    dist.confirm_departure(r, U("lider.almacen"), {k: True for k, _ in dist.CHECKLIST})
     s.commit()
     return r.stops[0]
 
@@ -111,24 +111,21 @@ def test_faltante_cobertura_alertas_y_alternativas(s, U, new_order):
     assert s.query(Transfer).count() == 0
 
 
-def test_despacho_parcial_aprobacion_conjunta_y_saldo(s, U, new_order, today):
-    """Q3: aprueban Gerencia de Operaciones y Jefatura de Logística; el saldo se reprograma."""
+def test_despacho_parcial_aprobacion_y_saldo(s, U, new_order, today):
+    """Q3 (12-oct-2026): aprueba Gerencia de Operaciones o Jefatura de Logística; el saldo se reprograma."""
     o = new_order([("PT-901", 450)])
     assert dist.active_stop(o) is None  # incompleta: aún no se programa ruta
-    for quien in ("vendedor1", "coord.ventas", "jefe.ventas", "sistemas"):
+    for quien in ("vendedor1", "coord.ventas", "jefe.ventas", "sistemas", "coord.logistica"):
         with pytest.raises(BusinessError):
             osvc.decide_partial(o, U(quien), True, fecha_saldo=today + timedelta(days=7))
     with pytest.raises(BusinessError):  # fecha del saldo obligatoria
         osvc.decide_partial(o, U("jefe.logistica"), True)
-    r1 = osvc.decide_partial(o, U("jefe.logistica"), True, "ok logística", today + timedelta(days=7))
+    rutas = osvc.decide_partial(o, U("jefe.logistica"), True, "ok logística", today + timedelta(days=7))
     s.commit()
-    assert r1 == [] and o.decision_parcial == "PENDIENTE" and list(o.parcial_aprobaciones) == ["JEFE_LOGISTICA"]
-    with pytest.raises(BusinessError):  # no puede aprobar dos veces
-        osvc.decide_partial(o, U("jefe.logistica"), True)
-    rutas = osvc.decide_partial(o, U("gerente.operaciones"), True, "ok GO")
-    s.commit()
-    assert o.decision_parcial == "APROBADA" and set(o.parcial_aprobaciones) == {"GERENCIA_OPERACIONES", "JEFE_LOGISTICA"}
+    assert o.decision_parcial == "APROBADA" and list(o.parcial_aprobaciones) == ["JEFE_LOGISTICA"]
     assert alerts_of(s, "OV_PARCIAL_APROBADO", o.id)
+    with pytest.raises(BusinessError):  # ya aprobado
+        osvc.decide_partial(o, U("gerente.operaciones"), True)
     assert rutas and rutas[0].stops[0].order_id == o.id and rutas[0].stops[0].peso_kg == pytest.approx(400 * 0.5)
     # despacho del parcial -> OV de saldo con la fecha reprogramada
     dispatch(s, U, o, today)
@@ -148,6 +145,15 @@ def test_gerencia_general_aprueba_en_nombre_y_rechazo(s, U, new_order, today):
     o2 = new_order([("PT-901", 450)])
     with pytest.raises(BusinessError):
         osvc.decide_partial(o2, U("gerente.operaciones"), False, "")
+    # configurable: con parcial_modo = TODOS se exige la aprobación de ambos roles
+    set_param("parcial_modo", "TODOS", U("sistemas"))
+    for x in (o, o2):
+        osvc.cancel_order(x, U("coord.ventas"), "libera stock para la prueba")
+    o3 = new_order([("PT-901", 450)])
+    osvc.decide_partial(o3, U("gerente.operaciones"), True, "ok", today + timedelta(days=5))
+    assert o3.decision_parcial == "PENDIENTE" and osvc.partial_pending_roles(o3) == ["JEFE_LOGISTICA"]
+    osvc.decide_partial(o3, U("jefe.logistica"), True, "ok")
+    assert o3.decision_parcial == "APROBADA"
     osvc.decide_partial(o2, U("gerente.operaciones"), False, "Cliente no acepta parcial")
     assert o2.decision_parcial == "RECHAZADA"
 
@@ -219,9 +225,10 @@ def test_almacen_alternativo_traslado_autorizado(s, U, new_order):
     t = trs.request_transfer(U("coord.logistica"), alt["lot"].id, "ALM-001", 100, o, "Para OV")
     s.commit()
     assert t.estado == "SOLICITADO" and alerts_of(s, "TRASLADO_SOLICITADO")
-    with pytest.raises(BusinessError):
-        trs.authorize(t, U("coord.logistica"), True)
-    trs.authorize(t, U("jefe.logistica"), True)
+    for quien in ("coord.almacen", "sistemas"):
+        with pytest.raises(BusinessError):
+            trs.authorize(t, U(quien), True)
+    trs.authorize(t, U("coord.logistica"), True)  # Q13: Jefe o Coordinador de Logística
     trs.ship(t, U("coord.almacen"))
     trs.receive(t, U("aux.almacen"), 100)
     s.commit()
@@ -296,6 +303,8 @@ def test_produccion_bom_merma_y_liquidacion(s, U):
     prod.finish(r, U("asist.produccion"))
     liq = prod.register_liquidation(U("asist.produccion"), "LQ-T1", "PT-903", 300, "L903P", request=r, merma_mp_kg=3)
     s.commit()
+    transito = lot(s, "PT-903", "L903P", "ALM-003")  # Q5: el PT queda en el tránsito de Producción
+    assert transito.cantidad == 300 and transito.warehouse.reservable is False
     assert r.estado == "LIQUIDADA" and alerts_of(s, "LIQUIDACION_MONTACARGUISTA")[0].roles[0] == "MONTACARGUISTA"
     with pytest.raises(BusinessError):
         prod.register_liquidation(U("asist.produccion"), "LQ-T1", "PT-903", 1, "L903P")
@@ -303,7 +312,8 @@ def test_produccion_bom_merma_y_liquidacion(s, U):
     s.commit()
     assert liq.estado == "RECIBIDA_FALTANTE" and liq.diferencia == 2
     assert alerts_of(s, "LIQUIDACION_DIFERENCIA")
-    assert lot(s, "PT-903", "L903P").estado == "PENDIENTE_REVISION"
+    assert lot(s, "PT-903", "L903P", "ALM-001").estado == "PENDIENTE_REVISION"
+    assert lot(s, "PT-903", "L903P", "ALM-003").cantidad == 0  # Q5: sale del tránsito de Producción
     assert prod.merma_real_pct(liq) == pytest.approx(100 * 3 / 153, rel=1e-3)
 
 
@@ -326,9 +336,13 @@ def test_compra_nacional_flujo(s, U):
     with pytest.raises(BusinessError):  # nace en Almacén
         buy.create_request(U("compras"), "EN-901", 500)
     set_param("umbral_mayor_volumen", 100.0, U("sistemas"))
-    r = buy.create_request(U("coord.almacen"), "EN-901", 500, date.today() + timedelta(days=20))
+    r = buy.create_request(U("coord.almacen.mp"), "EN-901", 500, date.today() + timedelta(days=20))
     s.commit()
-    assert r.estado == "SOLICITADA" and r.mayor_volumen and alerts_of(s, "COMPRA_SOLICITUD")
+    assert r.estado == "PENDIENTE_LOGISTICA" and r.mayor_volumen and not alerts_of(s, "COMPRA_SOLICITUD")
+    with pytest.raises(BusinessError):  # Q14: aprueba el Jefe de Logística
+        buy.quote(r, U("compras"), "Proveedor Demo", "cotización", 10.5)
+    buy.approve_logistics(r, U("jefe.logistica"), True, "ok")
+    assert r.estado == "SOLICITADA" and alerts_of(s, "COMPRA_SOLICITUD")
     buy.quote(r, U("compras"), "Proveedor Demo", "cotización", 10.5, requiere_muestra=True)
     assert alerts_of(s, "COMPRA_MUESTRA")
     with pytest.raises(BusinessError):
@@ -342,17 +356,19 @@ def test_compra_nacional_flujo(s, U):
     buy.approve_go(r, U("gerente.operaciones"), True)
     buy.generate_order(r, U("compras"), "OC-1", date.today() + timedelta(days=10), "EXT-002")
     s.commit()
-    assert alerts_of(s, "COMPRA_RECEPCION_PROGRAMAR")[0].roles == ["COORD_ALMACEN"]
+    assert alerts_of(s, "COMPRA_RECEPCION_PROGRAMAR")[0].roles == ["COORD_ALMACEN_MP"]  # Q17: almacén 1524
     buy.change_date(r, U("compras"), date.today() + timedelta(days=15), "Proveedor reprograma")
     s.commit()
     a = alerts_of(s, "COMPRA_FECHA_CAMBIO")[0]
-    assert set(a.roles) == {"COORD_ALMACEN", "GERENCIA_OPERACIONES"}
-    buy.receive(r, U("coord.almacen"), 480, "E901N")
+    assert set(a.roles) == {"COORD_ALMACEN_MP", "GERENCIA_OPERACIONES"}
+    with pytest.raises(BusinessError):  # Q17: el coordinador 1560 no recibe en 1524
+        buy.receive(r, U("coord.almacen"), 480, "E901N")
+    buy.receive(r, U("coord.almacen.mp"), 480, "E901N")
     s.commit()
     assert r.estado == "RECIBIDA_CON_DIFERENCIAS" and alerts_of(s, "COMPRA_DIFERENCIA")
     assert lot(s, "EN-901", "E901N").estado == "PENDIENTE_REVISION"
     with pytest.raises(BusinessError):
-        buy.authorize_under_observation(r, U("coord.almacen"), "urgencia")
+        buy.authorize_under_observation(r, U("coord.almacen.mp"), "urgencia")
     buy.authorize_under_observation(r, U("gerente.operaciones"), "Urgencia de producción")
     assert r.estado == "RECIBIDA_BAJO_OBSERVACION"
 
@@ -404,7 +420,7 @@ def test_importacion_fases_y_cambio_fecha(s, U, today):
     imp.change_arrival(sh, U("importaciones"), today + timedelta(days=5), "Retraso naviera")
     s.commit()
     a = alerts_of(s, "IMPORT_MODIFICACION")[0]
-    assert {"GERENCIA_OPERACIONES", "COORD_ALMACEN", "JEFE_LOGISTICA"} <= set(a.roles)
+    assert {"GERENCIA_OPERACIONES", "COORD_ALMACEN_MP", "JEFE_LOGISTICA"} <= set(a.roles) and "COORD_ALMACEN" not in a.roles
     n = imp.check_phases(today)
     s.commit()
     vencidas = alerts_of(s, "IMPORT_FASE_VENCIDA")
@@ -413,7 +429,7 @@ def test_importacion_fases_y_cambio_fecha(s, U, today):
     imp.complete_phase(sh.phases[0], U("importaciones"))
     s.commit()
     assert s.query(Alert).filter_by(dedup_key=f"IMPORT_FASE:{sh.phases[0].id}").one().estado == "CERRADA"
-    imp.receive(sh, U("coord.almacen"), 990, "M902I", "EXT-002", diferencias="10 kg faltantes")
+    imp.receive(sh, U("coord.almacen.mp"), 990, "M902I", "EXT-002", diferencias="10 kg faltantes")
     s.commit()
     assert sh.estado == "RECIBIDA_CON_DIFERENCIAS" and alerts_of(s, "IMPORT_DIFERENCIA")
 

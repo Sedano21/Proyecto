@@ -91,6 +91,24 @@ def require(user, perm):
         raise BusinessError(f"El rol {user.role_code if user else '-'} no tiene el permiso '{perm}'.")
 
 
+def warehouse_scopes():
+    """{rol: [almacenes]} de los roles que manejan almacenes específicos (Q17: coordinadores 1560 y 1524)."""
+    return {k: list(v or []) for k, v in (param("alcance_almacen_por_rol", {}) or {}).items()}
+
+
+def check_warehouse_scope(user, warehouse_code):
+    """Un coordinador con almacén asignado no actúa sobre el almacén asignado a otro coordinador (Q17).
+    Los almacenes no asignados a nadie (alternativos, etc.) no se restringen."""
+    if user is None or not warehouse_code:
+        return
+    scopes = warehouse_scopes()
+    mios = scopes.get(user.role_code)
+    if mios is None or warehouse_code in mios:
+        return
+    if any(warehouse_code in v for v in scopes.values()):
+        raise BusinessError(f"El almacén {warehouse_code} lo maneja otro coordinador; su rol maneja {', '.join(mios)} (Q17).")
+
+
 def users_with_roles(roles):
     if not roles:
         return []

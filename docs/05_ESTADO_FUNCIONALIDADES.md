@@ -1,13 +1,13 @@
 # Estado de funcionalidades
 
-Conteo sobre los 156 requerimientos (137 del IF + 18 del TO-BE + 1 de la decisión Q3) de `03_MATRIZ_TRAZABILIDAD.md`:
+Conteo sobre los 162 requerimientos (137 del IF + 18 del TO-BE + 1 de Q3 + 6 de las decisiones del 12-oct) de `03_MATRIZ_TRAZABILIDAD.md`:
 
 | Estado | Cantidad |
 |---|---|
-| ✅ Implementado y con prueba automatizada | 114 |
+| ✅ Implementado y con prueba automatizada | 126 |
 | ☑️ Implementado y verificado en pantalla (sin prueba automatizada específica) | 19 |
 | 🟡 Parcial | 8 |
-| ⏸️ Pendiente de decisión de negocio (implementado configurable o inactivo) | 14 |
+| ⏸️ Pendiente de decisión de negocio (implementado configurable o inactivo) | 8 |
 | 🔜 Etapa futura según el IF | 1 |
 
 > **El sistema NO está listo para producción.** Es una primera versión funcional para demostración en entorno
@@ -17,7 +17,7 @@ Conteo sobre los 156 requerimientos (137 del IF + 18 del TO-BE + 1 de la decisi�
 ## 1. Implementado (resumen por módulo)
 
 - **Comercial:** registro, importación SAP, modificación con versión, solicitud/autorización del Asistente, cancelación,
-  renegociación, cambio de producto, despacho parcial aprobado por GO y Jefatura de Logística con OV de saldo
+  renegociación, cambio de producto, despacho parcial aprobado por GO o Jefatura de Logística con OV de saldo
   reprogramada (Q3), carga del consolidado por el Asistente (TO-BE), aviso de OV completa, prioridad, historial.
 - **Almacén:** 6 estados, reservas FEFO con lote/vencimiento/vida útil del cliente, cobertura, alternativas, cargas de
   stock con validación-corrección-autorización, conteos físicos, preparación por cortes con verificación de lote, alerta 80 %.
@@ -35,7 +35,13 @@ Conteo sobre los 156 requerimientos (137 del IF + 18 del TO-BE + 1 de la decisi�
   validación de carga vs pedido, guía (sistema o SAP), pre-guía y folio imprimibles, factura (rol Facturación),
   revisión de documentos y autorización de Seguridad, verificación de salida, descarga de stock, llegada, entrega con
   foto y guía firmada, retorno a base, 15 tipos de incidencia (incluye rechazo por cita).
-- **Alertas:** 58 tipos, destinatarios por rol/usuario, ciclo completo, deduplicación, cierre automático, visibilidad
+- **Pre-solicitudes automáticas (Q12–Q15):** ante faltante el sistema genera la pre-solicitud de la primera opción
+  viable (producir → reempaque → traslado → compra); aprueban Almacén, Coordinador de Almacén, Jefe/Coord. de
+  Logística y Jefe de Logística respectivamente.
+- **Indicadores (Q2):** OTIF por salida, fill rate con rechazos posteriores y causas por etapa del proceso.
+- **Almacenes (Q5, Q17):** tránsito de Producción ALM-003, ALM-010 no utilizado; dos coordinadores (1560 y 1524) con
+  acciones y alertas por almacén.
+- **Alertas:** 62 tipos, destinatarios por rol/usuario, ciclo completo, deduplicación, cierre automático, visibilidad
   por rol/ámbito, agrupación para GG, preferencias de correo de GG, bandeja de correo.
 - **Administración:** parámetros versionados, almacenes, plazos, líneas, fases, catálogo de artículos, clientes, flota,
   usuarios, matriz de permisos editable, auditoría, exportación a Excel, verificaciones periódicas (manual, CLI o cada N minutos).
@@ -55,10 +61,8 @@ Conteo sobre los 156 requerimientos (137 del IF + 18 del TO-BE + 1 de la decisi�
 
 REP-02 margen de reposición · REP-06 umbral y rol de GO en compras de mayor volumen · COM-08 margen por proveedor ·
 PRD-15 excepciones a la proporcionalidad · RMP-03 criterios de conversión de calidad · IMP-01 fases reales de importación ·
-DIS-09 regla de bloqueo por discrepancia · ALR-07 matriz final de alertas · CFG-11 reparto de configuración Sistemas/GG ·
-KPI-02 definición de OTIF · TB-15..18 contradicciones TO-BE vs IF (reempaque, aprobador de traslado, aprobación de
-compra por Logística, pre-solicitudes automáticas). Ver Q2, Q5–Q17 en `02_ESPECIFICACION_CONSOLIDADA.md` y `10_ANALISIS_TO_BE.md`.
-Resueltas el 11-oct-2026: Q1 (TO-BE recibido), Q3 (parcial y saldo) y Q4 (acceso completo; ROL-05).
+ALR-07 matriz final de alertas · CFG-11 reparto de configuración Sistemas/GG. Ver Q5 (resto), Q6, Q7, Q9, Q10 y Q11
+detalladas en `11_DECISIONES_12OCT.md` §3. Resueltas: Q1, Q3, Q4 (11-oct) y Q2, Q8, Q12–Q17 (12-oct).
 
 ## 4. Bloqueado / requiere autorización externa
 
@@ -72,7 +76,7 @@ Resueltas el 11-oct-2026: Q1 (TO-BE recibido), Q3 (parcial y saldo) y Q4 (acceso
 
 ## 5. Siguientes entregas recomendadas
 
-1. Sesión de validación con usuarios clave usando el guion de demostración del README; registrar respuestas a Q2, Q5–Q17.
+1. Sesión de validación con usuarios clave usando el guion de demostración del README; registrar respuestas a Q5 (resto), Q6, Q7, Q9, Q10 y Q11.
 2. Cargar parámetros aprobados, matriz final de alertas y permisos; reemplazar valores DEMO.
 3. Prueba piloto con exportaciones reales en un servidor aprobado por TI (PostgreSQL, HTTPS, SMTP).
 4. Medir tiempos reales por etapa y ajustar cortes y tiempos de preparación.

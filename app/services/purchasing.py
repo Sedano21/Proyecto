@@ -7,10 +7,10 @@ from sqlalchemy import func, select
 from ..db import db
 from ..models import DateChange, LeadTime, Product, PurchaseRequest, SalesHistory, SalesOrder, now
 from . import alerts
-from .core import BusinessError, audit, has_perm, param
+from .core import BusinessError, audit, check_warehouse_scope, has_perm, param
 from .stock import add_or_increase_lot, free_qty, line_reserved, lot_usable, lots_of, ORDEN_ESTADOS_CERRADOS
 
-OPEN_STATES = ("BORRADOR", "SOLICITADA", "EN_COTIZACION", "MUESTRA_EN_CALIDAD", "PENDIENTE_APROBACION", "ORDEN_GENERADA")
+OPEN_STATES = ("BORRADOR", "PENDIENTE_LOGISTICA", "SOLICITADA", "EN_COTIZACION", "MUESTRA_EN_CALIDAD", "PENDIENTE_APROBACION", "ORDEN_GENERADA")
 
 
 def is_mayor_volumen(cantidad):
@@ -19,8 +19,9 @@ def is_mayor_volumen(cantidad):
 
 
 def create_request(user, product_code, cantidad, fecha_necesidad=None, origen="ALMACEN", order=None, analisis=None,
-                   enviar=True):
-    if origen != "REPOSICION" and not has_perm(user, "compras.solicitar"):
+                   enviar=True, sistema=False):
+    """sistema=True: pre-solicitud automática por faltante (Q15); pasa a aprobación del Jefe de Logística (Q14)."""
+    if origen != "REPOSICION" and not sistema and not has_perm(user, "compras.solicitar"):
         raise BusinessError("En la primera etapa las solicitudes de compra nacen en Almacén (IF §7, §10.1).")
     if db().get(Product, product_code) is None:
         raise BusinessError("Producto no existe.")
@@ -38,15 +39,37 @@ def create_request(user, product_code, cantidad, fecha_necesidad=None, origen="A
 
 
 def send(r, user):
+    """Almacén envía la solicitud (o el sistema la pre-solicita, Q15) y queda pendiente del Jefe de Logística (Q14)."""
     if r.estado != "BORRADOR":
         raise BusinessError("Solo se envían solicitudes en borrador.")
     if user is not None and not has_perm(user, "compras.solicitar"):
         raise BusinessError("Almacén revisa y envía la solicitud.")
-    r.estado = "SOLICITADA"
-    alerts.emit("COMPRA_SOLICITUD", f"Solicitud de compra #{r.id}: {r.product_code} × {r.cantidad:g}",
+    r.estado = "PENDIENTE_LOGISTICA"
+    alerts.emit("COMPRA_APROBACION_LOGISTICA", f"Aprobar solicitud de compra #{r.id}: {r.product_code} × {r.cantidad:g}",
                 f"Necesidad: {r.fecha_necesidad or '-'}. Origen: {r.origen}." +
-                (" Compra de mayor volumen." if r.mayor_volumen else ""), "PurchaseRequest", r.id, creado_por=user)
+                (f" OV {r.order.numero}." if r.order_id and r.order else "") +
+                (" Compra de mayor volumen." if r.mayor_volumen else ""), "PurchaseRequest", r.id,
+                dedup_key=f"COMPRA_LOG:{r.id}", creado_por=user)
     audit(user, "COMPRA_ENVIADA", "PurchaseRequest", r.id)
+
+
+def approve_logistics(r, user, aprobar, comentario=""):
+    """Q14 (12-oct-2026): el Jefe de Logística aprueba la solicitud antes de que pase a Compras."""
+    if not has_perm(user, "compras.aprobar_solicitud"):
+        raise BusinessError("La solicitud de compra la aprueba el Jefe de Logística (Q14).")
+    if r.estado != "PENDIENTE_LOGISTICA":
+        raise BusinessError("La solicitud no está pendiente de aprobación de Logística.")
+    if not aprobar and not comentario.strip():
+        raise BusinessError("Indique el motivo del rechazo.")
+    r.aprobado_logistica_por = user.id if aprobar else None
+    r.estado = "SOLICITADA" if aprobar else "ANULADA"
+    alerts.close_by_system(f"COMPRA_LOG:{r.id}", "Aprobada" if aprobar else "Rechazada")
+    if aprobar:
+        alerts.emit("COMPRA_SOLICITUD", f"Solicitud de compra #{r.id}: {r.product_code} × {r.cantidad:g}",
+                    f"Aprobada por {user.nombre}. Necesidad: {r.fecha_necesidad or '-'}. Origen: {r.origen}." +
+                    (" Compra de mayor volumen." if r.mayor_volumen else ""), "PurchaseRequest", r.id, creado_por=user)
+    audit(user, "COMPRA_LOGISTICA_" + ("APROBADA" if aprobar else "RECHAZADA"), "PurchaseRequest", r.id,
+          {"comentario": comentario})
 
 
 def _require_compras(user):
@@ -157,6 +180,7 @@ def receive(r, user, cantidad, lote, fecha_venc=None, diferencias=""):
         raise BusinessError("Almacén registra la recepción.")
     if r.estado != "ORDEN_GENERADA":
         raise BusinessError("La compra no está pendiente de recepción.")
+    check_warehouse_scope(user, r.warehouse_code)
     if cantidad is None or cantidad < 0 or not lote:
         raise BusinessError("Indique cantidad y lote recibido.")
     r.cantidad_recibida = cantidad

@@ -18,9 +18,9 @@
 <p>Evaluada: {{ o.evaluado_ts|d }} · Preparación: {{ prep }}%</p>
 {% if o.motivo_detencion %}<div class="note">{{ o.motivo_detencion }}</div>{% endif %}
 {% if o.decision_parcial %}<p>Despacho parcial: {{ b(o.decision_parcial) }}{% if o.fecha_saldo %} · saldo reprogramado al <b>{{ o.fecha_saldo|d }}</b>{% endif %}</p>
-<table class="small">{% for r in aprobadores %}<tr><td>{{ r|replace('_',' ') }}</td><td>{% if r in (o.parcial_aprobaciones or {}) %}{% set ap = o.parcial_aprobaciones[r] %}✔ {{ ap.user }}{% if ap.rol_usuario != r %} (en nombre, {{ ap.rol_usuario|replace('_',' ') }}){% endif %} · {{ ap.ts[:16]|replace('T',' ') }}{% else %}pendiente{% endif %}</td></tr>{% endfor %}</table>{% endif %}
+<table class="small">{% for r in aprobadores %}<tr><td>{{ r|replace('_',' ') }}</td><td>{% if r in (o.parcial_aprobaciones or {}) %}{% set ap = o.parcial_aprobaciones[r] %}✔ {{ ap.user }}{% if ap.rol_usuario != r %} (en nombre, {{ ap.rol_usuario|replace('_',' ') }}){% endif %} · {{ ap.ts[:16]|replace('T',' ') }}{% elif o.decision_parcial == 'APROBADA' %}—{% else %}pendiente{% endif %}</td></tr>{% endfor %}</table>{% endif %}
 {% if can('ov.aprobar_parcial') and o.estado_stock in ['INCOMPLETA'] and o.decision_parcial in ['PENDIENTE','RECHAZADA',''] and (user.role_code in pendientes_parcial or user.role_code == 'GERENCIA_GENERAL') %}
-<form method="post" action="{{ url_for('com.order_action', oid=o.id, accion='parcial_si') }}" class="card">{{ csrf() }}<b>Aprobar despacho parcial</b> <span class="small muted">(aprueban {{ aprobadores|join(' y ')|replace('_',' ') }}{{ '; usted aprueba en nombre de los pendientes' if user.role_code=='GERENCIA_GENERAL' }})</span>
+<form method="post" action="{{ url_for('com.order_action', oid=o.id, accion='parcial_si') }}" class="card">{{ csrf() }}<b>Aprobar despacho parcial</b> <span class="small muted">(aprueba {{ aprobadores|join(' y ' if parcial_modo == 'TODOS' else ' o ')|replace('_',' ') }}{{ '; usted aprueba en nombre de ellos' if user.role_code=='GERENCIA_GENERAL' }})</span>
 <label>Fecha a la que se reprograma el saldo no despachado</label><input type="date" name="fecha_saldo" value="{{ o.fecha_saldo.isoformat() if o.fecha_saldo }}" {{ 'required' if not o.fecha_saldo }}>
 <label>Comentario</label><input name="comentario" style="width:100%"><p><button>Aprobar</button></p></form>
 <form method="post" action="{{ url_for('com.order_action', oid=o.id, accion='parcial_no') }}">{{ csrf() }}<input name="comentario" placeholder="motivo del rechazo" required> <button class="sec">Rechazar parcial</button></form>{% endif %}
@@ -38,6 +38,9 @@
 <td class="small">{% for rs in l.reservations if rs.estado in ['ACTIVA','CONSUMIDA'] %}{{ rs.lot.lote }} ({{ rs.lot.warehouse_code }} · {{ rs.lot.fecha_venc|d }}) × {{ rs.cantidad|n }} {{ b(rs.estado) }}<br>{% endfor %}</td></tr>{% endfor %}</table>
 
 {% if alts %}
+{% if presol %}<h2>Solicitudes y pre-solicitudes para esta OV</h2>
+<p class="small muted">Ante un faltante el sistema genera la pre-solicitud de la primera opción viable (producir → reempaque → traslado → compra, Q15); cada una la aprueba su responsable.</p>
+<table class="small"><tr><th>Tipo</th><th>#</th><th>Producto</th><th class="r">Cantidad</th><th>Estado</th></tr>{% for t, i, p, q, e, u in presol %}<tr><td>{{ t }}</td><td><a href="{{ u }}">#{{ i }}</a></td><td>{{ p }}</td><td class="r">{{ q|n }}</td><td>{{ b(e) }}</td></tr>{% endfor %}</table>{% endif %}
 <h2>Alternativas ante faltante</h2>
 <div class="note">Se presentan opciones; ninguna se ejecuta automáticamente. Logística decide el uso de otros almacenes y la Jefatura autoriza el traslado; Comercial y Gerencia de Operaciones participan en renegociaciones (IF §4.5, §6.2).</div>
 {% for a in alts %}<div class="card"><h3>{{ a.line.product_code }} — faltante {{ a.faltante|n }}</h3>

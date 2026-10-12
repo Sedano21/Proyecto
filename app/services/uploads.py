@@ -263,7 +263,8 @@ def _dup_check(rows, keyfn, label):
 def _v_stock(b):
     s = db()
     activos = [r for r in b.rows if not r.excluida]
-    whs = {w.code for w in s.execute(select(Warehouse)).scalars()}
+    whs_obj = {w.code: w for w in s.execute(select(Warehouse)).scalars()}
+    whs = set(whs_obj)
     prods = set(s.execute(select(Product.code)).scalars())
     for r in activos:
         d = r.datos
@@ -274,6 +275,10 @@ def _v_stock(b):
             e.append("Almacén vacío")
         elif _txt(d.get("almacen")) not in whs:
             w.append(f"Almacén {_txt(d.get('almacen'))} no configurado: se creará con uso 'OTRO' (no reservable)")
+        elif whs_obj[_txt(d.get("almacen"))].uso == "NO_UTILIZADO":
+            w.append(f"Almacén {_txt(d.get('almacen'))} indicado como no utilizado (Q5): se registra sin reservar")
+        elif whs_obj[_txt(d.get("almacen"))].uso == "TRANSITO_PRODUCCION":
+            w.append(f"Almacén {_txt(d.get('almacen'))} = tránsito de Producción (Q5): no reservable hasta validarse en Almacén")
         if not _txt(d.get("lote")):
             w.append("Lote vacío: se registrará como 'SIN LOTE'")
         elif not re.match(r"^[A-Za-z0-9/\-]+$", _txt(d.get("lote"))):

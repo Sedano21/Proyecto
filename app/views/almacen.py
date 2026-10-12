@@ -212,6 +212,8 @@ def repack_detail(rid):
     if request.method == "POST":
         acc = request.form.get("accion")
         fns = {
+            "aprobar_pre": lambda: rsvc.approve_presolicitud(r, g.user, True, request.form.get("comentario", "")),
+            "desestimar_pre": lambda: rsvc.approve_presolicitud(r, g.user, False, request.form.get("comentario", "")),
             "aprobar": lambda: rsvc.evaluate(r, g.user, True, request.form.get("resultado", "")),
             "desaprobar": lambda: rsvc.evaluate(r, g.user, False, request.form.get("resultado", "")),
             "iniciar": lambda: rsvc.start(r, g.user),

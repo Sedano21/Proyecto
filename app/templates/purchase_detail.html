@@ -8,7 +8,8 @@
 <tr><td>Recepción</td><td>{{ r.cantidad_recibida|n }} lote {{ r.lote_recibido }} <span style="white-space:pre-wrap">{{ r.diferencias }}</span></td></tr>
 <tr><td>Bajo observación</td><td>{{ r.observaciones_recepcion }}</td></tr></table>
 {% if r.analisis %}<details><summary>Análisis de reposición que originó la solicitud</summary><pre class="mono small">{{ r.analisis|tojson(indent=1) }}</pre></details>{% endif %}</div>
-{% if r.estado=='BORRADOR' and can('compras.solicitar') %}<form method="post">{{ csrf() }}<button name="accion" value="enviar">Revisar y enviar a Compras</button></form>{% endif %}
+{% if r.estado=='BORRADOR' and can('compras.solicitar') %}<form method="post">{{ csrf() }}<button name="accion" value="enviar">Revisar y enviar (aprobación del Jefe de Logística)</button></form>{% endif %}
+{% if r.estado=='PENDIENTE_LOGISTICA' %}{% if can('compras.aprobar_solicitud') %}<form method="post" class="card">{{ csrf() }}<h3>Aprobación del Jefe de Logística (Q14)</h3><input name="comentario" placeholder="comentario (obligatorio si rechaza)"> <button name="accion" value="aprobar_log">Aprobar y pasar a Compras</button> <button class="sec" name="accion" value="rechazar_log">Rechazar</button></form>{% else %}<p class="muted">Pendiente de aprobación del Jefe de Logística.</p>{% endif %}{% endif %}
 {% if can('compras.gestionar') %}
 {% if r.estado in ['SOLICITADA','EN_COTIZACION','MUESTRA_RECHAZADA'] %}<form method="post" class="card">{{ csrf() }}<h3>Cotización</h3><div class="row"><div><label>Proveedor</label><input name="proveedor" value="{{ r.proveedor }}" required></div><div><label>Precio</label><input type="number" step="any" name="precio" value="{{ r.precio or '' }}"></div>
 <div><label><input type="checkbox" name="requiere_muestra" value="1"> Llevar muestra a Calidad</label></div></div><label>Detalle</label><textarea name="cotizacion"></textarea><button name="accion" value="cotizar">Registrar cotización</button></form>{% endif %}

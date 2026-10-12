@@ -93,8 +93,12 @@ def route_detail(rid):
             def fn():
                 arch = dsvc.save_upload(request.files.get("archivo"), current_app.config["UPLOAD_DIR"], f"factura_{stop.order.numero}")
                 return dsp.set_invoice(stop, u, f.get("numero", ""), arch)
-        elif acc == "autorizar_salida":
-            fn = lambda: dsp.authorize_exit(r, u, f_bool("impresos"))  # noqa: E731
+        elif acc == "revisar_documentos":
+            fn = lambda: dsp.review_documents(r, u, f_bool("impresos"))  # noqa: E731
+        elif acc == "aprobar_discrepancia":
+            fn = lambda: dsp.approve_exit_with_discrepancy(r, u, f.get("motivo", ""))  # noqa: E731
+        elif acc == "resolver_guia":
+            fn = lambda: dsp.resolve_guide_discrepancy(r, u, f.get("detalle", ""))  # noqa: E731
         elif acc == "retorno":
             fn = lambda: dsp.register_return(r, u)  # noqa: E731
         elif acc == "incidencia":
@@ -105,8 +109,8 @@ def route_detail(rid):
             abort(404)
         msgs = {"validar_carga": lambda res: ("Incongruencias: " + "; ".join(res) + ". Se avisó al almacén.") if res else
                 "Carga validada: camión cargado (alerta enviada).",
-                "autorizar_salida": lambda res: ("Documentos faltantes: " + "; ".join(res) + ". Se reportó a las áreas.") if res
-                else "Salida autorizada por Seguridad.",
+                "revisar_documentos": lambda res: ("Documentos faltantes: " + "; ".join(res) + ". Se reportó a las áreas.") if res
+                else "Documentos completos: Seguridad dio conformidad. Falta la autorización de salida del Líder Operativo.",
                 "factura": lambda res: "Factura cargada" + (" (con modificaciones respecto a la OV: " + "; ".join(res) + ")" if res else ".")}
         return act(fn, msgs.get(acc, "Ruta actualizada."), back)
     vehicles = list(db().execute(select(Vehicle).where(Vehicle.disponible.is_(True)).order_by(Vehicle.capacidad_kg)).scalars())

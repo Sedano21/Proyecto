@@ -13,8 +13,9 @@
   <div class="tile"><div class="v">{{ k.completos }}</div><div class="l">Pendientes completos (stock reservado 100 %)</div></div>
   <div class="tile"><div class="v">{{ k.incompletos }}</div><div class="l">Pendientes incompletos</div></div>
   <div class="tile"><div class="v">{% if k.cobertura_unidades_prom is not none %}{{ k.cobertura_unidades_prom }}% / {{ k.cobertura_lineas_prom }}%{% else %}—{% endif %}</div><div class="l">Cobertura promedio unidades / líneas</div></div>
-  <div class="tile"><div class="v">{% if k.otif_salida %}{{ k.otif_salida[0] }}%{% else %}—{% endif %}</div><div class="l">OTIF por salida ({% if k.otif_salida %}{{ k.otif_salida[1] }}/{{ k.otif_salida[2] }}{% else %}sin datos{% endif %})</div></div>
-  <div class="tile"><div class="v">{% if k.otif_entrega %}{{ k.otif_entrega[0] }}%{% else %}—{% endif %}</div><div class="l">OTIF por entrega en destino ({% if k.otif_entrega %}{{ k.otif_entrega[1] }}/{{ k.otif_entrega[2] }}{% else %}sin datos{% endif %})</div></div>
+  <div class="tile"><div class="v">{% if k.otif_salida %}{{ k.otif_salida[0] }}%{% else %}—{% endif %}</div><div class="l">OTIF: salió completo y a tiempo ({% if k.otif_salida %}{{ k.otif_salida[1] }}/{{ k.otif_salida[2] }}{% else %}sin datos{% endif %})</div></div>
+  <div class="tile"><div class="v">{% if k.fill_rate_unidades is not none %}{{ k.fill_rate_unidades }}%{% else %}—{% endif %}</div><div class="l">Fill rate a la salida (unidades){% if k.fill_rate_lineas is not none %} · líneas {{ k.fill_rate_lineas }}%{% endif %}</div></div>
+  <div class="tile"><div class="v">{% if k.fill_rate_pedidos %}{{ k.fill_rate_pedidos[0] }}%{% else %}—{% endif %}</div><div class="l">Pedidos que salieron al 100 %{% if k.fill_rate_pedidos %} ({{ k.fill_rate_pedidos[1] }}/{{ k.fill_rate_pedidos[2] }}){% endif %}{% if k.completos_con_rechazo %} · {{ k.completos_con_rechazo[0] }} con rechazo posterior{% endif %}</div></div>
   <div class="tile"><div class="v">S/ {{ k.monto_total|n }}</div><div class="l">Monto OV (pendiente S/ {{ k.monto_pendiente|n }})</div></div>
   <div class="tile"><div class="v">{{ k.volumen_kg|n }} kg</div><div class="l">Volumen OV (pendiente {{ k.volumen_pendiente_kg|n }} kg)</div></div>
   <div class="tile"><div class="v">{{ k.tiempo_preparacion_h if k.tiempo_preparacion_h is not none else '—' }} h</div><div class="l">Tiempo promedio de preparación</div></div>
@@ -23,7 +24,15 @@
   <div class="tile"><div class="v">{{ k.diferencias_inventario }}</div><div class="l">Diferencias de inventario (conteos) · {{ k.diferencias_liquidacion }} en recepción de PT</div></div>
   <div class="tile"><div class="v">{{ k.rechazos }} / {{ k.devoluciones }} / {{ k.entregas_parciales }}</div><div class="l">Rechazos / devoluciones / entregas parciales</div></div>
 </div>
-<div class="note small">OTIF: la definición está pendiente (IF §17). Se muestran ambas variantes: <b>por salida</b> (pedido completo que salió en o antes de la fecha comprometida) y <b>por entrega</b> (entregado completo en destino a tiempo).</div>
+<div class="note small">OTIF (decisión Q2): pedido que sale del almacén completo y en o antes de la fecha comprometida. Referencia: OTIF por entrega en destino {% if k.otif_entrega %}{{ k.otif_entrega[0] }}% ({{ k.otif_entrega[1] }}/{{ k.otif_entrega[2] }}){% else %}sin datos{% endif %}.
+Fill rate: lo que salió frente a lo pedido; para los que salieron al 100 % se indica si hubo rechazo y el motivo.</div>
+<div class="grid g2">
+  <div class="card"><h3>¿Dónde están los mayores errores? (por etapa)</h3>
+    <table><tr><th>Etapa</th><th>Causa</th><th class="r">Pedidos</th></tr>{% for e, m, n in k.fill_causas %}<tr><td>{{ e }}</td><td>{{ m }}</td><td class="r">{{ n }}</td></tr>{% else %}<tr><td colspan="3" class="muted">Sin fallas registradas</td></tr>{% endfor %}</table>
+    <p class="small muted">Asignación de causas a etapas: parámetro <i>etapa_por_incidencia</i> (propuesto, configurable).</p></div>
+  <div class="card"><h3>Fill rate por pedido despachado</h3>
+    <table class="small"><tr><th>OV</th><th>Comprom.</th><th>Salida</th><th class="r">Fill</th><th>A tiempo</th><th>Rechazo / motivo</th></tr>{% for x in k.fill_detalle[:20] %}<tr><td>{{ x.numero }}</td><td>{{ x.fecha|d }}</td><td>{{ x.salida|d }}</td><td class="r">{{ x.fill }}%</td><td>{{ 'sí' if x.a_tiempo else 'no' }}</td><td>{% if x.rechazo %}{{ x.motivos|join('; ') }}{% else %}—{% endif %}</td></tr>{% else %}<tr><td colspan="6" class="muted">Sin salidas en el período</td></tr>{% endfor %}</table></div>
+</div>
 <div class="grid g2">
   <div class="card"><h3>Faltantes por producto (unidades no reservadas)</h3>
     <table>{% for p, q in k.faltantes %}<tr><td>{{ p }}</td><td class="r">{{ q|n }}</td></tr>{% else %}<tr><td class="muted">Sin faltantes</td></tr>{% endfor %}</table></div>

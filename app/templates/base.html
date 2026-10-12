@@ -9,7 +9,7 @@
 {% if user %}
 <div class="layout">
   <nav class="side">
-    <div class="brand">Módulo de Operaciones<small>Corporación Productiva · prototipo v0.1</small></div>
+    <div class="brand">Módulo de Operaciones<small>Corporación Productiva · prototipo v0.3</small></div>
     <a href="{{ url_for('main.dashboard') }}">Inicio / Tablero</a>
     <a href="{{ url_for('main.alerts') }}">Alertas{% if alertas_abiertas %}<span class="badge-al">{{ alertas_abiertas }}</span>{% endif %}</a>
     {% if can('ov.ver') %}<h4>Comercial</h4>

@@ -90,10 +90,21 @@ def order_detail(oid):
     products = list(db().execute(select(Product).where(Product.tipo.in_(["PT", "GR", "MP"])).order_by(Product.code)).scalars())
     peso, sin_peso = osvc.order_weight_kg(o, "solicitado")
     saldos = list(db().execute(select(SalesOrder).where(SalesOrder.parent_id == o.id)).scalars())
+    from ..models import ProductionRequest, PurchaseRequest, RepackRequest, Transfer
+    from ..services.core import param
+    presol = ([("Producción", x.id, x.product_code, x.cantidad, x.estado, url_for("prod.request_detail", rid=x.id))
+               for x in db().execute(select(ProductionRequest).where(ProductionRequest.order_id == o.id)).scalars()] +
+              [("Reempaque", x.id, x.producto_destino, x.cantidad_destino or x.cantidad, x.estado, url_for("alm.repack_detail", rid=x.id))
+               for x in db().execute(select(RepackRequest).where(RepackRequest.order_id == o.id)).scalars()] +
+              [("Traslado", x.id, x.lot.product_code, x.cantidad, x.estado, url_for("alm.transfers"))
+               for x in db().execute(select(Transfer).where(Transfer.order_id == o.id)).scalars()] +
+              [("Compra", x.id, x.product_code, x.cantidad, x.estado, url_for("buy.purchase_detail", pid=x.id))
+               for x in db().execute(select(PurchaseRequest).where(PurchaseRequest.order_id == o.id)).scalars()])
     return render_template("ov_detail.html", o=o, alts=alts, whs=whs, reqs=reqs, decs=decs, hist=hist, certs=certs,
                            products=products, line_reserved=line_reserved, monto=osvc.order_amount(o), peso=peso,
                            sin_peso=sin_peso, can_auth=osvc.can_authorize_change(g.user, o), prep=osvc.prep_progress(o),
-                           saldos=saldos, aprobadores=osvc.partial_approvers(), pendientes_parcial=osvc.partial_pending_roles(o))
+                           saldos=saldos, aprobadores=osvc.partial_approvers(), pendientes_parcial=osvc.partial_pending_roles(o),
+                           parcial_modo=str(param("parcial_modo", "CUALQUIERA")).upper(), presol=presol)
 
 
 @bp.route("/<int:oid>/accion/<accion>", methods=["POST"])
@@ -118,14 +129,14 @@ def order_action(oid, accion):
         "cancelar": (lambda: osvc.cancel_order(o, u, f.get("motivo", "")), "OV cancelada: reservas y ruta liberadas."),
         "reevaluar": (lambda: __import__("app.services.stock", fromlist=["x"]).evaluate_order(o, u, "REEVALUACION"), "OV reevaluada."),
         "parcial_si": (lambda: osvc.decide_partial(o, u, True, f.get("comentario", ""), f_date("fecha_saldo")),
-                       lambda r: "Despacho parcial aprobado por todos; ruta programada." if o.decision_parcial == "APROBADA"
+                       lambda r: "Despacho parcial aprobado; ruta programada. El saldo se reprogramará al salir el despacho." if o.decision_parcial == "APROBADA"
                        else "Aprobación registrada; falta: " + ", ".join(osvc.partial_pending_roles(o))),
         "parcial_no": (lambda: osvc.decide_partial(o, u, False, f.get("comentario", "")), "Despacho parcial rechazado."),
         "renegociar": (lambda: osvc.renegotiate_date(o, u, f_date("nueva_fecha", True), f.get("comentario", "")), "Fecha renegociada; OV reevaluada."),
         "cambiar_producto": (lambda: osvc.change_product(o, u, f.get("line_id"), f.get("nuevo_codigo", "").strip().upper(),
                                                           f_float("cantidad", True), f.get("comentario", "")), "Producto cambiado; OV reevaluada."),
         "traslado": (lambda: tsvc.request_transfer(u, f.get("lot_id"), f.get("destino"), f_float("cantidad", True), o,
-                                                   f.get("observacion", "")), "Traslado solicitado (pendiente de autorización de Jefatura de Logística)."),
+                                                   f.get("observacion", "")), "Traslado solicitado (lo aprueba el Jefe o el Coordinador de Logística)."),
         "reempaque": (lambda: rsvc.request(u, f.get("tipo"), f.get("lot_id"), f_float("cantidad", True), f.get("producto_destino") or None,
                                            None, o, f.get("motivo", "")), "Solicitud de reempaque enviada a Calidad."),
         "produccion": (lambda: psvc.create_request(f.get("product_code"), f_float("cantidad", True), u, o, o.fecha_compromiso),

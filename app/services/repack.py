@@ -1,9 +1,10 @@
-"""Reempaque (IF §9): Almacén solicita -> Calidad evalúa -> notifica a Almacén y Producción -> Producción ejecuta."""
+"""Reempaque (IF §9): Almacén solicita -> Calidad evalúa -> notifica a Almacén y Producción -> Producción ejecuta.
+Q12 (12-oct-2026): el sistema puede generar una pre-solicitud; el Coordinador de Almacén la aprueba y la envía a Calidad."""
 from ..db import db
 from ..models import Product, RepackRequest, StockLot, now
 from . import alerts
 from .catalogs_helpers import repack_type_name
-from .core import BusinessError, audit, has_perm
+from .core import BusinessError, audit, check_warehouse_scope, has_perm
 from sqlalchemy import select
 
 from .stock import add_or_increase_lot, change_lot_state, free_qty
@@ -19,8 +20,11 @@ def _segment(lot, estado):
 TIPOS = ("ACTUALIZACION_FECHA", "CAMBIO_PRESENTACION", "CONVERSION_CALIDAD")
 
 
-def request(user, tipo, lot_id, cantidad, producto_destino=None, cantidad_destino=None, order=None, motivo=""):
-    if not has_perm(user, "reempaque.solicitar"):
+def request(user, tipo, lot_id, cantidad, producto_destino=None, cantidad_destino=None, order=None, motivo="",
+            presolicitud=False):
+    """presolicitud=True: la genera el sistema (user=None) y queda PRE_SOLICITUD hasta que el Coordinador de Almacén
+    la apruebe (Q12). Si la crea el propio Coordinador, se envía directamente a Calidad."""
+    if not presolicitud and not has_perm(user, "reempaque.solicitar"):
         raise BusinessError("La solicitud de reempaque la inicia Almacén (IF §9.1).")
     if tipo not in TIPOS:
         raise BusinessError("Tipo de reempaque no válido.")
@@ -35,10 +39,52 @@ def request(user, tipo, lot_id, cantidad, producto_destino=None, cantidad_destin
     if tipo in ("CAMBIO_PRESENTACION", "CONVERSION_CALIDAD"):
         if not producto_destino or db().get(Product, producto_destino) is None:
             raise BusinessError("Indique el producto destino (SKU resultante).")
+    if not presolicitud:
+        check_warehouse_scope(user, lot.warehouse_code)
     r = RepackRequest(tipo=tipo, lot_id=lot.id, cantidad=cantidad, producto_destino=producto_destino or lot.product_code,
                       cantidad_destino=cantidad_destino, order_id=order.id if order else None, motivo=motivo,
-                      solicitado_por=user.id)
+                      solicitado_por=user.id if user else None, estado="PRE_SOLICITUD" if presolicitud else "SOLICITADA")
     db().add(r)
+    db().flush()
+    if presolicitud:
+        alerts.emit("REEMPAQUE_PRESOLICITUD", f"Aprobar pre-solicitud de reempaque #{r.id}: {repack_type_name(tipo)}",
+                    f"Lote {lot.lote} ({lot.product_code}) × {cantidad:g} en {lot.warehouse_code}. Destino: {r.producto_destino}. "
+                    f"{motivo}", "RepackRequest", r.id, dedup_key=f"REEMPAQUE_PRE:{r.id}", creado_por=user)
+        audit(user, "REEMPAQUE_PRESOLICITADO", "RepackRequest", r.id, {"tipo": tipo, "lote": lot.lote, "cantidad": cantidad})
+        return r
+    _send_to_quality(r, lot, user)
+    return r
+
+
+def approve_presolicitud(r, user, aprobar, comentario=""):
+    """Q12: el Coordinador de Almacén aprueba la pre-solicitud y la envía a Calidad (o la desestima)."""
+    if not has_perm(user, "reempaque.solicitar"):
+        raise BusinessError("La pre-solicitud de reempaque la aprueba el Coordinador de Almacén (Q12).")
+    if r.estado != "PRE_SOLICITUD":
+        raise BusinessError("La solicitud no es una pre-solicitud pendiente.")
+    lot = r.lot
+    check_warehouse_scope(user, lot.warehouse_code)
+    alerts.close_by_system(f"REEMPAQUE_PRE:{r.id}", "Aprobada" if aprobar else "Desestimada")
+    if not aprobar:
+        if not comentario.strip():
+            raise BusinessError("Indique el motivo para desestimar.")
+        r.estado = "DESESTIMADA"
+        r.motivo = (r.motivo + "\n" if r.motivo else "") + f"Desestimada: {comentario}"
+        audit(user, "REEMPAQUE_PRESOLICITUD_DESESTIMADA", "RepackRequest", r.id, {"comentario": comentario})
+        return r
+    libre = free_qty(lot) if lot.estado == "DISPONIBLE" else lot.cantidad
+    if r.cantidad > libre + 1e-9:
+        raise BusinessError(f"El lote ya no tiene la cantidad libre ({libre:g}).")
+    r.estado = "SOLICITADA"
+    r.solicitado_por = user.id
+    if comentario:
+        r.motivo = (r.motivo + "\n" if r.motivo else "") + comentario
+    _send_to_quality(r, lot, user)
+    return r
+
+
+def _send_to_quality(r, lot, user):
+    tipo, cantidad, motivo = r.tipo, r.cantidad, r.motivo
     # El producto seleccionado para reempaque queda 'Pendiente de revisión' (IF §6.1). Si se selecciona todo el
     # lote cambia su estado; si es una parte, esa cantidad queda retenida (no reservable) hasta la evaluación.
     db().flush()

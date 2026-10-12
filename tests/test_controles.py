@@ -179,15 +179,17 @@ def test_certificado_revision_y_aprobacion(s, U, new_order):
 
 # --------------------------- conteos ----------------------------------------
 def test_conteo_fisico_diferencias(s, U):
-    c = inv.open_count(U("coord.almacen"), "EXT-002", "EN-901")
+    with pytest.raises(BusinessError):  # Q17: el coordinador 1560 no cuenta el almacén 1524
+        inv.open_count(U("coord.almacen"), "EXT-002", "EN-901")
+    c = inv.open_count(U("coord.almacen.mp"), "EXT-002", "EN-901")
     line = c.lines[0]
-    inv.save_lines(c, U("coord.almacen"), {str(line.id): {"conteo": "4", "peso_unitario": "3"}})
+    inv.save_lines(c, U("coord.almacen.mp"), {str(line.id): {"conteo": "4", "peso_unitario": "3"}})
     assert line.fisico == 12 and line.faltante == 3 and line.sobrante == 0
-    difs = inv.close_count(c, U("coord.almacen"))
+    difs = inv.close_count(c, U("coord.almacen.mp"))
     s.commit()
     assert len(difs) == 1
     a = alerts_of(s, "INVENTARIO_DIFERENCIA")[0]
-    assert "SISTEMAS" in a.roles
+    assert "SISTEMAS" in a.roles and "COORD_ALMACEN_MP" in a.roles and "COORD_ALMACEN" not in a.roles
     lot = s.get(StockLot, line.lot_id)
     assert base_qty(lot) == 12
 
@@ -259,6 +261,10 @@ def test_reposicion_calculo(s, U, today):
     s.commit()
     assert creadas and creadas[0].estado == "BORRADOR" and alerts_of(s, "REPOSICION_SUGERIDA")
     buy.send(creadas[0], U("coord.almacen"))
+    assert creadas[0].estado == "PENDIENTE_LOGISTICA" and alerts_of(s, "COMPRA_APROBACION_LOGISTICA")  # Q14
+    with pytest.raises(BusinessError):
+        buy.approve_logistics(creadas[0], U("coord.logistica"), True)
+    buy.approve_logistics(creadas[0], U("jefe.logistica"), True)
     assert creadas[0].estado == "SOLICITADA"
 
 
@@ -280,10 +286,14 @@ def test_matriz_permisos_reglas_documentadas(s):
         return {rp.role_code for rp in s.query(RolePermission).filter_by(perm_code=perm)}
     # Q4: Gerencia General aprueba; Sistemas tiene acceso pero no aprueba
     assert roles_con("ov.cancelar") == {"COORD_VENTAS", "JEFE_VENTAS", "GERENCIA_GENERAL"}
-    assert roles_con("traslado.autorizar") == {"JEFE_LOGISTICA", "GERENCIA_GENERAL"}
+    # Q13: Jefe o Coordinador de Logística; Q14: Jefe de Logística aprueba compras; Q16: Líder Operativo autoriza salida
+    assert roles_con("traslado.autorizar") == {"JEFE_LOGISTICA", "COORD_LOGISTICA", "GERENCIA_GENERAL"}
+    assert roles_con("compras.aprobar_solicitud") == {"JEFE_LOGISTICA", "GERENCIA_GENERAL"}
+    assert roles_con("distribucion.aprobar_salida_discrepancia") == {"JEFE_LOGISTICA", "COORD_LOGISTICA", "GERENCIA_GENERAL"}
+    assert roles_con("reempaque.solicitar") == {"COORD_ALMACEN", "COORD_ALMACEN_MP", "SUPERV_ALMACEN", "GERENCIA_GENERAL"}
     assert roles_con("calidad.certificado_revisar") == {"JEFE_CALIDAD", "SUPERV_CALIDAD", "GERENCIA_GENERAL"}
-    assert roles_con("distribucion.confirmar_salida") == {"COORD_DISTRIBUCION", "GERENCIA_GENERAL"}
-    # Q3: despacho parcial lo aprueban GO y Jefatura de Logística (y GG por acceso completo)
+    assert roles_con("distribucion.confirmar_salida") == {"LIDER_ALMACEN", "GERENCIA_GENERAL"}
+    # Q3: despacho parcial lo aprueba GO o Jefatura de Logística (y GG por acceso completo)
     assert roles_con("ov.aprobar_parcial") == {"GERENCIA_OPERACIONES", "JEFE_LOGISTICA", "GERENCIA_GENERAL"}
     aprob = {p.code for p in s.query(Permission).filter_by(tipo="aprobacion")}
     sist = {rp.perm_code for rp in s.query(RolePermission).filter_by(role_code="SISTEMAS")}

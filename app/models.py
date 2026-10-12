@@ -540,7 +540,7 @@ class RepackRequest(Base):
     order_id: Mapped[int | None] = mapped_column(ForeignKey("sales_orders.id"), nullable=True)
     motivo: Mapped[str] = mapped_column(Text, default="")
     estado: Mapped[str] = mapped_column(String(20), default="SOLICITADA")
-    # SOLICITADA / APROBADA / DESAPROBADA / EN_EJECUCION / EJECUTADA
+    # PRE_SOLICITUD / DESESTIMADA / SOLICITADA / APROBADA / DESAPROBADA / EN_EJECUCION / EJECUTADA
     solicitado_por: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     evaluado_por: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     evaluado_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -615,12 +615,13 @@ class PurchaseRequest(Base):
     order_id: Mapped[int | None] = mapped_column(ForeignKey("sales_orders.id"), nullable=True)
     analisis: Mapped[dict] = mapped_column(JSON, default=dict)
     estado: Mapped[str] = mapped_column(String(30), default="BORRADOR")
-    # BORRADOR / SOLICITADA / EN_COTIZACION / MUESTRA_EN_CALIDAD / MUESTRA_RECHAZADA / PENDIENTE_APROBACION /
+    # BORRADOR / PENDIENTE_LOGISTICA / SOLICITADA / EN_COTIZACION / MUESTRA_EN_CALIDAD / MUESTRA_RECHAZADA / PENDIENTE_APROBACION /
     # ORDEN_GENERADA / RECIBIDA / RECIBIDA_CON_DIFERENCIAS / RECIBIDA_BAJO_OBSERVACION / CERRADA / ANULADA
     requiere_muestra: Mapped[bool] = mapped_column(Boolean, default=False)
     resultado_muestra: Mapped[str] = mapped_column(String(20), default="")
     mayor_volumen: Mapped[bool] = mapped_column(Boolean, default=False)
     aprobado_gerencia_por: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    aprobado_logistica_por: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)  # Q14
     proveedor: Mapped[str] = mapped_column(String(160), default="")
     cotizacion: Mapped[str] = mapped_column(Text, default="")
     precio: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -635,6 +636,7 @@ class PurchaseRequest(Base):
     creado_por: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     ts: Mapped[datetime] = mapped_column(DateTime, default=now)
     product = relationship("Product")
+    order = relationship("SalesOrder")
 
 
 class DateChange(Base):
@@ -738,7 +740,8 @@ class Route(Base):
     fotos: Mapped[dict] = mapped_column(JSON, default=dict)  # {etapa: [{archivo, user, ts, nota}]}
     carga: Mapped[dict] = mapped_column(JSON, default=dict)  # validación de productos vs pre-guía
     carga_validada: Mapped[bool] = mapped_column(Boolean, default=False)
-    autorizacion_seguridad: Mapped[dict] = mapped_column(JSON, default=dict)
+    autorizacion_seguridad: Mapped[dict] = mapped_column(JSON, default=dict)  # revisión de documentos por Seguridad
+    aprobacion_discrepancia: Mapped[dict] = mapped_column(JSON, default=dict)  # Q8: salida aprobada por Logística
     retorno_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     guia_numero: Mapped[str] = mapped_column(String(40), default="")
     seguridad: Mapped[dict] = mapped_column(JSON, default=dict)  # validación carga vs guía

@@ -6,12 +6,13 @@ from sqlalchemy import select
 from ..db import db
 from ..models import PhysicalCount, PhysicalCountLine, StockLot, now
 from . import alerts
-from .core import BusinessError, audit, has_perm
+from .core import BusinessError, audit, check_warehouse_scope, has_perm
 
 
 def open_count(user, warehouse_code, product_prefix="", observacion=""):
     if not has_perm(user, "stock.conteo"):
         raise BusinessError("Su rol no registra conteos.")
+    check_warehouse_scope(user, warehouse_code)
     c = PhysicalCount(warehouse_code=warehouse_code, user_id=user.id, observacion=observacion)
     q = select(StockLot).where(StockLot.warehouse_code == warehouse_code, StockLot.cantidad > 0)
     if product_prefix:

@@ -31,6 +31,7 @@ def emit(type_code, titulo, mensaje="", entidad="", entidad_id="", prioridad=Non
         if existing:
             return existing
     roles = list(dict.fromkeys((t.roles or []) + (extra_roles or [])))
+    roles = _filter_by_warehouse(roles, entidad, entidad_id)
     usuarios = list(dict.fromkeys((t.usuarios or []) + [u for u in (extra_users or []) if u]))
     a = Alert(type_code=type_code, titulo=titulo[:250], mensaje=mensaje, prioridad=prioridad or t.prioridad,
               area=t.area, entidad=entidad, entidad_id=str(entidad_id), roles=roles, usuarios=usuarios,
@@ -42,6 +43,74 @@ def emit(type_code, titulo, mensaje="", entidad="", entidad_id="", prioridad=Non
     if t.enviar_correo:
         _queue_emails(a, t, roles, usuarios)
     return a
+
+
+def entity_warehouses(entidad, entidad_id):
+    """Almacenes involucrados en la entidad de la alerta (para dirigirla al coordinador que corresponde, Q17)."""
+    from ..models import (Liquidation, ProductionRequest, PurchaseRequest, RepackRequest, Route, SalesOrder, StockLot,
+                          Transfer, Product, PhysicalCount, ImportShipment)
+    from .stock import principal_warehouses
+    s = db()
+    try:
+        eid = int(entidad_id)
+    except (TypeError, ValueError):
+        return set()
+
+    def principal(code):
+        p = s.get(Product, code)
+        return {w.code for w in principal_warehouses(p)} if p else set()
+
+    def order_whs(o):
+        out = set()
+        for l in o.lines:
+            out |= principal(l.product_code)
+            out |= {r.lot.warehouse_code for r in l.reservations if r.estado == "ACTIVA"}
+        return out
+    obj = None
+    model = {"SalesOrder": SalesOrder, "StockLot": StockLot, "Transfer": Transfer, "PurchaseRequest": PurchaseRequest,
+             "RepackRequest": RepackRequest, "Liquidation": Liquidation, "ProductionRequest": ProductionRequest,
+             "Route": Route, "PhysicalCount": PhysicalCount, "ImportShipment": ImportShipment}.get(entidad)
+    if model is not None:
+        obj = s.get(model, eid)
+    if obj is None:
+        return set()
+    if entidad == "SalesOrder":
+        return order_whs(obj)
+    if entidad in ("StockLot", "PhysicalCount"):
+        return {obj.warehouse_code}
+    if entidad == "Transfer":
+        return {obj.lot.warehouse_code, obj.destino_code}
+    if entidad == "PurchaseRequest":
+        return {obj.warehouse_code} if obj.warehouse_code else principal(obj.product_code)
+    if entidad == "ImportShipment":
+        return {obj.warehouse_code} if obj.warehouse_code else principal(obj.product_code)
+    if entidad == "RepackRequest":
+        return {obj.lot.warehouse_code}
+    if entidad == "Liquidation":
+        return {param("almacen_transito_produccion", "ALM-003")} | principal(obj.product_code)
+    if entidad == "ProductionRequest":
+        return principal(obj.product_code)
+    if entidad == "Route":
+        out = set()
+        for st in obj.stops:
+            out |= order_whs(st.order)
+        return out
+    return set()
+
+
+def _filter_by_warehouse(roles, entidad, entidad_id):
+    """Quita los coordinadores cuyo almacén no está involucrado. Si no se puede determinar, avisa a todos."""
+    from .core import warehouse_scopes
+    scopes = warehouse_scopes()
+    if not any(r in scopes for r in roles):
+        return roles
+    whs = entity_warehouses(entidad, entidad_id)
+    if not whs:
+        return roles
+    filtrados = [r for r in roles if r not in scopes or set(scopes[r]) & whs]
+    if not any(r in scopes for r in filtrados):  # ningún almacén asignado involucrado: avisa a todos los coordinadores
+        return roles
+    return filtrados
 
 
 def _queue_emails(alert, t, roles, usuarios):

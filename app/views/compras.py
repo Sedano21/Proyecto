@@ -38,6 +38,8 @@ def purchase_detail(pid):
         fns = {
             "enviar": lambda: psvc.send(r, u),
             "cotizar": lambda: psvc.quote(r, u, f.get("proveedor", ""), f.get("cotizacion", ""), f_float("precio"), f_bool("requiere_muestra")),
+            "aprobar_log": lambda: psvc.approve_logistics(r, u, True, f.get("comentario", "")),
+            "rechazar_log": lambda: psvc.approve_logistics(r, u, False, f.get("comentario", "")),
             "pedir_go": lambda: psvc.request_go_approval(r, u),
             "aprobar_go": lambda: psvc.approve_go(r, u, True, f.get("comentario", "")),
             "rechazar_go": lambda: psvc.approve_go(r, u, False, f.get("comentario", "")),

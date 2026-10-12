@@ -276,6 +276,8 @@ def _emit_evaluation_alerts(order, resumen, user, motivo, tenia_reservas):
         if a is not None and a.mensaje and detalle not in a.mensaje:
             from ..models import AlertEvent
             db().add(AlertEvent(alert_id=a.id, accion="ACTUALIZADA", comentario=f"Reevaluación ({motivo}): {detalle}"))
+        from .presolicitudes import generate_for_order
+        generate_for_order(order, user)
         if order.cobertura_unidades > 0 and order.decision_parcial in ("", "RECHAZADA"):
             order.decision_parcial = "PENDIENTE"
             order.parcial_aprobaciones = {}
@@ -362,6 +364,8 @@ def change_lot_state(lot, nuevo, user, motivo):
         raise BusinessError("Estado no válido. 'Reservado' se deriva de las reservas y 'Observado' no se usa (IF §6.1).")
     if not motivo.strip():
         raise BusinessError("Indique el motivo del cambio de estado.")
+    from .core import check_warehouse_scope
+    check_warehouse_scope(user, lot.warehouse_code)
     anterior = lot.estado
     if anterior == nuevo:
         return []

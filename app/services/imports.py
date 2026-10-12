@@ -94,6 +94,8 @@ def receive(sh, user, cantidad, lote, warehouse_code, fecha_venc=None, diferenci
         raise BusinessError("La importación ya fue recibida.")
     if cantidad is None or cantidad < 0 or not lote or not warehouse_code:
         raise BusinessError("Cantidad, lote y almacén son obligatorios.")
+    from .core import check_warehouse_scope
+    check_warehouse_scope(user, warehouse_code)
     sh.cantidad_recibida = cantidad
     sh.lote_recibido = lote
     sh.warehouse_code = warehouse_code

@@ -288,10 +288,11 @@ def register_security_check(route, user, guia_numero, lineas):
     if route.estado not in ("CONFIRMADA",):
         raise BusinessError("La validación de carga se hace sobre rutas confirmadas antes de salir.")
     discrepancias = []
+    tol = float(param("tolerancia_discrepancia_guia", 0) or 0) + 1e-9
     for ln in lineas:
-        if abs((ln.get("guia") or 0) - (ln.get("cargado") or 0)) > 1e-9:
+        if abs((ln.get("guia") or 0) - (ln.get("cargado") or 0)) > tol:
             discrepancias.append(f"{ln['producto']}: guía {ln.get('guia')} vs cargado {ln.get('cargado')}")
-        if abs((ln.get("esperado") or 0) - (ln.get("guia") or 0)) > 1e-9:
+        if abs((ln.get("esperado") or 0) - (ln.get("guia") or 0)) > tol:
             discrepancias.append(f"{ln['producto']}: preparado {ln.get('esperado')} vs guía {ln.get('guia')}")
         if ln.get("presentacion_ok") is False:
             discrepancias.append(f"{ln['producto']}: presentación no coincide con la guía")
@@ -299,8 +300,13 @@ def register_security_check(route, user, guia_numero, lineas):
     route.seguridad = {"user": user.nombre, "ts": now().isoformat(), "lineas": lineas, "discrepancias": discrepancias,
                        "conforme": not discrepancias}
     if discrepancias:
-        alerts.emit("GUIA_DISCREPANCIA", f"Discrepancia carga vs guía en ruta #{route.id}", "; ".join(discrepancias),
-                    "Route", route.id, creado_por=user)
+        alerts.emit("GUIA_DISCREPANCIA", f"Discrepancia carga vs guía en ruta #{route.id}", "; ".join(discrepancias)
+                    + (". La salida queda bloqueada hasta corregir o que Logística la apruebe (Q8)."
+                       if param("bloquear_salida_con_discrepancia", True) else ""),
+                    "Route", route.id, dedup_key=f"GUIA:{route.id}", creado_por=user)
+    else:
+        alerts.close_by_system(f"GUIA:{route.id}", "Nueva validación de Seguridad conforme")
+        route.aprobacion_discrepancia = {}
     audit(user, "SEGURIDAD_VALIDACION", "Route", route.id, route.seguridad)
     return discrepancias
 
@@ -317,7 +323,9 @@ def expected_lines(route):
 
 
 def confirm_departure(route, user, checklist):
-    _req(user, "distribucion.confirmar_salida")
+    """El Líder Operativo autoriza y confirma la salida (decisión Q16, 12-oct-2026) con la verificación del IF §12.2."""
+    if not has_perm(user, "distribucion.confirmar_salida"):
+        raise BusinessError("La salida del camión la autoriza el Líder Operativo (Q16).")
     if route.estado != "CONFIRMADA":
         raise BusinessError("La ruta debe estar confirmada.")
     faltan = [lbl for k, lbl in CHECKLIST if not checklist.get(k)]
@@ -331,12 +339,15 @@ def confirm_departure(route, user, checklist):
     if not route.carga_validada:
         raise BusinessError("Falta la validación de la carga por el auxiliar (camión cargado, TO-BE).")
     if not route.autorizacion_seguridad:
-        raise BusinessError("Falta la autorización de salida de Seguridad (documentos completos, TO-BE).")
+        raise BusinessError("Falta la revisión de documentos de Seguridad (documentos completos, TO-BE).")
     if route.seguridad.get("discrepancias"):
-        if param("bloquear_salida_con_discrepancia", False):
-            raise BusinessError("Salida bloqueada: discrepancias entre carga y guía.")
+        if param("bloquear_salida_con_discrepancia", True) and not route.aprobacion_discrepancia:
+            raise BusinessError("Salida bloqueada: discrepancias entre carga y guía. Corrija y vuelva a validar, o el Jefe "
+                                "o Coordinador de Logística puede aprobar la salida mientras se resuelve la guía (Q8).")
     route.checklist = {k: bool(checklist.get(k)) for k, _ in CHECKLIST}
     route.checklist["advertencia_discrepancias"] = bool(route.seguridad.get("discrepancias"))
+    if route.aprobacion_discrepancia:
+        route.checklist["salida_aprobada_por_logistica"] = route.aprobacion_discrepancia.get("user")
     route.estado = "EN_RUTA"
     route.salida_ts = now()
     route.salida_confirmada_por = user.id
