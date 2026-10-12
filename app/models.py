@@ -346,6 +346,8 @@ class SalesOrderLine(Base):
     product_code: Mapped[str] = mapped_column(ForeignKey("products.code"))
     cantidad: Mapped[float] = mapped_column(Float)
     precio_unitario: Mapped[float] = mapped_column(Float, default=0)
+    precio_minimo: Mapped[float | None] = mapped_column(Float, nullable=True)  # precio mínimo de lista del canal (Q11)
+    precio_origen: Mapped[str] = mapped_column(String(160), default="")  # resultado de la validación contra la lista
     preparado: Mapped[float] = mapped_column(Float, default=0)
     despachado: Mapped[float] = mapped_column(Float, default=0)
     entregado: Mapped[float] = mapped_column(Float, default=0)
@@ -742,6 +744,7 @@ class Route(Base):
     carga_validada: Mapped[bool] = mapped_column(Boolean, default=False)
     autorizacion_seguridad: Mapped[dict] = mapped_column(JSON, default=dict)  # revisión de documentos por Seguridad
     aprobacion_discrepancia: Mapped[dict] = mapped_column(JSON, default=dict)  # Q8: salida aprobada por Logística
+    vistos_buenos: Mapped[dict] = mapped_column(JSON, default=dict)  # Q16: {rol: {user, ts}} Seguridad, Auxiliar, Líder
     retorno_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     guia_numero: Mapped[str] = mapped_column(String(40), default="")
     seguridad: Mapped[dict] = mapped_column(JSON, default=dict)  # validación carga vs guía
@@ -879,3 +882,25 @@ class EmailOutbox(Base):
     error: Mapped[str] = mapped_column(Text, default="")
     ts: Mapped[datetime] = mapped_column(DateTime, default=now)
     enviado_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class PriceItem(Base):
+    """Lista de precios (decisión Q11, 13-oct-2026). Cada cambio crea una versión nueva; la anterior queda con 'hasta'.
+    lista GENERAL: precio por canal (columnas de PRICE_LIST); lista GRANEL: precio por kg y por saco (mayorista granel).
+    El costo de la empresa NO se guarda."""
+    __tablename__ = "price_items"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    lista: Mapped[str] = mapped_column(String(10))  # GENERAL / GRANEL
+    product_code: Mapped[str] = mapped_column(String(40), index=True)  # puede no estar aún en el catálogo
+    descripcion: Mapped[str] = mapped_column(String(250), default="")
+    canal: Mapped[str] = mapped_column(String(60), default="")  # GENERAL: canal; GRANEL: vacío
+    precio: Mapped[float | None] = mapped_column(Float, nullable=True)  # GENERAL
+    precio_kg: Mapped[float | None] = mapped_column(Float, nullable=True)  # GRANEL
+    precio_saco: Mapped[float | None] = mapped_column(Float, nullable=True)
+    kg_saco: Mapped[float | None] = mapped_column(Float, nullable=True)
+    vigente: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    desde: Mapped[datetime] = mapped_column(DateTime, default=now)
+    hasta: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    origen: Mapped[str] = mapped_column(String(160), default="")  # archivo o 'edición manual'
+    motivo: Mapped[str] = mapped_column(Text, default="")
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)

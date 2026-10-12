@@ -1,13 +1,13 @@
 # Estado de funcionalidades
 
-Conteo sobre los 162 requerimientos (137 del IF + 18 del TO-BE + 1 de Q3 + 6 de las decisiones del 12-oct) de `03_MATRIZ_TRAZABILIDAD.md`:
+Conteo sobre los 166 requerimientos (137 del IF + 18 del TO-BE + 1 de Q3 + 6 del 12-oct + 4 del 13-oct) de `03_MATRIZ_TRAZABILIDAD.md`:
 
 | Estado | Cantidad |
 |---|---|
-| ✅ Implementado y con prueba automatizada | 126 |
+| ✅ Implementado y con prueba automatizada | 132 |
 | ☑️ Implementado y verificado en pantalla (sin prueba automatizada específica) | 19 |
-| 🟡 Parcial | 8 |
-| ⏸️ Pendiente de decisión de negocio (implementado configurable o inactivo) | 8 |
+| 🟡 Parcial | 7 |
+| ⏸️ Pendiente de decisión de negocio (implementado configurable o inactivo) | 7 |
 | 🔜 Etapa futura según el IF | 1 |
 
 > **El sistema NO está listo para producción.** Es una primera versión funcional para demostración en entorno
@@ -41,7 +41,10 @@ Conteo sobre los 162 requerimientos (137 del IF + 18 del TO-BE + 1 de Q3 + 6 de 
 - **Indicadores (Q2):** OTIF por salida, fill rate con rechazos posteriores y causas por etapa del proceso.
 - **Almacenes (Q5, Q17):** tránsito de Producción ALM-003, ALM-010 no utilizado; dos coordinadores (1560 y 1524) con
   acciones y alertas por almacén.
-- **Alertas:** 62 tipos, destinatarios por rol/usuario, ciclo completo, deduplicación, cierre automático, visibilidad
+- **Precios (Q11):** listas de precios mínimos por canal y mayorista granel cargadas desde los Excel actuales; solo el
+  Jefe Comercial las modifica (con historial); alerta de OV en el límite o por debajo del mínimo.
+- **Salida (Q16):** vistos buenos de Seguridad, Auxiliar de Despacho y Líder Operativo.
+- **Alertas:** 63 tipos, destinatarios por rol/usuario, ciclo completo, deduplicación, cierre automático, visibilidad
   por rol/ámbito, agrupación para GG, preferencias de correo de GG, bandeja de correo.
 - **Administración:** parámetros versionados, almacenes, plazos, líneas, fases, catálogo de artículos, clientes, flota,
   usuarios, matriz de permisos editable, auditoría, exportación a Excel, verificaciones periódicas (manual, CLI o cada N minutos).
@@ -50,7 +53,7 @@ Conteo sobre los 162 requerimientos (137 del IF + 18 del TO-BE + 1 de Q3 + 6 de 
 
 | ID | Qué falta | Motivo |
 |---|---|---|
-| OV-07 / OV-09 / KPI-10 | Confirmar campos de OV y fuente de precios (montos en 0 si la exportación no trae precio) | La exportación OVS no contiene precio (Q11) |
+| OV-09 / KPI-10 | Monto de las OV y validación contra el precio mínimo para OV importadas | La exportación OVS no trae el precio de venta (pregunta P1) |
 | PRD-04 | "Otras reglas de producción" | No están definidas en la documentación |
 | PRD-12 | Carga de merma de insumos/granel desde SAP | No se recibió el formato SAP de merma; hoy se registra manualmente en la liquidación |
 | DIS-06 | Reglas de asignación configurables (hoy el algoritmo es fijo; los datos de flota/zonas sí son configurables) | Reglas de flota no documentadas |
@@ -61,8 +64,8 @@ Conteo sobre los 162 requerimientos (137 del IF + 18 del TO-BE + 1 de Q3 + 6 de 
 
 REP-02 margen de reposición · REP-06 umbral y rol de GO en compras de mayor volumen · COM-08 margen por proveedor ·
 PRD-15 excepciones a la proporcionalidad · RMP-03 criterios de conversión de calidad · IMP-01 fases reales de importación ·
-ALR-07 matriz final de alertas · CFG-11 reparto de configuración Sistemas/GG. Ver Q5 (resto), Q6, Q7, Q9, Q10 y Q11
-detalladas en `11_DECISIONES_12OCT.md` §3. Resueltas: Q1, Q3, Q4 (11-oct) y Q2, Q8, Q12–Q17 (12-oct).
+ALR-07 matriz final de alertas · CFG-11 reparto de configuración Sistemas/GG. Q1–Q17 resueltas. Las preguntas abiertas (precios P1–P10) y lo que falta para producción están en
+`12_DECISIONES_13OCT_Y_PRODUCCION.md`.
 
 ## 4. Bloqueado / requiere autorización externa
 
@@ -76,7 +79,7 @@ detalladas en `11_DECISIONES_12OCT.md` §3. Resueltas: Q1, Q3, Q4 (11-oct) y Q2,
 
 ## 5. Siguientes entregas recomendadas
 
-1. Sesión de validación con usuarios clave usando el guion de demostración del README; registrar respuestas a Q5 (resto), Q6, Q7, Q9, Q10 y Q11.
+1. Sesión de validación con usuarios clave usando el guion de demostración del README; registrar respuestas a P1–P10 y cumplir `12_DECISIONES_13OCT_Y_PRODUCCION.md` §4.
 2. Cargar parámetros aprobados, matriz final de alertas y permisos; reemplazar valores DEMO.
 3. Prueba piloto con exportaciones reales en un servidor aprobado por TI (PostgreSQL, HTTPS, SMTP).
 4. Medir tiempos reales por etapa y ajustar cortes y tiempos de preparación.

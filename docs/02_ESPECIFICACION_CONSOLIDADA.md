@@ -84,15 +84,15 @@ Solo se listan decisiones de negocio que afectan reglas; el desarrollo continuó
 - ~~**Q2.**~~ **Respondida (12-oct-2026)** — ver `11_DECISIONES_12OCT.md`: OTIF = salió completo y a tiempo; se agregó el fill rate con rechazos y causas por etapa. Pregunta original: OTIF: ¿salida completa a tiempo, entrega completa a tiempo en destino, o la fórmula SAP actual con crédito parcial?
 - ~~**Q3.**~~ **Respondida (11-oct-2026):** el parcial lo aprueban Gerencia de Operaciones y Jefatura de Logística; lo que falta despachar se reprograma. **Precisado el 12-oct-2026: aprueba GO o Jefatura de Logística (basta uno)**; parámetro `parcial_modo` y OV de saldo `<OV>-S1` con fecha reprogramada al confirmar la salida.
 - ~~**Q4.**~~ **Respondida (11-oct-2026):** Gerencia General tiene acceso completo y puede aprobar (queda registrado "en nombre de"); Sistemas tiene acceso a todo pero **no** aprueba. Implementado: Sistemas recibe todos los permisos salvo los de tipo aprobación.
-- **Q5.** *(parcialmente respondida 12-oct: ALM-003 = tránsito de Producción, ALM-010 no se usa; falta el resto)* Mapeo de almacenes SAP: ¿qué uso tienen ALM-002/003/004/005/006/007/010/012, EXT-007/013 y PRO-*? ¿Cuáles son reservables para MP/insumos?
-Las preguntas Q5 (resto), Q6, Q7, Q9, Q10 y Q11 se detallan con ejemplos de respuesta en `11_DECISIONES_12OCT.md` §3.
+- ~~**Q5.**~~ **Respondida (13-oct-2026)** — ver `12_DECISIONES_13OCT_Y_PRODUCCION.md`. *(parcialmente respondida 12-oct: ALM-003 = tránsito de Producción, ALM-010 no se usa; falta el resto)* Mapeo de almacenes SAP: ¿qué uso tienen ALM-002/003/004/005/006/007/010/012, EXT-007/013 y PRO-*? ¿Cuáles son reservables para MP/insumos?
+Todas las preguntas Q1–Q17 están respondidas. Las preguntas nuevas sobre precios (P1–P10) y lo que falta para producción están en `12_DECISIONES_13OCT_Y_PRODUCCION.md`.
 
-- **Q6.** En cargas SAP posteriores a la base inicial, ¿un lote nuevo entra Disponible o Pendiente de revisión?
-- **Q7.** Valores para: margen de reposición, umbral de mayor volumen, merma por defecto y umbral de alerta, horarios de corte, días de "vencimiento próximo", tiempos máximos de almacenamiento por producto.
+- ~~**Q6.**~~ **Respondida (13-oct-2026)** — ver `12_DECISIONES_13OCT_Y_PRODUCCION.md`. En cargas SAP posteriores a la base inicial, ¿un lote nuevo entra Disponible o Pendiente de revisión?
+- ~~**Q7.**~~ **Respondida (13-oct-2026)** — ver `12_DECISIONES_13OCT_Y_PRODUCCION.md`. Valores para: margen de reposición, umbral de mayor volumen, merma por defecto y umbral de alerta, horarios de corte, días de "vencimiento próximo", tiempos máximos de almacenamiento por producto.
 - ~~**Q8.**~~ **Respondida (12-oct-2026)** — ver `11_DECISIONES_12OCT.md`: bloquea; el Jefe o el Coordinador de Logística puede aprobar la salida mientras se resuelve la guía (tolerancia aún pendiente). Pregunta original: ¿Una discrepancia carga vs guía bloquea la salida o solo alerta? ¿Con qué tolerancia?
-- **Q9.** En la liquidación SAP, ¿la clave es documento+lote y la cantidad se repite por lote o debe repartirse?
-- **Q10.** Fases de importación definitivas y responsable por hito.
-- **Q11.** Fuente oficial de precios/montos y confirmación de que "Fecha de Vencimiento" de la OV es la fecha comprometida de despacho.
+- ~~**Q9.**~~ **Respondida (13-oct-2026)** — ver `12_DECISIONES_13OCT_Y_PRODUCCION.md`. En la liquidación SAP, ¿la clave es documento+lote y la cantidad se repite por lote o debe repartirse?
+- ~~**Q10.**~~ **Respondida (13-oct-2026)** — ver `12_DECISIONES_13OCT_Y_PRODUCCION.md`. Fases de importación definitivas y responsable por hito.
+- ~~**Q11.**~~ **Respondida (13-oct-2026)** — ver `12_DECISIONES_13OCT_Y_PRODUCCION.md`. Fuente oficial de precios/montos y confirmación de que "Fecha de Vencimiento" de la OV es la fecha comprometida de despacho.
 
 Nuevas preguntas surgidas del TO-BE (detalle en `10_ANALISIS_TO_BE.md` §4):
 

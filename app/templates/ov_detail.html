@@ -15,6 +15,7 @@
 </table></div>
 <div class="card"><h3>Cobertura</h3>
 <p>Unidades: <b>{{ o.cobertura_unidades }}%</b> {{ bar(o.cobertura_unidades) }} Líneas totalmente cubiertas: <b>{{ o.cobertura_lineas }}%</b> {{ bar(o.cobertura_lineas) }}</p>
+{% set obs = [] %}{% for l in o.lines if l.activa and l.precio_origen and not l.precio_origen.startswith('Sobre') %}{% set _ = obs.append(l) %}{% endfor %}{% if obs %}<div class="note small"><b>Precio vs lista de precios mínimos:</b> {% for l in obs %}{{ l.product_code }}: {{ l.precio_origen }}{{ '; ' if not loop.last }}{% endfor %}.</div>{% endif %}
 <p>Evaluada: {{ o.evaluado_ts|d }} · Preparación: {{ prep }}%</p>
 {% if o.motivo_detencion %}<div class="note">{{ o.motivo_detencion }}</div>{% endif %}
 {% if o.decision_parcial %}<p>Despacho parcial: {{ b(o.decision_parcial) }}{% if o.fecha_saldo %} · saldo reprogramado al <b>{{ o.fecha_saldo|d }}</b>{% endif %}</p>
@@ -33,7 +34,7 @@
 <h2>Líneas, reservas y lotes</h2>
 <table><tr><th>Producto</th><th class="r">Solicitado</th><th class="r">Reservado</th><th class="r">Faltante</th><th class="r">Preparado</th><th class="r">Despachado</th><th class="r">Entregado</th><th>Lotes reservados (almacén · vence)</th></tr>
 {% for l in o.lines if l.activa %}{% set r = line_reserved(l) %}<tr><td>{{ l.product_code }}<br><span class="small muted">{{ l.product.descripcion }}</span></td>
-<td class="r">{{ l.cantidad|n }}</td><td class="r">{{ r|n }}</td><td class="r">{% set f = l.cantidad - l.despachado - r %}{% if f > 0.0001 %}<b style="color:#b3261e">{{ f|n }}</b>{% else %}0{% endif %}</td>
+<td class="r">{{ l.cantidad|n }}<br><span class="small {{ 'err' if l.precio_origen and (l.precio_origen.startswith('POR DEBAJO') or l.precio_origen.startswith('EN EL LÍMITE')) else 'muted' }}" title="{{ l.precio_origen }}">{% if l.precio_unitario %}S/ {{ '%.2f'|format(l.precio_unitario) }}{% else %}sin precio{% endif %}{% if l.precio_minimo %} · mín. {{ '%.2f'|format(l.precio_minimo) }}{% endif %}</span></td><td class="r">{{ r|n }}</td><td class="r">{% set f = l.cantidad - l.despachado - r %}{% if f > 0.0001 %}<b style="color:#b3261e">{{ f|n }}</b>{% else %}0{% endif %}</td>
 <td class="r">{{ l.preparado|n }}</td><td class="r">{{ l.despachado|n }}</td><td class="r">{{ l.entregado|n }}</td>
 <td class="small">{% for rs in l.reservations if rs.estado in ['ACTIVA','CONSUMIDA'] %}{{ rs.lot.lote }} ({{ rs.lot.warehouse_code }} · {{ rs.lot.fecha_venc|d }}) × {{ rs.cantidad|n }} {{ b(rs.estado) }}<br>{% endfor %}</td></tr>{% endfor %}</table>
 

@@ -17,6 +17,7 @@
   <div class="tile"><div class="v">{% if k.fill_rate_unidades is not none %}{{ k.fill_rate_unidades }}%{% else %}—{% endif %}</div><div class="l">Fill rate a la salida (unidades){% if k.fill_rate_lineas is not none %} · líneas {{ k.fill_rate_lineas }}%{% endif %}</div></div>
   <div class="tile"><div class="v">{% if k.fill_rate_pedidos %}{{ k.fill_rate_pedidos[0] }}%{% else %}—{% endif %}</div><div class="l">Pedidos que salieron al 100 %{% if k.fill_rate_pedidos %} ({{ k.fill_rate_pedidos[1] }}/{{ k.fill_rate_pedidos[2] }}){% endif %}{% if k.completos_con_rechazo %} · {{ k.completos_con_rechazo[0] }} con rechazo posterior{% endif %}</div></div>
   <div class="tile"><div class="v">S/ {{ k.monto_total|n }}</div><div class="l">Monto OV (pendiente S/ {{ k.monto_pendiente|n }})</div></div>
+  <div class="tile"><div class="v">{{ k.precio_bajo_minimo }}</div><div class="l">OV con precio en el límite o bajo el mínimo de lista · {{ k.ov_sin_precio }} OV sin precio de venta</div></div>
   <div class="tile"><div class="v">{{ k.volumen_kg|n }} kg</div><div class="l">Volumen OV (pendiente {{ k.volumen_pendiente_kg|n }} kg)</div></div>
   <div class="tile"><div class="v">{{ k.tiempo_preparacion_h if k.tiempo_preparacion_h is not none else '—' }} h</div><div class="l">Tiempo promedio de preparación</div></div>
   <div class="tile"><div class="v">{{ k.tiempo_despacho_h if k.tiempo_despacho_h is not none else '—' }} h</div><div class="l">Tiempo preparado → salida</div></div>

@@ -170,6 +170,40 @@ def write_sales(path, today):
     wb.save(path)
 
 
+CANALES = [("MAYORISTA", 0.12), ("INSTITUCIONAL", 0.18), ("CUENTAS CLAVE", 0.15), ("MARCA BLANCA", 0.20), ("CATERING", 0.20),
+           ("HOTELES - RESTAURANTES", 0.22), ("AUTOSERVICIOS", 0.35), ("ENTRETENIMIENTO", 0.25), ("E-COMMERCE", 0.35),
+           ("DISTRIBUIDORES", 0.15)]
+COSTOS_DEMO = {"PT-901": 1.80, "PT-902": 17.50, "PT-903": 2.10, "PT-904": 30.00, "PT-905": 2.40, "PT-906": 1.60,
+               "MP-901": 3.10, "MP-902": 3.60, "MP-903": 5.80, "GR-901": 8.90}
+
+
+def write_prices(path):
+    """Lista de precios FICTICIA con el formato de PRICE_LIST (márgenes en la fila 1, precio = costo / (1 − margen))."""
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Hoja1"
+    ws.append([None, None, None, None] + [m for _, m in CANALES])
+    ws.append([None, "SKU", "GRANEL", "COSTO EMPRESA"] + [f"{c}\n{int(m * 100)}%" for c, m in CANALES])
+    for i, (code, costo) in enumerate(COSTOS_DEMO.items(), start=3):
+        cols = "EFGHIJKLMN"
+        ws.append([None, code, _desc(code), costo] + [f"=D{i}/(1-${c}$1)" if code != "PT-906" else round(costo / (1 - m), 6)
+                                                    for c, (_, m) in zip(cols, CANALES)])
+    wb.save(path)
+
+
+def write_prices_granel(path):
+    """Lista mayorista granel FICTICIA con el formato de PRICE_LIST_GRANEL."""
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Hoja1"
+    ws.append([None, None, "LISTA DE PRECIOS MAYORISTA GRANEL"])
+    ws.append([None, None, None, None, 0.12])
+    ws.append([None, "SKU", "DESCRIPCIÓN", "COSTO EMPRESA", "PRECIO X KG", "CANTIDAD KG X SACO", "PRECIO X SACO"])
+    ws.append([None, "MP-901", _desc("MP-901"), 3.10, "=G4/F4", 25, 90])
+    ws.append([None, "GR-901", _desc("GR-901"), 8.90, "=G5/F5", 25, 255])
+    wb.save(path)
+
+
 def write_all(folder, today=None):
     today = today or date.today()
     os.makedirs(folder, exist_ok=True)
@@ -181,6 +215,8 @@ def write_all(folder, today=None):
         "ovs": os.path.join(folder, "demo_ovs_sap.xlsx"),
         "liquidacion": os.path.join(folder, "demo_liquidacion_datprod.xlsx"),
         "salidas": os.path.join(folder, "demo_historial_salidas_qy.xlsx"),
+        "precios": os.path.join(folder, "demo_price_list.xlsx"),
+        "precios_granel": os.path.join(folder, "demo_price_list_granel.xlsx"),
     }
     write_products(files["productos"])
     write_stock(files["stock"], today)
@@ -189,4 +225,6 @@ def write_all(folder, today=None):
     write_ovs(files["ovs"], today)
     write_liquidation(files["liquidacion"], today)
     write_sales(files["salidas"], today)
+    write_prices(files["precios"])
+    write_prices_granel(files["precios_granel"])
     return files

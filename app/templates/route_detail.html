@@ -69,9 +69,11 @@
 {% if can('distribucion.seguridad') %}<form method="post">{{ csrf() }}<label><input type="checkbox" name="impresos" value="1"> Documentos impresos en físico (folio)</label><button name="accion" value="revisar_documentos">Revisar documentos</button></form>{% endif %}{% endif %}
 <p class="small muted"><a href="{{ url_for('cal.new_record', formato='VEHICULO') }}">Control de vehículo (REG-BPM-CAL-011)</a> · <a href="{{ url_for('cal.new_record', formato='INSPECCION_CARGA') }}">Inspección de carga (Calidad)</a></p></div>
 
-<div class="card"><h3>5. Autorización de salida (Líder Operativo)</h3>
+<div class="card"><h3>5. Vistos buenos y autorización de salida (Q16)</h3>
+<table class="small">{% for rol in vb_req %}<tr><td>{{ vb_label.get(rol, rol) }}</td><td>{% if rol in (r.vistos_buenos or {}) %}<span class="b ok">V°B°</span> {{ r.vistos_buenos[rol].user }} · {{ r.vistos_buenos[rol].ts[:16]|replace('T',' ') }}{% else %}pendiente{% endif %}</td></tr>{% endfor %}</table>
+{% if r.estado=='CONFIRMADA' and 'AUX_DESPACHO' not in (r.vistos_buenos or {}) and can('distribucion.visto_bueno_salida') %}<form method="post" class="row">{{ csrf() }}<input name="nota" placeholder="observación (opcional)"><button name="accion" value="visto_bueno">Dar visto bueno a la salida</button></form>{% endif %}
 {% if r.estado=='CONFIRMADA' %}{% if can('distribucion.confirmar_salida') %}<form method="post">{{ csrf() }}{% for k, l in checklist %}<label><input type="checkbox" name="{{ k }}" value="1"> {{ l }}</label>{% endfor %}
-<p class="small muted">Requiere: pedidos preparados, carga validada, validación carga vs guía sin discrepancias (o aprobada por Logística) y documentos revisados por Seguridad.</p><button name="accion" value="salida">Autorizar salida</button></form>{% else %}<p class="muted">La salida la autoriza el Líder Operativo (Q16).</p>{% endif %}
+<p class="small muted">Requiere: pedidos preparados, carga validada, validación carga vs guía sin discrepancias (o aprobada por Logística), visto bueno de Seguridad (documentos) y del Auxiliar de Despacho.</p><button name="accion" value="salida">Autorizar salida</button></form>{% else %}<p class="muted">La salida la autoriza el Líder Operativo (Q16).</p>{% endif %}
 {% else %}<p>Salida {{ r.salida_ts|d }}{% if r.retorno_ts %} · retorno a base {{ r.retorno_ts|d }}{% endif %}</p>
 {% if not r.retorno_ts and (can('distribucion.entrega') or can('distribucion.carga')) %}<form method="post">{{ csrf() }}<button class="sec" name="accion" value="retorno">Registrar retorno a base</button></form>{% endif %}{% endif %}</div>
 </div>{% endif %}

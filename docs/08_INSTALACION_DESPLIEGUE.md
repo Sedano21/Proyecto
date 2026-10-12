@@ -1,5 +1,7 @@
 # Instalación, configuración y despliegue
 
+> **Listas de precios mínimos.** El Jefe Comercial las carga en *Comercial → Listas de precios* con los Excel actuales (PRICE_LIST y PRICE_LIST_GRANEL, sin cambiar el formato). El costo de la empresa se lee solo para validar y no se guarda.
+
 > **Cambios de estructura de la base de datos.** El prototipo crea las tablas al iniciar y no migra tablas existentes. Tras actualizar a una versión con columnas nuevas (p. ej. la del 12-oct-2026), recree la base de demostración con `python -m app.cli demo`. Para una instalación con datos reales se debe incorporar una herramienta de migraciones (Alembic) antes del piloto.
 
 ## 1. Requisitos

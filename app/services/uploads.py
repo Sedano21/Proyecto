@@ -20,7 +20,7 @@ import openpyxl
 from sqlalchemy import select
 
 from ..db import db
-from ..models import (BOMLine, BOMVersion, Customer, Liquidation, Product, SalesHistory, SalesOrder, StockLot,
+from ..models import (BOMLine, BOMVersion, Customer, Liquidation, PriceItem, Product, SalesHistory, SalesOrder, StockLot,
                       UploadBatch, UploadRow, User, Warehouse, now)
 from . import alerts
 from .core import BusinessError, audit, has_perm, param
@@ -87,7 +87,63 @@ SPECS = {
                  "documento": ["Número de documento"]},
         "req": ["producto", "cantidad", "fecha"],
     },
+    "PRECIOS": {
+        "nombre": "Lista de precios por canal (PRICE_LIST)", "perm": "precios.editar", "confirm_perm": "precios.editar",
+        "hojas": ["Hoja1"], "canales": True,
+        "cols": {"sku": ["SKU"], "descripcion": ["GRANEL", "DESCRIPCIÓN", "Descripción"], "costo": ["COSTO EMPRESA"]},
+        "req": ["sku", "descripcion"],
+    },
+    "PRECIOS_GRANEL": {
+        "nombre": "Lista de precios mayorista granel (PRICE_LIST_GRANEL)", "perm": "precios.editar",
+        "confirm_perm": "precios.editar", "hojas": ["Hoja1"],
+        "cols": {"sku": ["SKU"], "descripcion": ["DESCRIPCIÓN", "Descripción"], "costo": ["COSTO EMPRESA"],
+                 "precio_kg": ["PRECIO X KG"], "kg_saco": ["CANTIDAD KG X SACO"], "precio_saco": ["PRECIO X SACO"]},
+        "req": ["sku", "precio_saco", "kg_saco"],
+    },
 }
+
+
+def _price_rows(spec, header, margins, rows):
+    """Lista de precios: columnas de canal dinámicas; recalcula fórmulas sin valor; no conserva el costo."""
+    alias = {norm(a) for names in spec["cols"].values() for a in names}
+    canales = {}
+    for j, v in enumerate(header):
+        if v is None or norm(v) in alias:
+            continue
+        nombre = str(v).split("\n")[0].strip().upper()
+        if nombre:
+            canales[nombre] = j
+    out = []
+    for n, datos, raw in rows:
+        costo = datos.pop("costo", None)
+        try:
+            costo = float(costo) if costo not in (None, "") else None
+        except (TypeError, ValueError):
+            costo = None
+        if spec.get("canales"):
+            precios = {}
+            for c, j in canales.items():
+                v = raw[j] if j < len(raw) else None
+                if isinstance(v, str) and v.strip().startswith("="):
+                    v = None
+                if v is None and costo is not None and isinstance(margins.get(j), (int, float)) and margins[j] < 1:
+                    v = round(costo / (1 - margins[j]), 6)  # misma fórmula que el Excel: costo / (1 − margen)
+                precios[c] = v
+            datos["precios"] = precios
+            datos["bajo_costo"] = [c for c, v in precios.items() if costo is not None and isinstance(v, (int, float)) and v < costo]
+        else:
+            if datos.get("precio_kg") in (None, "") and datos.get("precio_saco") not in (None, "") and datos.get("kg_saco"):
+                try:
+                    datos["precio_kg"] = float(datos["precio_saco"]) / float(datos["kg_saco"])
+                except (TypeError, ValueError, ZeroDivisionError):
+                    pass
+            try:
+                datos["bajo_costo"] = bool(costo is not None and datos.get("precio_kg") is not None
+                                           and float(datos["precio_kg"]) < costo)
+            except (TypeError, ValueError):
+                datos["bajo_costo"] = False
+        out.append((n, datos))
+    return out
 
 
 # ------------------------------- lectura -----------------------------------
@@ -137,7 +193,14 @@ def read_rows(path, tipo, hoja=None):
             if row is None or all(v is None or (isinstance(v, str) and not v.strip()) for v in row):
                 continue
             datos = {k: _cell(row[j]) if j < len(row) else None for k, j in mapping.items()}
-            out.append((n, datos))
+            out.append((n, datos, row) if tipo.startswith("PRECIOS") else (n, datos))
+        if tipo.startswith("PRECIOS"):
+            margins = {}
+            for prev in buffer[:-1]:
+                for j, v in enumerate(prev or ()):
+                    if isinstance(v, (int, float)):
+                        margins[j] = v
+            out = _price_rows(spec, buffer[-1], margins, out)
         wb.close()
         return sheet, out, sorted(set(spec["cols"]) - set(mapping))
     wb.close()
@@ -228,7 +291,7 @@ def create_batch(user, tipo, path, filename, hoja=None):
 
 def validate_batch(b):
     fn = {"STOCK": _v_stock, "BOM": _v_bom, "OV": _v_ov, "LIQUIDACION": _v_liq, "PRODUCTOS": _v_prod,
-          "SALIDAS": _v_salidas}[b.tipo]
+          "SALIDAS": _v_salidas, "PRECIOS": _v_precios, "PRECIOS_GRANEL": _v_precios}[b.tipo]
     for r in b.rows:
         r.errores, r.advertencias = [], []
     fn(b)
@@ -427,6 +490,29 @@ def _v_liq(b):
     existentes = set(s.execute(select(Liquidation.numero_documento, Liquidation.lote)).all())
     por_doc = Counter(_txt(r.datos.get("numero")) for r in b.rows if not r.excluida)
     activos = [r for r in b.rows if not r.excluida]
+    # Q9 (13-oct-2026): si un documento trae varios lotes, la cantidad del documento se reparte entre ellos.
+    grupos = defaultdict(list)
+    for r in activos:
+        if _txt(r.datos.get("numero")):
+            grupos[_txt(r.datos.get("numero"))].append(r)
+    for num, rs in grupos.items():
+        if len(rs) < 2 or any("completada_doc" in r.datos for r in rs):
+            continue
+        try:
+            qs = [_num(r.datos.get("completada")) for r in rs]
+        except ValueError:
+            continue
+        if any(q is None for q in qs) or max(qs) - min(qs) > 1e-9:
+            continue  # el archivo ya trae cantidades distintas por lote
+        total = qs[0]
+        base = int(total // len(rs)) if float(total).is_integer() else round(total / len(rs), 3)
+        partes = [base] * len(rs)
+        partes[-1] = round(total - base * (len(rs) - 1), 3)
+        for r, q in zip(rs, partes):
+            d = dict(r.datos)
+            d["completada_doc"] = total
+            d["completada"] = q
+            r.datos = d
     for r in activos:
         d = r.datos
         e, w = [], []
@@ -436,7 +522,15 @@ def _v_liq(b):
         elif (num, _txt(d.get("lote"))) in existentes:
             e.append("Liquidación ya registrada (duplicado documento/lote)")
         if num and por_doc[num] > 1:
-            w.append("Documento con varios lotes: verificar si la cantidad completada se repite por lote (clave documento+lote pendiente de validar)")
+            tot = d.get("completada_doc")
+            if tot is not None:
+                suma = sum(_num(x.datos.get("completada")) or 0 for x in grupos[num])
+                w.append(f"Documento con {por_doc[num]} lotes: la cantidad del documento ({tot:g}) se repartió entre los lotes "
+                         f"en partes iguales (Q9). Si el reparto real es otro, corrija la cantidad de cada fila.")
+                if abs(suma - float(tot)) > 1e-6:
+                    e.append(f"La suma de los lotes ({suma:g}) no coincide con la cantidad del documento ({tot:g})")
+            else:
+                w.append("Documento con varios lotes y cantidades distintas por lote: se toman como vienen")
         if _txt(d.get("producto")) not in prods:
             e.append("Producto no existe en el catálogo")
         if not _txt(d.get("lote")):
@@ -558,6 +652,7 @@ def confirm(b, user, opciones=None):
     opciones = opciones or {}
     b.opciones = opciones
     result = {"STOCK": _c_stock, "BOM": _c_bom, "OV": _c_ov, "LIQUIDACION": _c_liq, "PRODUCTOS": _c_prod,
+              "PRECIOS": _c_precios, "PRECIOS_GRANEL": _c_precios,
               "SALIDAS": _c_salidas}[b.tipo](b, user, opciones)
     b.estado = "CONFIRMADO"
     b.confirmado_ts = now()
@@ -595,8 +690,12 @@ def _ensure_wh(code):
     s = db()
     w = s.get(Warehouse, code)
     if w is None:
-        w = Warehouse(code=code, nombre=code, uso="OTRO", prioridad=99, reservable=False,
-                      observacion="Creado desde carga SAP; uso pendiente de definir.")
+        from ..catalogs import VIRTUALES
+        from .core import wh_in
+        virtual = wh_in(code, VIRTUALES)
+        w = Warehouse(code=code, nombre=code, uso="VIRTUAL" if virtual else "OTRO", prioridad=95 if virtual else 99,
+                      reservable=False, observacion="Almacén virtual (Q5), creado desde carga SAP." if virtual
+                      else "Creado desde carga SAP; uso pendiente de definir.")
         s.add(w)
         s.flush()
     return w
@@ -788,6 +887,86 @@ def _c_ov(b, user, opciones):
             errores.append(f"OV {numero}: {ex}")
     return {"ov_creadas": creadas, "ov_modificadas": modificadas, "solicitudes_de_modificacion": solicitudes,
             "sin_cambio": sin_cambio, "errores": errores}
+
+
+def _price_key(d):
+    return _txt(d.get("sku")).upper()
+
+
+def _price_values(b, d):
+    if b.tipo == "PRECIOS":
+        return tuple(sorted((k, round(v, 6) if isinstance(v, (int, float)) else v) for k, v in (d.get("precios") or {}).items()))
+    return tuple(round(_num(d.get(k)) or 0, 6) for k in ("precio_kg", "precio_saco", "kg_saco"))
+
+
+def _v_precios(b):
+    s = db()
+    prods = set(s.execute(select(Product.code)).scalars())
+    activos = [r for r in b.rows if not r.excluida]
+    vistos = {}
+    for r in activos:
+        d = r.datos
+        e, w = [], []
+        sku = _price_key(d)
+        if not sku:
+            e.append("SKU vacío")
+        elif sku not in prods:
+            w.append("SKU no está en el catálogo de artículos: el precio se guarda y se usará cuando se cargue el artículo")
+        try:
+            if b.tipo == "PRECIOS":
+                precios = d.get("precios") or {}
+                if not precios:
+                    e.append("No se encontraron columnas de canal")
+                for c, v in precios.items():
+                    if v is None or _num(v) is None or _num(v) <= 0:
+                        e.append(f"Precio inválido o vacío en el canal {c}")
+                if d.get("bajo_costo"):
+                    w.append("Precio menor al costo en: " + ", ".join(d["bajo_costo"]))
+            else:
+                for k, lbl in (("precio_saco", "precio por saco"), ("kg_saco", "kg por saco"), ("precio_kg", "precio por kg")):
+                    if _num(d.get(k)) is None or _num(d.get(k)) <= 0:
+                        e.append(f"{lbl} inválido o vacío")
+                if d.get("bajo_costo"):
+                    w.append("Precio por kg menor al costo de la empresa")
+        except ValueError as ex:
+            e.append(str(ex))
+        if sku in vistos:
+            if vistos[sku] == _price_values(b, d):
+                w.append("SKU repetido con los mismos precios: se tomará una sola vez")
+            else:
+                e.append("SKU repetido con precios distintos: deje una sola fila")
+        else:
+            vistos[sku] = _price_values(b, d)
+        r.errores, r.advertencias = e, w
+    if b.tipo == "PRECIOS_GRANEL":
+        gen = {i.product_code for i in s.execute(select(PriceItem).where(PriceItem.lista == "GENERAL",
+                                                                          PriceItem.vigente.is_(True))).scalars()}
+        for r in activos:
+            if _price_key(r.datos) in gen:
+                r.advertencias = r.advertencias + ["El SKU también está en la lista general: para los canales de la lista "
+                                                   "granel (parámetro 'lista_granel_canales') manda esta lista"]
+    b.resumen = {"filas": len(activos)}
+
+
+def _c_precios(b, user, opciones):
+    from .prices import replace_list
+    items, vistos = [], set()
+    for r in b.rows:
+        if r.excluida:
+            continue
+        d = r.datos
+        sku = _price_key(d)
+        if sku in vistos:
+            continue
+        vistos.add(sku)
+        if b.tipo == "PRECIOS":
+            for c, v in (d.get("precios") or {}).items():
+                items.append({"product_code": sku, "descripcion": _txt(d.get("descripcion")), "canal": c, "precio": _num(v)})
+        else:
+            items.append({"product_code": sku, "descripcion": _txt(d.get("descripcion")), "canal": "",
+                          "precio_kg": _num(d.get("precio_kg")), "precio_saco": _num(d.get("precio_saco")),
+                          "kg_saco": _num(d.get("kg_saco"))})
+    return replace_list("GENERAL" if b.tipo == "PRECIOS" else "GRANEL", items, user, b.archivo)
 
 
 def _c_liq(b, user, opciones):

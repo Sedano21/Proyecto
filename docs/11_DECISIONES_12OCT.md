@@ -24,6 +24,7 @@ como **PROPUESTO** y se pueden cambiar sin programar.
 
 ## 2. Observaciones que conviene revisar
 
+- *(Resuelto el 13-oct: nadie aprueba su propia solicitud; aprueba el Jefe de Logística. Los alternativos los opera cualquier coordinador.)*
 - **Separación de funciones en traslados (Q13).** El Coordinador de Logística puede solicitar un traslado y también
   aprobarlo. Si no se quiere que una misma persona apruebe su propia solicitud, se puede agregar esa restricción.
 - **Almacenes alternativos (767, Trujillo 1 y 2, Isabelita).** No pertenecen a ninguno de los dos coordinadores, así
@@ -32,7 +33,7 @@ como **PROPUESTO** y se pueden cambiar sin programar.
   aprobación de Logística en compras). La demo se recrea con `python -m app.cli demo`. Una instalación con datos
   necesitaría una migración (ver `08_INSTALACION_DESPLIEGUE.md`).
 
-## 3. Preguntas pendientes, detalladas
+## 3. Preguntas pendientes, detalladas (respondidas el 13-oct-2026; ver `12_DECISIONES_13OCT_Y_PRODUCCION.md`)
 
 Para cada pregunta se indica qué hace hoy el sistema y la decisión que se necesita. Puede responder solo con valores.
 

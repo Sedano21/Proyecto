@@ -40,6 +40,7 @@ def _ready_route(s, U, o, discrepancia=False):
         dsp.set_invoice(st, U("facturacion"), f"F-{st.order.numero}", "f.pdf")
         approve_certs(s, U, st.order)
     assert dsp.review_documents(r, U("seguridad"), impresos=True) == []
+    dsp.give_exit_ok(r, U("aux.despacho"))  # Q16: visto bueno del auxiliar
     s.commit()
     return r
 

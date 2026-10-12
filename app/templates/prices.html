@@ -1,0 +1,18 @@
+{% extends "base.html" %}{% from "_m.html" import b, csrf %}
+{% block content %}<h1>Listas de precios mínimos</h1>
+<p class="muted small">Fuente: listas de precios de Comercial (Q11). Es el <b>precio mínimo de venta</b> por canal: si una OV se registra o carga con un precio en el límite o por debajo, se alerta al vendedor y a Comercial.
+Solo el Jefe Comercial carga o modifica precios; cada cambio queda versionado. El costo de la empresa no se guarda en el sistema.</p>
+<p>{% if can('precios.editar') %}<a href="{{ url_for('alm.upload_new', tipo='PRECIOS') }}">Cargar lista por canal (Excel)</a> · <a href="{{ url_for('alm.upload_new', tipo='PRECIOS_GRANEL') }}">Cargar lista mayorista granel (Excel)</a>{% endif %}</p>
+<form class="row" method="get"><div><label>Lista</label><select name="lista"><option value="GENERAL" {{ 'selected' if lista=='GENERAL' }}>Por canal</option><option value="GRANEL" {{ 'selected' if lista=='GRANEL' }}>Mayorista granel</option></select></div>
+{% if lista=='GENERAL' %}<div><label>Canal</label><select name="canal"><option value="">Todos</option>{% for c in canales %}<option {{ 'selected' if c==canal }}>{{ c }}</option>{% endfor %}</select></div>{% endif %}
+<div><label>SKU o descripción</label><input name="q" value="{{ q }}"></div><div><button>Filtrar</button></div></form>
+<p class="small muted">{{ total }} precio(s) vigente(s){% if total > rows|length %}; se muestran {{ rows|length }} (filtre para ver el resto){% endif %}.</p>
+<div class="tbl"><table><tr><th>SKU</th><th>Descripción</th>{% if lista=='GENERAL' %}<th>Canal</th><th class="r">Precio mínimo</th>{% else %}<th class="r">Precio x kg</th><th class="r">Kg x saco</th><th class="r">Precio x saco</th>{% endif %}<th>Desde</th><th>Origen</th>{% if can('precios.editar') %}<th>Modificar</th>{% endif %}</tr>
+{% for r in rows %}<tr><td><a href="{{ url_for('com.prices', lista=lista, sku=r.product_code, q=q, canal=canal) }}">{{ r.product_code }}</a></td><td class="small">{{ r.descripcion }}</td>
+{% if lista=='GENERAL' %}<td>{{ r.canal }}</td><td class="r">{{ '%.4f'|format(r.precio) }}</td>{% else %}<td class="r">{{ '%.4f'|format(r.precio_kg or 0) }}</td><td class="r">{{ r.kg_saco|n }}</td><td class="r">{{ '%.2f'|format(r.precio_saco or 0) }}</td>{% endif %}
+<td class="small">{{ r.desde|d }}</td><td class="small">{{ r.origen }}</td>
+{% if can('precios.editar') %}<td><form method="post" class="inline" action="{{ url_for('com.prices', q=q, canal=canal) }}">{{ csrf() }}<input type="hidden" name="item_id" value="{{ r.id }}">{% if lista=='GENERAL' %}<input type="number" step="any" min="0" name="precio" value="{{ r.precio }}" style="width:90px">{% else %}<input type="number" step="any" min="0" name="precio_saco" value="{{ r.precio_saco }}" style="width:80px" title="precio por saco">{% endif %}<input name="motivo" placeholder="motivo" size="12" required><button class="small">Guardar</button></form></td>{% endif %}</tr>
+{% else %}<tr><td colspan="8" class="muted">Sin precios cargados</td></tr>{% endfor %}</table></div>
+{% if hist is not none %}<h2>Historial de {{ sku }}</h2><table class="small"><tr><th>Lista</th><th>Canal</th><th class="r">Precio</th><th class="r">x kg</th><th class="r">x saco</th><th>Desde</th><th>Hasta</th><th>Origen</th><th>Motivo</th></tr>
+{% for h in hist %}<tr><td>{{ h.lista }}</td><td>{{ h.canal }}</td><td class="r">{{ h.precio|n }}</td><td class="r">{{ h.precio_kg|n }}</td><td class="r">{{ h.precio_saco|n }}</td><td>{{ h.desde|d }}</td><td>{{ h.hasta|d if h.hasta else 'vigente' }}</td><td>{{ h.origen }}</td><td>{{ h.motivo }}</td></tr>{% endfor %}</table>{% endif %}
+{% endblock %}

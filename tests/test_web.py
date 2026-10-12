@@ -55,14 +55,16 @@ PAGES = ["/", "/alertas", "/alertas?agrupar=area", "/alertas?agrupar=grupo&prior
          "/abastecimiento/reposicion", "/abastecimiento/importaciones", "/distribucion/", "/distribucion/incidencias",
          "/distribucion/flota", "/configuracion", "/configuracion/productos", "/configuracion/clientes", "/usuarios",
          "/alertas/configuracion", "/correo", "/auditoria", "/alertas/preferencias",
-         "/configuracion/param/cortes_preparacion/historial"] + \
+         "/configuracion/param/cortes_preparacion/historial", "/ov/precios", "/ov/precios?lista=GRANEL",
+         "/ov/precios?sku=PT-901", "/almacen/cargas/nueva?tipo=PRECIOS"] + \
         [f"/calidad/registro/nuevo/{f}" for f in ["MUESTREO", "RECEPCION_MP", "FUMIGACION", "NO_CONFORME", "QUEJA", "NC_ACCION",
                                                   "CONTROL_PESOS", "CONTROL_GRANOS", "RECEPCION_IMPORTADO", "VEHICULO",
                                                   "DISENO_BOBINA", "PROCESO", "INSPECCION_CARGA"]]
 
 
 @pytest.mark.parametrize("username", ["gerente.general", "sistemas", "coord.almacen", "jefe.calidad", "coord.distribucion",
-                                      "compras", "jefe.produccion", "seguridad", "vendedor1"])
+                                      "compras", "jefe.produccion", "seguridad", "vendedor1", "jefe.ventas",
+                                      "coord.almacen.mp", "lider.almacen", "aux.despacho"])
 def test_recorrido_pantallas_sin_errores(app, username):
     c = app.test_client()
     login(c, username)

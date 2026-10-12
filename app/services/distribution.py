@@ -340,6 +340,10 @@ def confirm_departure(route, user, checklist):
         raise BusinessError("Falta la validación de la carga por el auxiliar (camión cargado, TO-BE).")
     if not route.autorizacion_seguridad:
         raise BusinessError("Falta la revisión de documentos de Seguridad (documentos completos, TO-BE).")
+    from .despacho import VB_LABEL, missing_exit_approvals
+    faltan_vb = missing_exit_approvals(route)
+    if faltan_vb:
+        raise BusinessError("Falta el visto bueno de: " + ", ".join(VB_LABEL.get(r, r) for r in faltan_vb) + " (Q16).")
     if route.seguridad.get("discrepancias"):
         if param("bloquear_salida_con_discrepancia", True) and not route.aprobacion_discrepancia:
             raise BusinessError("Salida bloqueada: discrepancias entre carga y guía. Corrija y vuelva a validar, o el Jefe "
@@ -348,6 +352,9 @@ def confirm_departure(route, user, checklist):
     route.checklist["advertencia_discrepancias"] = bool(route.seguridad.get("discrepancias"))
     if route.aprobacion_discrepancia:
         route.checklist["salida_aprobada_por_logistica"] = route.aprobacion_discrepancia.get("user")
+    vb = dict(route.vistos_buenos or {})
+    vb["LIDER_ALMACEN"] = {"user": user.nombre, "user_id": user.id, "ts": now().isoformat(), "detalle": "Autoriza la salida"}
+    route.vistos_buenos = vb
     route.estado = "EN_RUTA"
     route.salida_ts = now()
     route.salida_confirmada_por = user.id

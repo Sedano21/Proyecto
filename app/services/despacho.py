@@ -202,8 +202,37 @@ def review_documents(route, user, impresos=False):
         return faltan
     alerts.close_by_system(f"DOCS:{route.id}", "Documentos completos")
     route.autorizacion_seguridad = {"user": user.nombre, "ts": now().isoformat()}
+    vb = dict(route.vistos_buenos or {})
+    vb["SEGURIDAD"] = {"user": user.nombre, "user_id": user.id, "ts": now().isoformat(), "detalle": "Documentos completos"}
+    route.vistos_buenos = vb
     audit(user, "DOCUMENTOS_REVISADOS_SEGURIDAD", "Route", route.id)
     return []
+
+
+VB_LABEL = {"SEGURIDAD": "Seguridad (documentos completos)", "AUX_DESPACHO": "Auxiliar de Despacho",
+            "LIDER_ALMACEN": "Líder Operativo"}
+
+
+def required_exit_approvals():
+    return list(param("vistos_buenos_salida", ["SEGURIDAD", "AUX_DESPACHO", "LIDER_ALMACEN"]) or [])
+
+
+def give_exit_ok(route, user, nota=""):
+    """Q16 (13-oct-2026): visto bueno del Auxiliar de Despacho a la salida (carga validada y conforme)."""
+    if not has_perm(user, "distribucion.visto_bueno_salida"):
+        raise BusinessError("El visto bueno de salida lo da el Auxiliar de Despacho (Q16).")
+    _route_ready(route)
+    if not route.carga_validada:
+        raise BusinessError("Primero valide la carga (camión cargado).")
+    vb = dict(route.vistos_buenos or {})
+    vb["AUX_DESPACHO"] = {"user": user.nombre, "user_id": user.id, "ts": now().isoformat(), "detalle": nota}
+    route.vistos_buenos = vb
+    audit(user, "VISTO_BUENO_SALIDA", "Route", route.id, {"rol": "AUX_DESPACHO", "nota": nota})
+
+
+def missing_exit_approvals(route, excluir=("LIDER_ALMACEN",)):
+    vb = route.vistos_buenos or {}
+    return [r for r in required_exit_approvals() if r not in excluir and r not in vb]
 
 
 def approve_exit_with_discrepancy(route, user, motivo):

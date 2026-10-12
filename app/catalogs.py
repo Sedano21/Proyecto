@@ -13,6 +13,8 @@ TOBE = "TO-BE COPROD-ONE (L5)"
 Q3 = "Decisión del usuario Q3 (11 y 12-oct-2026)"
 Q4 = "Decisión del usuario Q4 (11-oct-2026)"
 R12 = "Decisión del usuario (12-oct-2026)"
+R13 = "Decisión del usuario (13-oct-2026)"
+VIRTUALES = ["ALM-002", "ALM-004", "ALM-005", "ALM-006", "ALM-007", "ALM-012", "EXT-007", "EXT-013", "PRO-*"]
 
 # ---------------------------------------------------------------------------
 # Roles (IF §15)
@@ -23,7 +25,8 @@ ROLES = [
     ("GERENCIA_OPERACIONES", "Gerencia de Operaciones", "Gerencia", f"{IF} §3, §15", "Vista y autorizaciones de su ámbito."),
     ("SISTEMAS", "Sistemas", "Sistemas", f"{IF} §3, §15, §16", "Acceso completo sin aprobar en nombre de otros roles (Q4)."),
     ("GERENTE_COMERCIAL", "Gerente Comercial", "Comercial", f"{IF} §15", ""),
-    ("JEFE_VENTAS", "Jefe de Ventas", "Comercial", f"{IF} §5, §15", ""),
+    ("JEFE_VENTAS", "Jefe Comercial (Jefe de Ventas)", "Comercial", f"{IF} §5, §15; {R13}",
+     "Único rol que modifica las listas de precios (Q11)."),
     ("COORD_VENTAS", "Coordinador de Ventas", "Comercial", f"{IF} §5, §15", ""),
     ("ASIST_VENTAS", "Asistente de Ventas", "Comercial", f"{IF} §5, §15", "Modifica OV solo con autorización."),
     ("EJECUTIVO_VENTAS", "Ejecutivo de Ventas (vendedor por canal)", "Comercial", f"{IF} §5, §15", "Vendedor responsable de la OV."),
@@ -48,7 +51,7 @@ ROLES = [
     ("SUPERV_CALIDAD", "Supervisor de Calidad", "Calidad", f"{IF} §9.3, §15", ""),
     ("ASIST_CALIDAD", "Asistente de Calidad", "Calidad", f"{IF} §9.3, §15", ""),
     ("COMPRAS", "Coordinador de Compras", "Compras", f"{IF} §10, §15", ""),
-    ("IMPORTACIONES", "Importaciones", "Importaciones", f"{IF} §11, §15", ""),
+    ("IMPORTACIONES", "Coordinador de Importación", "Importaciones", f"{IF} §11, §15; {R13} Q10", "Responsable de las fases de importación."),
     ("SEGURIDAD", "Seguridad", "Seguridad", f"{IF} §12.2, §13, §15", ""),
     ("FACTURACION", "Facturación", "Facturación", "TO-BE COPROD-ONE (carril Facturación)", "Evalúa el pedido validado y carga la factura."),
 ]
@@ -68,6 +71,8 @@ PERMISSIONS = [
     ("ov.aprobar_parcial", "Aprobar despacho parcial", "Logística", "aprobacion"),
     ("ov.decidir_alternativa", "Decidir uso de stock de otros almacenes", "Logística", "aprobacion"),
     ("ov.importar", "Importar OV desde exportación SAP", "Comercial", "edicion"),
+    ("precios.ver", "Consultar listas de precios", "Comercial", "consulta"),
+    ("precios.editar", "Cargar y modificar listas de precios mínimos (solo Jefe Comercial)", "Comercial", "exclusivo"),
     ("stock.ver", "Consultar stock y reservas", "Almacén", "consulta"),
     ("stock.cargar", "Cargar archivos de stock/movimientos (validación previa)", "Almacén", "edicion"),
     ("stock.autorizar_carga", "Autorizar/confirmar carga de stock", "Almacén", "aprobacion"),
@@ -110,6 +115,7 @@ PERMISSIONS = [
     ("distribucion.programar", "Generar/ajustar programación de rutas", "Distribución", "edicion"),
     ("distribucion.flota", "Mantener flota y conductores", "Distribución", "edicion"),
     ("distribucion.confirmar_salida", "Autorizar y confirmar la salida del camión", "Almacén", "aprobacion"),
+    ("distribucion.visto_bueno_salida", "Dar visto bueno a la salida del camión (Auxiliar de Despacho)", "Distribución", "aprobacion"),
     ("distribucion.aprobar_salida_discrepancia", "Aprobar la salida con discrepancia de guía mientras se resuelve", "Logística", "aprobacion"),
     ("distribucion.seguridad", "Control de Seguridad: ingreso, inspección, carga vs guía y revisión de documentos", "Seguridad", "edicion"),
     ("distribucion.entrega", "Registrar avance y entrega con evidencia", "Distribución", "edicion"),
@@ -143,19 +149,21 @@ def _p(perms, fuente=f"{IF} §3 (alcance por área) – propuesto"):
 
 
 ROLE_PERMISSIONS = {
-    "GERENCIA_GENERAL": _d(ALL_PERMS, f"{IF} §15; {Q4}: acceso completo, incluso aprobar en nombre de otros roles"),
-    "SISTEMAS": _d([p for p, _, _, t in PERMISSIONS if t != "aprobacion"],
+    "GERENCIA_GENERAL": _d([p for p, _, _, t in PERMISSIONS if t != "exclusivo"] + ["precios.ver"],
+                           f"{IF} §15; {Q4}: acceso completo, incluso aprobar en nombre de otros roles "
+                           f"(salvo modificar precios: exclusivo del Jefe Comercial, {R13} Q11)"),
+    "SISTEMAS": _d([p for p, _, _, t in PERMISSIONS if t not in ("aprobacion", "exclusivo")] + ["precios.ver"],
                    f"{IF} §15-§16; {Q4}: acceso completo pero NO aprueba en nombre de otros roles"),
     "GERENCIA_OPERACIONES": _p(_VIEW_OPS + ["config.ver"]) + _d(
         ["ov.renegociar"], f"{IF} §4.5, §5 (participa en renegociación)") + _d(
         ["ov.aprobar_parcial"], f"{Q3}: aprueba Gerencia de Operaciones o Jefatura de Logística") + _d(
         ["compras.autorizar_bajo_observacion"], f"{IF} §10.8") + _p(
         ["compras.aprobar_mayor_volumen"], f"{IF} §7 – participación de GO requiere validación"),
-    "GERENTE_COMERCIAL": _p(["dashboard.ver", "ov.ver", "stock.ver", "distribucion.ver", "alertas.ver", "alertas.gestionar", "export.datos"]),
-    "JEFE_VENTAS": _p(["dashboard.ver", "ov.ver", "ov.crear", "ov.modificar", "ov.importar", "stock.ver", "distribucion.ver", "alertas.ver", "alertas.gestionar", "export.datos"]) + _d(
+    "GERENTE_COMERCIAL": _p(["precios.ver", "dashboard.ver", "ov.ver", "stock.ver", "distribucion.ver", "alertas.ver", "alertas.gestionar", "export.datos"]),
+    "JEFE_VENTAS": _d(["precios.ver", "precios.editar"], f"{R13} Q11: único con autorización para modificar precios") + _p(["dashboard.ver", "ov.ver", "ov.crear", "ov.modificar", "ov.importar", "stock.ver", "distribucion.ver", "alertas.ver", "alertas.gestionar", "export.datos"]) + _d(
         ["ov.cancelar", "ov.autorizar_modificacion"], f"{IF} §5") + _d(
         ["ov.renegociar"], f"{IF} §4.5, §5 (Comercial participa)"),
-    "COORD_VENTAS": _p(["dashboard.ver", "ov.ver", "ov.crear", "ov.modificar", "ov.importar", "stock.ver", "distribucion.ver", "alertas.ver", "alertas.gestionar", "export.datos"]) + _d(
+    "COORD_VENTAS": _p(["precios.ver", "dashboard.ver", "ov.ver", "ov.crear", "ov.modificar", "ov.importar", "stock.ver", "distribucion.ver", "alertas.ver", "alertas.gestionar", "export.datos"]) + _d(
         ["ov.cancelar", "ov.autorizar_modificacion"], f"{IF} §5") + _d(
         ["ov.renegociar"], f"{IF} §4.5, §5 (Comercial participa)"),
     "ASIST_VENTAS": _d(["ov.crear"], "Diagrama AS-IS L5 (Asistente comercial ingresa la OV)") + _d(
@@ -189,14 +197,17 @@ ROLE_PERMISSIONS = {
     "CONDUCTOR": _p(["distribucion.ver", "alertas.ver", "distribucion.entrega", "distribucion.incidencia"]) + _d(
         ["distribucion.carga"], f"{TOBE}: validación de carga y foto (auxiliar y chofer)"),
     "AUX_DESPACHO": _p(["distribucion.ver", "alertas.ver", "alertas.gestionar"]) + _d(
+        ["distribucion.visto_bueno_salida"], f"{R13} Q16: visto bueno de Seguridad, Líder Operativo y Auxiliar de Despacho") + _d(
         ["distribucion.incidencia"], f"{IF} §12.3") + _d(
         ["distribucion.carga", "distribucion.entrega"], f"{TOBE}: fotos, validación de carga, entrega con foto y guía firmada"),
-    "JEFE_LOGISTICA": _p(_VIEW_OPS + ["traslado.solicitar"]) + _d(
+    "JEFE_LOGISTICA": _d(["traslado.salida", "traslado.recibir", "stock.cambiar_estado", "stock.conteo"],
+                         f"{R13} Q5: maneja los almacenes virtuales (solo esos)") + _p(_VIEW_OPS + ["traslado.solicitar"]) + _d(
         ["traslado.autorizar", "ov.decidir_alternativa"], f"{IF} §4.5, §6.2, §13; {R12} Q13") + _d(
         ["ov.aprobar_parcial"], f"{Q3}: aprueba Gerencia de Operaciones o Jefatura de Logística") + _d(
         ["compras.aprobar_solicitud"], f"{R12} Q14: el Jefe de Logística aprueba la solicitud de compra") + _d(
         ["distribucion.aprobar_salida_discrepancia"], f"{R12} Q8"),
-    "COORD_LOGISTICA": _p(_VIEW_OPS + ["traslado.solicitar"]) + _d(
+    "COORD_LOGISTICA": _d(["traslado.salida", "traslado.recibir", "stock.cambiar_estado", "stock.conteo"],
+                          f"{R13} Q5: maneja los almacenes virtuales (solo esos)") + _p(_VIEW_OPS + ["traslado.solicitar"]) + _d(
         ["ov.decidir_alternativa"], f"{IF} §4.5, §6.2 (Logística decide)") + _d(
         ["traslado.autorizar"], f"{R12} Q13: aprueba el Jefe o el Coordinador de Logística") + _d(
         ["distribucion.aprobar_salida_discrepancia"], f"{R12} Q8"),
@@ -295,6 +306,11 @@ ALERT_TYPES = [
      f"{IF} §13", "Logística autoriza el traslado.", False),
     ("TRASLADO_DIFERENCIA", "Diferencia en recepción de traslado", "Logística", "Traslados", "ALTA", ["JEFE_LOGISTICA"] + _ALM + _GO,
      "PROPUESTO", f"{IF} §13", "Cantidad recibida distinta a la enviada.", True),
+    ("OV_PRECIO_BAJO_MINIMO", "Precio de OV en el límite o por debajo de la lista", "Comercial", "Cambios de OV", "ALTA",
+     ["JEFE_VENTAS", "GERENTE_COMERCIAL"], "DEFINIDO",
+     f"{R13} Q11: la lista es el precio mínimo; los ejecutivos o responsables de canal venden sobre ese precio",
+     "Línea de OV con precio igual o menor al mínimo de lista del canal (o dentro del margen de alerta). También se "
+     "avisa al vendedor de la OV.", True),
     ("PRESOLICITUD_AUTOMATICA", "Pre-solicitudes generadas por faltante", "Almacén", "Solicitudes", "ALTA", _ALM + _LOG,
      "DEFINIDO", f"{TOBE}; {R12} Q15 (orden: producir, reempaque, traslado, compra)",
      "La OV queda con faltante y el sistema genera la pre-solicitud de la primera opción viable.", True),
@@ -460,9 +476,9 @@ PARAMS = [
     ("politica_lotes", "FEFO", "str", "Almacén",
      "Orden de consumo de lotes al reservar (FEFO = primero en vencer, primero en salir).", "PROPUESTO", f"{IF} §22 (respetar lote y vencimiento)"),
     ("dias_vencimiento_proximo", None, "int", "Almacén", "Días previos al vencimiento para alertar.", "PENDIENTE", "No definido"),
-    ("estado_lote_nuevo_carga", "DISPONIBLE", "str", "Almacén",
-     "Estado asignado a lotes nuevos que aparecen en una carga SAP (DISPONIBLE o PENDIENTE_REVISION).", "PENDIENTE",
-     f"{IF} §6.1 (Pendiente de revisión = carga recibida) vs. base inicial"),
+    ("estado_lote_nuevo_carga", "PENDIENTE_REVISION", "str", "Almacén",
+     "Estado de los lotes nuevos que trae una carga SAP posterior a la base inicial: quedan pendientes de revisión de "
+     "Calidad (no se reservan hasta liberarse).", "DEFINIDO", f"{IF} §6.1; {R13} Q6"),
     ("carga_autorizada_verifica", True, "bool", "Almacén",
      "Una carga revisada y autorizada marca los lotes como verificados (hasta que un conteo registre diferencias).",
      "PROPUESTO", f"{IF} §6.3-6.4"),
@@ -507,9 +523,30 @@ PARAMS = [
     ("orden_presolicitudes", ["PRODUCCION", "REEMPAQUE", "TRASLADO", "COMPRA"], "list", "Almacén",
      "Orden de preferencia de la pre-solicitud automática; si la primera opción no cubre todo, el saldo pasa a la siguiente.",
      "DEFINIDO", f"{R12} Q15: producir, reempaque, traslado desde almacén externo, compra"),
-    ("alcance_almacen_por_rol", {"COORD_ALMACEN": ["ALM-001", "ALM-003"], "COORD_ALMACEN_MP": ["EXT-002"]}, "dict", "Almacén",
-     "Almacenes que maneja cada coordinador: solo actúa sobre los suyos y recibe las alertas de sus almacenes.",
-     "DEFINIDO", f"{R12} Q17 (1560 y 1524); ALM-003 asignado al coordinador 1560 porque su producto pasa a ALM-001 (Q5)"),
+    ("alcance_almacen_por_rol", {"COORD_ALMACEN": ["ALM-001", "ALM-003"] + VIRTUALES, "COORD_ALMACEN_MP": ["EXT-002"],
+                                 "COORD_LOGISTICA": VIRTUALES, "JEFE_LOGISTICA": VIRTUALES}, "dict", "Almacén",
+     "Almacenes que maneja cada rol: solo actúa sobre los suyos (los no asignados, como los alternativos, los opera "
+     "cualquier coordinador). 'PRO-*' abarca todos los códigos que empiezan con PRO-. Las alertas de almacén se dirigen "
+     "al coordinador del almacén involucrado.", "DEFINIDO",
+     f"{R12} Q17 (1560 y 1524); {R13} Q5 (virtuales: Coord. 1560, Coord. y Jefe de Logística) y Q17 (alternativos: cualquiera)"),
+    ("vistos_buenos_salida", ["SEGURIDAD", "AUX_DESPACHO", "LIDER_ALMACEN"], "list", "Distribución",
+     "Roles cuya autorización y visto bueno requiere la salida del camión (el Líder Operativo da el último).",
+     "DEFINIDO", f"{R13} Q16"),
+    ("canal_precio_por_grupo", {"MAYORISTA": "MAYORISTA", "INSTITUCIONAL": "INSTITUCIONAL", "CUENTAS CLAVE": "CUENTAS CLAVE",
+                                "MARCA BLANCA": "MARCA BLANCA", "CATERING": "CATERING",
+                                "HOTELES - RESTAURANTES": "HOTELES - RESTAURANTES", "AUTOSERVICIOS": "AUTOSERVICIOS",
+                                "ENTRETENIMIENTO": "ENTRETENIMIENTO", "E-COMMERCE": "E-COMMERCE",
+                                "DISTRIBUIDORES": "DISTRIBUIDORES"}, "dict", "Comercial",
+     "Columna de la lista de precios mínimos que corresponde a cada grupo de cliente. OFICINA, CANASTERIA y MINORISTA (presentes en "
+     "las OV) no tienen columna en la lista: sus OV quedan sin precio hasta definirlo.", "PROPUESTO",
+     f"{R13} Q11; columnas de PRICE_LIST_OCT-NOV_26 y 'Grupo de cliente' de la exportación OVS"),
+    ("margen_alerta_precio_pct", 0, "float", "Comercial",
+     "La alerta salta si el precio de venta está por debajo del mínimo de lista o a menos de este % por encima "
+     "('en el límite'). Con 0 se alerta solo si es igual o menor al mínimo.", "PENDIENTE",
+     f"{R13} Q11 ('alertar si está en el límite o por debajo')"),
+    ("lista_granel_canales", ["MAYORISTA"], "list", "Comercial",
+     "Canales a los que se aplica la lista 'Mayorista granel' (mínimo por kg o por saco) con prioridad sobre la lista general.",
+     "PROPUESTO", f"{R13} Q11; título 'LISTA DE PRECIOS MAYORISTA GRANEL'"),
     ("programar_ruta_automatica", True, "bool", "Distribución",
      "Al quedar una OV completa (o con parcial aprobado) el sistema la programa automáticamente en la mejor ruta propuesta.",
      "DEFINIDO", "TO-BE COPROD-ONE: 'Programar automáticamente la mejor ruta para el despacho'"),
@@ -556,6 +593,8 @@ WAREHOUSES = [
     ("ALM-003", "Tránsito de Producción", "TRANSITO_PRODUCCION", 90, False, f"{R12} Q5",
      "Almacén virtual: producto terminado por Producción hasta que Almacén lo valida y pasa a ALM-001."),
     ("ALM-010", "No se utiliza", "NO_UTILIZADO", 99, False, f"{R12} Q5", "Almacén virtual no utilizado."),
+] + [(c, f"Virtual {c}", "VIRTUAL", 95, False, f"{R13} Q5", "Almacén virtual (no reservable); lo manejan Coord. 1560, Coord. y Jefe de Logística.")
+     for c in VIRTUALES if not c.endswith("*")] + [
 ]
 
 # Líneas de producción (PDF de formatos de producción). Capacidad no documentada.
@@ -596,7 +635,7 @@ DEMO_IMPORT_PHASES = [
     (1, "Embarque en origen", 0, 2, "IMPORTACIONES"),
     (2, "Arribo a puerto", 20, 3, "IMPORTACIONES"),
     (3, "Nacionalización / despacho aduanero", 25, 2, "IMPORTACIONES"),
-    (4, "Llegada a almacén", 28, 2, "COORD_ALMACEN"),
+    (4, "Llegada a almacén", 28, 2, "IMPORTACIONES"),
 ]
 
 REPACK_TYPES = [

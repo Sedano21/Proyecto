@@ -128,6 +128,9 @@ def compute(desde=None, hasta=None):
     k["entregas_parciales"] = inc.get("ENTREGA_PARCIAL", 0)
     mc = [m for m in merma_comparison() if m["real"] is not None]
     k["merma"] = [(m["liq"].numero_documento, m["liq"].product_code, m["prevista"], m["real"]) for m in mc[:15]]
+    lineas_act = [l for o in activas for l in o.lines if l.activa]
+    k["precio_bajo_minimo"] = len({l.order_id for l in lineas_act if (l.precio_origen or "").startswith(("POR DEBAJO", "EN EL LÍMITE"))})
+    k["ov_sin_precio"] = len({l.order_id for l in lineas_act if not l.precio_unitario})
     k["monto_total"] = round(sum(order_amount(o) for o in activas), 2)
     k["volumen_kg"] = round(sum(order_weight_kg(o, "solicitado")[0] for o in activas), 1)
     k["monto_pendiente"] = round(sum(order_amount(o) for o in abiertas), 2)

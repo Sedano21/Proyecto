@@ -4,7 +4,7 @@
 🟡 Parcial · ⏸️ Pendiente de decisión (implementado configurable/inactivo) · ⛔ Bloqueado (requiere acceso/autorización externa) · 🔜 Etapa futura (así lo indica el IF).
 
 **Tipo:** D = definido · P = propuesto · PEND = pendiente · AS = AS-IS observado.
-**Pruebas:** `F:` tests/test_flujos.py · `C:` tests/test_controles.py · `W:` tests/test_web.py · `K:` tests/test_config.py · `T:` tests/test_tobe.py · `R:` tests/test_respuestas_12oct.py.
+**Pruebas:** `F:` tests/test_flujos.py · `C:` tests/test_controles.py · `W:` tests/test_web.py · `K:` tests/test_config.py · `T:` tests/test_tobe.py · `R:` tests/test_respuestas_12oct.py · `S:` tests/test_respuestas_13oct.py.
 **Fuentes nuevas:** `TO-BE` = diagrama TO-BE-COPROD-ONE (L5) · `Q3`/`Q4` = decisiones del 11-oct-2026 · `Q2`…`Q17` del 12-oct-2026 (`11_DECISIONES_12OCT.md`).
 Código: `svc/` = `app/services/`, `vw/` = `app/views/`.
 
@@ -16,7 +16,7 @@ Código: `svc/` = `app/services/`, `vw/` = `app/views/`.
 | GEN-02 | Trazabilidad de cambios, aprobaciones, versiones, incidencias y cargas | IF §2, §19 | D | `audit_log` en cada acción de servicio; pantalla Auditoría; historial en OV | K: parámetros; F: varios | ✅ |
 | GEN-03 | Validar archivos antes de incorporar; mostrar errores; quien carga corrige | IF §2, §6.4, §19 | D | `svc/uploads.py` (validar → corregir/excluir → autorizar) | C: carga stock con errores | ✅ |
 | GEN-04 | Guardar versiones de listas y configuraciones | IF §19 | D | `bom_versions`, `param_history` | C: BOM versión; K: parámetros | ✅ |
-| GEN-05 | Evitar duplicados al recargar archivos | IF §19 | D (claves PEND) | Claves por tipo: stock artículo/lote/almacén; BOM padre/componente; OV OV/producto; liquidación documento+lote; salidas documento/producto/fecha/cantidad | C: liquidación duplicada, salidas | ✅ (claves a validar, Q9) |
+| GEN-05 | Evitar duplicados al recargar archivos | IF §19; Q9 | D | Claves por tipo: stock artículo/lote/almacén; BOM padre/componente; OV OV/producto; liquidación documento+lote (cantidad del documento repartida entre lotes, Q9); salidas documento/producto/fecha/cantidad; precios SKU | C: liquidación duplicada, salidas; S: Q9 | ✅ |
 | GEN-06 | Separar consulta, edición, aprobación y administración | IF §19 | D | 64 permisos tipificados; matriz rol-permiso editable | C: matriz; W: permiso por pantalla | ✅ |
 | GEN-07 | Exportar registros | IF §19 | D (formato PEND) | Exportación .xlsx de 10 registros | K: exportaciones | ✅ |
 | GEN-08 | Alertas por panel y correo | IF §2, §14 | D | Panel + `email_outbox` + SMTP | C: correo sin SMTP | ✅ / ⛔ envío real requiere SMTP corporativo |
@@ -34,9 +34,9 @@ Código: `svc/` = `app/services/`, `vw/` = `app/views/`.
 | OV-04 | Asistente modifica con autorización de Coord., Jefe de Ventas o vendedor responsable | IF §5 | D | `request_change` / `resolve_change` | F: asistente | ✅ |
 | OV-05 | Renegociar fecha o proponer producto disponible; GO participa | IF §5 | D | `renegotiate_date`, `change_product`, `ov_decisions` | F: renegociar | ✅ |
 | OV-06 | Cancelación por Coord./Jefe de Ventas libera reserva y ruta | IF §5 | D | `cancel_order` | F: cancelación | ✅ |
-| OV-07 | Campos de OV contrastados con formato real | IF §5 | PEND | Campos de exportación OVS SAP; "Fecha de Vencimiento" = fecha comprometida (K13) | C: importar OV | 🟡 (confirmar Q11) |
+| OV-07 | Campos de OV contrastados con formato real | IF §5; Q11 | D | Campos de exportación OVS SAP; "Fecha de Vencimiento" = fecha comprometida de despacho (confirmado 13-oct) | C: importar OV | ✅ |
 | OV-08 | Importar OV desde exportación | IF §18 | D | Carga tipo OV (consolida líneas repetidas, omite cerradas) | C: importar OV; real 194 OV | ✅ |
-| OV-09 | Monto y volumen por OV | IF §1, §17 | D | Precio unitario opcional; kg por peso del artículo | F: pedido completo (KPI) | 🟡 (fuente de precio, Q11) |
+| OV-09 | Monto y volumen por OV | IF §1, §17 | D | Precio de venta de la OV; kg por peso del artículo | F: pedido completo (KPI) | 🟡 (la exportación de OV no trae precio de venta) |
 
 ## Almacén, stock y reservas (IF §6, §22)
 
@@ -54,7 +54,7 @@ Código: `svc/` = `app/services/`, `vw/` = `app/views/`.
 | ALM-10 | Parcial aprobado: alerta a Distribución y propuesta de ruta | IF §6.3 | D | OV_PARCIAL_APROBADO + `propose_routes` | F: parcial conjunta y saldo | ✅ |
 | ALM-18 | Lo que falta despachar se reprograma | Q3 | D | `create_saldo`: OV `<OV>-S1` con la fecha de saldo, al confirmar la salida; alerta OV_SALDO_REPROGRAMADO | F: parcial conjunta y saldo | ✅ |
 | ALM-11 | Cambio de OV tras reserva: conservar válidas, recalcular, alertar Log./Alm./GO | IF §6.3 | D | `_apply_changes` + OV_CAMBIO | F: cambio de OV | ✅ |
-| ALM-12 | Base inicial y cargas de stock SAP | IF §6.4 | D | Carga STOCK (formato STOCK_LOTE) | C: cargas; real 1 234 lotes | ✅ |
+| ALM-12 | Base inicial y cargas de stock SAP; lote nuevo posterior queda pendiente de revisión de Calidad | IF §6.4; Q6 | D | Carga STOCK (formato STOCK_LOTE) | C: cargas; S: Q6; real 1 234 lotes | ✅ |
 | ALM-13 | Validar formato, duplicados y diferencias antes de confirmar; quien carga corrige y autoriza | IF §6.4 | D | Resumen de diferencias (nuevos, modificados, ausentes, reservas afectadas) | C: carga con errores, reducción | ✅ |
 | ALM-14 | Diferencias alertan a Sistemas y son rastreables | IF §6.4 | D | STOCK_CARGA_DIFERENCIAS, INVENTARIO_DIFERENCIA | C: carga; conteo | ✅ |
 | ALM-15 | Conteos periódicos y registro de diferencias | IF §6.3-6.4 | D | Conteos (fórmula Inven. bobinas) | C: conteo | ✅ |
@@ -96,7 +96,7 @@ Código: `svc/` = `app/services/`, `vw/` = `app/views/`.
 | PRD-07 | Almacén revisa y envía; Producción valida lista, disponibilidad real, capacidad y plazo | IF §8.2 | D | `send_request` / `validate_request` | F: producción | ✅ |
 | PRD-08 | Ayuda a programación diaria con capacidad y plazos | IF §8.2 | D (capacidades PEND) | Programa semanal por línea; control de capacidad | F: producción | ✅ (capacidades a cargar) |
 | PRD-09 | Registrar inicio, fin y liquidación | IF §8.3 | D | `start`, `finish`, `register_liquidation` | F: producción | ✅ |
-| PRD-10 | Liquidación desde Excel o SAP | IF §8.3 | D (modelo PEND) | Carga LIQUIDACION (formato Dat.Prod) | C: importar liquidación | ✅ (clave Q9) |
+| PRD-10 | Liquidación desde Excel o SAP | IF §8.3; Q9 | D | Carga LIQUIDACION (formato Dat.Prod); documento con varios lotes: cantidad repartida | C: importar liquidación; S: Q9 | ✅ |
 | PRD-11 | Datos de lote alimentan certificados | IF §8.3 | D | `certificate_data` usa liquidación | C: certificado | ✅ |
 | PRD-12 | Registrar merma de insumos y granel; cargar desde SAP | IF §8.3 | D | Campos de merma MP/granel/insumos en liquidación (manual) | K: merma | 🟡 (carga SAP de merma: formato no recibido) |
 | PRD-13 | Liquidación alerta al montacarguista | IF §8.3 | D | LIQUIDACION_MONTACARGUISTA | F: producción | ✅ |
@@ -132,7 +132,7 @@ Código: `svc/` = `app/services/`, `vw/` = `app/views/`.
 
 | ID | Requerimiento | Fuente | Tipo | Implementación | Prueba | Estado |
 |---|---|---|---|---|---|---|
-| IMP-01 | Seguimiento por fases configurables (no automatización integral) | IF §11 | D (fases PEND) | Plantilla de fases (DEMO) | F: importación | ⏸️ fases reales |
+| IMP-01 | Seguimiento por fases configurables (no automatización integral) | IF §11; Q10 | D | Fases y días editables en Configuración; responsable: Coordinador de Importación | F: importación; S: Q10 | ✅ (cargar las fases reales) |
 | IMP-02 | Fechas y recordatorios configurables; alerta de fase fuera de fecha | IF §11 | D | `check_phases` | F: importación | ✅ |
 | IMP-03 | Importaciones actualiza fechas y llegada | IF §11 | D | `change_arrival`, `change_phase_date` | F: importación | ✅ |
 | IMP-04 | Alertar Almacén y Logística (llegada) y GO (modificaciones) | IF §11 | D | IMPORT_LLEGADA, IMPORT_MODIFICACION | F: importación | ✅ |
@@ -148,7 +148,7 @@ Código: `svc/` = `app/services/`, `vw/` = `app/views/`.
 | DIS-04 | Propuesta automática de asignación con unidades, conductores, capacidades y disponibilidad | IF §12.1 | D | Asignación propios → terceros → externo; conductor habitual | K: rutas | ✅ |
 | DIS-05 | Capacidades de terceros; evaluar contratación externa | IF §12.1 | D | Unidades de terceros; ruta "requiere externo" | K: rutas | ✅ |
 | DIS-06 | Reglas de flota y asignación modificables | IF §12.1 | D | Flota editable; zonas por parámetro | W: recorrido | 🟡 (algoritmo fijo, datos configurables) |
-| DIS-07 | Verificar cantidades, documentos, carga, vehículo, conductor antes de salir; autoriza el Líder Operativo | IF §12.2; Q16 | D | `confirm_departure` exige 5 controles; permiso del Líder Operativo | R: Q16 | ✅ |
+| DIS-07 | Verificar cantidades, documentos, carga, vehículo, conductor; salida con autorización y visto bueno de Seguridad, Líder Operativo y Auxiliar de Despacho | IF §12.2; Q16 | D | `review_documents`, `give_exit_ok`, `confirm_departure` | R: Q16; S: Q16 | ✅ |
 | DIS-08 | Seguridad: ingreso, inspección, autorización de salida, validación vs guía | IF §12.2, §13 | D | `register_security_check` + formato VEHICULO | F: pedido completo | ✅ |
 | DIS-09 | Discrepancia carga-guía bloquea la salida; Jefe o Coord. de Logística puede aprobarla mientras se resuelve la guía | IF §12.2; Q8 | D (tolerancia PEND) | GUIA_DISCREPANCIA, `approve_exit_with_discrepancy`, `resolve_guide_discrepancy`, SALIDA_CON_DISCREPANCIA | R: Q8 (2 pruebas) | ✅ |
 | DIS-10 | Informar avance de ruta a Comercial, Logística y Distribución | IF §12.3 | D | DIST_AVANCE_RUTA (salida, llegada, entrega) | F: pedido completo | ✅ |
@@ -157,7 +157,7 @@ Código: `svc/` = `app/services/`, `vw/` = `app/views/`.
 | DIS-13 | Tipos de incidencia (retraso, ausente, rechazo, parcial, devolución, cancelación, cambio de ruta, vehículo esperando, cliente no retira) | IF §12.3 | D | 12 tipos | F: rechazo, devolución | ✅ |
 | DIS-14 | Rechazo por calidad → GG, GO, Logística, Almacén, Comercial | IF §12.3 | D | INC_RECHAZO_CALIDAD | F: rechazo | ✅ |
 | DIS-15 | Llegada tarde u otra → GO, Logística, Almacén, Comercial | IF §12.3 | D | INC_GENERAL | F: devolución | ✅ |
-| TRS-01 | Jefe o Coordinador de Logística autoriza traslados | IF §6.2, §13; Q13 | D | `authorize` | F: alternativo | ✅ |
+| TRS-01 | Jefe o Coordinador de Logística autoriza traslados; nadie aprueba su propia solicitud (la aprueba el Jefe de Logística) | IF §6.2, §13; Q13; 13-oct | D | `authorize` | F: alternativo | ✅ |
 | TRS-02 | Coord. Almacén o asistente confirma recepción | IF §6.2, §13 | D | `receive` | F: alternativo | ✅ |
 | TRS-03 | Registrar origen, destino, producto, cantidad, autorización, salida, recepción y diferencias | IF §13 | D | Tabla `transfers` | F: traslado con diferencia | ✅ |
 
@@ -195,6 +195,15 @@ Código: `svc/` = `app/services/`, `vw/` = `app/views/`.
 | D12-05 | Alertas de almacén dirigidas al coordinador del almacén involucrado | Q17 | D (derivado) | `alerts._filter_by_warehouse` | R: Q15, Q17; F: compra, importación | ✅ |
 | D12-06 | La guía observada se registra como resuelta después de la salida | Q8 | D | `resolve_guide_discrepancy` | R: Q8 | ✅ |
 
+## Decisiones del 13-oct-2026 (nuevas)
+
+| ID | Requerimiento | Fuente | Tipo | Implementación | Prueba | Estado |
+|---|---|---|---|---|---|---|
+| D13-01 | Lista de precios mínimos por canal y lista mayorista granel, cargadas desde los Excel actuales | Q11 | D | Cargas PRECIOS y PRECIOS_GRANEL; recalcula fórmulas; no guarda el costo | S: Q11; validada con los archivos reales | ✅ |
+| D13-02 | Solo el Jefe Comercial modifica precios; versionado con historial | Q11 | D | Permiso exclusivo `precios.editar`; `/ov/precios` | S: Q11 | ✅ |
+| D13-03 | Alertar OV con precio en el límite o por debajo del mínimo | Q11 (aclaración) | D (margen PEND) | `check_order_prices`; alerta OV_PRECIO_BAJO_MINIMO al vendedor y Comercial; KPI | S: Q11 | ✅ |
+| D13-04 | Almacenes virtuales los manejan Coord. 1560, Coord. y Jefe de Logística; alternativos cualquiera | Q5, Q17 | D | `alcance_almacen_por_rol` con comodín PRO-* | S: Q5 | ✅ |
+
 ## Alertas (IF §14)
 
 | ID | Requerimiento | Fuente | Tipo | Implementación | Prueba | Estado |
@@ -204,19 +213,19 @@ Código: `svc/` = `app/services/`, `vw/` = `app/views/`.
 | ALR-03 | GG agrupa por área/tipo y urgencia | IF §14, §15 | D | `/alertas?agrupar=…` | W: recorrido; C: filtros | ✅ |
 | ALR-04 | GG configura cuáles recibe directamente | IF §14 | D | Preferencias GG | K: preferencias; F: rechazo | ✅ |
 | ALR-05 | Destinatarios y reglas de correo configurables por alerta, rol y usuario | IF §14 | D | Configurar alertas | W: recorrido | ☑️ |
-| ALR-06 | Alertas contempladas (cambios/estados OV, 80 %, faltantes, cobertura, reservas, diferencias, retrasos, cancelaciones, rutas, incidencias, solicitudes, fechas, fumigación, no utilizables, certificados, guías, vehículo esperando, traslados, devoluciones, rechazos, cliente no retira, merma) | IF §14 | D | 62 tipos (ver doc 07) | F/C/K | ✅ |
+| ALR-06 | Alertas contempladas (cambios/estados OV, 80 %, faltantes, cobertura, reservas, diferencias, retrasos, cancelaciones, rutas, incidencias, solicitudes, fechas, fumigación, no utilizables, certificados, guías, vehículo esperando, traslados, devoluciones, rechazos, cliente no retira, merma) | IF §14 | D | 63 tipos (ver doc 07) | F/C/K | ✅ |
 | ALR-07 | Matriz exacta de destinatarios, prioridad y condición a validar | IF §14, §20 | PEND | Marcados DEFINIDO/PROPUESTO/PENDIENTE | — | ⏸️ |
 
 ## Roles, configuración e indicadores (IF §15-§17)
 
 | ID | Requerimiento | Fuente | Tipo | Implementación | Prueba | Estado |
 |---|---|---|---|---|---|---|
-| ROL-01 | GG acceso a todas las áreas | IF §15 | D | Todos los permisos | C: matriz | ✅ |
+| ROL-01 | GG acceso a todas las áreas (salvo modificar precios, exclusivo del Jefe Comercial) | IF §15; Q4; Q11 | D | Todos los permisos salvo `precios.editar` | C: matriz; S: Q11 | ✅ |
 | ROL-02 | GO información y acciones de Operaciones | IF §15 | D (detalle P) | Permisos propuestos + aprobaciones definidas | C: matriz | ✅ |
 | ROL-03 | Sistemas acceso completo sin aprobar en nombre de otros roles | IF §15, Q4 | D | Todos los permisos salvo los de aprobación | C: matriz; T: Sistemas no aprueba | ✅ |
 | ROL-04 | Roles operativos detallados en la matriz (Comercial, Almacén, Distribución, Logística, Producción, Calidad, Compras, Importaciones, Seguridad; Facturación por TO-BE; dos coordinadores de almacén por Q17) | IF §15, TO-BE, Q17 | D (permisos P) | 30 roles (27 operativos + GG, GO, Sistemas) y matriz editable | C: matriz | ✅ |
 | ROL-05 | Significado de "acceso completo" y auditoría de acciones críticas | IF §15, Q4 | D | GG aprueba (auditado "en nombre de"); Sistemas no aprueba; parámetro `acceso_completo_omite_aprobaciones` DEFINIDO | T: Sistemas no aprueba | ✅ |
-| CFG-01..10 | Márgenes, plazos y estacionalidad, stock mínimo/períodos/umbrales, cortes y tiempos, merma, versiones de BOM, fases, flota, alertas, otras reglas | IF §16 | D | Pantalla Configuración + catálogo + flota + alertas | K: parámetros | ✅ |
+| CFG-01..10 | Márgenes, plazos y estacionalidad, stock mínimo/períodos/umbrales, cortes y tiempos, merma, versiones de BOM, fases, flota, alertas, otras reglas: configurables y modificables en el panel | IF §16; Q7 | D | Pantalla Configuración (parámetros versionados) + catálogo + flota + alertas + fases | K: parámetros | ✅ (valores a cargar por la organización) |
 | CFG-11 | Reparto de responsabilidades de configuración entre Sistemas y GG | IF §16 | PEND | Ambos con `config.editar` | — | ⏸️ |
 | KPI-01 | Pedidos pendientes, completos e incompletos | IF §17 | D | Tablero | F: pedido completo | ✅ |
 | KPI-02 | OTIF = salió completo y a tiempo; fill rate con rechazos y causas por etapa | IF §17; Q2 | D (etapas P) | `kpis.fill_rate`; tablero | R: Q2 | ✅ |
@@ -227,7 +236,7 @@ Código: `svc/` = `app/services/`, `vw/` = `app/views/`.
 | KPI-07 | Diferencias de inventario | IF §17 | D | Tablero (conteos y recepción de PT) | W | ☑️ |
 | KPI-08 | Incidencias, rechazos, devoluciones, entregas parciales | IF §17 | D | Tablero | F: devolución | ☑️ |
 | KPI-09 | Merma prevista vs real | IF §17 | D (si hay datos) | Tablero | K: merma | ☑️ |
-| KPI-10 | Monto y volumen de las OV | IF §17 | D | Tablero | F | 🟡 (precios, Q11) |
+| KPI-10 | Monto y volumen de las OV | IF §17 | D | Tablero; OV con precio en el límite o bajo el mínimo; OV sin precio | F; S: Q11 | 🟡 (precio de venta no viene en la exportación de OV) |
 | KPI-11 | Filtrar por área, estado y urgencia | IF §22 | D | Filtros de alertas, OV y fecha en tablero | W | ✅ |
 
 ## Resumen

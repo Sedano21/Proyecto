@@ -96,17 +96,22 @@ def warehouse_scopes():
     return {k: list(v or []) for k, v in (param("alcance_almacen_por_rol", {}) or {}).items()}
 
 
+def wh_in(warehouse_code, codes):
+    """El almacén está en la lista; 'PRO-*' abarca todos los códigos que empiezan con 'PRO-'."""
+    return any(warehouse_code == c or (c.endswith("*") and warehouse_code.startswith(c[:-1])) for c in codes or [])
+
+
 def check_warehouse_scope(user, warehouse_code):
-    """Un coordinador con almacén asignado no actúa sobre el almacén asignado a otro coordinador (Q17).
-    Los almacenes no asignados a nadie (alternativos, etc.) no se restringen."""
+    """Un rol con almacenes asignados solo actúa sobre ellos (Q5, Q17). Los almacenes que no están asignados a ningún
+    rol (alternativos) los opera cualquiera con el permiso."""
     if user is None or not warehouse_code:
         return
     scopes = warehouse_scopes()
     mios = scopes.get(user.role_code)
-    if mios is None or warehouse_code in mios:
+    if mios is None or wh_in(warehouse_code, mios):
         return
-    if any(warehouse_code in v for v in scopes.values()):
-        raise BusinessError(f"El almacén {warehouse_code} lo maneja otro coordinador; su rol maneja {', '.join(mios)} (Q17).")
+    if any(wh_in(warehouse_code, v) for v in scopes.values()):
+        raise BusinessError(f"El almacén {warehouse_code} no está asignado a su rol (maneja: {', '.join(mios)}) (Q5/Q17).")
 
 
 def users_with_roles(roles):

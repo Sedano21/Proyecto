@@ -73,6 +73,8 @@ def create_order(user, numero, customer_id, fecha_compromiso, lines, urgente=Fal
                                       precio_unitario=float(ln.get("precio_unitario") or 0)))
     db().add(o)
     db().flush()
+    from .prices import check_order_prices
+    check_order_prices(o, user)  # Q11: la lista es el precio mínimo; alerta si la OV está en el límite o debajo
     audit(user, "OV_CREADA", "SalesOrder", o.numero, {"lineas": lines, "fecha_compromiso": fecha_compromiso,
                                                       "urgente": urgente})
     if evaluar:
@@ -117,6 +119,8 @@ def _apply_changes(order, user, changes):
                                               precio_unitario=float(ln.get("precio_unitario") or 0)))
     order.version += 1
     db().flush()
+    from .prices import check_order_prices
+    check_order_prices(order, user)
     audit(user, "OV_MODIFICADA", "SalesOrder", order.numero, {"antes": antes, "despues": snapshot(order)})
     evaluate_order(order, user, "MODIFICACION")
 

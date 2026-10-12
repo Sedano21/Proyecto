@@ -1,7 +1,7 @@
 # Resultados de las pruebas
 
-Fecha de ejecución: 12-oct-2026 (tras aplicar las decisiones del 12-oct: Q2, Q3, Q5, Q8, Q12–Q17) · Python 3.13 · SQLite · datos **ficticios** (`app/demo_data.py`).
-Comando: `python -m pytest tests -v` → **71 pruebas, 71 aprobadas, 0 fallidas** (≈44 s).
+Fecha de ejecución: 13-oct-2026 (tras aplicar las decisiones del 13-oct y la lista de precios mínimos) · Python 3.13 · SQLite · datos **ficticios** (`app/demo_data.py`).
+Comando: `python -m pytest tests -v` → **84 pruebas, 84 aprobadas, 0 fallidas** (≈55 s).
 
 ## 1. Pruebas automatizadas
 
@@ -24,6 +24,7 @@ con validación** que usará la organización, y ejecuta la lógica real (no hay
 | Devolución | `test_devolucion_y_entrega_parcial` | INC_GENERAL sin GG; entrega parcial con incidencia automática |
 | TO-BE / Q4 (nuevo) | `test_tobe.py` (6 pruebas) | OV completa → aviso, certificado previo y ruta automática; cambio de lote en el plan de picking; fotos por etapa, incidencia de carga, carga incongruente, guía, factura, documentos faltantes, autorización de Seguridad, llegada y rechazo por cita; factura con modificaciones; Sistemas no aprueba y GG sí; carga del consolidado por el Asistente con cambios sujetos a autorización |
 | Decisiones 12-oct (nuevo) | `test_respuestas_12oct.py` (8 pruebas) | Q16 Líder Operativo autoriza la salida (Distribución, Seguridad y Sistemas no); Q8 discrepancia bloquea, Logística aprueba con motivo, guía resuelta cierra la alerta, revalidar sin diferencias desbloquea; Q2 OTIF por salida, fill rate, rechazo posterior y causas por etapa; Q15 orden producir → reempaque → traslado → compra con cascada y sin duplicar; Q12 pre-solicitud de reempaque aprobada por el coordinador; Q17 alertas y acciones por almacén; Q5 ALM-003/ALM-010 |
+| Decisiones 13-oct (nuevo) | `test_respuestas_13oct.py` (9 pruebas) | Q11 lista de precios mínimos cargada (fórmulas recalculadas, sin costo), solo el Jefe Comercial modifica (GG, Sistemas y Comercial no), historial; alerta de OV en el límite o por debajo al vendedor y Comercial, cierre al corregir; OV sin precio o canal sin columna; lista granel para mayorista; Q16 tres vistos buenos; Q5 almacenes virtuales; Q6 lote nuevo pendiente de revisión; Q9 reparto de liquidación con corrección; Q10 fases del Coordinador de Importación |
 | Cambio de fecha | `test_importacion_fases_y_cambio_fecha`, `test_renegociar_fecha_ov`, (compra) | Fases, recordatorios, fase vencida sin duplicar alertas, alerta a GO, recepción con diferencias; renegociación de fecha |
 
 ### 1.2 Detalle de ejecución
@@ -79,6 +80,15 @@ test_respuestas_12oct.py::test_q15_presolicitudes_en_orden_producir_reempaque_tr
 test_respuestas_12oct.py::test_q12_reempaque_presolicitud_aprobada_por_coordinador ✔
 test_respuestas_12oct.py::test_q17_alertas_y_acciones_por_almacen ✔
 test_respuestas_12oct.py::test_q5_transito_produccion_y_almacen_no_utilizado ✔
+test_respuestas_13oct.py::test_q11_lista_cargada_formula_recalculada_y_solo_jefe_comercial_modifica ✔
+test_respuestas_13oct.py::test_q11_alerta_si_la_ov_esta_en_el_limite_o_por_debajo ✔
+test_respuestas_13oct.py::test_q11_ov_sin_precio_o_canal_sin_columna_no_se_valida ✔
+test_respuestas_13oct.py::test_q11_lista_granel_manda_para_mayorista ✔
+test_respuestas_13oct.py::test_q16_salida_requiere_tres_vistos_buenos ✔
+test_respuestas_13oct.py::test_q5_almacenes_virtuales_los_manejan_coord_1560_y_logistica ✔
+test_respuestas_13oct.py::test_q6_lote_nuevo_en_carga_posterior_queda_pendiente_de_revision ✔
+test_respuestas_13oct.py::test_q9_liquidacion_con_varios_lotes_reparte_la_cantidad ✔
+test_respuestas_13oct.py::test_q10_fases_de_importacion_a_cargo_del_coordinador_de_importacion ✔
 test_tobe.py::test_ov_completa_avisa_certifica_y_programa_ruta ✔
 test_tobe.py::test_modificar_plan_de_picking_cambia_lote ✔
 test_tobe.py::test_carga_incongruente_y_documentos_faltantes ✔
@@ -97,10 +107,14 @@ test_web.py::test_recorrido_pantallas_sin_errores[compras] ✔
 test_web.py::test_recorrido_pantallas_sin_errores[jefe.produccion] ✔
 test_web.py::test_recorrido_pantallas_sin_errores[seguridad] ✔
 test_web.py::test_recorrido_pantallas_sin_errores[vendedor1] ✔
+test_web.py::test_recorrido_pantallas_sin_errores[jefe.ventas] ✔
+test_web.py::test_recorrido_pantallas_sin_errores[coord.almacen.mp] ✔
+test_web.py::test_recorrido_pantallas_sin_errores[lider.almacen] ✔
+test_web.py::test_recorrido_pantallas_sin_errores[aux.despacho] ✔
 test_web.py::test_flujo_web_ov_y_detalles ✔
 test_web.py::test_carga_por_web_y_entrega_con_evidencia ✔
 test_web.py::test_pantallas_ruta_y_folio_en_cada_etapa ✔
-============================= 71 passed in 43.82s ==============================
+============================= 84 passed in 56.63s ==============================
 ```
 
 ## 2. Recorrido de la aplicación en ejecución (navegador)
@@ -149,6 +163,12 @@ registra DEMO-002 de un insumo (EN-903) → el sistema pre-solicita la compra �
 Compras (Q14) → el tablero de Gerencia General muestra OTIF por salida, fill rate 78,9 % y la tabla de causas por
 etapa. **0 respuestas 500.**
 
+### 2.4 Recorrido de precios mínimos (13-oct-2026)
+
+`jefe.ventas` modifica un precio mínimo con motivo (queda en el historial) → `gerente.general` consulta la lista pero
+no ve el botón para modificarla → `coord.ventas` registra una OV de un cliente CATERING a S/ 3,00 cuando el mínimo es
+S/ 3,00 → la OV muestra "EN EL LÍMITE del mínimo" y el Jefe Comercial recibe la alerta. **0 respuestas 500.**
+
 ## 3. Compatibilidad con los archivos reales (solo lectura, base temporal descartada)
 
 Se procesaron los archivos originales con los lectores del sistema para comprobar que los formatos se reconocen y que
@@ -161,6 +181,8 @@ la validación detecta problemas reales. Nada se guardó en el repositorio.
 | LISTA DE MATERIALES 2026.xlsx | 2 065 | 2 filas duplicadas (C3-041 / ME-041), 1 componente con cantidad 0; 565 descripciones sin presentación identificable | Versión 1: 2 062 líneas, 398 productos |
 | PCP 2026 - J.xlsm / OVS | 769 | 53 líneas de OV cerradas (omitidas), 6 productos repetidos en la misma OV (consolidados), 11 productos fuera del maestro | 194 OV evaluadas en 4,4 s: 53 completas, 96 incompletas, 45 sin stock |
 | Recep. pt.xlsx / Dat.Prod | 118 | 4 sin lote; 3 documentos con 2 lotes (clave a validar, Q9); 17 lotes con caracteres inusuales | (no confirmado) |
+| PRICE_LIST_OCT-NOV_26.xlsx | 350 | 0 errores; 10 canales; 2 SKU repetidos idénticos; fórmulas leídas | 3 480 precios mínimos (base temporal) |
+| PRICE_LIST_GRANEL_OCT-DIC26.xlsx | 20 | 0 errores; GR-041 con precio por kg menor al costo; 2 SKU también en la lista general | 20 precios (base temporal) |
 | Rotacion de inventario / Qy | 42 141 | 396 líneas sin producto (servicios) se omiten | 41 663 registros de historial |
 
 Cálculo de materiales con la BOM real (PT-005 × 100): MP-001 50 kg (ALM-003), EN-021 0,5, EN-096 0,18; aviso de merma no aplicada hasta confirmar si el Excel la incluye.
@@ -211,3 +233,5 @@ Hallazgo corregido durante esta prueba: la primera versión de la deduplicación
 | [15](capturas/15_alertas_tobe.png) | Alertas TO-BE vistas por Gerencia General |
 | [16](capturas/16_tablero_fillrate.png) | Tablero con OTIF por salida, fill rate y causas por etapa (Q2) |
 | [17](capturas/17_ov_presolicitud.png) | OV de insumo con pre-solicitud de compra automática (Q15) |
+| [18](capturas/18_lista_precios.png) | Lista de precios mínimos con historial (Q11) |
+| [19](capturas/19_ov_precio_bajo_minimo.png) | OV con precio en el límite del mínimo (Q11) |

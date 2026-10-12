@@ -40,3 +40,4 @@ details{margin:6px 0}summary{cursor:pointer;color:var(--info)}
 .ftable{display:table;width:100%;border-collapse:collapse;background:#fff}.frow{display:table-row}.frow:hover>.fcell{background:#fafbfc}
 .fcell{display:table-cell;border-bottom:1px solid var(--line);padding:6px 8px;vertical-align:top}.fh>.fcell{background:#eef1f5;font-weight:600;font-size:12.5px}
 button:disabled{opacity:.45;cursor:not-allowed}
+.small.err{color:var(--err);font-weight:600}

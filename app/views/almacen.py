@@ -55,14 +55,14 @@ def lot_state(lid):
 
 # ------------------------------- cargas ------------------------------------
 @bp.route("/cargas")
-@perm_required("stock.cargar", "produccion.bom_cargar", "ov.importar", "produccion.liquidar", "config.editar")
+@perm_required("stock.cargar", "produccion.bom_cargar", "ov.importar", "produccion.liquidar", "config.editar", "precios.editar")
 def uploads():
     rows = list(db().execute(select(UploadBatch).order_by(UploadBatch.id.desc()).limit(200)).scalars())
     return render_template("uploads.html", rows=rows, specs=usvc.SPECS)
 
 
 @bp.route("/cargas/nueva", methods=["GET", "POST"])
-@perm_required("stock.cargar", "produccion.bom_cargar", "ov.importar", "produccion.liquidar", "config.editar")
+@perm_required("stock.cargar", "produccion.bom_cargar", "ov.importar", "produccion.liquidar", "config.editar", "precios.editar")
 def upload_new():
     tipo = request.values.get("tipo") or "STOCK"
     if request.method == "POST":
@@ -88,7 +88,7 @@ def upload_new():
 
 
 @bp.route("/cargas/<int:bid>")
-@perm_required("stock.cargar", "produccion.bom_cargar", "ov.importar", "produccion.liquidar", "config.editar")
+@perm_required("stock.cargar", "produccion.bom_cargar", "ov.importar", "produccion.liquidar", "config.editar", "precios.editar")
 def upload_detail(bid):
     b = db().get(UploadBatch, bid) or abort(404)
     filtro = request.args.get("filtro", "problemas")
@@ -99,7 +99,7 @@ def upload_detail(bid):
 
 
 @bp.route("/cargas/<int:bid>/fila/<int:rid>", methods=["POST"])
-@perm_required("stock.cargar", "produccion.bom_cargar", "ov.importar", "produccion.liquidar", "config.editar")
+@perm_required("stock.cargar", "produccion.bom_cargar", "ov.importar", "produccion.liquidar", "config.editar", "precios.editar")
 def upload_row(bid, rid):
     b = db().get(UploadBatch, bid) or abort(404)
     r = db().get(UploadRow, rid) or abort(404)
@@ -117,7 +117,7 @@ def upload_row(bid, rid):
 
 
 @bp.route("/cargas/<int:bid>/<accion>", methods=["POST"])
-@perm_required("stock.cargar", "produccion.bom_cargar", "ov.importar", "produccion.liquidar", "config.editar")
+@perm_required("stock.cargar", "produccion.bom_cargar", "ov.importar", "produccion.liquidar", "config.editar", "precios.editar")
 def upload_action(bid, accion):
     b = db().get(UploadBatch, bid) or abort(404)
     if accion == "confirmar":

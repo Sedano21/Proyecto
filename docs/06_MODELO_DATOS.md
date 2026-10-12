@@ -322,6 +322,28 @@ Conteo físico periódico (IF §6.3/§6.4; formato 'Inven. bobinas 1524.xlsx').
 | user_id | INTEGER | sí | → users.id |
 | observacion | TEXT | no |  |
 
+## `price_items`
+
+Lista de precios (decisión Q11, 13-oct-2026). Cada cambio crea una versión nueva; la anterior queda con 'hasta'. lista GENERAL: precio por canal (columnas de PRICE_LIST); lista GRANEL: precio por kg y por saco (mayorista granel). El costo de la empresa NO se guarda.
+
+| Columna | Tipo | Nulo | Clave / referencia |
+|---|---|---|---|
+| id | INTEGER | no | PK |
+| lista | VARCHAR(10) | no |  |
+| product_code | VARCHAR(40) | no |  |
+| descripcion | VARCHAR(250) | no |  |
+| canal | VARCHAR(60) | no |  |
+| precio | FLOAT | sí |  |
+| precio_kg | FLOAT | sí |  |
+| precio_saco | FLOAT | sí |  |
+| kg_saco | FLOAT | sí |  |
+| vigente | BOOLEAN | no |  |
+| desde | DATETIME | no |  |
+| hasta | DATETIME | sí |  |
+| origen | VARCHAR(160) | no |  |
+| motivo | TEXT | no |  |
+| user_id | INTEGER | sí | → users.id |
+
 ## `sales_orders`
 
 
@@ -534,6 +556,8 @@ Historial de salidas/ventas para análisis de reposición (formato hoja 'Qy' de 
 | product_code | VARCHAR(30) | no | → products.code |
 | cantidad | FLOAT | no |  |
 | precio_unitario | FLOAT | no |  |
+| precio_minimo | FLOAT | sí |  |
+| precio_origen | VARCHAR(160) | no |  |
 | preparado | FLOAT | no |  |
 | despachado | FLOAT | no |  |
 | entregado | FLOAT | no |  |
@@ -744,6 +768,7 @@ Registro de Calidad genérico por formato: MUESTREO (REG-CAL-002 / CP-FOR-CAL-10
 | carga_validada | BOOLEAN | no |  |
 | autorizacion_seguridad | JSON | no |  |
 | aprobacion_discrepancia | JSON | no |  |
+| vistos_buenos | JSON | no |  |
 | retorno_ts | DATETIME | sí |  |
 | guia_numero | VARCHAR(40) | no |  |
 | seguridad | JSON | no |  |

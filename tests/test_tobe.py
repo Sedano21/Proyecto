@@ -92,6 +92,7 @@ def test_carga_incongruente_y_documentos_faltantes(s, U, new_order):
     dsp.set_invoice(st, U("facturacion"), "F001-9", "f.pdf")
     approve_certs(s, U, o)
     assert dsp.review_documents(r, U("seguridad"), impresos=True) == []
+    dsp.give_exit_ok(r, U("aux.despacho"))  # Q16: visto bueno del auxiliar
     lines = [{**e, "guia": e["esperado"], "cargado": e["esperado"]} for e in dist.expected_lines(r)]
     dist.register_security_check(r, U("seguridad"), "T001-1", lines)
     dist.confirm_departure(r, U("lider.almacen"), {k: True for k, _ in dist.CHECKLIST})

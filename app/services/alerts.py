@@ -100,14 +100,15 @@ def entity_warehouses(entidad, entidad_id):
 
 def _filter_by_warehouse(roles, entidad, entidad_id):
     """Quita los coordinadores cuyo almacén no está involucrado. Si no se puede determinar, avisa a todos."""
-    from .core import warehouse_scopes
-    scopes = warehouse_scopes()
+    from .core import warehouse_scopes, wh_in
+    # solo se dirige entre coordinadores de almacén; Logística recibe sus alertas sin filtrar
+    scopes = {r: v for r, v in warehouse_scopes().items() if r.startswith("COORD_ALMACEN")}
     if not any(r in scopes for r in roles):
         return roles
     whs = entity_warehouses(entidad, entidad_id)
     if not whs:
         return roles
-    filtrados = [r for r in roles if r not in scopes or set(scopes[r]) & whs]
+    filtrados = [r for r in roles if r not in scopes or any(wh_in(w, scopes[r]) for w in whs)]
     if not any(r in scopes for r in filtrados):  # ningún almacén asignado involucrado: avisa a todos los coordinadores
         return roles
     return filtrados

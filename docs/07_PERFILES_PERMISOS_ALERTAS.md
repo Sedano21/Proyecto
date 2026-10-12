@@ -10,7 +10,7 @@ Origen: **D** = definido expresamente en la documentación; **P** = propuesto (d
 | GERENCIA_OPERACIONES | Gerencia de Operaciones | Gerencia | Informe Funcional §3, §15 | Vista y autorizaciones de su ámbito. |
 | SISTEMAS | Sistemas | Sistemas | Informe Funcional §3, §15, §16 | Acceso completo sin aprobar en nombre de otros roles (Q4). |
 | GERENTE_COMERCIAL | Gerente Comercial | Comercial | Informe Funcional §15 |  |
-| JEFE_VENTAS | Jefe de Ventas | Comercial | Informe Funcional §5, §15 |  |
+| JEFE_VENTAS | Jefe Comercial (Jefe de Ventas) | Comercial | Informe Funcional §5, §15; Decisión del usuario (13-oct-2026) | Único rol que modifica las listas de precios (Q11). |
 | COORD_VENTAS | Coordinador de Ventas | Comercial | Informe Funcional §5, §15 |  |
 | ASIST_VENTAS | Asistente de Ventas | Comercial | Informe Funcional §5, §15 | Modifica OV solo con autorización. |
 | EJECUTIVO_VENTAS | Ejecutivo de Ventas (vendedor por canal) | Comercial | Informe Funcional §5, §15 | Vendedor responsable de la OV. |
@@ -33,7 +33,7 @@ Origen: **D** = definido expresamente en la documentación; **P** = propuesto (d
 | SUPERV_CALIDAD | Supervisor de Calidad | Calidad | Informe Funcional §9.3, §15 |  |
 | ASIST_CALIDAD | Asistente de Calidad | Calidad | Informe Funcional §9.3, §15 |  |
 | COMPRAS | Coordinador de Compras | Compras | Informe Funcional §10, §15 |  |
-| IMPORTACIONES | Importaciones | Importaciones | Informe Funcional §11, §15 |  |
+| IMPORTACIONES | Coordinador de Importación | Importaciones | Informe Funcional §11, §15; Decisión del usuario (13-oct-2026) Q10 | Responsable de las fases de importación. |
 | SEGURIDAD | Seguridad | Seguridad | Informe Funcional §12.2, §13, §15 |  |
 | FACTURACION | Facturación | Facturación | TO-BE COPROD-ONE (carril Facturación) | Evalúa el pedido validado y carga la factura. |
 
@@ -52,6 +52,8 @@ Origen: **D** = definido expresamente en la documentación; **P** = propuesto (d
 | ov.aprobar_parcial | Aprobar despacho parcial | Logística | aprobacion |
 | ov.decidir_alternativa | Decidir uso de stock de otros almacenes | Logística | aprobacion |
 | ov.importar | Importar OV desde exportación SAP | Comercial | edicion |
+| precios.ver | Consultar listas de precios | Comercial | consulta |
+| precios.editar | Cargar y modificar listas de precios mínimos (solo Jefe Comercial) | Comercial | exclusivo |
 | stock.ver | Consultar stock y reservas | Almacén | consulta |
 | stock.cargar | Cargar archivos de stock/movimientos (validación previa) | Almacén | edicion |
 | stock.autorizar_carga | Autorizar/confirmar carga de stock | Almacén | aprobacion |
@@ -94,6 +96,7 @@ Origen: **D** = definido expresamente en la documentación; **P** = propuesto (d
 | distribucion.programar | Generar/ajustar programación de rutas | Distribución | edicion |
 | distribucion.flota | Mantener flota y conductores | Distribución | edicion |
 | distribucion.confirmar_salida | Autorizar y confirmar la salida del camión | Almacén | aprobacion |
+| distribucion.visto_bueno_salida | Dar visto bueno a la salida del camión (Auxiliar de Despacho) | Distribución | aprobacion |
 | distribucion.aprobar_salida_discrepancia | Aprobar la salida con discrepancia de guía mientras se resuelve | Logística | aprobacion |
 | distribucion.seguridad | Control de Seguridad: ingreso, inspección, carga vs guía y revisión de documentos | Seguridad | edicion |
 | distribucion.entrega | Registrar avance y entrega con evidencia | Distribución | edicion |
@@ -115,11 +118,11 @@ Origen: **D** = definido expresamente en la documentación; **P** = propuesto (d
 
 ### Gerencia General
 
-Todos los permisos (69) — D: Informe Funcional §15; Decisión del usuario Q4 (11-oct-2026): acceso completo, incluso aprobar en nombre de otros roles. Las aprobaciones no se omiten; quedan auditadas (decisión pendiente IF §15).
+Todos los permisos (71) — D: Informe Funcional §15; Decisión del usuario Q4 (11-oct-2026): acceso completo, incluso aprobar en nombre de otros roles (salvo modificar precios: exclusivo del Jefe Comercial, Decisión del usuario (13-oct-2026) Q11). Las aprobaciones no se omiten; quedan auditadas (decisión pendiente IF §15).
 
 ### Sistemas
 
-Todos los permisos (52) — D: Informe Funcional §15-§16; Decisión del usuario Q4 (11-oct-2026): acceso completo pero NO aprueba en nombre de otros roles. Las aprobaciones no se omiten; quedan auditadas (decisión pendiente IF §15).
+Todos los permisos (53) — D: Informe Funcional §15-§16; Decisión del usuario Q4 (11-oct-2026): acceso completo pero NO aprueba en nombre de otros roles. Las aprobaciones no se omiten; quedan auditadas (decisión pendiente IF §15).
 
 ### Gerencia de Operaciones
 
@@ -150,9 +153,10 @@ Todos los permisos (52) — D: Informe Funcional §15-§16; Decisión del usuari
 - `distribucion.ver` – Consultar distribución (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `export.datos` – Exportar registros (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `ov.ver` – Consultar órdenes de venta (**P**; Informe Funcional §3 (alcance por área) – propuesto)
+- `precios.ver` – Consultar listas de precios (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `stock.ver` – Consultar stock y reservas (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 
-### Jefe de Ventas
+### Jefe Comercial (Jefe de Ventas)
 
 - `alertas.gestionar` – Asignar, atender, comentar y cerrar alertas (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `alertas.ver` – Ver alertas propias/del rol (**P**; Informe Funcional §3 (alcance por área) – propuesto)
@@ -166,6 +170,8 @@ Todos los permisos (52) — D: Informe Funcional §15-§16; Decisión del usuari
 - `ov.modificar` – Modificar OV directamente (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `ov.renegociar` – Registrar renegociación de fecha / cambio de producto (**D**; Informe Funcional §4.5, §5 (Comercial participa))
 - `ov.ver` – Consultar órdenes de venta (**P**; Informe Funcional §3 (alcance por área) – propuesto)
+- `precios.editar` – Cargar y modificar listas de precios mínimos (solo Jefe Comercial) (**D**; Decisión del usuario (13-oct-2026) Q11: único con autorización para modificar precios)
+- `precios.ver` – Consultar listas de precios (**D**; Decisión del usuario (13-oct-2026) Q11: único con autorización para modificar precios)
 - `stock.ver` – Consultar stock y reservas (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 
 ### Coordinador de Ventas
@@ -182,6 +188,7 @@ Todos los permisos (52) — D: Informe Funcional §15-§16; Decisión del usuari
 - `ov.modificar` – Modificar OV directamente (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `ov.renegociar` – Registrar renegociación de fecha / cambio de producto (**D**; Informe Funcional §4.5, §5 (Comercial participa))
 - `ov.ver` – Consultar órdenes de venta (**P**; Informe Funcional §3 (alcance por área) – propuesto)
+- `precios.ver` – Consultar listas de precios (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `stock.ver` – Consultar stock y reservas (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 
 ### Asistente de Ventas
@@ -332,6 +339,7 @@ Todos los permisos (52) — D: Informe Funcional §15-§16; Decisión del usuari
 - `distribucion.entrega` – Registrar avance y entrega con evidencia (**D**; TO-BE COPROD-ONE (L5): fotos, validación de carga, entrega con foto y guía firmada)
 - `distribucion.incidencia` – Registrar incidencias (**D**; Informe Funcional §12.3)
 - `distribucion.ver` – Consultar distribución (**P**; Informe Funcional §3 (alcance por área) – propuesto)
+- `distribucion.visto_bueno_salida` – Dar visto bueno a la salida del camión (Auxiliar de Despacho) (**D**; Decisión del usuario (13-oct-2026) Q16: visto bueno de Seguridad, Líder Operativo y Auxiliar de Despacho)
 
 ### Jefatura de Logística
 
@@ -350,8 +358,12 @@ Todos los permisos (52) — D: Informe Funcional §15-§16; Decisión del usuari
 - `ov.ver` – Consultar órdenes de venta (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `produccion.ver` – Consultar producción (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `reempaque.ver` – Consultar reempaques (**P**; Informe Funcional §3 (alcance por área) – propuesto)
+- `stock.cambiar_estado` – Cambiar estado de stock (dañado, no utilizable, etc.) (**D**; Decisión del usuario (13-oct-2026) Q5: maneja los almacenes virtuales (solo esos))
+- `stock.conteo` – Registrar conteos físicos (**D**; Decisión del usuario (13-oct-2026) Q5: maneja los almacenes virtuales (solo esos))
 - `stock.ver` – Consultar stock y reservas (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `traslado.autorizar` – Autorizar traslado (**D**; Informe Funcional §4.5, §6.2, §13; Decisión del usuario (12-oct-2026) Q13)
+- `traslado.recibir` – Confirmar recepción de traslado en destino (**D**; Decisión del usuario (13-oct-2026) Q5: maneja los almacenes virtuales (solo esos))
+- `traslado.salida` – Registrar salida de traslado (**D**; Decisión del usuario (13-oct-2026) Q5: maneja los almacenes virtuales (solo esos))
 - `traslado.solicitar` – Solicitar traslado (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `traslados.ver` – Consultar traslados (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 
@@ -370,8 +382,12 @@ Todos los permisos (52) — D: Informe Funcional §15-§16; Decisión del usuari
 - `ov.ver` – Consultar órdenes de venta (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `produccion.ver` – Consultar producción (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `reempaque.ver` – Consultar reempaques (**P**; Informe Funcional §3 (alcance por área) – propuesto)
+- `stock.cambiar_estado` – Cambiar estado de stock (dañado, no utilizable, etc.) (**D**; Decisión del usuario (13-oct-2026) Q5: maneja los almacenes virtuales (solo esos))
+- `stock.conteo` – Registrar conteos físicos (**D**; Decisión del usuario (13-oct-2026) Q5: maneja los almacenes virtuales (solo esos))
 - `stock.ver` – Consultar stock y reservas (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `traslado.autorizar` – Autorizar traslado (**D**; Decisión del usuario (12-oct-2026) Q13: aprueba el Jefe o el Coordinador de Logística)
+- `traslado.recibir` – Confirmar recepción de traslado en destino (**D**; Decisión del usuario (13-oct-2026) Q5: maneja los almacenes virtuales (solo esos))
+- `traslado.salida` – Registrar salida de traslado (**D**; Decisión del usuario (13-oct-2026) Q5: maneja los almacenes virtuales (solo esos))
 - `traslado.solicitar` – Solicitar traslado (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `traslados.ver` – Consultar traslados (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 
@@ -475,7 +491,7 @@ Todos los permisos (52) — D: Informe Funcional §15-§16; Decisión del usuari
 - `importaciones.ver` – Consultar importaciones (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `stock.ver` – Consultar stock y reservas (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 
-### Importaciones
+### Coordinador de Importación
 
 - `alertas.gestionar` – Asignar, atender, comentar y cerrar alertas (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `alertas.ver` – Ver alertas propias/del rol (**P**; Informe Funcional §3 (alcance por área) – propuesto)
@@ -557,6 +573,7 @@ Canales: panel del módulo y correo (si hay SMTP). Ciclo: Nueva → Asignada →
 | TRASLADO_SOLICITADO | Traslado pendiente de autorización | Logística / Traslados | MEDIA | JEFE_LOGISTICA, COORD_LOGISTICA | DEFINIDO | sí | Se solicita (o el sistema pre-solicita) un traslado desde almacén alternativo. | Informe Funcional §6.2, §13; Decisión del usuario (12-oct-2026) Q13 |
 | TRASLADO_AUTORIZADO | Traslado autorizado | Almacén / Traslados | MEDIA | COORD_ALMACEN, COORD_ALMACEN_MP, AUX_ALMACEN | PROPUESTO | no | Logística autoriza el traslado. | Informe Funcional §13 |
 | TRASLADO_DIFERENCIA | Diferencia en recepción de traslado | Logística / Traslados | ALTA | JEFE_LOGISTICA, COORD_ALMACEN, COORD_ALMACEN_MP, GERENCIA_OPERACIONES | PROPUESTO | sí | Cantidad recibida distinta a la enviada. | Informe Funcional §13 |
+| OV_PRECIO_BAJO_MINIMO | Precio de OV en el límite o por debajo de la lista | Comercial / Cambios de OV | ALTA | JEFE_VENTAS, GERENTE_COMERCIAL | DEFINIDO | sí | Línea de OV con precio igual o menor al mínimo de lista del canal (o dentro del margen de alerta). También se avisa al vendedor de la OV. | Decisión del usuario (13-oct-2026) Q11: la lista es el precio mínimo; los ejecutivos o responsables de canal venden sobre ese precio |
 | PRESOLICITUD_AUTOMATICA | Pre-solicitudes generadas por faltante | Almacén / Solicitudes | ALTA | COORD_ALMACEN, COORD_ALMACEN_MP, JEFE_LOGISTICA, COORD_LOGISTICA | DEFINIDO | sí | La OV queda con faltante y el sistema genera la pre-solicitud de la primera opción viable. | TO-BE COPROD-ONE (L5); Decisión del usuario (12-oct-2026) Q15 (orden: producir, reempaque, traslado, compra) |
 | PRODUCCION_SOLICITUD | Solicitud de producción enviada | Producción / Solicitudes | ALTA | JEFE_PRODUCCION, COORD_PRODUCCION | DEFINIDO | sí | Almacén envía solicitud preliminar. | Informe Funcional §8.2, §14 |
 | PRODUCCION_RESPUESTA | Solicitud de producción validada/rechazada | Producción / Solicitudes | MEDIA | COORD_ALMACEN, COORD_ALMACEN_MP, COORD_VENTAS | PROPUESTO | sí | Producción valida o rechaza. | Informe Funcional §8.2 |
@@ -638,7 +655,7 @@ Canales: panel del módulo y correo (si hay SMTP). Ciclo: Nueva → Asignada →
 | uso_almacen_por_tipo | `{'PT': 'PT', 'GR': 'MP_INSUMOS', 'MP': 'MP_INSUMOS', 'INSUMO': 'MP_INSUMOS'}` | DEFINIDO | Almacén principal según tipo de artículo (TIPO de la tabla DATA: PT/GR/MP; insumos EN-/SU- = INSUMO). | Informe Funcional §6.2 (1560 = PT; 1524 = materia prima, granel e insumos) |
 | politica_lotes | `FEFO` | PROPUESTO | Orden de consumo de lotes al reservar (FEFO = primero en vencer, primero en salir). | Informe Funcional §22 (respetar lote y vencimiento) |
 | dias_vencimiento_proximo | `None` | PENDIENTE | Días previos al vencimiento para alertar. | No definido |
-| estado_lote_nuevo_carga | `DISPONIBLE` | PENDIENTE | Estado asignado a lotes nuevos que aparecen en una carga SAP (DISPONIBLE o PENDIENTE_REVISION). | Informe Funcional §6.1 (Pendiente de revisión = carga recibida) vs. base inicial |
+| estado_lote_nuevo_carga | `PENDIENTE_REVISION` | DEFINIDO | Estado de los lotes nuevos que trae una carga SAP posterior a la base inicial: quedan pendientes de revisión de Calidad (no se reservan hasta liberarse). | Informe Funcional §6.1; Decisión del usuario (13-oct-2026) Q6 |
 | carga_autorizada_verifica | `True` | PROPUESTO | Una carga revisada y autorizada marca los lotes como verificados (hasta que un conteo registre diferencias). | Informe Funcional §6.3-6.4 |
 | reevaluar_tras_carga | `True` | PROPUESTO | Reevaluar automáticamente OV con faltantes (por prioridad) al ingresar stock. | Informe Funcional §1, §6.3 |
 | bloquear_salida_con_discrepancia | `True` | DEFINIDO | Una discrepancia carga vs guía bloquea la salida; el Jefe o el Coordinador de Logística puede aprobar la salida mientras se resuelve la guía. | Informe Funcional §12.2; Decisión del usuario (12-oct-2026) Q8 |
@@ -653,7 +670,11 @@ Canales: panel del módulo y correo (si hay SMTP). Ciclo: Nueva → Asignada →
 | parcial_modo | `CUALQUIERA` | DEFINIDO | CUALQUIERA: basta la aprobación de uno de los roles; TODOS: deben aprobar todos. | Decisión del usuario Q3 (11 y 12-oct-2026): 'Gerencia de Operaciones o Jefe de Logística' (12-oct) |
 | presolicitudes_automaticas | `True` | DEFINIDO | Ante un faltante el sistema genera la pre-solicitud de la primera opción viable (las personas aprueban). | TO-BE COPROD-ONE (L5); Decisión del usuario (12-oct-2026) Q15 |
 | orden_presolicitudes | `['PRODUCCION', 'REEMPAQUE', 'TRASLADO', 'COMPRA']` | DEFINIDO | Orden de preferencia de la pre-solicitud automática; si la primera opción no cubre todo, el saldo pasa a la siguiente. | Decisión del usuario (12-oct-2026) Q15: producir, reempaque, traslado desde almacén externo, compra |
-| alcance_almacen_por_rol | `{'COORD_ALMACEN': ['ALM-001', 'ALM-003'], 'COORD_ALMACEN_MP': ['EXT-002']}` | DEFINIDO | Almacenes que maneja cada coordinador: solo actúa sobre los suyos y recibe las alertas de sus almacenes. | Decisión del usuario (12-oct-2026) Q17 (1560 y 1524); ALM-003 asignado al coordinador 1560 porque su producto pasa a ALM-001 (Q5) |
+| alcance_almacen_por_rol | `{'COORD_ALMACEN': ['ALM-001', 'ALM-003', 'ALM-002', 'ALM-004', 'ALM-005', 'ALM-006', 'ALM-007', 'ALM-012', 'EXT-007', 'EXT-013', 'PRO-*'], 'COORD_ALMACEN_MP': ['EXT-002'], 'COORD_LOGISTICA': ['ALM-002', 'ALM-004', 'ALM-005', 'ALM-006', 'ALM-007', 'ALM-012', 'EXT-007', 'EXT-013', 'PRO-*'], 'JEFE_LOGISTICA': ['ALM-002', 'ALM-004', 'ALM-005', 'ALM-006', 'ALM-007', 'ALM-012', 'EXT-007', 'EXT-013', 'PRO-*']}` | DEFINIDO | Almacenes que maneja cada rol: solo actúa sobre los suyos (los no asignados, como los alternativos, los opera cualquier coordinador). 'PRO-*' abarca todos los códigos que empiezan con PRO-. Las alertas de almacén se dirigen al coordinador del almacén involucrado. | Decisión del usuario (12-oct-2026) Q17 (1560 y 1524); Decisión del usuario (13-oct-2026) Q5 (virtuales: Coord. 1560, Coord. y Jefe de Logística) y Q17 (alternativos: cualquiera) |
+| vistos_buenos_salida | `['SEGURIDAD', 'AUX_DESPACHO', 'LIDER_ALMACEN']` | DEFINIDO | Roles cuya autorización y visto bueno requiere la salida del camión (el Líder Operativo da el último). | Decisión del usuario (13-oct-2026) Q16 |
+| canal_precio_por_grupo | `{'MAYORISTA': 'MAYORISTA', 'INSTITUCIONAL': 'INSTITUCIONAL', 'CUENTAS CLAVE': 'CUENTAS CLAVE', 'MARCA BLANCA': 'MARCA BLANCA', 'CATERING': 'CATERING', 'HOTELES - RESTAURANTES': 'HOTELES - RESTAURANTES', 'AUTOSERVICIOS': 'AUTOSERVICIOS', 'ENTRETENIMIENTO': 'ENTRETENIMIENTO', 'E-COMMERCE': 'E-COMMERCE', 'DISTRIBUIDORES': 'DISTRIBUIDORES'}` | PROPUESTO | Columna de la lista de precios mínimos que corresponde a cada grupo de cliente. OFICINA, CANASTERIA y MINORISTA (presentes en las OV) no tienen columna en la lista: sus OV quedan sin precio hasta definirlo. | Decisión del usuario (13-oct-2026) Q11; columnas de PRICE_LIST_OCT-NOV_26 y 'Grupo de cliente' de la exportación OVS |
+| margen_alerta_precio_pct | `0` | PENDIENTE | La alerta salta si el precio de venta está por debajo del mínimo de lista o a menos de este % por encima ('en el límite'). Con 0 se alerta solo si es igual o menor al mínimo. | Decisión del usuario (13-oct-2026) Q11 ('alertar si está en el límite o por debajo') |
+| lista_granel_canales | `['MAYORISTA']` | PROPUESTO | Canales a los que se aplica la lista 'Mayorista granel' (mínimo por kg o por saco) con prioridad sobre la lista general. | Decisión del usuario (13-oct-2026) Q11; título 'LISTA DE PRECIOS MAYORISTA GRANEL' |
 | programar_ruta_automatica | `True` | DEFINIDO | Al quedar una OV completa (o con parcial aprobado) el sistema la programa automáticamente en la mejor ruta propuesta. | TO-BE COPROD-ONE: 'Programar automáticamente la mejor ruta para el despacho' |
 | certificado_previo_al_picking | `True` | DEFINIDO | Pre-elaborar los certificados al quedar la OV completa (antes del picking) para validación de Calidad. | TO-BE COPROD-ONE: 'Informar a Calidad para la validación del certificado pre-elaborado' |
 | documentos_salida | `['GUIA', 'FACTURA', 'CERTIFICADO']` | DEFINIDO | Documentos que Seguridad verifica por pedido antes de autorizar la salida (certificado = aprobado por Calidad). | TO-BE COPROD-ONE: Seguridad 'Documentos completos?' / reportar faltantes a distribución, facturación y calidad |
@@ -677,6 +698,14 @@ Valores de demostración aplicados por `seed_demo` (estado DEMO): `cortes_prepar
 | EXT-014 | Isabelita | ALTERNATIVO | 5 | Informe Funcional §6.2 |  |
 | ALM-003 | Tránsito de Producción | TRANSITO_PRODUCCION | 90 | Decisión del usuario (12-oct-2026) Q5 | Almacén virtual: producto terminado por Producción hasta que Almacén lo valida y pasa a ALM-001. |
 | ALM-010 | No se utiliza | NO_UTILIZADO | 99 | Decisión del usuario (12-oct-2026) Q5 | Almacén virtual no utilizado. |
+| ALM-002 | Virtual ALM-002 | VIRTUAL | 95 | Decisión del usuario (13-oct-2026) Q5 | Almacén virtual (no reservable); lo manejan Coord. 1560, Coord. y Jefe de Logística. |
+| ALM-004 | Virtual ALM-004 | VIRTUAL | 95 | Decisión del usuario (13-oct-2026) Q5 | Almacén virtual (no reservable); lo manejan Coord. 1560, Coord. y Jefe de Logística. |
+| ALM-005 | Virtual ALM-005 | VIRTUAL | 95 | Decisión del usuario (13-oct-2026) Q5 | Almacén virtual (no reservable); lo manejan Coord. 1560, Coord. y Jefe de Logística. |
+| ALM-006 | Virtual ALM-006 | VIRTUAL | 95 | Decisión del usuario (13-oct-2026) Q5 | Almacén virtual (no reservable); lo manejan Coord. 1560, Coord. y Jefe de Logística. |
+| ALM-007 | Virtual ALM-007 | VIRTUAL | 95 | Decisión del usuario (13-oct-2026) Q5 | Almacén virtual (no reservable); lo manejan Coord. 1560, Coord. y Jefe de Logística. |
+| ALM-012 | Virtual ALM-012 | VIRTUAL | 95 | Decisión del usuario (13-oct-2026) Q5 | Almacén virtual (no reservable); lo manejan Coord. 1560, Coord. y Jefe de Logística. |
+| EXT-007 | Virtual EXT-007 | VIRTUAL | 95 | Decisión del usuario (13-oct-2026) Q5 | Almacén virtual (no reservable); lo manejan Coord. 1560, Coord. y Jefe de Logística. |
+| EXT-013 | Virtual EXT-013 | VIRTUAL | 95 | Decisión del usuario (13-oct-2026) Q5 | Almacén virtual (no reservable); lo manejan Coord. 1560, Coord. y Jefe de Logística. |
 
 ## Plazos de reposición (IF §7, días naturales)
 

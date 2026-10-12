@@ -97,6 +97,8 @@ def route_detail(rid):
             fn = lambda: dsp.review_documents(r, u, f_bool("impresos"))  # noqa: E731
         elif acc == "aprobar_discrepancia":
             fn = lambda: dsp.approve_exit_with_discrepancy(r, u, f.get("motivo", ""))  # noqa: E731
+        elif acc == "visto_bueno":
+            fn = lambda: dsp.give_exit_ok(r, u, f.get("nota", ""))  # noqa: E731
         elif acc == "resolver_guia":
             fn = lambda: dsp.resolve_guide_discrepancy(r, u, f.get("detalle", ""))  # noqa: E731
         elif acc == "retorno":
@@ -123,7 +125,7 @@ def route_detail(rid):
                            checklist=dsvc.CHECKLIST, expected=dsvc.expected_lines(r), tipos=INCIDENT_TYPES,
                            preguia=dsp.preguia(r), etapas=dsp.ETAPAS_FOTO, certs=certs,
                            faltan=dsp.missing_documents(r) if r.estado == "CONFIRMADA" else [],
-                           billing=dsp.billing_status)
+                           billing=dsp.billing_status, vb_req=dsp.required_exit_approvals(), vb_label=dsp.VB_LABEL)
 
 
 @bp.route("/ruta/<int:rid>/folio")

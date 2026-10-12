@@ -196,3 +196,26 @@ def picking(oid):
                                 if lot_usable(x, o.fecha_compromiso, o.customer)[0] and free_qty(x) > 0]
     return render_template("prep_detail.html", o=o, progress=osvc.prep_progress(o), line_reserved=line_reserved,
                            candidatos=candidatos, free=free_qty)
+
+
+# ------------------------------ listas de precios (Q11) --------------------
+@bp.route("/precios", methods=["GET", "POST"])
+@perm_required("precios.ver", "precios.editar")
+def prices():
+    from ..models import PriceItem
+    from ..services import prices as psvc
+    if request.method == "POST":
+        it = db().get(PriceItem, int(request.form["item_id"]))
+        if it is None:
+            abort(404)
+        return act(lambda: psvc.edit_item(it, g.user, request.form.get("motivo", ""), precio=f_float("precio"),
+                                          precio_kg=f_float("precio_kg"), precio_saco=f_float("precio_saco")),
+                   "Precio actualizado (versión anterior en el historial).",
+                   url_for("com.prices", lista=it.lista, q=request.args.get("q", ""), canal=request.args.get("canal", "")))
+    lista = request.args.get("lista", "GENERAL")
+    q = request.args.get("q", "").strip()
+    canal = request.args.get("canal", "")
+    rows = psvc.vigentes(lista, q, canal if lista == "GENERAL" else "")
+    hist = psvc.history(request.args["sku"]) if request.args.get("sku") else None
+    return render_template("prices.html", rows=rows[:600], total=len(rows), lista=lista, q=q, canal=canal,
+                           canales=psvc.canales(), hist=hist, sku=request.args.get("sku", ""))

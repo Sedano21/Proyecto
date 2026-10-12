@@ -59,6 +59,7 @@ def dispatch(s, U, o, today):
         dsp.set_invoice(st, U("facturacion"), f"F001-{st.order.numero}", "fact.pdf")
         approve_certs(s, U, st.order)
     assert dsp.review_documents(r, U("seguridad"), impresos=True) == []
+    dsp.give_exit_ok(r, U("aux.despacho"))  # Q16: visto bueno del auxiliar
     dist.confirm_departure(r, U("lider.almacen"), {k: True for k, _ in dist.CHECKLIST})
     s.commit()
     return r.stops[0]
@@ -228,7 +229,9 @@ def test_almacen_alternativo_traslado_autorizado(s, U, new_order):
     for quien in ("coord.almacen", "sistemas"):
         with pytest.raises(BusinessError):
             trs.authorize(t, U(quien), True)
-    trs.authorize(t, U("coord.logistica"), True)  # Q13: Jefe o Coordinador de Logística
+    with pytest.raises(BusinessError):  # 13-oct: no aprueba su propia solicitud; la aprueba el Jefe de Logística
+        trs.authorize(t, U("coord.logistica"), True)
+    trs.authorize(t, U("jefe.logistica"), True)
     trs.ship(t, U("coord.almacen"))
     trs.receive(t, U("aux.almacen"), 100)
     s.commit()
@@ -239,7 +242,7 @@ def test_almacen_alternativo_traslado_autorizado(s, U, new_order):
 
 def test_traslado_con_diferencia(s, U):
     l = lot(s, "PT-903", "L903A", "EXT-001")
-    t = trs.request_transfer(U("jefe.logistica"), l.id, "ALM-001", 50)
+    t = trs.request_transfer(U("coord.logistica"), l.id, "ALM-001", 50)
     trs.authorize(t, U("jefe.logistica"), True)
     trs.ship(t, U("coord.almacen"))
     trs.receive(t, U("coord.almacen"), 45, "faltan 5")

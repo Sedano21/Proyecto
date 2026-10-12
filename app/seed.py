@@ -151,7 +151,9 @@ def seed_demo(upload_dir=None, today=None):
     # Cada carga la autoriza el rol responsable (Sistemas administra pero no aprueba, decisión Q4)
     for tipo, key, opts, quien in (("PRODUCTOS", "productos", {}, "sistemas"), ("STOCK", "stock", {}, "coord.almacen"),
                                    ("BOM", "bom", {"incluye_merma": "NO"}, "jefe.produccion"),
-                                   ("SALIDAS", "salidas", {}, "coord.almacen")):
+                                   ("SALIDAS", "salidas", {}, "coord.almacen"),
+                                   ("PRECIOS", "precios", {}, "jefe.ventas"),
+                                   ("PRECIOS_GRANEL", "precios_granel", {}, "jefe.ventas")):
         b = uploads.create_batch(users[quien], tipo, files[key], os.path.basename(files[key]))
         uploads.confirm(b, users[quien], opts)
     # completar catálogo de insumos y parámetros por producto

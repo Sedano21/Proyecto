@@ -55,6 +55,8 @@ def authorize(t, user, aprobar, observacion=""):
         raise BusinessError("El traslado lo aprueba el Jefe o el Coordinador de Logística (IF §6.2, §13; Q13).")
     if t.estado != "SOLICITADO":
         raise BusinessError("El traslado no está pendiente de autorización.")
+    if t.solicitado_por is not None and t.solicitado_por == user.id:
+        raise BusinessError("No puede aprobar su propia solicitud de traslado: la aprueba el Jefe de Logística (decisión 13-oct).")
     if aprobar:
         disp = transferable_qty(t.lot) + t.cantidad  # excluye su propia cantidad pendiente
         if t.cantidad > disp + 1e-9:
