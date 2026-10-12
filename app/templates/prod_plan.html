@@ -1,0 +1,17 @@
+{% extends "base.html" %}{% from "_m.html" import csrf %}
+{% block content %}<h1>Planeamiento de producción</h1>
+<p class="muted small">Producción ingresa lo que producirá en el día, la semana o el mes; el sistema lo contrasta con lo liquidado y calcula la tasa de cumplimiento (Σ mín(real, plan) / Σ plan).</p>
+<p class="tabs">{% for p, t in [('DIA','Diario'),('SEMANA','Semanal'),('MES','Mensual')] %}<a class="btn {{ '' if d.periodo == p else 'sec' }}" href="{{ url_for('prod.plan', periodo=p) }}">{{ t }}</a> {% endfor %}</p>
+{% if can('produccion.programar') or can('produccion.liquidar') %}<form method="post" class="card">{{ csrf() }}<h3>Registrar plan</h3><div class="row">
+<div><label>Periodo</label><select name="periodo">{% for p, t in [('DIA','Día'),('SEMANA','Semana'),('MES','Mes')] %}<option value="{{ p }}" {{ 'selected' if d.periodo == p }}>{{ t }}</option>{% endfor %}</select></div>
+<div><label>Fecha (día; la semana o el mes se toman de esta fecha)</label><input type="date" name="fecha" value="{{ hoy.isoformat() }}" required></div>
+<div class="grow"><label>Producto (código, nombre y presentación)</label><input name="product_code" list="pp" required autocomplete="off"><datalist id="pp">{% for p in products %}<option value="{{ p.code }} · {{ p.descripcion }}{{ ' · ' ~ p.presentacion if p.presentacion }}"></option>{% endfor %}</datalist></div>
+<div><label>Cantidad (UM del artículo)</label><input type="number" step="any" min="0" name="cantidad" required></div>
+<div><label>Línea</label><select name="line_code"><option value="">(—)</option>{% for c, n, _ in lineas %}<option value="{{ c }}">{{ n }}</option>{% endfor %}</select></div>
+<div class="grow"><label>Comentario</label><input name="comentario"></div><div><button>Agregar</button></div></div></form>{% endif %}
+<form class="row card" method="get"><input type="hidden" name="periodo" value="{{ d.periodo }}"><div><label>Desde</label><input type="date" name="desde" value="{{ d.desde.isoformat() }}"></div><div><label>Hasta</label><input type="date" name="hasta" value="{{ d.hasta.isoformat() }}"></div><div><button class="sec">Ver</button></div></form>
+<div class="kpis"><div class="kpi"><b>{{ d.tasa if d.tasa is not none else '-' }} %</b><span>Cumplimiento del plan</span></div><div class="kpi"><b>{{ d.filas|selectattr('sin_plan')|list|length }}</b><span>Producción sin plan</span></div></div>
+<div class="card"><h3>Plan vs real por periodo</h3>{{ graf }}</div>
+<div class="card"><div class="tw"><table class="small"><tr><th>Periodo</th><th>Producto</th><th class="r">Plan</th><th class="r">Real (liquidado)</th><th class="r">Cumplimiento</th></tr>
+{% for f in d.filas %}<tr><td>{{ f.inicio|d }}{{ ' – ' ~ f.fin.strftime('%d/%m/%Y') if f.fin != f.inicio }}</td><td>{{ f.producto }}</td><td class="r">{{ f.plan|n if f.plan else '—' }}</td><td class="r">{{ f.real|n }}</td><td class="r">{% if f.cumplimiento is not none %}{{ f.cumplimiento }} %{% else %}<span class="muted">sin plan</span>{% endif %}</td></tr>{% else %}<tr><td colspan="5" class="muted">Sin plan ni producción en el periodo</td></tr>{% endfor %}</table></div></div>
+{% endblock %}

@@ -64,10 +64,12 @@ def ov_document(order):
         if (l.tax_code or "").upper() == "IGV":
             igv += round(imp * tasa, 2)
         p = l.product
+        cant, vuni = l.cantidad, l.precio_unitario or 0
+        if (l.um_venta or "").upper() == "SACO" and l.cantidad_venta:
+            cant, vuni = l.cantidad_venta, vuni * l.cantidad / l.cantidad_venta  # precio por saco
         lineas.append({"codigo": l.product_code, "descripcion": p.descripcion if p else l.product_code,
-                       "um": l.um_venta or ("NIU" if not p or p.um != "KILOGRAMO" else "KGM"), "cantidad": l.cantidad,
-                       "v_uni": l.precio_unitario or 0, "tax_code": l.tax_code or "-", "descuento": l.descuento or 0,
-                       "importe": imp})
+                       "um": l.um_venta or ("NIU" if not p or p.um != "KILOGRAMO" else "KGM"), "cantidad": cant,
+                       "v_uni": vuni, "tax_code": l.tax_code or "-", "descuento": l.descuento or 0, "importe": imp})
     total = round(importe + igv, 2)
     moneda = order.moneda or "SOLES"
     return {"lineas": lineas, "importe": round(importe, 2), "igv": round(igv, 2), "total": total, "moneda": moneda,

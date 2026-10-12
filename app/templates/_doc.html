@@ -4,3 +4,7 @@
 <div class="marcas"><img src="{{ url_for('static', filename='img/logo_cosecha_andina.png') }}" alt="Cosecha Andina"><img src="{{ url_for('static', filename='img/logo_cantaclaro.png') }}" alt="Cantaclaro"></div></div>{% endmacro %}
 {% macro marca_agua() %}<img class="doc-wm" src="{{ url_for('static', filename='img/marca_agua_cosecha_andina.png') }}" alt="">{% endmacro %}
 {% macro pie() %}<div class="doc-foot">{% for l in doc_param('documentos_pie', []) %}{{ l }}<br>{% endfor %}</div>{% endmacro %}
+{# Cuadro de encabezado de los formatos de Calidad (REGISTRO · Código · Versión · Fecha · Página) #}
+{% macro encabezado_registro(titulo, enc, ref) %}<table class="regh"><tr><td rowspan="3" style="width:28%;text-align:center"><img src="{{ url_for('static', filename='img/logo_corporacion_productiva.png') }}" alt="Corporación Productiva" style="height:14mm"></td>
+<td rowspan="3" style="text-align:center"><b>REGISTRO</b><br><b>{{ titulo|upper }}</b></td><td style="width:26%">Código: <b>{{ enc[0] if enc else ref }}</b></td></tr>
+<tr><td>Versión: {{ enc[1] if enc else '—' }} · Fecha: {{ enc[2] if enc else '—' }}</td></tr><tr><td>Página: 1 de 1</td></tr></table>{% endmacro %}

@@ -1,5 +1,5 @@
 {% extends "base.html" %}{% from "_m.html" import b, csrf %}
-{% block content %}<h1>Reempaque</h1>
+{% block content %}<h1>Reempaque</h1> <p><a class="btn sec" href="{{ url_for('rep.show', nombre='reempaque') }}">Ver informe de reempaque (gráficos y tasas)</a></p>
 <p class="muted small">Almacén inicia → Calidad evalúa y aprueba/desaprueba → se notifica a Almacén y se envía a Producción → Producción ejecuta y registra (IF §9). Criterios de conversión de calidad, SKU, lote y disposición pendientes de validación por Calidad.</p>
 {% if can('reempaque.solicitar') %}<form method="post" class="card">{{ csrf() }}<h3>Nueva solicitud</h3><div class="row">
 <div><label>Tipo</label><select name="tipo">{% for c, n, d in tipos %}<option value="{{ c }}" title="{{ d }}">{{ n }}</option>{% endfor %}</select></div>

@@ -23,12 +23,14 @@ def _lines_from_form():
     codes = request.form.getlist("product_code")
     qtys = request.form.getlist("cantidad")
     prices = request.form.getlist("precio_unitario")
+    ums = request.form.getlist("um_venta")
     for i, code in enumerate(codes):
-        code = (code or "").strip().upper()
+        code = (code or "").strip().upper().split(" ")[0]  # el combo muestra "CÓDIGO · descripción"
         if not code:
             continue
         lines.append({"product_code": code, "cantidad": qtys[i] if i < len(qtys) else "",
-                      "precio_unitario": prices[i] if i < len(prices) and prices[i] else 0})
+                      "precio_unitario": prices[i] if i < len(prices) and prices[i] else 0,
+                      "um_venta": ums[i] if i < len(ums) else ""})
     return lines
 
 
@@ -61,10 +63,21 @@ def order_new():
         holder = {}
 
         def _do():
-            o = osvc.create_order(g.user, request.form.get("numero"), request.form.get("customer_id"),
+            fm = request.form
+            c = db().get(Customer, int(fm.get("customer_id") or 0))
+            if c is None:
+                raise BusinessError("Cliente no válido.")
+            sid = fm.get("site_id", "")
+            entrega = osvc.resolve_delivery(c, sid if sid not in ("", "OTRO", "FISCAL") else None, fm.get("lugar_otro", ""),
+                                            fm.get("direccion", ""), fm.get("distrito", ""), fm.get("provincia", ""),
+                                            guardar=f_bool("guardar_lugar"), user=g.user)
+            if sid == "FISCAL":
+                entrega["lugar_entrega"] = "Dirección fiscal"
+            o = osvc.create_order(g.user, fm.get("numero"), fm.get("customer_id"),
                                   f_date("fecha_compromiso", True), _lines_from_form(), urgente=f_bool("urgente"),
-                                  comentarios=request.form.get("comentarios", ""), hora_cita=request.form.get("hora_cita", ""),
-                                  cita_confirmada=f_bool("cita_confirmada"), vendedor_id=request.form.get("vendedor_id") or None)
+                                  comentarios=fm.get("comentarios", ""), hora_cita=fm.get("hora_cita", ""),
+                                  cita_confirmada=f_bool("cita_confirmada"), vendedor_id=fm.get("vendedor_id") or None,
+                                  entrega=entrega)
             holder["o"] = o
             return o
         resp = act(_do, lambda o: f"OV {o.numero} registrada y evaluada: cobertura {o.cobertura_unidades}% unidades / "
@@ -72,7 +85,14 @@ def order_new():
         if "o" in holder and holder["o"].id:
             return redirect(url_for("com.order_detail", oid=holder["o"].id))
         return resp
-    return render_template("ov_new.html", customers=customers, vendedores=vendedores, products=products)
+    sitios = {c.id: {"fiscal": {"direccion": c.direccion, "distrito": c.distrito, "provincia": c.provincia},
+                     "horario": c.horario_recepcion, "cita": c.requiere_cita,
+                     "sitios": [{"id": x.id, "nombre": x.nombre, "direccion": x.direccion, "distrito": x.distrito,
+                                 "provincia": x.provincia, "horario": x.horario_recepcion} for x in c.sites if x.activo]}
+              for c in customers}
+    granel = {p.code for p in products if osvc.kg_por_saco(p.code)}
+    return render_template("ov_new.html", customers=customers, vendedores=vendedores, products=products, sitios=sitios,
+                           horas=osvc.horas_cita(), granel=granel)
 
 
 @bp.route("/<int:oid>")
@@ -104,7 +124,8 @@ def order_detail(oid):
                            products=products, line_reserved=line_reserved, monto=osvc.order_amount(o), peso=peso,
                            sin_peso=sin_peso, can_auth=osvc.can_authorize_change(g.user, o), prep=osvc.prep_progress(o),
                            saldos=saldos, aprobadores=osvc.partial_approvers(), pendientes_parcial=osvc.partial_pending_roles(o),
-                           parcial_modo=str(param("parcial_modo", "CUALQUIERA")).upper(), presol=presol)
+                           parcial_modo=str(param("parcial_modo", "CUALQUIERA")).upper(), presol=presol,
+                           horas=osvc.horas_cita())
 
 
 @bp.route("/<int:oid>/imprimir")
@@ -277,3 +298,43 @@ def costs():
                            if r["brecha_pct"] is not None], "%", title="Margen del mercado sobre el costo")
     return render_template("costs.html", analisis=analisis, costos=costos, mercado=mercado, tipo=tipo, productos=productos,
                            sel=sel, graf=graf, brechas=brechas, serie=serie)
+
+
+# ------------------------------ ficha de cliente (13-oct) ------------------
+@bp.route("/clientes", methods=["GET", "POST"])
+@perm_required("ov.ver", "config.ver")
+def customer_list():
+    from ..services import customers as csv_
+    if request.method == "POST":
+        return act(lambda: csv_.save_customer(g.user, None, request.form), lambda c: f"Cliente {c.nombre} creado.",
+                   url_for("com.customer_list"), redirect_fn=lambda c: url_for("com.customer_card", cid=c.id))
+    q = request.args.get("q", "").strip().upper()
+    rows = list(db().execute(select(Customer).order_by(Customer.nombre)).scalars())
+    if q:
+        rows = [c for c in rows if q in c.nombre.upper() or q in c.ruc or q in (c.grupo or "").upper()]
+    from ..services import prices as psvc
+    return render_template("customer_list.html", rows=rows, q=q, canal_de=psvc.channel_of)
+
+
+@bp.route("/clientes/<int:cid>", methods=["GET", "POST"])
+@perm_required("ov.ver", "config.ver")
+def customer_card(cid):
+    from ..models import CustomerSite
+    from ..services import customers as csv_
+    from ..services import prices as psvc
+    from ..services.core import param
+    from ..services.customer_conditions import for_customer
+    c = db().get(Customer, cid) or abort(404)
+    if request.method == "POST":
+        acc = request.form.get("accion")
+        if acc == "lugar":
+            sid = request.form.get("site_id")
+            site = db().get(CustomerSite, int(sid)) if sid else None
+            if site is not None and site.customer_id != c.id:
+                abort(404)
+            return act(lambda: csv_.save_site(g.user, c, request.form, site), "Lugar de entrega guardado.",
+                       url_for("com.customer_card", cid=cid))
+        return act(lambda: csv_.save_customer(g.user, c, request.form), "Ficha guardada.", url_for("com.customer_card", cid=cid))
+    canales = sorted(set(psvc.canales()) | set(param("lista_granel_canales", []) or []))
+    return render_template("customer_card.html", c=c, p=csv_.profile(c), cond=for_customer(c), canal=psvc.channel_of(c),
+                           canales=canales, editable=("ov.crear" in g.perms or "config.editar" in g.perms))

@@ -1,6 +1,6 @@
 """Producción: lista de materiales, cálculo proporcional con merma, solicitud preliminar, validación,
 programación, inicio/fin, liquidación y recepción de PT (IF §8)."""
-from datetime import date
+from datetime import date, timedelta
 
 from sqlalchemy import func, select
 
@@ -17,6 +17,29 @@ def active_bom():
 
 def _is_material(code):
     return not any(code.startswith(p) for p in (param("prefijos_no_material_bom", ["RE-"]) or []))
+
+
+def is_desmedro(code, desc=""):
+    """Componente de desmedro (= merma) en la lista de materiales: artículos ME-… 'X - DESMEDRO' (13-oct)."""
+    return any(code.startswith(p) for p in (param("prefijos_desmedro_bom", ["ME-"]) or [])) or "DESMEDRO" in (desc or "").upper()
+
+
+def bom_merma_projection(product_code, version=None):
+    """Merma proyectada según el desmedro de la lista de materiales: kg de desmedro por kg del producto padre.
+    Valores ≤ 0.001 por unidad se tratan como simbólicos (SAP exige cantidad > 0) y se informan como tales."""
+    v = version or active_bom()
+    if v is None:
+        return None
+    lines = [bl for bl in db().execute(select(BOMLine).where(BOMLine.version_id == v.id, BOMLine.padre == product_code)).scalars()
+             if is_desmedro(bl.componente, bl.componente_desc)]
+    if not lines:
+        return None
+    p = db().get(Product, product_code)
+    kg_padre = (p.peso_kg if p and p.peso_kg else (1.0 if p and (p.um or "").upper().startswith("K") else None))
+    por_unidad = sum(bl.cantidad / (bl.cantidad_bom or 1) for bl in lines)
+    simbolico = por_unidad <= 0.001 + 1e-12
+    pct = round(100 * por_unidad / kg_padre, 3) if kg_padre and not simbolico else None
+    return {"componentes": [bl.componente for bl in lines], "kg_por_unidad": por_unidad, "pct": pct, "simbolico": simbolico}
 
 
 def _merma_pct(parent_code, comp_code):
@@ -77,6 +100,11 @@ def material_requirements(product_code, cantidad, version=None):
             res["avisos"].append(f"{bl.componente}: cantidad fija {base:g} por orden (excepción configurada).")
         if not _is_material(bl.componente):
             res["recursos"].append({"componente": bl.componente, "descripcion": bl.componente_desc, "requerido": base})
+            continue
+        if is_desmedro(bl.componente, bl.componente_desc):
+            # el desmedro es la merma proyectada (salida), no un material a consumir
+            res.setdefault("desmedro", []).append({"componente": bl.componente, "descripcion": bl.componente_desc,
+                                                   "proyectado": base})
             continue
         merma, nivel = _merma_pct(product_code, bl.componente) if aplicar_merma else (0.0, "no aplica")
         requerido = base * (1 + (merma or 0) / 100.0)
@@ -266,6 +294,15 @@ def merma_real_pct(liq):
         perdida = sum(_perdida_kg(r) for r in partes)
         return round(100.0 * perdida / entrada, 3) if entrada else None
     p = liq.product
+    if not is_desmedro(liq.product_code):
+        # desmedro liquidado en el mismo documento (artículo ME-…)
+        mes = [x for x in db().execute(select(Liquidation).where(Liquidation.numero_documento == liq.numero_documento)).scalars()
+               if is_desmedro(x.product_code) and x.id != liq.id]
+        if mes and p:
+            prod_kg = liq.cantidad_completada * (p.peso_kg or (1 if (p.um or "").upper().startswith("K") else 0))
+            merma_kg = sum(x.cantidad_completada for x in mes)
+            total = prod_kg + merma_kg
+            return round(100.0 * merma_kg / total, 3) if total else None
     if liq.merma_mp_kg is None or not p or not p.peso_kg:
         return None
     producido_kg = liq.cantidad_completada * p.peso_kg
@@ -334,13 +371,31 @@ def receive_pt(liq, user, cantidad_recibida, presentacion_ok=True, observacion="
           {"recibido": cantidad_recibida, "diferencia": dif, "estado": liq.estado})
 
 
-def merma_comparison():
-    """Merma prevista (BOM/configuración) vs real (liquidaciones), cuando hay datos (IF §17)."""
+def merma_comparison(desde=None, hasta=None):
+    """Merma proyectada (desmedro de la lista de materiales; si es simbólico, la merma configurada) vs merma ejecutada
+    (partes de producción o desmedro liquidado), por liquidación (IF §17; observaciones del 13-oct)."""
     out = []
-    for liq in db().execute(select(Liquidation).order_by(Liquidation.fecha.desc())).scalars():
+    q = select(Liquidation).order_by(Liquidation.fecha.desc())
+    if desde:
+        q = q.where(Liquidation.fecha >= desde)
+    if hasta:
+        q = q.where(Liquidation.fecha <= hasta)
+    tol = float(param("tolerancia_merma_pp", 1) or 1)
+    for liq in db().execute(q).scalars():
+        if is_desmedro(liq.product_code):
+            continue
         real = merma_real_pct(liq)
-        prevista, nivel = _merma_pct(liq.product_code, liq.product_code)
-        out.append({"liq": liq, "real": real, "prevista": prevista if nivel != "sin definir" else None})
+        bom = bom_merma_projection(liq.product_code)
+        if bom and bom["pct"] is not None:
+            prevista, fuente = bom["pct"], "Lista de materiales (desmedro " + ", ".join(bom["componentes"]) + ")"
+        else:
+            prevista, nivel = _merma_pct(liq.product_code, liq.product_code)
+            prevista = prevista if nivel != "sin definir" else None
+            fuente = (f"Configuración ({nivel})" if prevista is not None else "Sin merma proyectada") + (
+                " – el desmedro de la lista es simbólico" if bom and bom["simbolico"] else "")
+        desv = round(real - prevista, 2) if real is not None and prevista is not None else None
+        out.append({"liq": liq, "real": real, "prevista": prevista, "fuente": fuente, "desviacion": desv,
+                    "fuera": desv is not None and abs(desv) > tol})
     return out
 
 
@@ -381,6 +436,16 @@ def register_report(user, linea, fecha, product_code, peso_entrada_kg, granel_kg
     if not peso_entrada_kg or peso_entrada_kg <= 0:
         raise BusinessError("Indique el peso de entrada (kg de materia prima).")
     tipo = "ENVASADO" if linea in LINEAS_ENVASADO else "SELECCION"
+    if estado == "PROGRAMADO":
+        # parte programado: lo que se producirá (kg de entrada previstos); los resultados se completan después
+        r = ProductionReport(linea=linea, tipo=tipo, fecha=fecha or date.today(), op=op, of=(of or "").strip(), turno=turno,
+                             cliente=cliente, product_code=product_code, mp_codigo=mp_codigo, lote=lote,
+                             peso_entrada_kg=peso_entrada_kg, presentacion_kg=presentacion_kg, estado="PROGRAMADO",
+                             observacion=observacion, user_id=user.id)
+        db().add(r)
+        db().flush()
+        audit(user, "PARTE_PROGRAMADO", "ProductionReport", r.id, {"linea": linea, "fecha": r.fecha.isoformat()})
+        return r
     r = ProductionReport(linea=linea, tipo=tipo, fecha=fecha or date.today(), op=op, of=(of or "").strip(), turno=turno,
                          hora_inicio=hora_inicio, hora_fin=hora_fin, horas=horas, operarios=operarios, cliente=cliente,
                          product_code=product_code, mp_codigo=mp_codigo, lote=lote, peso_entrada_kg=peso_entrada_kg,
@@ -412,3 +477,119 @@ def register_report(user, linea, fecha, product_code, peso_entrada_kg, granel_kg
     audit(user, "PARTE_PRODUCCION", "ProductionReport", r.id, {"linea": linea, "of": r.of, "desmedro_pct": r.desmedro_pct,
                                                                "rendimiento_pct": r.rendimiento_pct})
     return r
+
+
+# ----------------------------- planeamiento (13-oct) -------------------------
+def _inicio(periodo, f):
+    if periodo == "SEMANA":
+        return f - timedelta(days=f.weekday())
+    if periodo == "MES":
+        return f.replace(day=1)
+    return f
+
+
+def _fin(periodo, f):
+    if periodo == "SEMANA":
+        return f + timedelta(days=6)
+    if periodo == "MES":
+        nxt = (f.replace(day=28) + timedelta(days=4)).replace(day=1)
+        return nxt - timedelta(days=1)
+    return f
+
+
+def add_plan(user, periodo, fecha, product_code, cantidad, line_code=None, comentario=""):
+    """Producción ingresa lo que producirá (día, semana o mes) para contrastarlo con la liquidación."""
+    from ..models import ProductionPlan
+    from .core import has_perm
+    if not (has_perm(user, "produccion.programar") or has_perm(user, "produccion.liquidar")):
+        raise BusinessError("El planeamiento lo registra Producción.")
+    periodo = (periodo or "DIA").upper()
+    if periodo not in ("DIA", "SEMANA", "MES"):
+        raise BusinessError("Periodo inválido (DIA, SEMANA o MES).")
+    if fecha is None:
+        raise BusinessError("Indique la fecha.")
+    if db().get(Product, product_code) is None:
+        raise BusinessError(f"Producto {product_code} no existe.")
+    if not cantidad or cantidad <= 0:
+        raise BusinessError("La cantidad planificada debe ser mayor que cero.")
+    pl = ProductionPlan(periodo=periodo, fecha=_inicio(periodo, fecha), product_code=product_code, cantidad=cantidad,
+                        line_code=line_code or None, comentario=comentario, user_id=user.id)
+    db().add(pl)
+    db().flush()
+    audit(user, "PLAN_PRODUCCION", "ProductionPlan", pl.id, {"periodo": periodo, "fecha": pl.fecha.isoformat(),
+                                                             "producto": product_code, "cantidad": cantidad})
+    return pl
+
+
+def plan_vs_real(periodo="DIA", desde=None, hasta=None):
+    """Cumplimiento del plan: por periodo y producto, plan vs cantidad liquidada. Tasa = Σ min(real, plan) / Σ plan."""
+    from ..models import ProductionPlan
+    hasta = hasta or date.today()
+    desde = desde or hasta - timedelta(days=30)
+    s = db()
+    plans = list(s.execute(select(ProductionPlan).where(ProductionPlan.periodo == periodo, ProductionPlan.fecha >= _inicio(periodo, desde),
+                                                        ProductionPlan.fecha <= hasta)).scalars())
+    liqs = list(s.execute(select(Liquidation).where(Liquidation.fecha >= _inicio(periodo, desde),
+                                                    Liquidation.fecha <= _fin(periodo, hasta))).scalars())
+    real = {}
+    for l in liqs:
+        k = (_inicio(periodo, l.fecha), l.product_code)
+        real[k] = real.get(k, 0) + (l.cantidad_completada or 0)
+    plan = {}
+    for p in plans:
+        k = (p.fecha, p.product_code)
+        plan[k] = plan.get(k, 0) + p.cantidad
+    filas = []
+    for k in sorted(set(plan) | {k for k in real if k[0] >= _inicio(periodo, desde)}):
+        pl, re_ = plan.get(k), real.get(k, 0)
+        filas.append({"inicio": k[0], "fin": _fin(periodo, k[0]), "producto": k[1], "plan": pl, "real": re_,
+                      "cumplimiento": round(100 * min(re_, pl) / pl, 1) if pl else None, "sin_plan": pl is None})
+    con_plan = [f for f in filas if f["plan"]]
+    tasa = round(100 * sum(min(f["real"], f["plan"]) for f in con_plan) / sum(f["plan"] for f in con_plan), 1) if con_plan else None
+    por_periodo = {}
+    for f in filas:
+        d = por_periodo.setdefault(f["inicio"], {"plan": 0, "real": 0})
+        d["plan"] += f["plan"] or 0
+        d["real"] += f["real"]
+    return {"periodo": periodo, "desde": desde, "hasta": hasta, "filas": filas, "tasa": tasa,
+            "serie": sorted(por_periodo.items()), "planes": plans}
+
+
+# ----------------------------- revisión de la lista de materiales -------------
+def review_bom(req, user, conforme, comentario=""):
+    """Producción visualiza la lista de materiales asignada a la solicitud y confirma que es la correcta (o la observa)."""
+    from .core import has_perm
+    if not (has_perm(user, "produccion.validar") or has_perm(user, "produccion.programar") or has_perm(user, "produccion.liquidar")):
+        raise BusinessError("La lista de materiales la revisa Producción.")
+    if not conforme and not (comentario or "").strip():
+        raise BusinessError("Indique qué está mal en la lista de materiales.")
+    v = active_bom()
+    req.bom_revision = {"conforme": bool(conforme), "comentario": (comentario or "").strip(), "user": user.nombre,
+                        "ts": now().isoformat(), "version": v.version if v else None}
+    if not conforme:
+        alerts.emit("BOM_OBSERVADA", f"Lista de materiales observada: {req.product_code}",
+                    f"Solicitud #{req.id}: {comentario}", "ProductionRequest", req.id, creado_por=user)
+    audit(user, "BOM_REVISADA", "ProductionRequest", req.id, req.bom_revision)
+    return req
+
+
+def complete_report(r, user, **valores):
+    """Completa un parte PROGRAMADO con los resultados reales (mismas fórmulas que register_report)."""
+    if r.estado != "PROGRAMADO":
+        raise BusinessError("Solo se completa un parte programado.")
+    datos = {k: getattr(r, k) for k in ("linea", "fecha", "product_code", "peso_entrada_kg", "of", "op", "turno", "cliente",
+                                        "mp_codigo", "lote", "observacion")}
+    datos.update({k: v for k, v in valores.items() if v not in (None, "")})
+    estado = valores.get("estado") or "EN PROCESO"
+    if estado == "PROGRAMADO":
+        estado = "EN PROCESO"
+    nuevo = register_report(user, datos["linea"], datos["fecha"], datos["product_code"], datos["peso_entrada_kg"],
+                            valores.get("granel_kg") or 0, valores.get("mp_kg") or 0, valores.get("cal3_kg") or 0,
+                            valores.get("desmedro_kg") or 0, valores.get("presentacion_kg"), valores.get("unidades"),
+                            valores.get("sobrante_kg") or 0, datos["of"], datos["op"], datos["turno"],
+                            valores.get("hora_inicio", ""), valores.get("hora_fin", ""), valores.get("horas"),
+                            valores.get("operarios"), datos["cliente"], datos["mp_codigo"], datos["lote"], estado,
+                            datos["observacion"])
+    db().delete(r)
+    audit(user, "PARTE_PROGRAMADO_COMPLETADO", "ProductionReport", nuevo.id, {"programado": r.id})
+    return nuevo

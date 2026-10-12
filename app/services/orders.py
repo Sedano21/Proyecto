@@ -1,5 +1,6 @@
 """Órdenes de venta: registro, modificación (con autorización), cancelación, decisiones ante faltante y
 preparación por prioridad y cortes (IF §4, §5, §6.3, §14)."""
+import re
 from datetime import date, datetime
 
 from sqlalchemy import select
@@ -18,6 +19,80 @@ def _validate_header(customer_id, fecha_compromiso):
         raise BusinessError("Cliente no válido.")
     if not isinstance(fecha_compromiso, date):
         raise BusinessError("La fecha comprometida de despacho es obligatoria.")
+
+
+HORA_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d(-([01]\d|2[0-3]):[0-5]\d)?$")
+
+
+def horas_cita(desde=6, hasta=20, paso=30):
+    """Opciones de hora de cita en formato 24 h (lista desplegable: evita mezclar 12 h y 24 h)."""
+    out = []
+    for m in range(desde * 60, hasta * 60 + 1, paso):
+        out.append(f"{m // 60:02d}:{m % 60:02d}")
+    return out
+
+
+def normalize_hour(h):
+    h = (h or "").strip()
+    if not h:
+        return ""
+    if not HORA_RE.match(h):
+        raise BusinessError(f"Hora de cita '{h}' inválida: use el formato de 24 horas HH:MM (p. ej. 14:30).")
+    return h
+
+
+def kg_por_saco(product_code):
+    from ..models import PriceItem
+    it = db().execute(select(PriceItem).where(PriceItem.lista == "GRANEL", PriceItem.vigente.is_(True),
+                                              PriceItem.product_code == product_code)).scalars().first()
+    return it.kg_saco if it and it.kg_saco else None
+
+
+def convert_sale_units(ln):
+    """Venta por saco: cantidad y precio se guardan por kg (UM del stock y de la lista granel); se conservan la cantidad
+    en sacos y la unidad de venta para la OV impresa."""
+    um = (ln.get("um_venta") or "").upper()
+    if um != "SACO":
+        return ln
+    code = (ln.get("product_code") or "").strip().upper()
+    kg = kg_por_saco(code)
+    if not kg:
+        raise BusinessError(f"{code}: no hay kg por saco en la lista mayorista granel para vender por saco.")
+    try:
+        sacos = float(ln.get("cantidad"))
+    except (TypeError, ValueError):
+        raise BusinessError(f"Cantidad inválida para {code}.")
+    precio = float(ln.get("precio_unitario") or 0)
+    return dict(ln, cantidad=sacos * kg, cantidad_venta=sacos, precio_unitario=precio / kg if precio else 0)
+
+
+def resolve_delivery(customer, site_id=None, lugar="", direccion="", distrito="", provincia="", guardar=False, user=None,
+                     exigir=True):
+    """Lugar de entrega de la OV: un lugar registrado del cliente u 'otro' con su dirección. Dirección, distrito y
+    provincia son obligatorios para calcular la ruta (observaciones al demo v0.5)."""
+    from ..models import CustomerSite
+    site = db().get(CustomerSite, int(site_id)) if site_id and str(site_id).isdigit() else None
+    if site is not None and site.customer_id != customer.id:
+        raise BusinessError("El lugar de entrega no pertenece al cliente.")
+    if site is not None:
+        datos = {"site_id": site.id, "lugar_entrega": site.nombre, "direccion": site.direccion, "distrito": site.distrito,
+                 "provincia": site.provincia}
+    else:
+        datos = {"site_id": None, "lugar_entrega": (lugar or "").strip(),
+                 "direccion": (direccion or customer.direccion or "").strip(),
+                 "distrito": (distrito or customer.distrito or "").strip(),
+                 "provincia": (provincia or customer.provincia or "").strip()}
+    falta = [k for k in ("direccion", "distrito", "provincia") if not datos[k]]
+    if falta and exigir:
+        raise BusinessError("Complete " + ", ".join(falta) + " del lugar de entrega (necesarios para calcular la ruta).")
+    if site is None and guardar and datos["lugar_entrega"]:
+        site = CustomerSite(customer_id=customer.id, nombre=datos["lugar_entrega"], direccion=datos["direccion"],
+                            distrito=datos["distrito"], provincia=datos["provincia"])
+        db().add(site)
+        db().flush()
+        datos["site_id"] = site.id
+        audit(user, "CLIENTE_LUGAR_AGREGADO", "Customer", customer.ruc, {"lugar": site.nombre})
+    return datos
 
 
 def _validate_lines(lines):
@@ -52,7 +127,8 @@ def next_cutoff(ts=None):
 
 def create_order(user, numero, customer_id, fecha_compromiso, lines, urgente=False, comentarios="", hora_cita="",
                  cita_confirmada=False, vendedor_id=None, fecha_emision=None, origen="MODULO", evaluar=True,
-                 tipo_venta="", vendedor_nombre=""):
+                 tipo_venta="", vendedor_nombre="", entrega=None):
+    """entrega: dict de resolve_delivery (lugar, dirección, distrito, provincia). En el módulo es obligatorio."""
     if origen == "MODULO" and not has_perm(user, "ov.crear"):
         raise BusinessError("Su rol no puede registrar OV.")
     numero = (numero or "").strip()
@@ -61,12 +137,17 @@ def create_order(user, numero, customer_id, fecha_compromiso, lines, urgente=Fal
     if db().execute(select(SalesOrder).where(SalesOrder.numero == numero)).scalars().first():
         raise BusinessError(f"La OV {numero} ya existe.")
     _validate_header(customer_id, fecha_compromiso)
+    lines = [convert_sale_units(ln) for ln in lines]
     _validate_lines(lines)
     c = db().get(Customer, int(customer_id))
+    if origen == "MODULO":
+        hora_cita = normalize_hour(hora_cita)
+    entrega = entrega or resolve_delivery(c, exigir=False)
     vend = db().get(User, int(vendedor_id)) if vendedor_id else (user if user and user.role_code == "EJECUTIVO_VENTAS" else None)
     o = SalesOrder(numero=numero, customer_id=c.id, fecha_compromiso=fecha_compromiso, urgente=bool(urgente),
                    comentarios=comentarios, hora_cita=hora_cita or c.horario_recepcion, cita_confirmada=bool(cita_confirmada),
-                   direccion=c.direccion, distrito=c.distrito, provincia=c.provincia or "", vendedor_id=vend.id if vend else None,
+                   direccion=entrega["direccion"], distrito=entrega["distrito"], provincia=entrega["provincia"],
+                   lugar_entrega=entrega["lugar_entrega"], site_id=entrega["site_id"], vendedor_id=vend.id if vend else None,
                    vendedor_nombre=vend.nombre if vend else vendedor_nombre, fecha_emision=fecha_emision or date.today(),
                    tipo_venta=tipo_venta or "",
                    origen=origen, creado_por=user.id if user else None, corte=next_cutoff())
@@ -74,7 +155,7 @@ def create_order(user, numero, customer_id, fecha_compromiso, lines, urgente=Fal
         o.lines.append(SalesOrderLine(product_code=ln["product_code"].strip(), cantidad=float(ln["cantidad"]),
                                       precio_unitario=float(ln.get("precio_unitario") or 0),
                                       descuento=float(ln.get("descuento") or 0), tax_code=ln.get("tax_code") or "",
-                                      um_venta=ln.get("um_venta") or ""))
+                                      um_venta=ln.get("um_venta") or "", cantidad_venta=ln.get("cantidad_venta")))
     db().add(o)
     db().flush()
     from .prices import check_order_prices
@@ -99,10 +180,13 @@ def _apply_changes(order, user, changes):
     for k in ("urgente", "cita_confirmada"):
         if k in changes:
             setattr(order, k, bool(changes[k]))
+    if changes.get("hora_cita"):
+        changes["hora_cita"] = normalize_hour(changes["hora_cita"])
     for k in ("comentarios", "hora_cita"):
         if k in changes and changes[k] is not None:
             setattr(order, k, changes[k])
     if "lines" in changes and changes["lines"] is not None:
+        changes["lines"] = [convert_sale_units(ln) for ln in changes["lines"]]
         _validate_lines(changes["lines"])
         nuevas = {ln["product_code"].strip(): ln for ln in changes["lines"]}
         for line in order.lines:
@@ -138,7 +222,7 @@ def _apply_changes(order, user, changes):
 
 def snapshot(order):
     return {"fecha_compromiso": order.fecha_compromiso.isoformat() if order.fecha_compromiso else None,
-            "urgente": order.urgente, "lineas": [{"producto": l.product_code, "cantidad": l.cantidad}
+            "urgente": order.urgente, "lineas": [{"producto": l.product_code, "cantidad": l.cantidad, "precio": l.precio_unitario or 0}
                                                  for l in order.lines if l.activa]}
 
 

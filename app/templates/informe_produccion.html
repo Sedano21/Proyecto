@@ -1,0 +1,16 @@
+{% extends "base.html" %}{% from "_informe.html" import cabecera %}
+{% block content %}{{ cabecera('de producción', d, items, actual) }}
+<div class="kpis"><div class="kpi"><b>{{ d.kg|n }} kg</b><span>Producido (liquidado)</span><small>{{ d.unidades|n }} unidades · {{ d.liquidaciones }} liquidaciones</small></div>
+<div class="kpi"><b>{{ d.plan.tasa if d.plan.tasa is not none else '-' }} %</b><span>Cumplimiento del plan diario</span></div>
+<div class="kpi"><b>{{ d.merma|selectattr('fuera')|list|length }}</b><span>Mermas fuera de lo proyectado</span></div>
+<div class="kpi"><b>{{ d.programados|length }}</b><span>Partes programados pendientes</span></div></div>
+<div class="grid g2"><div class="card"><h3>Producción por día (kg)</h3>{{ charts.line([('kg producidos', d.serie_kg)], 'kg') }}
+<details class="tabla"><summary>Ver tabla</summary><table class="small">{% for k, v in d.serie_kg %}<tr><td>{{ k }}</td><td class="r">{{ v|n }}</td></tr>{% endfor %}</table></details></div>
+<div class="card"><h3>Plan vs real (diario)</h3>{% set ns = namespace(p=[], r=[]) %}{% for k, v in d.plan.serie %}{% set ns.p = ns.p + [(k.strftime('%d/%m'), v.plan)] %}{% set ns.r = ns.r + [(k.strftime('%d/%m'), v.real)] %}{% endfor %}
+{{ charts.line([('Plan', ns.p), ('Real (liquidado)', ns.r)], 'und') }}<p class="small"><a href="{{ url_for('prod.plan') }}">Ir al planeamiento</a></p></div></div>
+<div class="grid g2"><div class="card"><h3>Productos producidos (kg)</h3>{% set nb = namespace(x=[]) %}{% for k, u, kg in d.productos %}{% set nb.x = nb.x + [(k, kg)] %}{% endfor %}{{ charts.bars(nb.x, 'kg', color=2) }}</div>
+<div class="card"><h3>Rendimiento y desmedro por línea (partes)</h3><table class="small"><tr><th>Línea</th><th class="r">Partes</th><th class="r">Entrada kg</th><th class="r">Salida kg</th><th class="r">% Rend.</th><th class="r">% Desmedro</th><th class="r">kg/h</th></tr>
+{% for x in d.lineas %}<tr><td>{{ x.linea }}</td><td class="r">{{ x.partes }}</td><td class="r">{{ x.entrada|n }}</td><td class="r">{{ x.salida|n }}</td><td class="r">{{ x.rend }}</td><td class="r">{{ x.desm }}</td><td class="r">{{ x.kg_hora or '-' }}</td></tr>{% else %}<tr><td colspan="7" class="muted">Sin partes en el periodo</td></tr>{% endfor %}</table></div></div>
+<div class="card"><h3>Merma proyectada (lista de materiales) vs ejecutada (liquidación / partes)</h3><div class="tw"><table class="small"><tr><th>Liquidación</th><th>Fecha</th><th>Producto</th><th class="r">Proyectada %</th><th class="r">Ejecutada %</th><th class="r">Desviación (pp)</th><th>Fuente de la proyección</th></tr>
+{% for m in d.merma %}<tr><td>{{ m.liq.numero_documento }}</td><td>{{ m.liq.fecha|d }}</td><td>{{ m.liq.product_code }}</td><td class="r">{{ m.prevista if m.prevista is not none else '-' }}</td><td class="r">{{ m.real if m.real is not none else '-' }}</td><td class="r">{% if m.desviacion is not none %}{% if m.fuera %}<b style="color:var(--err)">{{ '%+.2f'|format(m.desviacion) }}</b>{% else %}{{ '%+.2f'|format(m.desviacion) }}{% endif %}{% else %}-{% endif %}</td><td>{{ m.fuente }}</td></tr>{% else %}<tr><td colspan="7" class="muted">Sin liquidaciones en el periodo</td></tr>{% endfor %}</table></div></div>
+{% endblock %}

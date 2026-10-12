@@ -1,6 +1,7 @@
 """Vistas de Almacén: stock y estados, cargas de archivos, conteos, traslados y reempaques."""
 import os
 import uuid
+from datetime import datetime
 
 from flask import Blueprint, abort, current_app, g, redirect, render_template, request, url_for
 from sqlalchemy import func, select
@@ -37,8 +38,10 @@ def stock():
     codes = sorted({l.product_code for l in lots})
     resumen = {c: product_stock_summary(c) for c in codes[:300]}
     whs = list(db().execute(select(Warehouse).order_by(Warehouse.prioridad, Warehouse.code)).scalars())
+    productos = list(db().execute(select(Product).where(Product.code.in_(select(StockLot.product_code).where(StockLot.cantidad > 0)))
+                                  .order_by(Product.code)).scalars())
     return render_template("stock.html", lots=lots, resumen=resumen, q=q, wh=wh, est=est, whs=whs, estados=ESTADOS_FISICOS,
-                           labels=ESTADOS_LABEL, reserved=reserved_qty, free=free_qty, base=base_qty)
+                           labels=ESTADOS_LABEL, reserved=reserved_qty, free=free_qty, base=base_qty, productos=productos)
 
 
 @bp.route("/lote/<int:lid>/estado", methods=["POST"])
@@ -55,16 +58,24 @@ def lot_state(lid):
 
 # ------------------------------- cargas ------------------------------------
 @bp.route("/cargas")
-@perm_required("stock.cargar", "produccion.bom_cargar", "ov.importar", "produccion.liquidar", "config.editar", "precios.editar")
+@perm_required("stock.cargar", "produccion.bom_cargar", "ov.importar", "produccion.liquidar", "config.editar", "precios.editar", "costos.cargar", "clientes.canal")
 def uploads():
-    rows = list(db().execute(select(UploadBatch).order_by(UploadBatch.id.desc()).limit(200)).scalars())
-    return render_template("uploads.html", rows=rows, specs=usvc.SPECS)
+    """Cada área ve solo sus cargas (observaciones al demo v0.5): ?area=Almacén / Comercial / Producción / Configuración."""
+    area = request.args.get("area", "")
+    propios = usvc.specs_for(g.user, area or None)
+    tipos = set(propios) if area else set(usvc.specs_for(g.user))
+    rows = [r for r in db().execute(select(UploadBatch).order_by(UploadBatch.id.desc()).limit(400)).scalars() if r.tipo in tipos]
+    return render_template("uploads.html", rows=rows[:200], specs=usvc.SPECS, propios=propios, area=area,
+                           areas=[a for a in usvc.AREAS if usvc.specs_for(g.user, a)])
 
 
 @bp.route("/cargas/nueva", methods=["GET", "POST"])
-@perm_required("stock.cargar", "produccion.bom_cargar", "ov.importar", "produccion.liquidar", "config.editar", "precios.editar")
+@perm_required("stock.cargar", "produccion.bom_cargar", "ov.importar", "produccion.liquidar", "config.editar", "precios.editar", "costos.cargar", "clientes.canal")
 def upload_new():
-    tipo = request.values.get("tipo") or "STOCK"
+    disponibles = usvc.specs_for(g.user)
+    tipo = request.values.get("tipo") or next(iter(disponibles), "STOCK")
+    if tipo not in disponibles:
+        abort(403)
     if request.method == "POST":
         f = request.files.get("archivo")
         if not f or not f.filename:
@@ -84,11 +95,12 @@ def upload_new():
         if "b" in holder and holder["b"].id:
             return redirect(url_for("alm.upload_detail", bid=holder["b"].id))
         return resp
-    return render_template("upload_new.html", tipo=tipo, specs=usvc.SPECS)
+    area = usvc.SPECS[tipo].get("area")
+    return render_template("upload_new.html", tipo=tipo, specs=usvc.specs_for(g.user, area))
 
 
 @bp.route("/cargas/<int:bid>")
-@perm_required("stock.cargar", "produccion.bom_cargar", "ov.importar", "produccion.liquidar", "config.editar", "precios.editar")
+@perm_required("stock.cargar", "produccion.bom_cargar", "ov.importar", "produccion.liquidar", "config.editar", "precios.editar", "costos.cargar", "clientes.canal")
 def upload_detail(bid):
     b = db().get(UploadBatch, bid) or abort(404)
     filtro = request.args.get("filtro", "problemas")
@@ -99,7 +111,7 @@ def upload_detail(bid):
 
 
 @bp.route("/cargas/<int:bid>/fila/<int:rid>", methods=["POST"])
-@perm_required("stock.cargar", "produccion.bom_cargar", "ov.importar", "produccion.liquidar", "config.editar", "precios.editar")
+@perm_required("stock.cargar", "produccion.bom_cargar", "ov.importar", "produccion.liquidar", "config.editar", "precios.editar", "costos.cargar", "clientes.canal")
 def upload_row(bid, rid):
     b = db().get(UploadBatch, bid) or abort(404)
     r = db().get(UploadRow, rid) or abort(404)
@@ -117,7 +129,7 @@ def upload_row(bid, rid):
 
 
 @bp.route("/cargas/<int:bid>/<accion>", methods=["POST"])
-@perm_required("stock.cargar", "produccion.bom_cargar", "ov.importar", "produccion.liquidar", "config.editar", "precios.editar")
+@perm_required("stock.cargar", "produccion.bom_cargar", "ov.importar", "produccion.liquidar", "config.editar", "precios.editar", "costos.cargar", "clientes.canal")
 def upload_action(bid, accion):
     b = db().get(UploadBatch, bid) or abort(404)
     if accion == "confirmar":
@@ -178,8 +190,17 @@ def transfers():
 @perm_required("traslados.ver")
 def transfer_action(tid, accion):
     t = db().get(Transfer, tid) or abort(404)
+    def _llegada():
+        raw = (request.form.get("llegada") or "").strip()
+        if not raw:
+            return None
+        try:
+            return datetime.fromisoformat(raw)
+        except ValueError:
+            raise BusinessError(f"Fecha y hora inválidas: {raw}")
     fns = {
-        "autorizar": lambda: tsvc.authorize(t, g.user, True, request.form.get("observacion", "")),
+        "autorizar": lambda: tsvc.authorize(t, g.user, True, request.form.get("observacion", ""), _llegada()),
+        "llegada": lambda: tsvc.set_arrival(t, g.user, _llegada()),
         "rechazar": lambda: tsvc.authorize(t, g.user, False, request.form.get("observacion", "")),
         "salida": lambda: tsvc.ship(t, g.user),
         "recibir": lambda: tsvc.receive(t, g.user, f_float("cantidad_recibida", True), request.form.get("observacion", "")),

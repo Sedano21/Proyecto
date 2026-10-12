@@ -1,0 +1,16 @@
+{% extends "base.html" %}{% from "_informe.html" import cabecera %}
+{% block content %}{{ cabecera('Comercial', d, items, actual) }}
+<div class="kpis"><div class="kpi"><b>S/ {{ d.soles|n }}</b><span>Ventas del periodo</span><small>{{ d.ovs }} OV · {{ d.kg|n }} kg</small></div>
+<div class="kpi"><b>{{ '%+.1f %%'|format(d.var_semanal) if d.var_semanal is not none else '-' }}</b><span>Tendencia semanal</span><small>2.ª mitad vs 1.ª mitad</small></div>
+{% if d.margen_promedio is not none %}<div class="kpi"><b>{{ d.margen_promedio }} %</b><span>Margen promedio</span><small>líneas con costo vigente</small></div>{% endif %}
+<div class="kpi"><b>{{ d.incompletas.ovs }}</b><span>Entregas incompletas</span><small>{{ d.incompletas.unidades|n }} und · S/ {{ d.incompletas.soles|n }}</small></div>
+<div class="kpi"><b>{{ d.pendientes }}</b><span>Pedidos pendientes de entrega</span><small>{{ d.pendientes_vencidas }} con fecha vencida</small></div>
+<div class="kpi"><b>{{ d.modificadas.ovs }}</b><span>OV modificadas</span><small>{{ d.modificadas.pct or 0 }} % de las OV · desv. {{ d.modificadas.desv_cantidad_pct or 0 }} % cant. / {{ d.modificadas.desv_soles_pct or 0 }} % S/</small></div></div>
+<div class="grid g2"><div class="card"><h3>Ventas semanales (S/)</h3>{{ graf.semanal }}<details class="tabla"><summary>Ver tabla</summary><table class="small">{% for k, v in d.serie_semanal %}<tr><td>Semana del {{ k }}</td><td class="r">{{ v|n }}</td></tr>{% endfor %}</table></details></div>
+<div class="card"><h3>Ventas por vendedor</h3>{{ graf.vend_soles }}<h4>En peso (kg)</h4>{{ graf.vend_kg }}<details class="tabla"><summary>Ver tabla</summary><table class="small"><tr><th>Vendedor</th><th class="r">OV</th><th class="r">S/</th><th class="r">kg</th></tr>{% for k, v in d.vendedores %}<tr><td>{{ k }}</td><td class="r">{{ v.ovs }}</td><td class="r">{{ v.soles|n }}</td><td class="r">{{ v.kg|n }}</td></tr>{% endfor %}</table></details></div></div>
+<div class="grid g2"><div class="card"><h3>Productos más vendidos (S/)</h3>{{ graf.top }}<details class="tabla"><summary>Ver tabla</summary><table class="small"><tr><th>SKU</th><th>Descripción</th><th class="r">S/</th><th class="r">Cantidad</th></tr>{% for k, n, v, q in d.top_productos %}<tr><td>{{ k }}</td><td>{{ n }}</td><td class="r">{{ v|n }}</td><td class="r">{{ q|n }}</td></tr>{% endfor %}</table></details></div>
+<div class="card"><h3>Presentaciones preferidas (cantidad)</h3>{{ graf.pres }}</div></div>
+{% if d.margen_producto %}<div class="card"><h3>Margen por producto</h3>{{ graf.margen }}</div>{% endif %}
+<div class="card"><h3>Comportamiento de compra de los clientes</h3><div class="tw"><table class="small"><tr><th>Cliente</th><th class="r">OV</th><th class="r">S/</th><th class="r">Días entre compras</th><th>Última compra</th><th class="r">Días sin comprar</th><th>Alerta</th></tr>
+{% for c in d.clientes %}<tr><td>{{ c.nombre }}</td><td class="r">{{ c.ovs }}</td><td class="r">{{ c.soles|n }}</td><td class="r">{{ c.frecuencia or '-' }}</td><td>{{ c.ultima|d }}</td><td class="r">{{ c.dias_sin_compra }}</td><td>{% if c.riesgo %}<span class="b ALTA">Sin comprar más del doble de lo habitual</span>{% endif %}</td></tr>{% else %}<tr><td colspan="7" class="muted">Sin ventas en el periodo</td></tr>{% endfor %}</table></div></div>
+{% endblock %}

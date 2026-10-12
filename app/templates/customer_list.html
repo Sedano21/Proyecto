@@ -1,0 +1,9 @@
+{% extends "base.html" %}{% from "_m.html" import csrf %}
+{% block content %}<h1>Clientes</h1>
+<form class="row" method="get"><div class="grow"><label>Buscar (nombre, RUC o grupo)</label><input name="q" value="{{ q }}" type="search"></div><div><button class="sec">Buscar</button></div></form>
+<div class="tw"><table><tr><th>Cliente</th><th>RUC</th><th>Grupo / canal de precios</th><th>Lugares de entrega</th><th>Contacto</th></tr>
+{% for c in rows %}<tr><td><a href="{{ url_for('com.customer_card', cid=c.id) }}"><b>{{ c.nombre }}</b></a></td><td class="mono">{{ c.ruc }}</td><td>{{ c.grupo }} · {{ canal_de(c) or 'sin canal' }}</td><td>{{ c.sites|selectattr('activo')|list|length }}</td><td>{{ c.contacto }} {{ c.telefono }}</td></tr>{% else %}<tr><td colspan="5" class="muted">Sin clientes</td></tr>{% endfor %}</table></div>
+{% if can('ov.crear') or can('config.editar') %}<form method="post" class="card">{{ csrf() }}<h3>Nuevo cliente</h3><div class="row">
+<div><label>RUC</label><input name="ruc" required inputmode="numeric" maxlength="11"></div><div class="grow"><label>Razón social</label><input name="nombre" required></div><div><label>Grupo</label><input name="grupo"></div>
+<div class="grow"><label>Dirección</label><input name="direccion"></div><div><label>Distrito</label><input name="distrito"></div><div><label>Provincia</label><input name="provincia"></div><div><button>Crear y abrir ficha</button></div></div></form>{% endif %}
+<p class="small muted">También se puede cargar el maestro de clientes exportado de SAP en Cargas de archivos → «Clientes (maestro SAP)».</p>{% endblock %}

@@ -11,17 +11,20 @@
   <nav class="side">
     <div class="brand">Módulo de Operaciones<small>Corporación Productiva · prototipo v0.5</small></div>
     <a href="{{ url_for('main.dashboard') }}">Inicio / Tablero</a>
+    <a href="{{ url_for('rep.home') }}">Informes</a>
     <a href="{{ url_for('main.alerts') }}">Alertas{% if alertas_abiertas %}<span class="badge-al">{{ alertas_abiertas }}</span>{% endif %}</a>
     {% if can('ov.ver') %}<h4>Comercial</h4>
       <a href="{{ url_for('com.orders') }}">Órdenes de venta</a>
       {% if can('ov.crear') %}<a href="{{ url_for('com.order_new') }}">Registrar OV</a>{% endif %}
+      <a href="{{ url_for('com.customer_list') }}">Clientes (fichas)</a>
+      {% if can('ov.importar') or can('precios.editar') or can('costos.cargar') or can('clientes.canal') %}<a href="{{ url_for('alm.uploads', area='Comercial') }}">Cargas de archivos</a>{% endif %}
       {% if can('precios.ver') %}<a href="{{ url_for('com.prices') }}">Listas de precios</a>{% endif %}
       {% if can('costos.ver') %}<a href="{{ url_for('com.costs') }}">Costos vs mercado</a>{% endif %}
     {% endif %}
     {% if can('stock.ver') %}<h4>Almacén</h4>
       <a href="{{ url_for('alm.stock') }}">Stock y reservas</a>
       {% if can('preparacion.registrar') or can('ov.ver') %}<a href="{{ url_for('com.preparation') }}">Preparación (picking)</a>{% endif %}
-      {% if can('stock.cargar') or can('produccion.bom_cargar') or can('ov.importar') or can('produccion.liquidar') or can('config.editar') %}<a href="{{ url_for('alm.uploads') }}">Cargas de archivos</a>{% endif %}
+      {% if can('stock.cargar') %}<a href="{{ url_for('alm.uploads', area='Almacén') }}">Cargas de archivos</a>{% endif %}
       {% if can('stock.conteo') %}<a href="{{ url_for('alm.counts') }}">Conteos físicos</a>{% endif %}
     {% endif %}
     {% if can('traslados.ver') %}<a href="{{ url_for('alm.transfers') }}">Traslados</a>{% endif %}
@@ -31,6 +34,7 @@
       <a href="{{ url_for('prod.bom') }}">Lista de materiales</a>
       <a href="{{ url_for('prod.liquidations') }}">Liquidaciones</a>
       <a href="{{ url_for('prod.reports') }}">Partes de producción</a>
+      {% if can('produccion.bom_cargar') or can('produccion.liquidar') %}<a href="{{ url_for('alm.uploads', area='Producción') }}">Cargas de archivos</a>{% endif %}
     {% endif %}
     {% if can('calidad.ver') or can('distribucion.seguridad') %}<h4>Calidad</h4>
       {% if can('calidad.ver') %}<a href="{{ url_for('cal.home') }}">Liberación y registros</a>
@@ -49,6 +53,7 @@
     {% endif %}
     {% if can('config.ver') or can('auditoria.ver') %}<h4>Administración</h4>
       {% if can('config.ver') %}<a href="{{ url_for('main.config') }}">Configuración</a>{% endif %}
+      {% if can('config.editar') %}<a href="{{ url_for('alm.uploads', area='Configuración') }}">Cargas de configuración</a>{% endif %}
       {% if can('usuarios.administrar') %}<a href="{{ url_for('main.users') }}">Usuarios y permisos</a>{% endif %}
       {% if can('alertas.configurar') %}<a href="{{ url_for('main.alert_config') }}">Configurar alertas</a>
       <a href="{{ url_for('main.outbox') }}">Bandeja de correo</a>{% endif %}

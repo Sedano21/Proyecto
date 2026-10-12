@@ -2,7 +2,8 @@
 {% block content %}
 <h1>Stock y reservas</h1>
 <div class="note small">El stock proviene de la última carga SAP autorizada y de los movimientos registrados en el módulo; <b>no es disponibilidad en tiempo real</b>. Solo se reserva stock <b>Disponible</b>, verificado y del almacén principal (IF §6). "Observado" no se usa como estado.</div>
-<form class="row card" method="get"><div><label>Artículo</label><input name="q" value="{{ q }}"></div>
+<form class="row card" method="get"><div class="grow"><label>Artículo (elija de la lista o escriba código / nombre)</label><input name="q" value="{{ q }}" list="arts" autocomplete="off" type="search">
+<datalist id="arts">{% for p in productos %}<option value="{{ p.code }}">{{ p.descripcion }}{{ ' · ' ~ p.presentacion if p.presentacion }}</option>{% endfor %}</datalist></div>
 <div><label>Almacén</label><select name="almacen"><option value="">(todos)</option>{% for w in whs %}<option value="{{ w.code }}" {{ 'selected' if wh==w.code }}>{{ w.code }} {{ w.nombre }} ({{ w.uso }})</option>{% endfor %}</select></div>
 <div><label>Estado</label><select name="estado"><option value="">(todos)</option>{% for e in estados %}<option value="{{ e }}" {{ 'selected' if est==e }}>{{ labels[e] }}</option>{% endfor %}</select></div>
 <div><button>Filtrar</button> {% if can('export.datos') %}<a class="btn sec" href="{{ url_for('main.export', entidad='stock') }}">Exportar</a>{% endif %}</div></form>

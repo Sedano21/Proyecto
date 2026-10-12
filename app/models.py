@@ -138,6 +138,7 @@ class Product(Base):
     proveedor_habitual: Mapped[str] = mapped_column(String(160), default="")  # para el margen por proveedor
     merma_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
     tiempo_max_almacen_dias: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    costo_max_compra: Mapped[float | None] = mapped_column(Float, nullable=True)  # S/ por UM: tope para no comprar a pérdida
     origen: Mapped[str] = mapped_column(String(40), default="")
 
 
@@ -167,6 +168,30 @@ class Customer(Base):
     requiere_cita: Mapped[bool] = mapped_column(Boolean, default=False)
     vida_util_min_dias: Mapped[int | None] = mapped_column(Integer, nullable=True)  # condición del cliente
     canal_precio: Mapped[str] = mapped_column(String(60), default="")  # canal de la lista de precios (lo asigna el Jefe Comercial)
+    # Ficha de cliente (observaciones al demo v0.5, 13-oct)
+    contacto: Mapped[str] = mapped_column(String(120), default="")
+    telefono: Mapped[str] = mapped_column(String(60), default="")
+    correo: Mapped[str] = mapped_column(String(160), default="")
+    codigo_sap: Mapped[str] = mapped_column(String(30), default="")
+    observaciones: Mapped[str] = mapped_column(Text, default="")
+    sites = relationship("CustomerSite", back_populates="customer", order_by="CustomerSite.id")
+
+
+class CustomerSite(Base):
+    """Lugar de entrega del cliente (almacén, tienda, sede). La OV elige uno o registra 'otro' con su dirección."""
+    __tablename__ = "customer_sites"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    customer_id: Mapped[int] = mapped_column(ForeignKey("customers.id"))
+    nombre: Mapped[str] = mapped_column(String(120))
+    direccion: Mapped[str] = mapped_column(String(250), default="")
+    distrito: Mapped[str] = mapped_column(String(80), default="")
+    provincia: Mapped[str] = mapped_column(String(80), default="")
+    referencia: Mapped[str] = mapped_column(String(250), default="")
+    horario_recepcion: Mapped[str] = mapped_column(String(60), default="")
+    contacto: Mapped[str] = mapped_column(String(120), default="")
+    telefono: Mapped[str] = mapped_column(String(60), default="")
+    activo: Mapped[bool] = mapped_column(Boolean, default=True)
+    customer = relationship("Customer", back_populates="sites")
 
 
 # ---------------------------------------------------------------------------
@@ -195,6 +220,7 @@ class StockLot(Base):
     fecha_verificacion: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     origen: Mapped[str] = mapped_column(String(60), default="")
     upload_id: Mapped[int | None] = mapped_column(ForeignKey("upload_batches.id"), nullable=True)
+    fumigacion_programada: Mapped[date | None] = mapped_column(Date, nullable=True)  # planeamiento de fumigación
     product = relationship("Product")
     warehouse = relationship("Warehouse")
     reservations = relationship("Reservation", back_populates="lot")
@@ -310,6 +336,7 @@ class SalesOrder(Base):
     distrito: Mapped[str] = mapped_column(String(80), default="")
     provincia: Mapped[str] = mapped_column(String(80), default="")
     lugar_entrega: Mapped[str] = mapped_column(String(120), default="")  # almacén/punto de entrega del cliente
+    site_id: Mapped[int | None] = mapped_column(ForeignKey("customer_sites.id"), nullable=True)
     hora_cita: Mapped[str] = mapped_column(String(20), default="")
     cita_confirmada: Mapped[bool] = mapped_column(Boolean, default=False)
     comentarios: Mapped[str] = mapped_column(Text, default="")
@@ -361,6 +388,7 @@ class SalesOrderLine(Base):
     descuento: Mapped[float] = mapped_column(Float, default=0)  # descuento de la línea (S/), formato de OV
     tax_code: Mapped[str] = mapped_column(String(10), default="")  # código de impuesto SAP (EXO / IGV)
     um_venta: Mapped[str] = mapped_column(String(10), default="")  # unidad de venta: UND / KG / SACO (granel)
+    cantidad_venta: Mapped[float | None] = mapped_column(Float, nullable=True)  # cantidad en la unidad de venta (sacos)
     preparado: Mapped[float] = mapped_column(Float, default=0)
     despachado: Mapped[float] = mapped_column(Float, default=0)
     entregado: Mapped[float] = mapped_column(Float, default=0)
@@ -422,6 +450,7 @@ class Transfer(Base):
     cantidad_recibida: Mapped[float | None] = mapped_column(Float, nullable=True)
     diferencia: Mapped[float] = mapped_column(Float, default=0)
     observacion: Mapped[str] = mapped_column(Text, default="")
+    llegada_estimada: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)  # alerta a Calidad y Almacén
     ts: Mapped[datetime] = mapped_column(DateTime, default=now)
     lot = relationship("StockLot")
     order = relationship("SalesOrder")
@@ -498,6 +527,7 @@ class ProductionRequest(Base):
     inicio_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     fin_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     observacion: Mapped[str] = mapped_column(Text, default="")
+    bom_revision: Mapped[dict] = mapped_column(JSON, default=dict)  # Producción confirma u observa la lista de materiales
     ts: Mapped[datetime] = mapped_column(DateTime, default=now)
     product = relationship("Product")
     order = relationship("SalesOrder")
@@ -692,11 +722,28 @@ class ImportShipment(Base):
     cantidad_recibida: Mapped[float | None] = mapped_column(Float, nullable=True)
     lote_recibido: Mapped[str] = mapped_column(String(60), default="")
     diferencias: Mapped[str] = mapped_column(Text, default="")
+    contenedor: Mapped[str] = mapped_column(String(40), default="")  # número de contenedor
+    tipo_contenedor: Mapped[str] = mapped_column(String(20), default="")  # 20' / 40' / 40' HC / carga suelta
     creado_por: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     ts: Mapped[datetime] = mapped_column(DateTime, default=now)
     product = relationship("Product")
+    costs = relationship("ImportCost", order_by="ImportCost.id", cascade="all, delete-orphan")
     phases = relationship("ImportPhase", back_populates="shipment", order_by="ImportPhase.orden",
                           cascade="all, delete-orphan")
+
+
+class ImportCost(Base):
+    """Costos asociados a la importación (flete, seguro, aduana, almacenaje, transporte local, otros)."""
+    __tablename__ = "import_costs"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    shipment_id: Mapped[int] = mapped_column(ForeignKey("import_shipments.id"))
+    concepto: Mapped[str] = mapped_column(String(60))
+    monto: Mapped[float] = mapped_column(Float)
+    moneda: Mapped[str] = mapped_column(String(5), default="USD")
+    tipo_cambio: Mapped[float | None] = mapped_column(Float, nullable=True)
+    documento: Mapped[str] = mapped_column(String(80), default="")
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
 
 
 class ImportPhase(Base):
@@ -759,6 +806,11 @@ class Route(Base):
     aprobacion_discrepancia: Mapped[dict] = mapped_column(JSON, default=dict)  # Q8: salida aprobada por Logística
     vistos_buenos: Mapped[dict] = mapped_column(JSON, default=dict)  # Q16: {rol: {user, ts}} Seguridad, Auxiliar, Líder
     retorno_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # Transporte externo asignado por el sistema: lo valida el Coordinador de Distribución (13-oct)
+    externo_validacion: Mapped[dict] = mapped_column(JSON, default=dict)
+    distancia_km: Mapped[float | None] = mapped_column(Float, nullable=True)
+    tiempo_estimado_min: Mapped[float | None] = mapped_column(Float, nullable=True)
+    trafico: Mapped[dict] = mapped_column(JSON, default=dict)  # última consulta de tráfico (si hay servicio configurado)
     guia_numero: Mapped[str] = mapped_column(String(40), default="")
     seguridad: Mapped[dict] = mapped_column(JSON, default=dict)  # validación carga vs guía
     salida_confirmada_por: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
@@ -799,10 +851,11 @@ class RouteStop(Base):
 
 
 class Incident(Base):
-    """Incidencias de distribución (IF §12.3)."""
+    """Incidencias de distribución (IF §12.3), clasificadas por tipo y subtipo (observaciones al demo v0.5)."""
     __tablename__ = "incidents"
     id: Mapped[int] = mapped_column(primary_key=True)
     tipo: Mapped[str] = mapped_column(String(30))
+    subtipo: Mapped[str] = mapped_column(String(40), default="")
     route_id: Mapped[int | None] = mapped_column(ForeignKey("routes.id"), nullable=True)
     stop_id: Mapped[int | None] = mapped_column(ForeignKey("route_stops.id"), nullable=True)
     order_id: Mapped[int | None] = mapped_column(ForeignKey("sales_orders.id"), nullable=True)
@@ -994,10 +1047,26 @@ class ProductionReport(Base):
     desmedro_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
     diferencia_kg: Mapped[float | None] = mapped_column(Float, nullable=True)
     ratio_kg_hora: Mapped[float | None] = mapped_column(Float, nullable=True)
-    estado: Mapped[str] = mapped_column(String(20), default="EN PROCESO")  # EN PROCESO / PENDIENTE / LIQUIDADO
+    estado: Mapped[str] = mapped_column(String(20), default="EN PROCESO")  # PROGRAMADO / EN PROCESO / PENDIENTE / LIQUIDADO
     observacion: Mapped[str] = mapped_column(Text, default="")
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    product = relationship("Product", primaryjoin="foreign(ProductionReport.product_code) == Product.code", viewonly=True)
+
+
+class ProductionPlan(Base):
+    """Planeamiento de producción ingresado por Producción (día, semana o mes) para contrastarlo con la liquidación."""
+    __tablename__ = "production_plans"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    periodo: Mapped[str] = mapped_column(String(10), default="DIA")  # DIA / SEMANA / MES
+    fecha: Mapped[date] = mapped_column(Date, index=True)  # día, lunes de la semana o primer día del mes
+    product_code: Mapped[str] = mapped_column(ForeignKey("products.code"))
+    cantidad: Mapped[float] = mapped_column(Float)
+    line_code: Mapped[str | None] = mapped_column(ForeignKey("production_lines.code"), nullable=True)
+    comentario: Mapped[str] = mapped_column(Text, default="")
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    product = relationship("Product")
 
 
 class CustomerCondition(Base):

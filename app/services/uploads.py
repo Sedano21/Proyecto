@@ -33,7 +33,7 @@ def norm(s):
 
 SPECS = {
     "STOCK": {
-        "nombre": "Stock por lote (SAP)", "perm": "stock.cargar", "confirm_perm": "stock.autorizar_carga",
+        "area": "Almacén", "nombre": "Stock por lote (SAP)", "perm": "stock.cargar", "confirm_perm": "stock.autorizar_carga",
         "hojas": ["STOCK_LOTE"],
         "cols": {"articulo": ["Número de artículo"], "descripcion": ["Descripción del artículo"], "lote": ["Lote"],
                  "almacen": ["Almacén"], "cantidad": ["Cantidad"], "fecha_venc": ["Fecha de vencimiento"],
@@ -41,7 +41,7 @@ SPECS = {
         "req": ["articulo", "lote", "almacen", "cantidad"],
     },
     "BOM": {
-        "nombre": "Lista de materiales (Excel)", "perm": "produccion.bom_cargar", "confirm_perm": "produccion.bom_cargar",
+        "area": "Producción", "nombre": "Lista de materiales (Excel)", "perm": "produccion.bom_cargar", "confirm_perm": "produccion.bom_cargar",
         "hojas": ["Hoja1"],
         "cols": {"padre": ["Articulo Padre"], "padre_desc": ["Descripcion Padre"], "tipo_bom": ["Tipo BOM"],
                  "cantidad_bom": ["Cantidad BOM"], "almacen_pt": ["Almacen PT"], "fecha_creacion": ["Fecha Creacion"],
@@ -51,7 +51,7 @@ SPECS = {
         "req": ["padre", "padre_desc", "cantidad_bom", "componente", "componente_desc", "cantidad", "almacen_comp"],
     },
     "OV": {
-        "nombre": "Órdenes de venta (exportación SAP)", "perm": "ov.importar", "confirm_perm": "ov.importar",
+        "area": "Comercial", "nombre": "Órdenes de venta (exportación SAP)", "perm": "ov.importar", "confirm_perm": "ov.importar",
         "hojas": ["OVS"],
         "cols": {"numero": ["Número de documento"], "estado": ["Estado"], "fecha_emision": ["Fecha de Emisión"],
                  "fecha_compromiso": ["Fecha de Vencimiento"], "vendedor": ["Vendedor"], "ruc": ["Ruc"],
@@ -66,7 +66,7 @@ SPECS = {
         "req": ["numero", "fecha_compromiso", "ruc", "cliente", "producto", "solicitado"],
     },
     "LIQUIDACION": {
-        "nombre": "Liquidación de producción (SAP/Excel)", "perm": "produccion.liquidar", "confirm_perm": "produccion.liquidar",
+        "area": "Producción", "nombre": "Liquidación de producción (SAP/Excel)", "perm": "produccion.liquidar", "confirm_perm": "produccion.liquidar",
         "hojas": ["Dat.Prod"],
         "cols": {"numero": ["Número de documento"], "tipo_op": ["Tipo de Operación"], "almacen": ["Almacén"],
                  "fecha": ["Fecha de creación"], "producto": ["Código de producto"], "descripcion": ["Descripción de producto"],
@@ -77,29 +77,43 @@ SPECS = {
         "req": ["numero", "producto", "completada", "lote"],
     },
     "PRODUCTOS": {
-        "nombre": "Maestro de artículos (tabla DATA)", "perm": "config.editar", "confirm_perm": "config.editar",
+        "area": "Configuración", "nombre": "Maestro de artículos (tabla DATA)", "perm": "config.editar", "confirm_perm": "config.editar",
         "hojas": ["DATA"],
         "cols": {"codigo": ["Código de Producto"], "descripcion": ["Descripción de Producto"], "ppb": ["PPB"],
                  "maq": ["MAQ"], "tipo": ["TIPO"], "calidad": ["CALIDAD"]},
         "req": ["codigo", "descripcion"],
     },
     "SALIDAS": {
-        "nombre": "Historial de salidas/ventas", "perm": "stock.cargar", "confirm_perm": "stock.autorizar_carga",
+        "area": "Almacén", "nombre": "Historial de salidas/ventas", "perm": "stock.cargar", "confirm_perm": "stock.autorizar_carga",
         "hojas": ["Qy"],
         "cols": {"producto": ["Código de Producto"], "cantidad": ["Cantidad"], "fecha": ["Fecha de Emisión"],
                  "documento": ["Número de documento"]},
         "req": ["producto", "cantidad", "fecha"],
     },
     "CLIENTES_CONDICIONES": {
-        "nombre": "Clientes: penalidades, lotes y vida útil", "perm": "clientes.canal", "confirm_perm": "clientes.canal",
+        "area": "Comercial", "nombre": "Clientes: penalidades, lotes y vida útil", "perm": "clientes.canal", "confirm_perm": "clientes.canal",
         "hojas": ["Hoja1"],
         "cols": {"ejecutivo": ["EJECUTIVO"], "canal": ["CANAL"], "cliente": ["CLIENTE"], "ruc": ["RUC", "Ruc"],
                  "solicitud": ["SOLICITUD"],
                  "lote": ["LOTE"], "vida": ["VIDA UTIL", "VIDA ÚTIL"], "penalidad": ["PENALIDAD", "PENALIDADES", "Columna1"]},
         "req": ["cliente", "lote"],
     },
+    "CLIENTES": {
+        "area": "Comercial", "nombre": "Clientes (maestro SAP: ficha y lugares de entrega)", "perm": "ov.importar", "confirm_perm": "ov.importar",
+        "hojas": [],
+        "cols": {"ruc": ["RUC", "Ruc", "Número de identificación fiscal", "N° documento", "LicTradNum"],
+                 "nombre": ["Nombre de cliente", "Nombre SN", "Razón social", "Nombre", "CardName"],
+                 "codigo": ["Código de cliente", "Código SN", "CardCode"], "grupo": ["Grupo de cliente", "Grupo"],
+                 "direccion": ["Dirección", "Dirección fiscal"], "distrito": ["Distrito"], "provincia": ["Provincia"],
+                 "telefono": ["Teléfono", "Teléfono 1", "Telefono"], "correo": ["Correo electrónico", "Correo", "E-mail", "Email"],
+                 "contacto": ["Persona de contacto", "Contacto"],
+                 "lugar": ["Lugar de entrega", "Destino", "Nombre dirección de entrega", "Almacén cliente"],
+                 "dir_entrega": ["Dirección de entrega", "Dirección destino"], "distrito_entrega": ["Distrito de entrega"],
+                 "provincia_entrega": ["Provincia de entrega"]},
+        "req": ["ruc", "nombre"],
+    },
     "COSTOS": {
-        "nombre": "Costos de la empresa por artículo", "perm": "costos.cargar", "confirm_perm": "costos.cargar",
+        "area": "Comercial", "nombre": "Costos de la empresa por artículo", "perm": "costos.cargar", "confirm_perm": "costos.cargar",
         "hojas": [],
         "cols": {"sku": ["SKU", "Código de Producto", "Codigo", "Código"], "descripcion": ["DESCRIPCIÓN", "Descripción", "DESCRIPCION"],
                  "costo": ["COSTO EMPRESA", "COSTO", "Costo", "COSTO UNITARIO", "Costo unitario", "COSTO X KG", "COSTO POR KG"],
@@ -107,7 +121,7 @@ SPECS = {
         "req": ["sku", "costo"],
     },
     "MERCADO": {
-        "nombre": "Precios de mercado (referencias MIDAGRI u otras)", "perm": "costos.cargar", "confirm_perm": "costos.cargar",
+        "area": "Comercial", "nombre": "Precios de mercado (referencias MIDAGRI u otras)", "perm": "costos.cargar", "confirm_perm": "costos.cargar",
         "hojas": [],
         "cols": {"producto": ["PRODUCTO", "Producto"], "variedad": ["VARIEDAD", "Variedad"],
                  "precio_kg": ["PRECIO", "PRECIO KG", "PRECIO X KG", "S/ x kg", "Precio (S/ por kg)"],
@@ -116,13 +130,13 @@ SPECS = {
         "req": ["producto", "precio_kg", "fecha"],
     },
     "PRECIOS": {
-        "nombre": "Lista de precios por canal (PRICE_LIST)", "perm": "precios.editar", "confirm_perm": "precios.editar",
+        "area": "Comercial", "nombre": "Lista de precios por canal (PRICE_LIST)", "perm": "precios.editar", "confirm_perm": "precios.editar",
         "hojas": ["Hoja1"], "canales": True,
         "cols": {"sku": ["SKU"], "descripcion": ["GRANEL", "DESCRIPCIÓN", "Descripción"], "costo": ["COSTO EMPRESA"]},
         "req": ["sku", "descripcion"],
     },
     "PRECIOS_GRANEL": {
-        "nombre": "Lista de precios mayorista granel (PRICE_LIST_GRANEL)", "perm": "precios.editar",
+        "area": "Comercial", "nombre": "Lista de precios mayorista granel (PRICE_LIST_GRANEL)", "perm": "precios.editar",
         "confirm_perm": "precios.editar", "hojas": ["Hoja1"],
         "cols": {"sku": ["SKU"], "descripcion": ["DESCRIPCIÓN", "Descripción"], "costo": ["COSTO EMPRESA"],
                  "precio_kg": ["PRECIO X KG"], "kg_saco": ["CANTIDAD KG X SACO"], "precio_saco": ["PRECIO X SACO"]},
@@ -174,6 +188,14 @@ def _price_rows(spec, header, margins, rows):
                 datos["bajo_costo"] = False
         out.append((n, datos))
     return out
+
+
+AREAS = ["Comercial", "Almacén", "Producción", "Configuración"]
+
+
+def specs_for(user, area=None):
+    """Tipos de carga que el usuario puede subir, opcionalmente de un área (cada área ve solo sus cargas)."""
+    return {k: v for k, v in SPECS.items() if has_perm(user, v["perm"]) and (not area or v.get("area") == area)}
 
 
 # ------------------------------- lectura -----------------------------------
@@ -322,7 +344,8 @@ def create_batch(user, tipo, path, filename, hoja=None):
 def validate_batch(b):
     fn = {"STOCK": _v_stock, "BOM": _v_bom, "OV": _v_ov, "LIQUIDACION": _v_liq, "PRODUCTOS": _v_prod,
           "SALIDAS": _v_salidas, "PRECIOS": _v_precios, "PRECIOS_GRANEL": _v_precios,
-          "CLIENTES_CONDICIONES": _v_condiciones, "COSTOS": _v_costos, "MERCADO": _v_mercado}[b.tipo]
+          "CLIENTES_CONDICIONES": _v_condiciones, "COSTOS": _v_costos, "MERCADO": _v_mercado,
+          "CLIENTES": _v_clientes}[b.tipo]
     for r in b.rows:
         r.errores, r.advertencias = [], []
     fn(b)
@@ -684,7 +707,7 @@ def confirm(b, user, opciones=None):
     b.opciones = opciones
     result = {"STOCK": _c_stock, "BOM": _c_bom, "OV": _c_ov, "LIQUIDACION": _c_liq, "PRODUCTOS": _c_prod,
               "PRECIOS": _c_precios, "PRECIOS_GRANEL": _c_precios, "CLIENTES_CONDICIONES": _c_condiciones,
-              "COSTOS": _c_costos, "MERCADO": _c_mercado,
+              "COSTOS": _c_costos, "MERCADO": _c_mercado, "CLIENTES": _c_clientes,
               "SALIDAS": _c_salidas}[b.tipo](b, user, opciones)
     b.estado = "CONFIRMADO"
     b.confirmado_ts = now()
@@ -1002,6 +1025,68 @@ def _c_condiciones(b, user, opciones):
     s.flush()
     vinculados = link_all()
     return {"nuevos": nuevos, "actualizados": act, "vinculados": vinculados}
+
+
+def _v_clientes(b):
+    nombres = defaultdict(set)
+    for r in b.rows:
+        if not r.excluida:
+            nombres[_txt(r.datos.get("ruc"))].add(_txt(r.datos.get("nombre")).upper())
+    for r in b.rows:
+        if r.excluida:
+            continue
+        d, e, w = r.datos, [], []
+        ruc = _txt(d.get("ruc"))
+        if not ruc.isdigit() or len(ruc) not in (8, 11):
+            e.append(f"RUC/DNI inválido: '{ruc}'")
+        if len(nombres[ruc]) > 1:
+            e.append("El mismo RUC aparece con nombres distintos")
+        if _txt(d.get("correo")) and "@" not in _txt(d.get("correo")):
+            w.append("Correo inválido: no se guardará")
+        if _txt(d.get("dir_entrega")) and not (_txt(d.get("distrito_entrega")) or _txt(d.get("distrito"))):
+            w.append("Dirección de entrega sin distrito: complétela en la ficha para calcular rutas")
+        r.errores, r.advertencias = e, w
+    b.resumen = {"filas": len([r for r in b.rows if not r.excluida])}
+
+
+def _c_clientes(b, user, opciones):
+    from ..models import CustomerSite
+    s = db()
+    nuevos = act = lugares = 0
+    for r in b.rows:
+        if r.excluida:
+            continue
+        d = r.datos
+        ruc = _txt(d.get("ruc"))
+        c = s.execute(select(Customer).where(Customer.ruc == ruc)).scalars().first()
+        if c is None:
+            c = Customer(ruc=ruc, nombre=_txt(d.get("nombre")))
+            s.add(c)
+            nuevos += 1
+        else:
+            act += 1
+        for k, col in (("nombre", "nombre"), ("codigo_sap", "codigo"), ("grupo", "grupo"), ("direccion", "direccion"),
+                       ("distrito", "distrito"), ("provincia", "provincia"), ("telefono", "telefono"), ("contacto", "contacto")):
+            v = _txt(d.get(col))
+            if v:
+                setattr(c, k, v)
+        if "@" in _txt(d.get("correo")):
+            c.correo = _txt(d.get("correo"))
+        s.flush()
+        dire = _txt(d.get("dir_entrega"))
+        if dire:
+            nombre = _txt(d.get("lugar")) or dire[:60]
+            existe = s.execute(select(CustomerSite).where(CustomerSite.customer_id == c.id,
+                                                          CustomerSite.direccion == dire)).scalars().first()
+            if existe is None:
+                s.add(CustomerSite(customer_id=c.id, nombre=nombre, direccion=dire,
+                                   distrito=_txt(d.get("distrito_entrega")) or _txt(d.get("distrito")),
+                                   provincia=_txt(d.get("provincia_entrega")) or _txt(d.get("provincia"))))
+                lugares += 1
+    s.flush()
+    from .customer_conditions import link_all
+    return {"clientes_nuevos": nuevos, "clientes_actualizados": act, "lugares_de_entrega_nuevos": lugares,
+            "condiciones_vinculadas": link_all()}
 
 
 def _v_costos(b):

@@ -65,7 +65,7 @@ def cost_per_kg(product):
 
 
 def cost_for_line(line, kg_saco=None):
-    """Costo en la unidad de venta de la línea (UND, KG o SACO) o None si no hay costo."""
+    """Costo en la unidad en que la línea guarda el precio (unidad o kg) o None si no hay costo."""
     p = line.product
     if p is None:
         return None
@@ -73,10 +73,8 @@ def cost_for_line(line, kg_saco=None):
     if not c:
         return None
     um = (line.um_venta or "").upper()
-    es_kg = um == "KG" or (not um and (p.um or "").upper().startswith("K"))
-    if um == "SACO":
-        ckg = cost_per_kg(p)
-        return ckg * kg_saco if ckg is not None and kg_saco else None
+    # SACO: la línea guarda cantidad y precio por kg (orders.convert_sale_units)
+    es_kg = um in ("KG", "SACO") or (not um and (p.um or "").upper().startswith("K"))
     if es_kg:
         return cost_per_kg(p)
     if "UND" in c:

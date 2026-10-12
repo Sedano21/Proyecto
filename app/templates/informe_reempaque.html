@@ -1,0 +1,15 @@
+{% extends "base.html" %}{% from "_informe.html" import cabecera %}{% from "_m.html" import b %}
+{% block content %}{{ cabecera('de reempaque', d, items, actual) }}
+<div class="kpis"><div class="kpi"><b>{{ d.total }}</b><span>Solicitudes</span></div>
+<div class="kpi"><b>{{ d.tasa_aprobacion if d.tasa_aprobacion is not none else '-' }} %</b><span>Aprobadas por Calidad</span><small>de {{ d.evaluadas }} evaluadas</small></div>
+<div class="kpi"><b>{{ d.por_estado.get('DESAPROBADA', 0) }}</b><span>Desaprobadas</span></div>
+<div class="kpi"><b>{{ d.tasa_desestimacion or 0 }} %</b><span>Desestimadas (pre-solicitud)</span></div>
+<div class="kpi"><b>{{ d.t_almacen or '-' }} h</b><span>Respuesta de Almacén</span></div><div class="kpi"><b>{{ d.t_calidad or '-' }} h</b><span>Respuesta de Calidad</span></div>
+<div class="kpi"><b>{{ d.t_comercial or '-' }} h</b><span>Respuesta de Comercial</span><small>faltante → decisión ({{ d.n_comercial }} OV)</small></div></div>
+<div class="grid g2"><div class="card"><h3>Solicitudes por semana</h3>{{ charts.line([('Solicitudes', d.serie_solicitudes)], 'solicitudes') }}</div>
+<div class="card"><h3>Tasa de aprobación por semana (%)</h3>{{ charts.line([('Aprobación %', d.serie_aprobacion)], '%') }}</div></div>
+<div class="grid g2"><div class="card"><h3>Por tipo</h3>{{ charts.bars(d.por_tipo, '', color=6) }}<table class="small">{% for k, v in d.por_estado.items() %}<tr><td>{{ b(k) }}</td><td class="r">{{ v }}</td></tr>{% endfor %}</table></div>
+<div class="card"><h3>Motivos de desaprobación / desestimación</h3>{{ charts.bars(d.motivos, '', color=1) }}</div></div>
+<div class="card"><h3>Detalle</h3><div class="tw"><table class="small"><tr><th>#</th><th>Fecha</th><th>Tipo</th><th>Lote</th><th>OV</th><th>Estado</th><th>Motivo / resultado</th></tr>
+{% for r in d.filas %}<tr><td><a href="{{ url_for('alm.repack_detail', rid=r.id) }}">{{ r.id }}</a></td><td>{{ r.ts|d }}</td><td>{{ d.tipos.get(r.tipo, r.tipo) }}</td><td>{{ r.lot.product_code }} / {{ r.lot.lote }}</td><td>{{ r.order.numero if r.order }}</td><td>{{ b(r.estado) }}</td><td>{{ r.resultado_calidad or r.motivo }}</td></tr>{% else %}<tr><td colspan="7" class="muted">Sin solicitudes en el periodo</td></tr>{% endfor %}</table></div></div>
+{% endblock %}

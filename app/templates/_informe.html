@@ -1,0 +1,8 @@
+{% macro cabecera(titulo, d, items, actual) %}
+<h1>Informe {{ titulo }}</h1>
+<p class="tabs">{% for k, t in items %}<a class="btn {{ '' if k == actual else 'sec' }}" href="{{ url_for('rep.show', nombre=k) }}">{{ t }}</a> {% endfor %}</p>
+<form class="row card" method="get"><div><label>Desde</label><input type="date" name="desde" value="{{ d.desde.isoformat() }}"></div><div><label>Hasta</label><input type="date" name="hasta" value="{{ d.hasta.isoformat() }}"></div><div><button class="sec">Actualizar</button></div>
+<div class="small muted">Periodo: {{ d.desde|d }} – {{ d.hasta|d }}</div></form>
+{% if d.recomendaciones %}<div class="card"><h3>Recomendaciones automáticas</h3>{% for r in d.recomendaciones %}<div class="reco">{{ r }}</div>{% endfor %}<p class="small muted">Sugerencias calculadas con reglas y umbrales configurables; requieren revisión del responsable.</p></div>
+{% else %}<div class="card small muted">Sin recomendaciones para el periodo.</div>{% endif %}
+{% endmacro %}

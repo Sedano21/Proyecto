@@ -1,4 +1,8 @@
-{% extends "base.html" %}{% from "_m.html" import b, errs %}
-{% block content %}<h1>{{ fdef[1] }} #{{ r.id }} {{ b(r.resultado) }}</h1><p class="muted">{{ r.codigo_formato }} · {{ r.fecha|d }} · {{ r.user.nombre if r.user }} · {{ r.product_code or '' }} {{ r.lote }}</p>
-<div class="card"><table class="kv">{% for key, label, tipo in fdef[2] %}<tr><td>{{ label }}</td><td>{{ r.datos.get(key) if r.datos.get(key) is not none else '' }}</td></tr>{% endfor %}<tr><td>Observaciones</td><td>{{ r.observaciones }}</td></tr></table>
-<h3>Evaluación automática</h3>{{ errs(r.datos.get('_evaluacion_automatica', {}).get('hallazgos', []), 'warn-list') }}</div>{% endblock %}
+{% extends "base.html" %}{% from "_m.html" import b, errs %}{% from "_doc.html" import encabezado_registro, pie %}
+{% block content %}<p class="noprint">{{ b(r.resultado) }} <a class="btn sec" href="javascript:window.print()">Imprimir / PDF</a> <a href="{{ url_for('cal.home') }}">Volver</a></p>
+<div class="doc">{{ encabezado_registro(fdef[1], enc, fdef[0]) }}
+<table class="kv box" style="margin-top:8px"><tr><td style="width:35%">Fecha</td><td>{{ r.fecha|d }}</td></tr><tr><td>Producto / lote</td><td>{{ r.product_code or '' }} {{ r.lote }}</td></tr>
+{% for key, label, tipo in fdef[2] %}<tr><td>{{ label }}</td><td>{% set v = r.datos.get(key) %}{% if v is sameas true %}√{% elif v is sameas false %}X{% else %}{{ v if v is not none else '' }}{% endif %}</td></tr>{% endfor %}
+<tr><td>Resultado</td><td><b>{{ r.resultado or '-' }}</b></td></tr><tr><td>Observaciones y/o acciones correctivas</td><td>{{ r.observaciones }}</td></tr><tr><td>Registrado por</td><td>{{ r.user.nombre if r.user }}</td></tr></table>
+{% set h = r.datos.get('_evaluacion_automatica', {}).get('hallazgos', []) %}{% if h %}<h3>Evaluación automática</h3>{{ errs(h, 'warn-list') }}{% endif %}
+{{ pie() }}</div>{% endblock %}

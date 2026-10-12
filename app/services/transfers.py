@@ -1,4 +1,6 @@
 """Traslados entre almacenes (IF §6.2, §13): Logística decide y la Jefatura autoriza; Almacén confirma recepción."""
+from datetime import timedelta
+
 from sqlalchemy import select
 
 from ..db import db
@@ -50,7 +52,7 @@ def request_transfer(user, lot_id, destino_code, cantidad, order=None, observaci
     return t
 
 
-def authorize(t, user, aprobar, observacion=""):
+def authorize(t, user, aprobar, observacion="", llegada=None):
     if not has_perm(user, "traslado.autorizar"):
         raise BusinessError("El traslado lo aprueba el Jefe o el Coordinador de Logística (IF §6.2, §13; Q13).")
     if t.estado != "SOLICITADO":
@@ -71,6 +73,43 @@ def authorize(t, user, aprobar, observacion=""):
         alerts.emit("TRASLADO_AUTORIZADO", f"Traslado #{t.id} autorizado", f"{t.lot.product_code} × {t.cantidad:g} "
                     f"{t.lot.warehouse_code} → {t.destino_code}.", "Transfer", t.id, creado_por=user)
     audit(user, f"TRASLADO_{t.estado}", "Transfer", t.id, {"observacion": observacion})
+    if aprobar and llegada is not None:
+        set_arrival(t, user, llegada)
+
+
+def set_arrival(t, user, llegada):
+    """Fecha y hora de llegada de la mercadería (observaciones al demo v0.5): alerta a Calidad para revisar y a Almacén
+    para almacenar correctamente."""
+    if not (has_perm(user, "traslado.autorizar") or has_perm(user, "traslado.salida")):
+        raise BusinessError("La llegada la registra Logística o el almacén de origen.")
+    if t.estado not in ("AUTORIZADO", "EN_TRANSITO"):
+        raise BusinessError("Solo se programa la llegada de un traslado autorizado o en tránsito.")
+    if llegada is None:
+        raise BusinessError("Indique fecha y hora de llegada.")
+    if llegada < now().replace(second=0, microsecond=0) - timedelta(minutes=1):
+        raise BusinessError("La llegada no puede estar en el pasado.")
+    antes = t.llegada_estimada
+    t.llegada_estimada = llegada
+    alerts.emit("TRASLADO_LLEGADA", f"Traslado #{t.id}: llega el {llegada:%d/%m/%Y %H:%M}",
+                f"{t.lot.product_code} {t.lot.product.descripcion if t.lot.product else ''} lote {t.lot.lote} × {t.cantidad:g} "
+                f"desde {t.lot.warehouse_code} hacia {t.destino_code}. Calidad: programar la revisión de la mercadería; "
+                f"Almacén: preparar la ubicación." + (f" (antes: {antes:%d/%m %H:%M})" if antes else ""),
+                "Transfer", t.id, dedup_key=f"TRASLADO_LLEGADA:{t.id}:{llegada:%Y%m%d%H%M}", creado_por=user)
+    audit(user, "TRASLADO_LLEGADA_PROGRAMADA", "Transfer", t.id, {"llegada": llegada.isoformat(), "antes": antes.isoformat() if antes else None})
+
+
+def remind_arrivals(hoy=None):
+    """Tarea programada: el día de la llegada se recuerda a Calidad y Almacén si aún no se recibió."""
+    hoy = hoy or now().date()
+    n = 0
+    for t in db().execute(select(Transfer).where(Transfer.estado.in_(("AUTORIZADO", "EN_TRANSITO")),
+                                                 Transfer.llegada_estimada.is_not(None))).scalars():
+        if t.llegada_estimada.date() == hoy:
+            alerts.emit("TRASLADO_LLEGADA", f"Hoy llega el traslado #{t.id} ({t.llegada_estimada:%H:%M})",
+                        f"{t.lot.product_code} lote {t.lot.lote} × {t.cantidad:g} hacia {t.destino_code}.", "Transfer", t.id,
+                        dedup_key=f"TRASLADO_LLEGADA_HOY:{t.id}:{hoy}")
+            n += 1
+    return n
 
 
 def ship(t, user):

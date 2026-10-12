@@ -1,0 +1,32 @@
+{% extends "base.html" %}{% from "_m.html" import b, csrf %}
+{% block content %}<p class="small"><a href="{{ url_for('com.customer_list') }}">← Clientes</a></p>
+<h1>{{ c.nombre }} <span class="muted mono" style="font-size:16px">RUC {{ c.ruc }}</span></h1>
+<div class="kpis"><div class="kpi"><b>{{ p.n }}</b><span>OV registradas</span></div><div class="kpi"><b>S/ {{ p.soles|n }}</b><span>Monto total</span></div>
+<div class="kpi"><b>{{ p.kg|n }} kg</b><span>Volumen</span></div><div class="kpi"><b>S/ {{ p.ticket|n }}</b><span>Ticket promedio</span></div>
+<div class="kpi"><b>{{ p.frecuencia_dias or '-' }}</b><span>Días entre compras</span><small>Última: {{ p.ultima|d if p.ultima else '-' }}</small></div><div class="kpi"><b>{{ p.incompletas }}</b><span>Entregas incompletas</span></div></div>
+<div class="grid g2">
+<form method="post" class="card">{{ csrf() }}<h3>Datos del cliente</h3>{% set ro = '' if editable else 'disabled' %}
+<div class="row"><div class="grow"><label>Razón social</label><input name="nombre" value="{{ c.nombre }}" {{ ro }}></div><div><label>Código SAP</label><input name="codigo_sap" value="{{ c.codigo_sap }}" {{ ro }}></div></div>
+<div class="row"><div><label>Grupo (SAP)</label><input name="grupo" value="{{ c.grupo }}" {{ ro }}></div><div><label>Canal de precios</label><select name="canal_precio" {{ '' if can('clientes.canal') else 'disabled' }}><option value="">(según grupo: {{ canal or 'sin canal' }})</option>{% for k in canales %}<option {{ 'selected' if c.canal_precio == k }}>{{ k }}</option>{% endfor %}</select></div></div>
+<div class="row"><div class="grow"><label>Dirección fiscal</label><input name="direccion" value="{{ c.direccion }}" {{ ro }}></div><div><label>Distrito</label><input name="distrito" value="{{ c.distrito }}" {{ ro }}></div><div><label>Provincia</label><input name="provincia" value="{{ c.provincia }}" {{ ro }}></div></div>
+<div class="row"><div><label>Contacto</label><input name="contacto" value="{{ c.contacto }}" {{ ro }}></div><div><label>Teléfono</label><input name="telefono" value="{{ c.telefono }}" type="tel" {{ ro }}></div><div class="grow"><label>Correo</label><input name="correo" value="{{ c.correo }}" type="email" {{ ro }}></div></div>
+<div class="row"><div><label>Horario de recepción</label><input name="horario_recepcion" value="{{ c.horario_recepcion }}" placeholder="08:00-12:00" {{ ro }}></div><div><label>Requiere cita</label><select name="requiere_cita" {{ ro }}><option value="0">No</option><option value="1" {{ 'selected' if c.requiere_cita }}>Sí</option></select></div><div><label>Vida útil mín. (días)</label><input name="vida_util_min_dias" value="{{ c.vida_util_min_dias or '' }}" size="5" {{ ro }}></div></div>
+<label>Observaciones</label><textarea name="observaciones" {{ ro }}>{{ c.observaciones }}</textarea>
+{% if editable %}<p><button>Guardar ficha</button></p>{% endif %}</form>
+<div class="card"><h3>Condiciones y penalidades</h3>{% if cond %}<table class="kv small">
+<tr><td>Ejecutivo / canal comercial</td><td>{{ cond.ejecutivo }} · {{ cond.canal_comercial }}</td></tr><tr><td>Solicitud</td><td>{{ cond.solicitud }}</td></tr>
+<tr><td>Lotes por SKU</td><td><b>{{ cond.lotes_texto }}</b></td></tr><tr><td>Vida útil restante mínima al despacho</td><td><b>{{ cond.vida_util_texto }}</b></td></tr>
+<tr><td>Penalidades</td><td style="white-space:pre-line">{{ cond.penalidades or '—' }}</td></tr><tr><td>Origen</td><td>{{ cond.origen }}</td></tr></table>
+{% else %}<p class="muted">Sin condiciones registradas (lista de clientes con penalidades y lotes).</p>{% endif %}
+<h3>Productos más comprados</h3><table class="small"><tr><th>Producto</th><th class="r">Cantidad</th><th class="r">S/</th></tr>{% for k, q, so in p.top %}<tr><td>{{ k }}</td><td class="r">{{ q|n }}</td><td class="r">{{ so|n }}</td></tr>{% else %}<tr><td colspan="3" class="muted">Sin compras</td></tr>{% endfor %}</table></div></div>
+<div class="card"><h3>Lugares de entrega</h3>
+{% for x in c.sites %}<form id="s{{ x.id }}" method="post">{{ csrf() }}<input type="hidden" name="accion" value="lugar"><input type="hidden" name="site_id" value="{{ x.id }}"></form>{% endfor %}
+<form id="snew" method="post">{{ csrf() }}<input type="hidden" name="accion" value="lugar"></form>
+{% set dis = '' if editable else 'disabled' %}
+<div class="tw"><table class="small"><tr><th>Nombre</th><th>Dirección</th><th>Distrito</th><th>Provincia</th><th>Referencia</th><th>Horario</th><th>Contacto</th><th>Teléfono</th><th>Activo</th><th></th></tr>
+{% for x in c.sites %}<tr>{% for k in ['nombre','direccion','distrito','provincia','referencia','horario_recepcion','contacto','telefono'] %}<td><input form="s{{ x.id }}" name="{{ k }}" value="{{ x[k] }}" {{ dis }}></td>{% endfor %}
+<td><select form="s{{ x.id }}" name="activo" {{ dis }}><option value="1">Sí</option><option value="0" {{ 'selected' if not x.activo }}>No</option></select></td><td>{% if editable %}<button form="s{{ x.id }}" class="small">Guardar</button>{% endif %}</td></tr>{% else %}<tr><td colspan="10" class="muted">Sin lugares registrados: la OV usa la dirección fiscal u «otro».</td></tr>{% endfor %}
+{% if editable %}<tr>{% for k, ph in [('nombre','Almacén / tienda'),('direccion','Dirección'),('distrito','Distrito'),('provincia','Provincia'),('referencia','Referencia'),('horario_recepcion','08:00-12:00'),('contacto','Contacto'),('telefono','Teléfono')] %}<td><input form="snew" name="{{ k }}" placeholder="{{ ph }}"></td>{% endfor %}<td></td><td><button form="snew" class="small">Agregar</button></td></tr>{% endif %}</table></div></div>
+<div class="grid g2"><div class="card"><h3>Órdenes de venta</h3><div class="tbl"><table class="small"><tr><th>OV</th><th>Emisión</th><th>Comprometida</th><th>Lugar</th><th>Estado</th></tr>{% for o in p.ovs %}<tr><td><a href="{{ url_for('com.order_detail', oid=o.id) }}">{{ o.numero }}</a></td><td>{{ o.fecha_emision|d }}</td><td>{{ o.fecha_compromiso|d }}</td><td>{{ o.lugar_entrega }}</td><td>{{ b(o.estado) }}</td></tr>{% endfor %}</table></div></div>
+<div class="card"><h3>Incidencias</h3><table class="small">{% for i in p.incidencias %}<tr><td>{{ i.ts|d }}</td><td>{{ i.tipo|replace('_',' ') }}{{ ' · ' ~ i.subtipo|replace('_',' ') if i.subtipo }}</td><td>{{ i.descripcion }}</td></tr>{% else %}<tr><td class="muted">Sin incidencias</td></tr>{% endfor %}</table></div></div>
+{% endblock %}

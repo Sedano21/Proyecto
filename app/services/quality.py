@@ -4,7 +4,7 @@ Cada formato se define con sus campos tal como figuran en el documento fuente. L
 solo usan límites documentados (PCC1 de REG-HACCP-CAL-002; especificación 'Calidad superior' de REG-CAL-005;
 criterios de peso de REG-CAL-003). La decisión final (aprobado/desaprobado) la registra Calidad.
 """
-from datetime import date
+from datetime import date, timedelta
 
 from sqlalchemy import func, select
 
@@ -25,6 +25,16 @@ DEFECTOS_MUESTREO = [
     ("variedad_contrastante", "Variedad contrastantes (%)"), ("piedras", "Piedrecillas, piedras (cantidad)"),
     ("insectos", "Insectos (cantidad)"),
 ]
+
+# Encabezado de cada formato tal como figura en el documento (cuadro "REGISTRO · Código · Versión · Fecha · Página").
+# Los formatos sin documento fuente (IF §9.3) no tienen versión: se imprimen con el membrete y su referencia.
+ENCABEZADOS = {
+    "MUESTREO": ("REG-CAL-002", "02", "18/03/2024"), "RECEPCION_MP": ("REG-HACCP-CAL-002", "02", "18/03/2024"),
+    "FUMIGACION": ("REG-BPM-CAL-005", "02", "18/03/2024"), "NO_CONFORME": ("REG-BPM-CAL-013", "01", "18/03/2024"),
+    "QUEJA": ("REG-HACCP-CAL-003", "02", "18/03/2024"), "NC_ACCION": ("REG-HACCP-CAL-006", "1", "18/03/2024"),
+    "CONTROL_PESOS": ("REG-CAL-003", "03", "18/03/2024"), "CONTROL_GRANOS": ("REG-CAL-014", "03", "18/03/2024"),
+    "RECEPCION_IMPORTADO": ("REG-CAL-005", "02", "18/03/2024"), "VEHICULO": ("REG-BPM-CAL-011", "02", "11/03/2024"),
+}
 
 # Definición de formatos: código, nombre, campos [(clave, etiqueta, tipo)]
 FORMATOS = {
@@ -516,3 +526,49 @@ def review_certificate(cert, user, cambios, aprobar=False):
                     + (" (con correcciones manuales)" if log else ""), "Certificate", cert.id, creado_por=user)
     audit(user, "CERTIFICADO_APROBADO" if aprobar else "CERTIFICADO_EDITADO", "Certificate", cert.numero,
           {"cambios": len(log)})
+
+
+# ------------------------------ planeamiento de fumigación (13-oct) ---------
+def fumigation_due(lot):
+    """Fecha en que el lote debe fumigarse: la programada por Calidad/Almacén o, si no hay, el fin del tiempo máximo de
+    almacenamiento del artículo (fecha de ingreso + tiempo máximo), que hoy dispara 'evaluar fumigación'."""
+    if lot.fumigacion_programada:
+        return lot.fumigacion_programada, "programada"
+    p = lot.product
+    if lot.fecha_admision and p and p.tiempo_max_almacen_dias:
+        return lot.fecha_admision + timedelta(days=p.tiempo_max_almacen_dias), "tiempo máximo de almacenamiento"
+    return None, ""
+
+
+def fumigation_plan(horizonte=30, hoy=None):
+    hoy = hoy or date.today()
+    out = []
+    for lot in db().execute(select(StockLot).where(StockLot.cantidad > 0, StockLot.estado != "EN_FUMIGACION")).scalars():
+        f, origen = fumigation_due(lot)
+        if f is not None and (f - hoy).days <= horizonte:
+            out.append({"lot": lot, "fecha": f, "dias": (f - hoy).days, "origen": origen})
+    return sorted(out, key=lambda x: x["fecha"])
+
+
+def schedule_fumigation(lot, user, fecha):
+    if not (has_perm(user, "calidad.registrar") or has_perm(user, "stock.cambiar_estado")):
+        raise BusinessError("La fumigación la programa Calidad o Almacén.")
+    lot.fumigacion_programada = fecha
+    audit(user, "FUMIGACION_PROGRAMADA", "StockLot", lot.id, {"lote": lot.lote, "fecha": fecha.isoformat() if fecha else None})
+
+
+def fumigation_alerts(hoy=None):
+    """Avisos a Calidad 7 días antes, 3 días antes y el mismo día de la fumigación (parámetro 'dias_aviso_fumigacion')."""
+    hoy = hoy or date.today()
+    dias = [int(x) for x in (param("dias_aviso_fumigacion", [7, 3, 0]) or [])]
+    n = 0
+    for x in fumigation_plan(max(dias or [0]), hoy):
+        if x["dias"] in dias or (x["dias"] < 0 and 0 in dias):
+            lot = x["lot"]
+            cuando = "HOY" if x["dias"] == 0 else (f"en {x['dias']} días" if x["dias"] > 0 else f"vencida hace {-x['dias']} días")
+            alerts.emit("FUMIGACION_PROXIMA", f"Fumigación {cuando}: lote {lot.lote}",
+                        f"{lot.product_code} {lot.product.descripcion if lot.product else ''} · {lot.cantidad:g} en "
+                        f"{lot.warehouse_code} · fecha {x['fecha']:%d/%m/%Y} ({x['origen']}). Planificar la fumigación.",
+                        "StockLot", lot.id, dedup_key=f"FUMI:{lot.id}:{x['fecha']}:{x['dias'] if x['dias'] >= 0 else 'venc'}")
+            n += 1
+    return n

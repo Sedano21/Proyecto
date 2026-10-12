@@ -51,6 +51,10 @@ def request_detail(rid):
         u = g.user
         fns = {
             "recalcular": (lambda: psvc.refresh_analysis(r), "Análisis recalculado.", "produccion.solicitud"),
+            "bom_ok": (lambda: psvc.review_bom(r, u, True, request.form.get("comentario", "")), "Lista de materiales confirmada.",
+                       "produccion.ver"),
+            "bom_obs": (lambda: psvc.review_bom(r, u, False, request.form.get("comentario", "")),
+                        "Lista de materiales observada (se alertó).", "produccion.ver"),
             "enviar": (lambda: psvc.send_request(r, u), "Solicitud enviada a Producción.", "produccion.solicitud"),
             "validar": (lambda: psvc.validate_request(r, u, True, f_bool("lista_ok"), f_bool("disponibilidad_ok"), f_bool("capacidad_ok"),
                                                       f_bool("plazo_ok"), request.form.get("comentario", "")), "Solicitud validada.", "produccion.validar"),
@@ -132,6 +136,25 @@ def liquidations():
     return render_template("liquidations.html", rows=rows, whs=whs, merma=psvc.merma_real_pct)
 
 
+@bp.route("/plan", methods=["GET", "POST"])
+@perm_required("produccion.ver")
+def plan():
+    """Planeamiento diario, semanal y mensual de Producción vs liquidación (tasa de cumplimiento)."""
+    from ..catalogs import PRODUCTION_LINES
+    if request.method == "POST":
+        f = request.form
+        return act(lambda: psvc.add_plan(g.user, f.get("periodo"), f_date("fecha", True), f.get("product_code", "").strip().upper().split(" ")[0],
+                                         f_float("cantidad", True), f.get("line_code") or None, f.get("comentario", "")),
+                   "Plan registrado.", url_for("prod.plan", periodo=f.get("periodo", "DIA")))
+    periodo = request.args.get("periodo", "DIA")
+    d = psvc.plan_vs_real(periodo, f_date("desde"), f_date("hasta"))
+    from ..services import charts
+    graf = charts.line([("Plan", [(f"{k:%d/%m}", v["plan"]) for k, v in d["serie"]]),
+                        ("Real (liquidado)", [(f"{k:%d/%m}", v["real"]) for k, v in d["serie"]])], "und", title="Plan vs real")
+    products = list(db().execute(select(Product).where(Product.tipo.in_(["PT", "GR", "MP", "C3"])).order_by(Product.code)).scalars())
+    return render_template("prod_plan.html", d=d, graf=graf, products=products, lineas=PRODUCTION_LINES, hoy=date.today())
+
+
 @bp.route("/partes", methods=["GET", "POST"])
 @perm_required("produccion.ver")
 def reports():
@@ -143,8 +166,17 @@ def reports():
             abort(403)
         f = request.form
         ops = f.get("operarios", "").strip()
+        if f.get("parte_id"):
+            prog = db().get(ProductionReport, int(f["parte_id"])) or abort(404)
+            return act(lambda: psvc.complete_report(
+                prog, g.user, granel_kg=f_float("granel_kg"), mp_kg=f_float("mp_kg"), cal3_kg=f_float("cal3_kg"),
+                desmedro_kg=f_float("desmedro_kg"), presentacion_kg=f_float("presentacion_kg"), unidades=f_float("unidades"),
+                sobrante_kg=f_float("sobrante_kg"), hora_inicio=f.get("hora_inicio", ""), hora_fin=f.get("hora_fin", ""),
+                horas=f_float("horas"), operarios=int(ops) if ops else None, estado=f.get("estado"),
+                peso_entrada_kg=f_float("peso_entrada_kg"), lote=f.get("lote", "").strip() or None),
+                lambda r: f"Parte completado: rendimiento {r.rendimiento_pct}%, desmedro {r.desmedro_pct}%.", url_for("prod.reports"))
         return act(lambda: psvc.register_report(
-            g.user, f.get("linea"), f_date("fecha"), f.get("product_code", "").strip().upper(), f_float("peso_entrada_kg"),
+            g.user, f.get("linea"), f_date("fecha"), f.get("product_code", "").strip().upper().split(" ")[0], f_float("peso_entrada_kg"),
             f_float("granel_kg") or 0, f_float("mp_kg") or 0, f_float("cal3_kg") or 0, f_float("desmedro_kg") or 0,
             f_float("presentacion_kg"), f_float("unidades"), f_float("sobrante_kg") or 0, f.get("of", ""), f.get("op", ""),
             f.get("turno", ""), f.get("hora_inicio", ""), f.get("hora_fin", ""), f_float("horas"), int(ops) if ops else None,
@@ -153,4 +185,6 @@ def reports():
             url_for("prod.reports"))
     rows = list(db().execute(select(ProductionReport).order_by(ProductionReport.fecha.desc(), ProductionReport.id.desc())
                              .limit(300)).scalars())
-    return render_template("prod_reports.html", rows=rows, lineas=PRODUCTION_LINES, hoy=date.today())
+    comp = db().get(ProductionReport, int(request.args["completar"])) if request.args.get("completar", "").isdigit() else None
+    products = list(db().execute(select(Product).where(Product.tipo.in_(["PT", "GR", "MP", "C3"])).order_by(Product.code)).scalars())
+    return render_template("prod_reports.html", rows=rows, lineas=PRODUCTION_LINES, hoy=date.today(), comp=comp, products=products)

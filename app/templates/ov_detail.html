@@ -4,7 +4,7 @@
 <div class="grid g2">
 <div class="card"><table class="kv">
 <tr><td>Cliente</td><td>{{ o.customer.nombre }} ({{ o.customer.ruc }}) · {{ o.customer.grupo }}</td></tr>
-<tr><td>Dirección / distrito</td><td>{{ o.direccion }} · {{ o.distrito }}</td></tr>
+<tr><td>Lugar de entrega</td><td>{{ o.lugar_entrega or "-" }} · {{ o.direccion }} · {{ o.distrito }}{{ " · " ~ o.provincia if o.provincia }} · <a href="{{ url_for("com.customer_card", cid=o.customer_id) }}">ficha del cliente</a></td></tr>
 <tr><td>Horario / cita</td><td>{{ o.customer.horario_recepcion }} · cita {{ o.hora_cita or '-' }} {{ '(confirmada)' if o.cita_confirmada else ('(requiere confirmación)' if o.customer.requiere_cita else '') }}</td></tr>
 <tr><td>Condición del cliente</td><td>{% if o.customer.vida_util_min_dias %}Vida útil mínima {{ o.customer.vida_util_min_dias }} días. {% endif %}{% set cc = cond_cliente(o.customer) %}{% if cc %}<b>{{ cc }}</b>{% elif not o.customer.vida_util_min_dias %}Sin condiciones registradas{% endif %}</td></tr>
 <tr><td>Emisión / comprometida</td><td>{{ o.fecha_emision|d }} / <b>{{ o.fecha_compromiso|d }}</b> · corte {{ o.corte or '-' }}</td></tr>
@@ -81,16 +81,17 @@
 <label>Comentario</label><input name="comentario" style="width:100%"><p><button class="sec">Cambiar producto</button></p></form></div>{% endif %}
 <datalist id="prods">{% for p in products %}<option value="{{ p.code }}">{{ p.descripcion }}</option>{% endfor %}</datalist>
 
-{% if o.estado in ['REGISTRADA','EVALUADA','EN_PREPARACION','PREPARADA'] and (can('ov.modificar') or can('ov.solicitar_modificacion')) %}
+{# Observaciones al demo v0.5: la modificación de OV solo se muestra al Ejecutivo de cuenta, Coordinador y Jefe Comercial #}
+{% if o.estado in ['REGISTRADA','EVALUADA','EN_PREPARACION','PREPARADA'] and can('ov.modificar') %}
 <details class="card"><summary><b>{{ 'Modificar OV' if can('ov.modificar') else 'Solicitar modificación (requiere autorización)' }}</b></summary>
 <form method="post" action="{{ url_for('com.order_action', oid=o.id, accion='modificar' if can('ov.modificar') else 'solicitar') }}">{{ csrf() }}
 <div class="row"><div><label>Fecha comprometida</label><input type="date" name="fecha_compromiso" value="{{ o.fecha_compromiso.isoformat() }}"></div>
 <div><label><input type="checkbox" name="urgente" value="1" {{ 'checked' if o.urgente }}> Urgente</label></div>
-<div><label>Hora cita</label><input name="hora_cita" value="{{ o.hora_cita }}"></div><div><label><input type="checkbox" name="cita_confirmada" value="1" {{ 'checked' if o.cita_confirmada }}> Cita confirmada</label></div></div>
+<div><label>Hora cita (24 h)</label><select name="hora_cita"><option value="">Sin cita</option>{% for h in horas %}<option {{ 'selected' if o.hora_cita == h }}>{{ h }}</option>{% endfor %}{% if o.hora_cita and o.hora_cita not in horas %}<option selected>{{ o.hora_cita }}</option>{% endif %}</select></div><div><label><input type="checkbox" name="cita_confirmada" value="1" {{ 'checked' if o.cita_confirmada }}> Cita confirmada</label></div></div>
 <label>Comentarios</label><textarea name="comentarios">{{ o.comentarios }}</textarea>
 <table><tr><th>Producto (dejar vacío para eliminar la línea)</th><th>Cantidad</th><th>Precio</th></tr>
-{% for l in o.lines if l.activa %}<tr><td><input name="product_code" value="{{ l.product_code }}" list="prods"></td><td><input name="cantidad" type="number" step="any" value="{{ l.cantidad }}"></td><td><input name="precio_unitario" type="number" step="any" value="{{ l.precio_unitario }}"></td></tr>{% endfor %}
-{% for i in range(3) %}<tr><td><input name="product_code" list="prods"></td><td><input name="cantidad" type="number" step="any"></td><td><input name="precio_unitario" type="number" step="any"></td></tr>{% endfor %}</table>
+{% for l in o.lines if l.activa %}<tr><td><input type="hidden" name="um_venta" value="{{ 'KG' if l.um_venta == 'SACO' else l.um_venta }}"><input name="product_code" value="{{ l.product_code }}" list="prods">{% if l.um_venta == 'SACO' %}<span class="small muted"> ({{ l.cantidad_venta|n }} sacos; cantidad y precio en kg)</span>{% endif %}</td><td><input name="cantidad" type="number" step="any" value="{{ l.cantidad }}"></td><td><input name="precio_unitario" type="number" step="any" value="{{ l.precio_unitario }}"></td></tr>{% endfor %}
+{% for i in range(3) %}<tr><td><input type="hidden" name="um_venta" value=""><input name="product_code" list="prods"></td><td><input name="cantidad" type="number" step="any"></td><td><input name="precio_unitario" type="number" step="any"></td></tr>{% endfor %}</table>
 {% if not can('ov.modificar') %}<label>Motivo</label><input name="motivo" style="width:100%" required>{% endif %}
 <p><button>{{ 'Guardar y reevaluar' if can('ov.modificar') else 'Enviar solicitud' }}</button></p></form></details>{% endif %}
 

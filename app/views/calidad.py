@@ -26,7 +26,27 @@ def home():
         q = q.where(QualityRecord.formato == formato)
     recs = list(db().execute(q.limit(200)).scalars())
     muestras = list(db().execute(select(PurchaseRequest).where(PurchaseRequest.estado == "MUESTRA_EN_CALIDAD")).scalars())
-    return render_template("cal_home.html", pend=pend, recs=recs, formatos=qsvc.FORMATOS, formato=formato, muestras=muestras)
+    lotes = list(db().execute(select(StockLot).where(StockLot.cantidad > 0).order_by(StockLot.product_code, StockLot.lote)).scalars())
+    fum = qsvc.fumigation_plan()
+    return render_template("cal_home.html", pend=pend, recs=recs, formatos=qsvc.FORMATOS, formato=formato, muestras=muestras,
+                           lotes=lotes, tipos=qsvc.CERT_TIPOS, fum=fum)
+
+
+@bp.route("/lote/<int:lid>/fumigacion", methods=["POST"])
+@perm_required("calidad.ver")
+def fumigation(lid):
+    lot = db().get(StockLot, lid) or abort(404)
+    return act(lambda: qsvc.schedule_fumigation(lot, g.user, f_date("fecha", True)), "Fumigación programada.", url_for("cal.home"))
+
+
+@bp.route("/abrir")
+@perm_required("calidad.registrar")
+def open_record():
+    """Selector de formatos (lista desplegable): abre el formato elegido, opcionalmente con el lote."""
+    formato = request.args.get("formato_sel", "")
+    if formato not in qsvc.FORMATOS:
+        abort(404)
+    return redirect(url_for("cal.new_record", formato=formato, lot_id=request.args.get("lot_id") or None))
 
 
 @bp.route("/lote/<int:lid>/liberar", methods=["POST"])
@@ -77,7 +97,7 @@ def new_record(formato):
 @perm_required("calidad.ver", "distribucion.seguridad")
 def record_detail(rid):
     r = db().get(QualityRecord, rid) or abort(404)
-    return render_template("cal_record.html", r=r, fdef=qsvc.FORMATOS[r.formato])
+    return render_template("cal_record.html", r=r, fdef=qsvc.FORMATOS[r.formato], enc=qsvc.ENCABEZADOS.get(r.formato))
 
 
 @bp.route("/certificados", methods=["GET", "POST"])
