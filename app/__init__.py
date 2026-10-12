@@ -24,7 +24,8 @@ def create_app(config=None):
         app.config.update(config)
     os.makedirs(app.config["UPLOAD_DIR"], exist_ok=True)
     init_engine(app.config["DATABASE_URL"])
-    create_all()
+    if os.environ.get("SCHEMA_AUTO_CREATE", "1") != "0":  # en producción el esquema se gestiona con Alembic
+        create_all()
 
     @app.teardown_appcontext
     def _remove_session(exc=None):

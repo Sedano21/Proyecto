@@ -27,8 +27,7 @@ Origen: **D** = definido expresamente en la documentación; **P** = propuesto (d
 | JEFE_LOGISTICA | Jefatura de Logística | Logística | Informe Funcional §6.2, §13, §15 |  |
 | COORD_LOGISTICA | Coordinación de Logística | Logística | Informe Funcional §15 |  |
 | JEFE_PRODUCCION | Jefatura de Producción | Producción | Informe Funcional §8, §15 |  |
-| COORD_PRODUCCION | Coordinación de Producción (por validar) | Producción | Informe Funcional §15 | La existencia del rol está 'por validar' (IF §15). |
-| ASIST_PRODUCCION | Asistente de Producción | Producción | Informe Funcional §15 |  |
+| ASIST_PRODUCCION | Asistente de Producción | Producción | Informe Funcional §15; Decisión del usuario (13-oct-2026, segunda parte) | Hoy son dos asistentes; no existe Coordinación de Producción. |
 | JEFE_CALIDAD | Jefatura de Calidad | Calidad | Informe Funcional §9, §15 |  |
 | SUPERV_CALIDAD | Supervisor de Calidad | Calidad | Informe Funcional §9.3, §15 |  |
 | ASIST_CALIDAD | Asistente de Calidad | Calidad | Informe Funcional §9.3, §15 |  |
@@ -53,7 +52,9 @@ Origen: **D** = definido expresamente en la documentación; **P** = propuesto (d
 | ov.decidir_alternativa | Decidir uso de stock de otros almacenes | Logística | aprobacion |
 | ov.importar | Importar OV desde exportación SAP | Comercial | edicion |
 | precios.ver | Consultar listas de precios | Comercial | consulta |
-| precios.editar | Cargar y modificar listas de precios mínimos (solo Jefe Comercial) | Comercial | exclusivo |
+| precios.editar | Cargar y modificar listas de precios mínimos y su vigencia (solo Jefe Comercial) | Comercial | exclusivo |
+| ov.aprobar_precio | Liberar una OV retenida por precio en el límite o bajo el mínimo | Comercial | exclusivo |
+| clientes.canal | Asignar canal de precios y cargar condiciones de clientes (penalidades, lotes) | Comercial | exclusivo |
 | stock.ver | Consultar stock y reservas | Almacén | consulta |
 | stock.cargar | Cargar archivos de stock/movimientos (validación previa) | Almacén | edicion |
 | stock.autorizar_carga | Autorizar/confirmar carga de stock | Almacén | aprobacion |
@@ -109,7 +110,7 @@ Origen: **D** = definido expresamente en la documentación; **P** = propuesto (d
 | alertas.ver_todas | Ver alertas de todas las áreas | Alertas | consulta |
 | alertas.configurar | Configurar destinatarios/canales/urgencia de alertas | Alertas | administracion |
 | config.ver | Consultar configuración | Configuración | consulta |
-| config.editar | Editar configuración y catálogos | Configuración | administracion |
+| config.editar | Editar configuración y catálogos (solo Sistemas) | Configuración | exclusivo |
 | usuarios.administrar | Administrar usuarios y matriz de permisos | Configuración | administracion |
 | auditoria.ver | Consultar bitácora de auditoría | Configuración | consulta |
 | export.datos | Exportar registros | General | consulta |
@@ -118,11 +119,11 @@ Origen: **D** = definido expresamente en la documentación; **P** = propuesto (d
 
 ### Gerencia General
 
-Todos los permisos (71) — D: Informe Funcional §15; Decisión del usuario Q4 (11-oct-2026): acceso completo, incluso aprobar en nombre de otros roles (salvo modificar precios: exclusivo del Jefe Comercial, Decisión del usuario (13-oct-2026) Q11). Las aprobaciones no se omiten; quedan auditadas (decisión pendiente IF §15).
+Todos los permisos (70) — D: Informe Funcional §15; Decisión del usuario Q4 (11-oct-2026): acceso completo, incluso aprobar en nombre de otros roles (salvo los permisos exclusivos: precios y venta bajo mínimo del Jefe Comercial, Decisión del usuario (13-oct-2026) Q11; configuración de Sistemas, Decisión del usuario (13-oct-2026, segunda parte)). Las aprobaciones no se omiten; quedan auditadas (decisión pendiente IF §15).
 
 ### Sistemas
 
-Todos los permisos (53) — D: Informe Funcional §15-§16; Decisión del usuario Q4 (11-oct-2026): acceso completo pero NO aprueba en nombre de otros roles. Las aprobaciones no se omiten; quedan auditadas (decisión pendiente IF §15).
+Todos los permisos (54) — D: Decisión del usuario (13-oct-2026, segunda parte): Sistemas tiene todo el panel de configuración. Las aprobaciones no se omiten; quedan auditadas (decisión pendiente IF §15).
 
 ### Gerencia de Operaciones
 
@@ -160,9 +161,11 @@ Todos los permisos (53) — D: Informe Funcional §15-§16; Decisión del usuari
 
 - `alertas.gestionar` – Asignar, atender, comentar y cerrar alertas (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `alertas.ver` – Ver alertas propias/del rol (**P**; Informe Funcional §3 (alcance por área) – propuesto)
+- `clientes.canal` – Asignar canal de precios y cargar condiciones de clientes (penalidades, lotes) (**D**; Decisión del usuario (13-oct-2026, segunda parte): el Jefe Comercial asigna y traslada clientes de canal)
 - `dashboard.ver` – Ver tablero de indicadores (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `distribucion.ver` – Consultar distribución (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `export.datos` – Exportar registros (**P**; Informe Funcional §3 (alcance por área) – propuesto)
+- `ov.aprobar_precio` – Liberar una OV retenida por precio en el límite o bajo el mínimo (**D**; Decisión del usuario (13-oct-2026, segunda parte): la OV bajo el mínimo queda detenida hasta la confirmación del Coordinador Comercial o Jefe Comercial)
 - `ov.autorizar_modificacion` – Autorizar modificación de OV solicitada por Asistente (**D**; Informe Funcional §5)
 - `ov.cancelar` – Cancelar OV (**D**; Informe Funcional §5)
 - `ov.crear` – Registrar OV (**P**; Informe Funcional §3 (alcance por área) – propuesto)
@@ -170,7 +173,7 @@ Todos los permisos (53) — D: Informe Funcional §15-§16; Decisión del usuari
 - `ov.modificar` – Modificar OV directamente (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `ov.renegociar` – Registrar renegociación de fecha / cambio de producto (**D**; Informe Funcional §4.5, §5 (Comercial participa))
 - `ov.ver` – Consultar órdenes de venta (**P**; Informe Funcional §3 (alcance por área) – propuesto)
-- `precios.editar` – Cargar y modificar listas de precios mínimos (solo Jefe Comercial) (**D**; Decisión del usuario (13-oct-2026) Q11: único con autorización para modificar precios)
+- `precios.editar` – Cargar y modificar listas de precios mínimos y su vigencia (solo Jefe Comercial) (**D**; Decisión del usuario (13-oct-2026) Q11: único con autorización para modificar precios)
 - `precios.ver` – Consultar listas de precios (**D**; Decisión del usuario (13-oct-2026) Q11: único con autorización para modificar precios)
 - `stock.ver` – Consultar stock y reservas (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 
@@ -181,6 +184,7 @@ Todos los permisos (53) — D: Informe Funcional §15-§16; Decisión del usuari
 - `dashboard.ver` – Ver tablero de indicadores (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `distribucion.ver` – Consultar distribución (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `export.datos` – Exportar registros (**P**; Informe Funcional §3 (alcance por área) – propuesto)
+- `ov.aprobar_precio` – Liberar una OV retenida por precio en el límite o bajo el mínimo (**D**; Decisión del usuario (13-oct-2026, segunda parte): confirma OV detenida por precio (Coordinador Comercial))
 - `ov.autorizar_modificacion` – Autorizar modificación de OV solicitada por Asistente (**D**; Informe Funcional §5)
 - `ov.cancelar` – Cancelar OV (**D**; Informe Funcional §5)
 - `ov.crear` – Registrar OV (**P**; Informe Funcional §3 (alcance por área) – propuesto)
@@ -409,20 +413,6 @@ Todos los permisos (53) — D: Informe Funcional §15-§16; Decisión del usuari
 - `reempaque.ver` – Consultar reempaques (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `stock.ver` – Consultar stock y reservas (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 
-### Coordinación de Producción (por validar)
-
-- `alertas.gestionar` – Asignar, atender, comentar y cerrar alertas (**P**; Informe Funcional §15 – rol por validar)
-- `alertas.ver` – Ver alertas propias/del rol (**P**; Informe Funcional §15 – rol por validar)
-- `ov.ver` – Consultar órdenes de venta (**P**; Informe Funcional §15 – rol por validar)
-- `produccion.liquidar` – Registrar/cargar liquidación (**P**; Informe Funcional §15 – rol por validar)
-- `produccion.programar` – Programar producción (**P**; Informe Funcional §15 – rol por validar)
-- `produccion.registrar` – Registrar inicio/fin de producción (**P**; Informe Funcional §15 – rol por validar)
-- `produccion.validar` – Validar solicitud (lista, disponibilidad real, capacidad, plazo) (**P**; Informe Funcional §15 – rol por validar)
-- `produccion.ver` – Consultar producción (**P**; Informe Funcional §15 – rol por validar)
-- `reempaque.ejecutar` – Ejecutar y registrar reempaque (**P**; Informe Funcional §15 – rol por validar)
-- `reempaque.ver` – Consultar reempaques (**P**; Informe Funcional §15 – rol por validar)
-- `stock.ver` – Consultar stock y reservas (**P**; Informe Funcional §15 – rol por validar)
-
 ### Asistente de Producción
 
 - `alertas.ver` – Ver alertas propias/del rol (**P**; Informe Funcional §3 (alcance por área) – propuesto)
@@ -573,16 +563,19 @@ Canales: panel del módulo y correo (si hay SMTP). Ciclo: Nueva → Asignada →
 | TRASLADO_SOLICITADO | Traslado pendiente de autorización | Logística / Traslados | MEDIA | JEFE_LOGISTICA, COORD_LOGISTICA | DEFINIDO | sí | Se solicita (o el sistema pre-solicita) un traslado desde almacén alternativo. | Informe Funcional §6.2, §13; Decisión del usuario (12-oct-2026) Q13 |
 | TRASLADO_AUTORIZADO | Traslado autorizado | Almacén / Traslados | MEDIA | COORD_ALMACEN, COORD_ALMACEN_MP, AUX_ALMACEN | PROPUESTO | no | Logística autoriza el traslado. | Informe Funcional §13 |
 | TRASLADO_DIFERENCIA | Diferencia en recepción de traslado | Logística / Traslados | ALTA | JEFE_LOGISTICA, COORD_ALMACEN, COORD_ALMACEN_MP, GERENCIA_OPERACIONES | PROPUESTO | sí | Cantidad recibida distinta a la enviada. | Informe Funcional §13 |
-| OV_PRECIO_BAJO_MINIMO | Precio de OV en el límite o por debajo de la lista | Comercial / Cambios de OV | ALTA | JEFE_VENTAS, GERENTE_COMERCIAL | DEFINIDO | sí | Línea de OV con precio igual o menor al mínimo de lista del canal (o dentro del margen de alerta). También se avisa al vendedor de la OV. | Decisión del usuario (13-oct-2026) Q11: la lista es el precio mínimo; los ejecutivos o responsables de canal venden sobre ese precio |
+| OV_PRECIO_BAJO_MINIMO | OV detenida: precio en el límite o por debajo de la lista | Comercial / Cambios de OV | ALTA | JEFE_VENTAS, COORD_VENTAS, GERENTE_COMERCIAL | DEFINIDO | sí | Línea de OV (incluidas las muestras comerciales) con precio igual o menor al mínimo de lista del canal. También se avisa al vendedor de la OV. | Decisión del usuario (13-oct-2026) Q11; Decisión del usuario (13-oct-2026, segunda parte): se alerta y queda detenida hasta la confirmación del Coordinador o Jefe Comercial |
+| PRECIO_FALTANTE | Producto o cliente sin precio mínimo | Comercial / Cambios de OV | MEDIA | JEFE_VENTAS | DEFINIDO | sí | Una OV trae un producto sin precio mínimo para el canal del cliente, o un cliente sin canal de precios asignado. | Decisión del usuario (13-oct-2026, segunda parte): 'el sistema debe botar una alerta y en base a eso ir completando' |
+| LISTA_PRECIOS_VENCIDA | Lista de precios vencida o por vencer | Comercial / Cambios de fechas | MEDIA | JEFE_VENTAS | DEFINIDO | sí | Fecha de vencimiento de la lista alcanzada (o dentro del aviso). | Decisión del usuario (13-oct-2026, segunda parte): 'se avisa pero no se bloquea' |
+| CARGA_SAP_DESACTUALIZADA | Carga de SAP sin actualizar | Sistemas / Diferencias de inventario | ALTA | SISTEMAS | DEFINIDO | no | La última carga autorizada de un tipo supera las horas configuradas; se avisa al área responsable y a Sistemas. | Decisión del usuario (13-oct-2026, segunda parte): cada área exporta a diario, con cortes de 2 veces al día como mínimo |
 | PRESOLICITUD_AUTOMATICA | Pre-solicitudes generadas por faltante | Almacén / Solicitudes | ALTA | COORD_ALMACEN, COORD_ALMACEN_MP, JEFE_LOGISTICA, COORD_LOGISTICA | DEFINIDO | sí | La OV queda con faltante y el sistema genera la pre-solicitud de la primera opción viable. | TO-BE COPROD-ONE (L5); Decisión del usuario (12-oct-2026) Q15 (orden: producir, reempaque, traslado, compra) |
-| PRODUCCION_SOLICITUD | Solicitud de producción enviada | Producción / Solicitudes | ALTA | JEFE_PRODUCCION, COORD_PRODUCCION | DEFINIDO | sí | Almacén envía solicitud preliminar. | Informe Funcional §8.2, §14 |
+| PRODUCCION_SOLICITUD | Solicitud de producción enviada | Producción / Solicitudes | ALTA | JEFE_PRODUCCION, ASIST_PRODUCCION | DEFINIDO | sí | Almacén envía solicitud preliminar. | Informe Funcional §8.2, §14 |
 | PRODUCCION_RESPUESTA | Solicitud de producción validada/rechazada | Producción / Solicitudes | MEDIA | COORD_ALMACEN, COORD_ALMACEN_MP, COORD_VENTAS | PROPUESTO | sí | Producción valida o rechaza. | Informe Funcional §8.2 |
 | LIQUIDACION_MONTACARGUISTA | Liquidación registrada: mover producto terminado | Almacén / Solicitudes | ALTA | MONTACARGUISTA, COORD_ALMACEN, COORD_ALMACEN_MP | DEFINIDO | no | Al registrar una liquidación. | Informe Funcional §8.3 |
-| LIQUIDACION_DIFERENCIA | Diferencia entre liquidación y recepción de PT | Almacén / Diferencias de inventario | ALTA | JEFE_PRODUCCION, COORD_PRODUCCION, COORD_ALMACEN, COORD_ALMACEN_MP | PROPUESTO | sí | Recepción física ≠ cantidad completada. | Informe Funcional §8.3; hoja 'Cruce' de Recep. pt.xlsx |
-| MERMA_FUERA_PARAMETRO | Merma fuera de parámetros | Producción / Merma | ALTA | JEFE_PRODUCCION, COORD_PRODUCCION, GERENCIA_OPERACIONES | PENDIENTE | sí | Solo si se configura 'umbral_merma_pct'. | Informe Funcional §14 ('cuando se defina el umbral') |
+| LIQUIDACION_DIFERENCIA | Diferencia entre liquidación y recepción de PT | Almacén / Diferencias de inventario | ALTA | JEFE_PRODUCCION, ASIST_PRODUCCION, COORD_ALMACEN, COORD_ALMACEN_MP | PROPUESTO | sí | Recepción física ≠ cantidad completada. | Informe Funcional §8.3; hoja 'Cruce' de Recep. pt.xlsx |
+| MERMA_FUERA_PARAMETRO | Merma fuera de parámetros | Producción / Merma | ALTA | JEFE_PRODUCCION, ASIST_PRODUCCION, GERENCIA_OPERACIONES | PENDIENTE | sí | Solo si se configura 'umbral_merma_pct'. | Informe Funcional §14 ('cuando se defina el umbral') |
 | REEMPAQUE_PRESOLICITUD | Pre-solicitud de reempaque por aprobar | Almacén / Solicitudes | ALTA | COORD_ALMACEN, COORD_ALMACEN_MP | DEFINIDO | sí | El sistema genera la pre-solicitud; el Coordinador de Almacén la aprueba y envía a Calidad. | TO-BE COPROD-ONE (L5); Decisión del usuario (12-oct-2026) Q12 |
 | REEMPAQUE_SOLICITUD | Solicitud de reempaque para evaluación | Calidad / Solicitudes | ALTA | JEFE_CALIDAD, SUPERV_CALIDAD | DEFINIDO | sí | El Coordinador de Almacén aprueba y envía la solicitud. | Informe Funcional §9.1; Decisión del usuario (12-oct-2026) Q12 |
-| REEMPAQUE_APROBADO | Reempaque aprobado: ejecutar | Producción / Solicitudes | ALTA | COORD_ALMACEN, COORD_ALMACEN_MP, JEFE_PRODUCCION, COORD_PRODUCCION | DEFINIDO | sí | Calidad aprueba. | Informe Funcional §9.1 (notifica a Almacén y envía a Producción) |
+| REEMPAQUE_APROBADO | Reempaque aprobado: ejecutar | Producción / Solicitudes | ALTA | COORD_ALMACEN, COORD_ALMACEN_MP, JEFE_PRODUCCION, ASIST_PRODUCCION | DEFINIDO | sí | Calidad aprueba. | Informe Funcional §9.1 (notifica a Almacén y envía a Producción) |
 | REEMPAQUE_DESAPROBADO | Reempaque desaprobado | Almacén / Solicitudes | MEDIA | COORD_ALMACEN, COORD_ALMACEN_MP | PROPUESTO | sí | Calidad desaprueba. | Informe Funcional §9.1 |
 | COMPRA_APROBACION_LOGISTICA | Solicitud de compra por aprobar (Jefe de Logística) | Logística / Solicitudes | ALTA | JEFE_LOGISTICA | DEFINIDO | sí | Almacén envía la solicitud o el sistema genera la pre-solicitud. | TO-BE COPROD-ONE (L5); Decisión del usuario (12-oct-2026) Q14 |
 | COMPRA_SOLICITUD | Solicitud de compra aprobada por Logística | Compras / Solicitudes | MEDIA | COMPRAS | DEFINIDO | sí | El Jefe de Logística aprueba la solicitud. | Informe Funcional §10.1, §14; Decisión del usuario (12-oct-2026) Q14 |
@@ -641,8 +634,9 @@ Canales: panel del módulo y correo (si hay SMTP). Ciclo: Nueva → Asignada →
 | periodo_analisis_dias | `15` | AS-IS | Período de análisis por defecto para consumo promedio (cada producto puede tener el suyo). | Macro VBA 'TraerLotesStock' (PROM_15D) en PCP 2026 - J.xlsm |
 | factor_stock_seguridad | `0.3` | AS-IS | Stock de seguridad como % del consumo mensual promedio observado en el Excel actual. Solo se aplica si 'usar_stock_seguridad' = sí. | Rotacion de inventario - Almacenes.xlsx, hoja Reporte ('30% stk seg') |
 | usar_stock_seguridad | `False` | PENDIENTE | Aplicar el factor de stock de seguridad AS-IS en el análisis de reposición. | Informe Funcional §16 (stock mínimo configurable) |
-| umbral_mayor_volumen | `None` | PENDIENTE | Cantidad a partir de la cual una compra se considera de mayor volumen. | Informe Funcional §7, §20 |
-| mayor_volumen_requiere_go | `True` | PENDIENTE | Si la compra de mayor volumen requiere aprobación de Gerencia de Operaciones. | Informe Funcional §7, §20 |
+| umbral_mayor_volumen | `None` | PENDIENTE | Valor a partir del cual una compra se considera de mayor volumen (en la unidad elegida abajo). | Informe Funcional §7, §20; Decisión del usuario (13-oct-2026, segunda parte) |
+| umbral_mayor_volumen_unidad | `KG` | DEFINIDO | Unidad del umbral: KG (cantidad × peso del artículo), UNIDADES o SOLES (cantidad × precio cotizado). | Decisión del usuario (13-oct-2026, segunda parte): se configura en el panel |
+| mayor_volumen_requiere_go | `True` | DEFINIDO | La compra de mayor volumen requiere aprobación de Gerencia de Operaciones (además del Jefe de Logística). | Informe Funcional §7; Decisión del usuario (13-oct-2026, segunda parte): configuración automática Gerencia de Operaciones |
 | merma_pct_global | `None` | PENDIENTE | Porcentaje de merma por defecto (el catálogo de producto/material puede tener uno propio). | Informe Funcional §8.1, §16, §20 |
 | prefijos_no_material_bom | `['RE-']` | PROPUESTO | Prefijos de componentes BOM que no son materiales inventariables (mano de obra, costo CIF). No se verifican contra stock. | LISTA DE MATERIALES 2026.xlsx (RE-xxx = 'MANO DE OBRA' / 'COSTO CIF') |
 | umbral_merma_pct | `None` | PENDIENTE | Merma real (%) a partir de la cual se alerta 'merma fuera de parámetros'. | Informe Funcional §14 |
@@ -650,7 +644,9 @@ Canales: panel del módulo y correo (si hay SMTP). Ciclo: Nueva → Asignada →
 | tiempos_preparacion | `{'PEQUENO': '20-30 min', 'MEDIANO': '1 h - 1 h 30', 'GRANDE': '4 h (requiere 2 días de anticipación)'}` | AS-IS | Tiempos de preparación iniciales por tamaño de pedido (provisionales; medir y ajustar). | Diagrama AS-IS L5 (Revisar el stock físico vs. lo solicitado); IF §20 |
 | umbrales_tamano_pedido_kg | `None` | PENDIENTE | Límites en kg para clasificar pedido pequeño/mediano/grande. | No definido en la documentación |
 | umbral_alerta_preparacion_pct | `80` | DEFINIDO | Avance de preparación que dispara la alerta. | Informe Funcional §14 |
-| orden_prioridad | `['fecha_compromiso', 'completitud', 'urgencia']` | PROPUESTO | Criterios de prioridad en el orden aplicado (los criterios están definidos; el orden de desempate es propuesto). | Informe Funcional §1, §5, §12.1 |
+| orden_prioridad | `['fecha_compromiso', 'penalidad', 'completitud', 'urgencia']` | PROPUESTO | Criterios de prioridad en el orden aplicado. 'penalidad': a igual fecha, primero el cliente con penalidades más severas (lista de clientes con penalidades). El orden de desempate es propuesto. | Informe Funcional §1, §5, §12.1; Decisión del usuario (13-oct-2026, segunda parte) (lista de clientes con penalidades para priorizar) |
+| peso_penalidad | `{'RETIRO_PROVEEDOR': 5, 'FECHA_ENTREGA': 4, 'FILL_RATE': 4, 'ENTREGA_PARCIAL': 3, 'RUPTURA_STOCK': 3, 'VENTANA_HORARIA': 2, 'PESO': 2, 'PALETIZADO': 2, 'DOCUMENTOS': 1, 'NO_CONFORMIDADES': 1}` | PROPUESTO | Peso de cada tipo de penalidad del cliente para la prioridad (suma). Valores propuestos para validar con Comercial. | Decisión del usuario (13-oct-2026, segunda parte) |
+| aplicar_vida_util_cliente | `False` | PENDIENTE | Si 'vida útil 12 meses' de la lista de clientes significa vida útil RESTANTE mínima al despacho, activar: la reserva excluye lotes con menos meses de vida. Pendiente de confirmar. | Decisión del usuario (13-oct-2026, segunda parte) |
 | almacen_transito_produccion | `ALM-003` | DEFINIDO | Almacén virtual de tránsito donde Producción deja el producto terminado hasta la validación de Almacén. | Decisión del usuario (12-oct-2026) Q5 |
 | uso_almacen_por_tipo | `{'PT': 'PT', 'GR': 'MP_INSUMOS', 'MP': 'MP_INSUMOS', 'INSUMO': 'MP_INSUMOS'}` | DEFINIDO | Almacén principal según tipo de artículo (TIPO de la tabla DATA: PT/GR/MP; insumos EN-/SU- = INSUMO). | Informe Funcional §6.2 (1560 = PT; 1524 = materia prima, granel e insumos) |
 | politica_lotes | `FEFO` | PROPUESTO | Orden de consumo de lotes al reservar (FEFO = primero en vencer, primero en salir). | Informe Funcional §22 (respetar lote y vencimiento) |
@@ -659,6 +655,16 @@ Canales: panel del módulo y correo (si hay SMTP). Ciclo: Nueva → Asignada →
 | carga_autorizada_verifica | `True` | PROPUESTO | Una carga revisada y autorizada marca los lotes como verificados (hasta que un conteo registre diferencias). | Informe Funcional §6.3-6.4 |
 | reevaluar_tras_carga | `True` | PROPUESTO | Reevaluar automáticamente OV con faltantes (por prioridad) al ingresar stock. | Informe Funcional §1, §6.3 |
 | bloquear_salida_con_discrepancia | `True` | DEFINIDO | Una discrepancia carga vs guía bloquea la salida; el Jefe o el Coordinador de Logística puede aprobar la salida mientras se resuelve la guía. | Informe Funcional §12.2; Decisión del usuario (12-oct-2026) Q8 |
+| margen_por_proveedor | `{}` | DEFINIDO | Días de margen adicional por proveedor habitual del artículo ({proveedor: días}); prevalece sobre el margen global. | Informe Funcional §16; Decisión del usuario (13-oct-2026, segunda parte): configurable en el panel |
+| excepciones_bom | `{}` | DEFINIDO | Excepciones a la proporcionalidad lineal: {producto: {componente: cantidad fija por orden}}; esa cantidad no se escala con el tamaño de la orden. | Informe Funcional §20; Decisión del usuario (13-oct-2026, segunda parte): configurable en el panel |
+| conversiones_calidad_permitidas | `[]` | DEFINIDO | Conversiones de calidad permitidas en reempaque, como 'EXTRA>SUPERIOR'. Vacío = todas se proponen para evaluación de Calidad. | Informe Funcional §9.2; Decisión del usuario (13-oct-2026, segunda parte): configurable en el panel |
+| clasificacion_abc_pct | `{'A': 80, 'B': 95}` | PROPUESTO | Clasificación ABC por consumo acumulado del período de análisis: A hasta el % indicado, B hasta su %, C el resto. | Excel de rotación (A/B/C); Decisión del usuario (13-oct-2026, segunda parte): configurable en el panel |
+| orden_asignacion_flota | `['PROPIO', 'TERCERO', 'EXTERNO']` | DEFINIDO | Orden en que la propuesta de rutas asigna unidades (propias, de terceros, transporte externo). | Informe Funcional §12.1; Decisión del usuario (13-oct-2026, segunda parte): configurable en el panel |
+| vehiculos_por_zona | `{}` | DEFINIDO | Restricción opcional de unidades por zona: {zona o distrito: [placas]}. Vacío = cualquier unidad. | Informe Funcional §12.1; Decisión del usuario (13-oct-2026, segunda parte): configurable en el panel |
+| horas_max_sin_carga | `{'STOCK': 12, 'OV': 12, 'LIQUIDACION': 12, 'SALIDAS': 24}` | DEFINIDO | Horas máximas desde la última carga autorizada de cada tipo antes de alertar (2 cortes al día = 12 h). | Decisión del usuario (13-oct-2026, segunda parte): diario, 2 cortes al día como mínimo |
+| responsable_carga | `{'STOCK': ['COORD_ALMACEN', 'COORD_ALMACEN_MP'], 'OV': ['ASIST_VENTAS'], 'LIQUIDACION': ['ASIST_PRODUCCION'], 'SALIDAS': ['COORD_ALMACEN']}` | PROPUESTO | Área (roles) que genera y sube cada exportación de SAP; recibe la alerta de carga desactualizada. | Decisión del usuario (13-oct-2026, segunda parte): 'cada área' |
+| correo_habilitado | `False` | DEFINIDO | Enviar alertas por correo. Hoy no hay servidor de correo: las alertas quedan en el sistema. | Decisión del usuario (13-oct-2026, segunda parte) |
+| retencion_datos_personales_dias | `None` | PENDIENTE | Días que se conservan fotos de entrega y datos personales de conductores antes de depurarlos. Vacío = no se depura. Debe fijarse según lo que permita la Ley 29733 y las normas aplicables (validación legal). | Decisión del usuario (13-oct-2026, segunda parte) |
 | tolerancia_discrepancia_guia | `0` | PENDIENTE | Diferencia (unidades) entre guía y carga que se tolera sin considerarla discrepancia. | Decisión del usuario (12-oct-2026) Q8 (tolerancia no indicada) |
 | zonas_distrito | `{}` | PENDIENTE | Agrupación de distritos en zonas de reparto (si está vacío se agrupa por distrito). | Informe Funcional §12.1 |
 | capacidad_externo_kg | `[2000, 25000]` | AS-IS | Rango de capacidad de transportes externos (kg). | Imagen tabla de transportes (2 TN a 25 TN) |
@@ -674,7 +680,9 @@ Canales: panel del módulo y correo (si hay SMTP). Ciclo: Nueva → Asignada →
 | vistos_buenos_salida | `['SEGURIDAD', 'AUX_DESPACHO', 'LIDER_ALMACEN']` | DEFINIDO | Roles cuya autorización y visto bueno requiere la salida del camión (el Líder Operativo da el último). | Decisión del usuario (13-oct-2026) Q16 |
 | canal_precio_por_grupo | `{'MAYORISTA': 'MAYORISTA', 'INSTITUCIONAL': 'INSTITUCIONAL', 'CUENTAS CLAVE': 'CUENTAS CLAVE', 'MARCA BLANCA': 'MARCA BLANCA', 'CATERING': 'CATERING', 'HOTELES - RESTAURANTES': 'HOTELES - RESTAURANTES', 'AUTOSERVICIOS': 'AUTOSERVICIOS', 'ENTRETENIMIENTO': 'ENTRETENIMIENTO', 'E-COMMERCE': 'E-COMMERCE', 'DISTRIBUIDORES': 'DISTRIBUIDORES'}` | PROPUESTO | Columna de la lista de precios mínimos que corresponde a cada grupo de cliente. OFICINA, CANASTERIA y MINORISTA (presentes en las OV) no tienen columna en la lista: sus OV quedan sin precio hasta definirlo. | Decisión del usuario (13-oct-2026) Q11; columnas de PRICE_LIST_OCT-NOV_26 y 'Grupo de cliente' de la exportación OVS |
 | margen_alerta_precio_pct | `0` | PENDIENTE | La alerta salta si el precio de venta está por debajo del mínimo de lista o a menos de este % por encima ('en el límite'). Con 0 se alerta solo si es igual o menor al mínimo. | Decisión del usuario (13-oct-2026) Q11 ('alertar si está en el límite o por debajo') |
-| lista_granel_canales | `['MAYORISTA']` | PROPUESTO | Canales a los que se aplica la lista 'Mayorista granel' (mínimo por kg o por saco) con prioridad sobre la lista general. | Decisión del usuario (13-oct-2026) Q11; título 'LISTA DE PRECIOS MAYORISTA GRANEL' |
+| lista_granel_canales | `['MAYORISTA GRANEL']` | DEFINIDO | Canales de precio que usan la lista 'Mayorista granel' (mínimo por kg y por saco). La lista se elige por el canal del cliente: granel (sin proceso de empaque) o presentaciones (lista por canal). | Decisión del usuario (13-oct-2026, segunda parte): 'son por el tipo de canal' |
+| aviso_vencimiento_lista_dias | `7` | PROPUESTO | Días antes del vencimiento de una lista de precios en que se avisa al Jefe Comercial (no se bloquea su uso). | Decisión del usuario (13-oct-2026, segunda parte) |
+| retener_ov_bajo_minimo | `True` | DEFINIDO | La OV con precio en el límite o bajo el mínimo queda detenida (no se prepara ni despacha) hasta su confirmación. | Decisión del usuario (13-oct-2026, segunda parte) |
 | programar_ruta_automatica | `True` | DEFINIDO | Al quedar una OV completa (o con parcial aprobado) el sistema la programa automáticamente en la mejor ruta propuesta. | TO-BE COPROD-ONE: 'Programar automáticamente la mejor ruta para el despacho' |
 | certificado_previo_al_picking | `True` | DEFINIDO | Pre-elaborar los certificados al quedar la OV completa (antes del picking) para validación de Calidad. | TO-BE COPROD-ONE: 'Informar a Calidad para la validación del certificado pre-elaborado' |
 | documentos_salida | `['GUIA', 'FACTURA', 'CERTIFICADO']` | DEFINIDO | Documentos que Seguridad verifica por pedido antes de autorizar la salida (certificado = aprobado por Calidad). | TO-BE COPROD-ONE: Seguridad 'Documentos completos?' / reportar faltantes a distribución, facturación y calidad |

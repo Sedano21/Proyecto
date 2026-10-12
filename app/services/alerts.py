@@ -40,7 +40,7 @@ def emit(type_code, titulo, mensaje="", entidad="", entidad_id="", prioridad=Non
     s.flush()
     s.add(AlertEvent(alert_id=a.id, user_id=creado_por.id if creado_por else None, accion="CREADA",
                      comentario=f"Destinatarios: roles {', '.join(roles) or '-'}; usuarios {usuarios or '-'}"))
-    if t.enviar_correo:
+    if t.enviar_correo and param("correo_habilitado", False):
         _queue_emails(a, t, roles, usuarios)
     return a
 

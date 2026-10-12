@@ -130,3 +130,27 @@ def liquidations():
     rows = list(db().execute(select(Liquidation).order_by(Liquidation.id.desc())).scalars())
     whs = list(db().execute(select(Warehouse).where(Warehouse.uso == "PT")).scalars())
     return render_template("liquidations.html", rows=rows, whs=whs, merma=psvc.merma_real_pct)
+
+
+@bp.route("/partes", methods=["GET", "POST"])
+@perm_required("produccion.ver")
+def reports():
+    """Partes de producción por línea con rendimiento y desmedro (= merma)."""
+    from ..catalogs import PRODUCTION_LINES
+    from ..models import ProductionReport
+    if request.method == "POST":
+        if "produccion.liquidar" not in g.perms:
+            abort(403)
+        f = request.form
+        ops = f.get("operarios", "").strip()
+        return act(lambda: psvc.register_report(
+            g.user, f.get("linea"), f_date("fecha"), f.get("product_code", "").strip().upper(), f_float("peso_entrada_kg"),
+            f_float("granel_kg") or 0, f_float("mp_kg") or 0, f_float("cal3_kg") or 0, f_float("desmedro_kg") or 0,
+            f_float("presentacion_kg"), f_float("unidades"), f_float("sobrante_kg") or 0, f.get("of", ""), f.get("op", ""),
+            f.get("turno", ""), f.get("hora_inicio", ""), f.get("hora_fin", ""), f_float("horas"), int(ops) if ops else None,
+            f.get("cliente", ""), f.get("mp_codigo", "").strip().upper(), f.get("lote", "").strip(), f.get("estado", "EN PROCESO"),
+            f.get("observacion", "")), lambda r: f"Parte registrado: rendimiento {r.rendimiento_pct}%, desmedro {r.desmedro_pct}%.",
+            url_for("prod.reports"))
+    rows = list(db().execute(select(ProductionReport).order_by(ProductionReport.fecha.desc(), ProductionReport.id.desc())
+                             .limit(300)).scalars())
+    return render_template("prod_reports.html", rows=rows, lineas=PRODUCTION_LINES, hoy=date.today())

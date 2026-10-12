@@ -25,7 +25,7 @@ class Role(Base):
     code: Mapped[str] = mapped_column(String(40), primary_key=True)
     nombre: Mapped[str] = mapped_column(String(120))
     area: Mapped[str] = mapped_column(String(40))
-    fuente: Mapped[str] = mapped_column(String(200), default="")
+    fuente: Mapped[str] = mapped_column(Text, default="")
     observacion: Mapped[str] = mapped_column(Text, default="")
 
 
@@ -45,7 +45,7 @@ class RolePermission(Base):
     role_code: Mapped[str] = mapped_column(ForeignKey("roles.code"))
     perm_code: Mapped[str] = mapped_column(ForeignKey("permissions.code"))
     origen: Mapped[str] = mapped_column(String(12), default="PROPUESTO")
-    fuente: Mapped[str] = mapped_column(String(200), default="")
+    fuente: Mapped[str] = mapped_column(Text, default="")
     __table_args__ = (UniqueConstraint("role_code", "perm_code"),)
 
 
@@ -84,7 +84,7 @@ class Param(Base):
     grupo: Mapped[str] = mapped_column(String(40))
     descripcion: Mapped[str] = mapped_column(Text)
     estado: Mapped[str] = mapped_column(String(12))
-    fuente: Mapped[str] = mapped_column(String(200), default="")
+    fuente: Mapped[str] = mapped_column(Text, default="")
     version: Mapped[int] = mapped_column(Integer, default=1)
 
 
@@ -111,7 +111,7 @@ class Warehouse(Base):
     uso: Mapped[str] = mapped_column(String(20), default="OTRO")
     prioridad: Mapped[int] = mapped_column(Integer, default=99)
     reservable: Mapped[bool] = mapped_column(Boolean, default=False)
-    fuente: Mapped[str] = mapped_column(String(200), default="")
+    fuente: Mapped[str] = mapped_column(Text, default="")
     observacion: Mapped[str] = mapped_column(Text, default="")
 
 
@@ -135,6 +135,7 @@ class Product(Base):
     stock_minimo: Mapped[float | None] = mapped_column(Float, nullable=True)
     periodo_analisis_dias: Mapped[int | None] = mapped_column(Integer, nullable=True)
     margen_seguridad_dias: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    proveedor_habitual: Mapped[str] = mapped_column(String(160), default="")  # para el margen por proveedor
     merma_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
     tiempo_max_almacen_dias: Mapped[int | None] = mapped_column(Integer, nullable=True)
     origen: Mapped[str] = mapped_column(String(40), default="")
@@ -150,7 +151,7 @@ class LeadTime(Base):
     mes_desde: Mapped[int | None] = mapped_column(Integer, nullable=True)  # excepción estacional
     mes_hasta: Mapped[int | None] = mapped_column(Integer, nullable=True)
     descripcion: Mapped[str] = mapped_column(String(200), default="")
-    fuente: Mapped[str] = mapped_column(String(200), default="")
+    fuente: Mapped[str] = mapped_column(Text, default="")
 
 
 class Customer(Base):
@@ -165,6 +166,7 @@ class Customer(Base):
     horario_recepcion: Mapped[str] = mapped_column(String(60), default="")  # p.ej. 08:00-12:00
     requiere_cita: Mapped[bool] = mapped_column(Boolean, default=False)
     vida_util_min_dias: Mapped[int | None] = mapped_column(Integer, nullable=True)  # condición del cliente
+    canal_precio: Mapped[str] = mapped_column(String(60), default="")  # canal de la lista de precios (lo asigna el Jefe Comercial)
 
 
 # ---------------------------------------------------------------------------
@@ -316,6 +318,10 @@ class SalesOrder(Base):
     decision_parcial: Mapped[str] = mapped_column(String(20), default="")  # "" / PENDIENTE / APROBADA / RECHAZADA
     motivo_detencion: Mapped[str] = mapped_column(String(250), default="")
     origen: Mapped[str] = mapped_column(String(20), default="MODULO")  # MODULO / CARGA_SAP
+    tipo_venta: Mapped[str] = mapped_column(String(40), default="")  # Orden de venta / Muestra comercial / PAE (SAP)
+    retenida_precio: Mapped[bool] = mapped_column(Boolean, default=False)  # detenida por precio bajo el mínimo
+    precio_observado: Mapped[list] = mapped_column(JSON, default=list)  # líneas observadas en la última validación
+    aprobacion_precio: Mapped[dict] = mapped_column(JSON, default=dict)  # confirmación del Coord./Jefe Comercial
     version: Mapped[int] = mapped_column(Integer, default=1)
     creado_por: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     creado_ts: Mapped[datetime] = mapped_column(DateTime, default=now)
@@ -324,7 +330,7 @@ class SalesOrder(Base):
     prep_fin: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     salida_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     entrega_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    corte: Mapped[str] = mapped_column(String(10), default="")
+    corte: Mapped[str] = mapped_column(String(20), default="")
     alerta80_emitida: Mapped[bool] = mapped_column(Boolean, default=False)
     # Despacho parcial (decisión Q3, 11-oct-2026): aprobación de Gerencia de Operaciones y Jefatura de Logística;
     # el saldo no despachado se reprograma en una OV de saldo.
@@ -379,7 +385,7 @@ class OVDecision(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     order_id: Mapped[int] = mapped_column(ForeignKey("sales_orders.id"))
     tipo: Mapped[str] = mapped_column(String(30))
-    estado: Mapped[str] = mapped_column(String(12), default="REGISTRADA")
+    estado: Mapped[str] = mapped_column(String(30), default="REGISTRADA")
     detalle: Mapped[dict] = mapped_column(JSON, default=dict)
     comentario: Mapped[str] = mapped_column(Text, default="")
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
@@ -397,7 +403,7 @@ class Transfer(Base):
     destino_code: Mapped[str] = mapped_column(ForeignKey("warehouses.code"))
     cantidad: Mapped[float] = mapped_column(Float)
     order_id: Mapped[int | None] = mapped_column(ForeignKey("sales_orders.id"), nullable=True)
-    estado: Mapped[str] = mapped_column(String(20), default="SOLICITADO")
+    estado: Mapped[str] = mapped_column(String(30), default="SOLICITADO")
     # SOLICITADO / AUTORIZADO / RECHAZADO / EN_TRANSITO / RECIBIDO / RECIBIDO_CON_DIFERENCIA
     solicitado_por: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     autorizado_por: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
@@ -459,7 +465,7 @@ class ProductionLine(Base):
     nombre: Mapped[str] = mapped_column(String(80))
     capacidad_kg_dia: Mapped[float | None] = mapped_column(Float, nullable=True)
     activa: Mapped[bool] = mapped_column(Boolean, default=True)
-    fuente: Mapped[str] = mapped_column(String(200), default="")
+    fuente: Mapped[str] = mapped_column(Text, default="")
 
 
 class ProductionRequest(Base):
@@ -674,7 +680,7 @@ class ImportShipment(Base):
     product_code: Mapped[str] = mapped_column(ForeignKey("products.code"))
     cantidad: Mapped[float] = mapped_column(Float)
     fecha_llegada_estimada: Mapped[date | None] = mapped_column(Date, nullable=True)
-    estado: Mapped[str] = mapped_column(String(20), default="EN_CURSO")  # EN_CURSO / RECIBIDA / RECIBIDA_CON_DIFERENCIAS / CERRADA
+    estado: Mapped[str] = mapped_column(String(30), default="EN_CURSO")  # EN_CURSO / RECIBIDA / RECIBIDA_CON_DIFERENCIAS / CERRADA
     warehouse_code: Mapped[str | None] = mapped_column(ForeignKey("warehouses.code"), nullable=True)
     cantidad_recibida: Mapped[float | None] = mapped_column(Float, nullable=True)
     lote_recibido: Mapped[str] = mapped_column(String(60), default="")
@@ -817,7 +823,7 @@ class AlertType(Base):
     enviar_correo: Mapped[bool] = mapped_column(Boolean, default=True)
     activo: Mapped[bool] = mapped_column(Boolean, default=True)
     origen_destinatarios: Mapped[str] = mapped_column(String(12), default="PROPUESTO")
-    fuente: Mapped[str] = mapped_column(String(200), default="")
+    fuente: Mapped[str] = mapped_column(Text, default="")
     condicion: Mapped[str] = mapped_column(Text, default="")
 
 
@@ -904,3 +910,74 @@ class PriceItem(Base):
     origen: Mapped[str] = mapped_column(String(160), default="")  # archivo o 'edición manual'
     motivo: Mapped[str] = mapped_column(Text, default="")
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+
+
+class PriceListMeta(Base):
+    """Vigencia de cada lista de precios (se avisa al vencer; no se bloquea)."""
+    __tablename__ = "price_lists"
+    lista: Mapped[str] = mapped_column(String(10), primary_key=True)  # GENERAL / GRANEL
+    archivo: Mapped[str] = mapped_column(String(200), default="")
+    vigencia_desde: Mapped[date | None] = mapped_column(Date, nullable=True)
+    vigencia_hasta: Mapped[date | None] = mapped_column(Date, nullable=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+
+class ProductionReport(Base):
+    """Parte de producción por línea (formatos LINEA TRUER, LINEA CIMBRIA, ENVASADOS R1 R2 Y R3, SEL-MANUAL). El
+    'desmedro' de estos formatos es la merma (decisión del 13-oct-2026); se liga a la liquidación por el número de OF."""
+    __tablename__ = "production_reports"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    linea: Mapped[str] = mapped_column(String(20))
+    tipo: Mapped[str] = mapped_column(String(12))  # SELECCION / ENVASADO
+    fecha: Mapped[date] = mapped_column(Date)
+    op: Mapped[str] = mapped_column(String(20), default="")  # número de operación del formato
+    of: Mapped[str] = mapped_column(String(30), default="", index=True)  # orden de fabricación = documento de liquidación
+    turno: Mapped[str] = mapped_column(String(20), default="")
+    hora_inicio: Mapped[str] = mapped_column(String(8), default="")
+    hora_fin: Mapped[str] = mapped_column(String(8), default="")
+    horas: Mapped[float | None] = mapped_column(Float, nullable=True)
+    operarios: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cliente: Mapped[str] = mapped_column(String(120), default="")
+    product_code: Mapped[str] = mapped_column(String(40))
+    mp_codigo: Mapped[str] = mapped_column(String(40), default="")
+    lote: Mapped[str] = mapped_column(String(60), default="")
+    peso_entrada_kg: Mapped[float] = mapped_column(Float)
+    granel_kg: Mapped[float] = mapped_column(Float, default=0)  # salida buena (selección) / kg envasados
+    mp_kg: Mapped[float] = mapped_column(Float, default=0)
+    cal3_kg: Mapped[float] = mapped_column(Float, default=0)
+    desmedro_kg: Mapped[float] = mapped_column(Float, default=0)
+    presentacion_kg: Mapped[float | None] = mapped_column(Float, nullable=True)
+    unidades: Mapped[float | None] = mapped_column(Float, nullable=True)
+    sobrante_kg: Mapped[float] = mapped_column(Float, default=0)
+    rendimiento_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    desmedro_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    diferencia_kg: Mapped[float | None] = mapped_column(Float, nullable=True)
+    ratio_kg_hora: Mapped[float | None] = mapped_column(Float, nullable=True)
+    estado: Mapped[str] = mapped_column(String(20), default="EN PROCESO")  # EN PROCESO / PENDIENTE / LIQUIDADO
+    observacion: Mapped[str] = mapped_column(Text, default="")
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+
+class CustomerCondition(Base):
+    """Condiciones comerciales del cliente (LISTA DE CLIENTES - CON PENALIDADES Y LOTES): ejecutivo, canal, tipo de
+    solicitud, lotes por SKU, vida útil y penalidades. El archivo no trae RUC: se vincula por nombre normalizado."""
+    __tablename__ = "customer_conditions"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    nombre: Mapped[str] = mapped_column(String(250))
+    nombre_norm: Mapped[str] = mapped_column(String(250), unique=True, index=True)
+    customer_id: Mapped[int | None] = mapped_column(ForeignKey("customers.id"), nullable=True)
+    ejecutivo: Mapped[str] = mapped_column(String(120), default="")
+    canal_comercial: Mapped[str] = mapped_column(String(80), default="")
+    solicitud: Mapped[str] = mapped_column(String(60), default="")  # PRODUCTO TERMINADO / MATERIA PRIMA
+    lotes_texto: Mapped[str] = mapped_column(String(60), default="")
+    max_lotes_por_sku: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    vida_util_texto: Mapped[str] = mapped_column(String(120), default="")
+    vida_util_meses: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    penalidades: Mapped[str] = mapped_column(Text, default="")
+    penalidad_tipos: Mapped[list] = mapped_column(JSON, default=list)
+    fill_rate_min_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    origen: Mapped[str] = mapped_column(String(200), default="")
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    customer = relationship("Customer")

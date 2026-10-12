@@ -1,13 +1,14 @@
 # Estado de funcionalidades
 
-Conteo sobre los 166 requerimientos (137 del IF + 18 del TO-BE + 1 de Q3 + 6 del 12-oct + 4 del 13-oct) de `03_MATRIZ_TRAZABILIDAD.md`:
+Conteo sobre los 184 requerimientos (137 del IF + 18 del TO-BE + 1 de Q3 + 6 del 12-oct + 4 + 18 del 13-oct) de `03_MATRIZ_TRAZABILIDAD.md`:
 
 | Estado | Cantidad |
 |---|---|
-| ✅ Implementado y con prueba automatizada | 132 |
+| ✅ Implementado y con prueba automatizada | 155 |
 | ☑️ Implementado y verificado en pantalla (sin prueba automatizada específica) | 19 |
-| 🟡 Parcial | 7 |
-| ⏸️ Pendiente de decisión de negocio (implementado configurable o inactivo) | 7 |
+| 🟡 Parcial | 4 |
+| ⏸️ Pendiente de decisión de negocio (implementado configurable o inactivo) | 4 |
+| ⛔ Bloqueado (requiere acción externa) | 1 (registro de Microsoft 365 en el tenant) |
 | 🔜 Etapa futura según el IF | 1 |
 
 > **El sistema NO está listo para producción.** Es una primera versión funcional para demostración en entorno
@@ -44,7 +45,11 @@ Conteo sobre los 166 requerimientos (137 del IF + 18 del TO-BE + 1 de Q3 + 6 del
 - **Precios (Q11):** listas de precios mínimos por canal y mayorista granel cargadas desde los Excel actuales; solo el
   Jefe Comercial las modifica (con historial); alerta de OV en el límite o por debajo del mínimo.
 - **Salida (Q16):** vistos buenos de Seguridad, Auxiliar de Despacho y Líder Operativo.
-- **Alertas:** 63 tipos, destinatarios por rol/usuario, ciclo completo, deduplicación, cierre automático, visibilidad
+- **Versión 0.5 (13-oct):** OV detenida por precio con confirmación comercial; canal de precios por cliente; granel por
+  kg y saco; vigencia de listas; reglas configurables (proveedor, BOM, calidad, ABC, flota); partes de producción con
+  desmedro; condiciones de clientes (lotes por SKU, penalidades en la prioridad); PostgreSQL + Alembic + respaldos;
+  ingreso con Microsoft 365; alerta de cargas SAP desactualizadas.
+- **Alertas:** 66 tipos, destinatarios por rol/usuario, ciclo completo, deduplicación, cierre automático, visibilidad
   por rol/ámbito, agrupación para GG, preferencias de correo de GG, bandeja de correo.
 - **Administración:** parámetros versionados, almacenes, plazos, líneas, fases, catálogo de artículos, clientes, flota,
   usuarios, matriz de permisos editable, auditoría, exportación a Excel, verificaciones periódicas (manual, CLI o cada N minutos).
@@ -64,8 +69,7 @@ Conteo sobre los 166 requerimientos (137 del IF + 18 del TO-BE + 1 de Q3 + 6 del
 
 REP-02 margen de reposición · REP-06 umbral y rol de GO en compras de mayor volumen · COM-08 margen por proveedor ·
 PRD-15 excepciones a la proporcionalidad · RMP-03 criterios de conversión de calidad · IMP-01 fases reales de importación ·
-ALR-07 matriz final de alertas · CFG-11 reparto de configuración Sistemas/GG. Q1–Q17 resueltas. Las preguntas abiertas (precios P1–P10) y lo que falta para producción están en
-`12_DECISIONES_13OCT_Y_PRODUCCION.md`.
+ALR-07 matriz final de alertas · CFG-11 reparto de configuración Sistemas/GG. Preguntas abiertas: R1–R6 y lo que falta para producción, en `13_DECISIONES_13OCT_PARTE2.md`.
 
 ## 4. Bloqueado / requiere autorización externa
 
@@ -79,7 +83,7 @@ ALR-07 matriz final de alertas · CFG-11 reparto de configuración Sistemas/GG. 
 
 ## 5. Siguientes entregas recomendadas
 
-1. Sesión de validación con usuarios clave usando el guion de demostración del README; registrar respuestas a P1–P10 y cumplir `12_DECISIONES_13OCT_Y_PRODUCCION.md` §4.
+1. Sesión de validación con usuarios clave usando el guion de demostración del README; registrar respuestas a R1–R6 y cumplir `13_DECISIONES_13OCT_PARTE2.md` §5.
 2. Cargar parámetros aprobados, matriz final de alertas y permisos; reemplazar valores DEMO.
 3. Prueba piloto con exportaciones reales en un servidor aprobado por TI (PostgreSQL, HTTPS, SMTP).
 4. Medir tiempos reales por etapa y ajustar cortes y tiempos de preparación.

@@ -6,7 +6,7 @@
 <tr><td>Cliente</td><td>{{ o.customer.nombre }} ({{ o.customer.ruc }}) · {{ o.customer.grupo }}</td></tr>
 <tr><td>Dirección / distrito</td><td>{{ o.direccion }} · {{ o.distrito }}</td></tr>
 <tr><td>Horario / cita</td><td>{{ o.customer.horario_recepcion }} · cita {{ o.hora_cita or '-' }} {{ '(confirmada)' if o.cita_confirmada else ('(requiere confirmación)' if o.customer.requiere_cita else '') }}</td></tr>
-<tr><td>Condición del cliente</td><td>{% if o.customer.vida_util_min_dias %}Vida útil mínima {{ o.customer.vida_util_min_dias }} días{% else %}Sin condición de vida útil registrada{% endif %}</td></tr>
+<tr><td>Condición del cliente</td><td>{% if o.customer.vida_util_min_dias %}Vida útil mínima {{ o.customer.vida_util_min_dias }} días. {% endif %}{% set cc = cond_cliente(o.customer) %}{% if cc %}<b>{{ cc }}</b>{% elif not o.customer.vida_util_min_dias %}Sin condiciones registradas{% endif %}</td></tr>
 <tr><td>Emisión / comprometida</td><td>{{ o.fecha_emision|d }} / <b>{{ o.fecha_compromiso|d }}</b> · corte {{ o.corte or '-' }}</td></tr>
 <tr><td>Vendedor</td><td>{{ o.vendedor_nombre or '-' }}</td></tr>
 <tr><td>Monto / volumen</td><td>S/ {{ monto|n }} · {{ peso|n }} kg {% if sin_peso %}<span class="small muted">(sin peso: {{ sin_peso|join(', ') }})</span>{% endif %}</td></tr>
@@ -15,6 +15,9 @@
 </table></div>
 <div class="card"><h3>Cobertura</h3>
 <p>Unidades: <b>{{ o.cobertura_unidades }}%</b> {{ bar(o.cobertura_unidades) }} Líneas totalmente cubiertas: <b>{{ o.cobertura_lineas }}%</b> {{ bar(o.cobertura_lineas) }}</p>
+{% if o.retenida_precio %}<div class="card" style="border-left:4px solid var(--err)"><b>OV detenida por precio</b> (en el límite o por debajo de la lista de precios mínimos). No se prepara ni se despacha hasta la confirmación del Coordinador Comercial o del Jefe Comercial.
+{% if can('ov.aprobar_precio') %}<form method="post" action="{{ url_for('com.order_action', oid=o.id, accion='confirmar_precio') }}" class="row">{{ csrf() }}<input name="comentario" placeholder="motivo de la confirmación (obligatorio)" required style="width:60%"><button>Confirmar precio y liberar</button></form>{% endif %}</div>
+{% elif o.aprobacion_precio %}<p class="small">Precio confirmado por {{ o.aprobacion_precio.user }} ({{ o.aprobacion_precio.ts[:16]|replace('T',' ') }}): {{ o.aprobacion_precio.comentario }}</p>{% endif %}
 {% set obs = [] %}{% for l in o.lines if l.activa and l.precio_origen and not l.precio_origen.startswith('Sobre') %}{% set _ = obs.append(l) %}{% endfor %}{% if obs %}<div class="note small"><b>Precio vs lista de precios mínimos:</b> {% for l in obs %}{{ l.product_code }}: {{ l.precio_origen }}{{ '; ' if not loop.last }}{% endfor %}.</div>{% endif %}
 <p>Evaluada: {{ o.evaluado_ts|d }} · Preparación: {{ prep }}%</p>
 {% if o.motivo_detencion %}<div class="note">{{ o.motivo_detencion }}</div>{% endif %}

@@ -13,9 +13,26 @@ from .stock import add_or_increase_lot, free_qty, line_reserved, lot_usable, lot
 OPEN_STATES = ("BORRADOR", "PENDIENTE_LOGISTICA", "SOLICITADA", "EN_COTIZACION", "MUESTRA_EN_CALIDAD", "PENDIENTE_APROBACION", "ORDEN_GENERADA")
 
 
-def is_mayor_volumen(cantidad):
+def volume_value(cantidad, product=None, precio=None):
+    """Valor que se compara con el umbral de mayor volumen según la unidad configurada (KG, UNIDADES o SOLES)."""
+    unidad = str(param("umbral_mayor_volumen_unidad", "KG") or "KG").upper()
+    if unidad == "SOLES":
+        return cantidad * precio if precio else None
+    if unidad == "KG":
+        if product is not None and (product.um or "").upper().startswith("K"):
+            return cantidad
+        if product is not None and product.peso_kg:
+            return cantidad * product.peso_kg
+        return None
+    return cantidad
+
+
+def is_mayor_volumen(cantidad, product=None, precio=None):
     umbral = param("umbral_mayor_volumen")
-    return umbral is not None and cantidad >= float(umbral)
+    if umbral is None:
+        return False
+    v = volume_value(cantidad, product, precio)
+    return v is not None and v >= float(umbral)
 
 
 def create_request(user, product_code, cantidad, fecha_necesidad=None, origen="ALMACEN", order=None, analisis=None,
@@ -29,7 +46,8 @@ def create_request(user, product_code, cantidad, fecha_necesidad=None, origen="A
         raise BusinessError("Cantidad inválida.")
     r = PurchaseRequest(product_code=product_code, cantidad=cantidad, fecha_necesidad=fecha_necesidad, origen=origen,
                         order_id=order.id if order else None, analisis=analisis or {},
-                        mayor_volumen=is_mayor_volumen(cantidad), creado_por=user.id if user else None)
+                        mayor_volumen=is_mayor_volumen(cantidad, db().get(Product, product_code)),
+                        creado_por=user.id if user else None)
     db().add(r)
     db().flush()
     audit(user, "COMPRA_CREADA", "PurchaseRequest", r.id, {"producto": product_code, "cantidad": cantidad, "origen": origen})
@@ -87,7 +105,7 @@ def quote(r, user, proveedor, cotizacion, precio=None, requiere_muestra=False):
     r.cotizacion = cotizacion
     r.precio = precio
     r.requiere_muestra = bool(requiere_muestra)
-    r.mayor_volumen = is_mayor_volumen(r.cantidad)
+    r.mayor_volumen = is_mayor_volumen(r.cantidad, r.product, precio)
     if requiere_muestra:
         r.estado = "MUESTRA_EN_CALIDAD"
         r.resultado_muestra = ""
@@ -262,7 +280,14 @@ def analyze_product(product, ref=None):
     else:
         plazo = lt.dias_max
         out["avisos"].append(f"Plazo {lt.categoria} ({modo}): {lt.dias_min}-{lt.dias_max} días naturales; se usa el máximo.")
-    margen = product.margen_seguridad_dias if product.margen_seguridad_dias is not None else param("margen_reposicion_dias")
+    por_prov = (param("margen_por_proveedor", {}) or {}).get((product.proveedor_habitual or "").strip())
+    if product.margen_seguridad_dias is not None:
+        margen = product.margen_seguridad_dias
+    elif por_prov is not None:
+        margen = por_prov
+        out["avisos"].append(f"Margen del proveedor {product.proveedor_habitual}: {por_prov} días.")
+    else:
+        margen = param("margen_reposicion_dias")
     if margen is None:
         out["avisos"].append("Margen por atrasos no definido (IF §7: valor pendiente); se usa 0.")
         margen = 0
@@ -333,3 +358,19 @@ def run_replenishment(user=None, product_codes=None, ref=None):
                     f"{a.get('fecha_limite_pedido') or '-'}. Solicitud preliminar #{r.id} en borrador para revisión de Almacén.",
                     "PurchaseRequest", r.id, dedup_key=f"REPOSICION:{p.code}", creado_por=user)
     return creadas
+
+
+def abc_classes(ref=None):
+    """Clasificación ABC por consumo acumulado del período de análisis (parámetro clasificacion_abc_pct)."""
+    ref = ref or date.today()
+    periodo = int(param("periodo_analisis_dias", 15) or 15)
+    lim = param("clasificacion_abc_pct", {"A": 80, "B": 95}) or {"A": 80, "B": 95}
+    rows = db().execute(select(SalesHistory.product_code, func.sum(SalesHistory.cantidad)).where(
+        SalesHistory.fecha >= ref - timedelta(days=periodo), SalesHistory.fecha < ref).group_by(SalesHistory.product_code)).all()
+    total = sum(q for _, q in rows) or 0
+    out, acum = {}, 0.0
+    for code, q in sorted(rows, key=lambda r: -r[1]):
+        acum += q
+        pct = 100 * acum / total if total else 100
+        out[code] = "A" if pct <= float(lim.get("A", 80)) + 1e-9 or not out else ("B" if pct <= float(lim.get("B", 95)) + 1e-9 else "C")
+    return out

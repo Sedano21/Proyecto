@@ -51,7 +51,8 @@ def next_cutoff(ts=None):
 
 
 def create_order(user, numero, customer_id, fecha_compromiso, lines, urgente=False, comentarios="", hora_cita="",
-                 cita_confirmada=False, vendedor_id=None, fecha_emision=None, origen="MODULO", evaluar=True):
+                 cita_confirmada=False, vendedor_id=None, fecha_emision=None, origen="MODULO", evaluar=True,
+                 tipo_venta="", vendedor_nombre=""):
     if origen == "MODULO" and not has_perm(user, "ov.crear"):
         raise BusinessError("Su rol no puede registrar OV.")
     numero = (numero or "").strip()
@@ -66,7 +67,8 @@ def create_order(user, numero, customer_id, fecha_compromiso, lines, urgente=Fal
     o = SalesOrder(numero=numero, customer_id=c.id, fecha_compromiso=fecha_compromiso, urgente=bool(urgente),
                    comentarios=comentarios, hora_cita=hora_cita or c.horario_recepcion, cita_confirmada=bool(cita_confirmada),
                    direccion=c.direccion, distrito=c.distrito, vendedor_id=vend.id if vend else None,
-                   vendedor_nombre=vend.nombre if vend else "", fecha_emision=fecha_emision or date.today(),
+                   vendedor_nombre=vend.nombre if vend else vendedor_nombre, fecha_emision=fecha_emision or date.today(),
+                   tipo_venta=tipo_venta or "",
                    origen=origen, creado_por=user.id if user else None, corte=next_cutoff())
     for ln in lines:
         o.lines.append(SalesOrderLine(product_code=ln["product_code"].strip(), cantidad=float(ln["cantidad"]),
@@ -360,6 +362,8 @@ def change_product(order, user, line_id, nuevo_codigo, cantidad, comentario=""):
 
 # ------------------------------ preparación ---------------------------------
 def ready_for_preparation(order):
+    if order.retenida_precio:
+        return False  # detenida por precio hasta la confirmación comercial
     return order.estado in ("EVALUADA", "EN_PREPARACION") and (
         order.estado_stock == "COMPLETA" or order.decision_parcial == "APROBADA")
 
@@ -416,6 +420,15 @@ def reassign_pick_lot(order, user, reservation_id, new_lot_id, cantidad=None):
         raise BusinessError("Cantidad inválida.")
     if q > free_qty(lot) + 1e-9:
         raise BusinessError(f"El lote {lot.lote} solo tiene {free_qty(lot):g} libres.")
+    from .customer_conditions import max_lots
+    maxl = max_lots(order.customer)
+    if maxl:
+        lotes = {r.lot_id for r in res.line.reservations if r.estado == "ACTIVA"}
+        if abs(q - res.cantidad) < 1e-9:
+            lotes.discard(res.lot_id)
+        lotes.add(lot.id)
+        if len(lotes) > maxl:
+            raise BusinessError(f"El cliente acepta máximo {maxl} lote(s) por SKU.")
     if abs(q - res.cantidad) < 1e-9:
         _release(res, f"Cambio de lote en planificación de picking → {lot.lote}")
     else:

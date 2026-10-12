@@ -2,7 +2,8 @@
 
 > **Listas de precios mínimos.** El Jefe Comercial las carga en *Comercial → Listas de precios* con los Excel actuales (PRICE_LIST y PRICE_LIST_GRANEL, sin cambiar el formato). El costo de la empresa se lee solo para validar y no se guarda.
 
-> **Cambios de estructura de la base de datos.** El prototipo crea las tablas al iniciar y no migra tablas existentes. Tras actualizar a una versión con columnas nuevas (p. ej. la del 12-oct-2026), recree la base de demostración con `python -m app.cli demo`. Para una instalación con datos reales se debe incorporar una herramienta de migraciones (Alembic) antes del piloto.
+> **Instalación definida (13-oct-2026):** servidor local administrado por Sistemas, base **PostgreSQL**, ingreso con
+> **Microsoft 365**, alertas solo en el sistema (sin servidor de correo). Ver §8 a §10.
 
 ## 1. Requisitos
 
@@ -50,6 +51,9 @@ python -m pytest tests -v
 | `CHECK_INTERVAL_MIN` | Ejecuta verificaciones automáticas (retrasos, fases, vencimientos, reposición, correo) cada N minutos | 0 (desactivado) |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`, `SMTP_TLS` | Envío de correo de alertas | Sin SMTP → correos quedan como SIN_SMTP |
 | `HOST`, `PORT` | Dirección del servidor de desarrollo | 127.0.0.1:5000 |
+| `SCHEMA_AUTO_CREATE` | `0` en producción: el esquema lo crea y actualiza Alembic (`alembic upgrade head`) | 1 |
+| `M365_CLIENT_ID`, `M365_CLIENT_SECRET`, `M365_TENANT_ID`, `M365_REDIRECT_URI` | Ingreso con Microsoft 365 (ver §9) | Desactivado |
+| `LOCAL_LOGIN` | `0` = solo Microsoft 365 (oculta usuario/contraseña locales). Se recomienda dejar 1 cuenta local de emergencia de Sistemas | 1 |
 
 Alternativa a `CHECK_INTERVAL_MIN`: programar `python -m app.cli verificar` con cron o el Programador de tareas de Windows.
 
@@ -93,8 +97,59 @@ app/
                      distribution, transfers, repack, inventory, uploads, alerts, mailer, kpis, scheduler)
   views/             pantallas por módulo
   templates/, static/
-tests/               55 pruebas automatizadas
+tests/               pruebas automatizadas (SQLite por defecto; TEST_DATABASE_URL para PostgreSQL)
+migrations/          migraciones Alembic (0001 = esquema inicial)
+scripts/             respaldo_postgres.sh, restaurar_prueba.sh, gen_docs.py
 docs/                especificación, trazabilidad, pruebas, estado, modelo, permisos, despliegue, seguridad
 sample_data/         Excel ficticios de ejemplo
 scripts/gen_docs.py  regenera docs/06 y docs/07 desde el código
 ```
+
+
+## 8. Instalación local con PostgreSQL (decisión del 13-oct-2026)
+
+1. Instalar PostgreSQL 16 en el servidor local. Crear un usuario de aplicación y la base, **sin** privilegios de
+   superusuario:
+   ```sql
+   CREATE ROLE operaciones_app LOGIN PASSWORD '<clave larga generada>';
+   CREATE DATABASE operaciones OWNER operaciones_app;
+   CREATE ROLE operaciones_respaldo LOGIN PASSWORD '<otra clave>';           -- solo lectura, para pg_dump
+   GRANT CONNECT ON DATABASE operaciones TO operaciones_respaldo;
+   -- tras crear el esquema: GRANT SELECT ON ALL TABLES IN SCHEMA public TO operaciones_respaldo;
+   ```
+   En `pg_hba.conf` permitir solo conexiones locales (o de la IP del servidor de la aplicación) con `scram-sha-256`.
+2. Variables: `DATABASE_URL=postgresql+psycopg://operaciones_app:<clave>@localhost:5432/operaciones`,
+   `SCHEMA_AUTO_CREATE=0`, `DEMO_MODE=0`, `SECRET_KEY=<64 caracteres aleatorios>`, `UPLOAD_DIR=<carpeta con respaldo>`.
+3. Crear el esquema con las migraciones: `alembic upgrade head`. Cada versión nueva del sistema trae su migración y se
+   aplica con el mismo comando (antes, respaldo).
+4. `python -m app.cli init` (catálogos) y `python -m app.cli crear-usuario …` para el administrador de Sistemas.
+5. Verificado en esta entrega: las 103 pruebas funcionales pasan también contra PostgreSQL 16 (`TEST_DATABASE_URL=...`), y la
+   demo se creó sobre un esquema generado por Alembic.
+
+## 9. Ingreso con Microsoft 365 (Entra ID)
+
+1. En el portal de Entra ID (Sistemas / TI): *Registros de aplicaciones → Nuevo registro*; tipo "solo cuentas de este
+   directorio"; URI de redirección web `https://<servidor>/auth/microsoft/callback`.
+2. Crear un secreto de cliente y anotar *Id. de aplicación (cliente)* e *Id. de directorio (inquilino)*. Permiso
+   delegado `User.Read` (viene por defecto).
+3. Definir `M365_CLIENT_ID`, `M365_CLIENT_SECRET`, `M365_TENANT_ID` (y `M365_REDIRECT_URI` si hay proxy).
+4. Crear cada usuario en el sistema con **su correo corporativo** y su rol. Al ingresar con Microsoft 365, el sistema
+   busca el usuario por ese correo; si no existe o está inactivo, no deja entrar. Los roles se administran en el sistema.
+5. La librería oficial MSAL valida el `state`, el `nonce` y la firma del token. Sin estas variables el botón no aparece.
+   **No se probó contra un tenant real** (requiere el registro anterior); sí con un servidor de identidad simulado.
+
+## 10. Respaldos y restauración (buenas prácticas)
+
+- `scripts/respaldo_postgres.sh` (programarlo a diario, p. ej. 23:00, con cron o el Programador de tareas):
+  - `pg_dump` en formato personalizado con el usuario de solo lectura (`~/.pgpass` con permisos 600);
+  - empaqueta `UPLOAD_DIR` (fotos, guías, facturas, certificados) y **cifra** ambos con una clave pública GPG (la clave
+    privada se guarda fuera del servidor, p. ej. en custodia de Gerencia/Sistemas);
+  - suma SHA-256 de cada archivo, permisos 600, rotación de `RETENCION_DIAS` (30 por defecto);
+  - copia a `COPIA_REMOTA` (disco u otro equipo; regla 3-2-1: 3 copias, 2 medios, 1 fuera del local).
+- `scripts/restaurar_prueba.sh`: verifica la suma, restaura el último respaldo en una base **temporal**, cuenta
+  registros y la elimina. Hacerlo al menos una vez al mes y registrar el resultado.
+- Para recuperar a un punto en el tiempo (no solo al último respaldo), activar el archivado de WAL de PostgreSQL
+  (`archive_mode=on`) y respaldos base semanales con `pg_basebackup`.
+- Ambos scripts se probaron en esta entrega con PostgreSQL 16 y GPG: respaldo cifrado, verificación y restauración correctas.
+- Depuración de datos personales: `python -m app.cli depurar` lista las fotos de entrega más antiguas que el plazo
+  `retencion_datos_personales_dias` (vacío = no depura); con `--aplicar` las elimina y lo registra en la auditoría.

@@ -59,7 +59,8 @@ SPECS = {
                  "distrito": ["Distrito"], "provincia": ["Provincia"], "producto": ["Código de Producto"],
                  "descripcion": ["Descripción de Producto"], "solicitado": ["Solicitado"], "entregado": ["Entregado"],
                  "um": ["Unidad de medida"], "peso": ["Peso"], "tipo": ["T"], "comentarios": ["Comentarios"],
-                 "precio": ["P. Unitario SOLES"]},
+                 "precio": ["P. Unitario SOLES", "Precio Unitario", "P. Unitario", "Precio unitario SOLES", "Precio"],
+                 "tipo_venta": ["Tipo de Venta"]},
         "req": ["numero", "fecha_compromiso", "ruc", "cliente", "producto", "solicitado"],
     },
     "LIQUIDACION": {
@@ -86,6 +87,13 @@ SPECS = {
         "cols": {"producto": ["Código de Producto"], "cantidad": ["Cantidad"], "fecha": ["Fecha de Emisión"],
                  "documento": ["Número de documento"]},
         "req": ["producto", "cantidad", "fecha"],
+    },
+    "CLIENTES_CONDICIONES": {
+        "nombre": "Clientes: penalidades, lotes y vida útil", "perm": "clientes.canal", "confirm_perm": "clientes.canal",
+        "hojas": ["Hoja1"],
+        "cols": {"ejecutivo": ["EJECUTIVO"], "canal": ["CANAL"], "cliente": ["CLIENTE"], "solicitud": ["SOLICITUD"],
+                 "lote": ["LOTE"], "vida": ["VIDA UTIL", "VIDA ÚTIL"], "penalidad": ["PENALIDAD", "PENALIDADES", "Columna1"]},
+        "req": ["cliente", "lote"],
     },
     "PRECIOS": {
         "nombre": "Lista de precios por canal (PRICE_LIST)", "perm": "precios.editar", "confirm_perm": "precios.editar",
@@ -291,7 +299,8 @@ def create_batch(user, tipo, path, filename, hoja=None):
 
 def validate_batch(b):
     fn = {"STOCK": _v_stock, "BOM": _v_bom, "OV": _v_ov, "LIQUIDACION": _v_liq, "PRODUCTOS": _v_prod,
-          "SALIDAS": _v_salidas, "PRECIOS": _v_precios, "PRECIOS_GRANEL": _v_precios}[b.tipo]
+          "SALIDAS": _v_salidas, "PRECIOS": _v_precios, "PRECIOS_GRANEL": _v_precios,
+          "CLIENTES_CONDICIONES": _v_condiciones}[b.tipo]
     for r in b.rows:
         r.errores, r.advertencias = [], []
     fn(b)
@@ -652,7 +661,7 @@ def confirm(b, user, opciones=None):
     opciones = opciones or {}
     b.opciones = opciones
     result = {"STOCK": _c_stock, "BOM": _c_bom, "OV": _c_ov, "LIQUIDACION": _c_liq, "PRODUCTOS": _c_prod,
-              "PRECIOS": _c_precios, "PRECIOS_GRANEL": _c_precios,
+              "PRECIOS": _c_precios, "PRECIOS_GRANEL": _c_precios, "CLIENTES_CONDICIONES": _c_condiciones,
               "SALIDAS": _c_salidas}[b.tipo](b, user, opciones)
     b.estado = "CONFIRMADO"
     b.confirmado_ts = now()
@@ -864,14 +873,17 @@ def _c_ov(b, user, opciones):
             if o is None:
                 o = create_order(user, numero, c.id, _date(d0["fecha_compromiso"]), lines, comentarios=_txt(d0.get("comentarios")),
                                  vendedor_id=vend.id if vend else None, fecha_emision=_date(d0.get("fecha_emision")),
-                                 origen="CARGA_SAP")
+                                 origen="CARGA_SAP", tipo_venta=_txt(d0.get("tipo_venta")),
+                                 vendedor_nombre=_txt(d0.get("vendedor")))
                 if not vend:
                     o.vendedor_nombre = _txt(d0.get("vendedor"))
                 creadas += 1
             else:
                 actual = {l.product_code: l.cantidad for l in o.lines if l.activa}
                 nuevo = {l["product_code"]: l["cantidad"] for l in lines}
-                if actual == nuevo and o.fecha_compromiso == _date(d0["fecha_compromiso"]):
+                precios = {l.product_code: round(l.precio_unitario or 0, 6) for l in o.lines if l.activa}
+                if actual == nuevo and o.fecha_compromiso == _date(d0["fecha_compromiso"]) and \
+                        precios == {l["product_code"]: round(l["precio_unitario"] or 0, 6) for l in lines}:
                     sin_cambio += 1
                     continue
                 cambios = {"fecha_compromiso": _date(d0["fecha_compromiso"]), "lines": lines}
@@ -887,6 +899,67 @@ def _c_ov(b, user, opciones):
             errores.append(f"OV {numero}: {ex}")
     return {"ov_creadas": creadas, "ov_modificadas": modificadas, "solicitudes_de_modificacion": solicitudes,
             "sin_cambio": sin_cambio, "errores": errores}
+
+
+def _v_condiciones(b):
+    from .customer_conditions import norm_name, parse
+    s = db()
+    clientes = {norm_name(c.nombre) for c in s.execute(select(Customer)).scalars()}
+    vistos = Counter()
+    for r in b.rows:
+        if norm_name(r.datos.get("cliente")) == "CLIENTE" and not r.excluida:  # encabezado repetido dentro de la hoja
+            r.excluida = True
+            r.motivo_exclusion = "Fila de encabezado repetida"
+    activos = [r for r in b.rows if not r.excluida]
+    for r in activos:
+        vistos[norm_name(r.datos.get("cliente"))] += 1
+    for r in activos:
+        d = r.datos
+        e, w = [], []
+        nn = norm_name(d.get("cliente"))
+        if not nn:
+            e.append("Cliente vacío")
+        elif vistos[nn] > 1:
+            e.append("Cliente repetido en el archivo")
+        elif nn not in clientes:
+            w.append("Sin cliente registrado con ese nombre: la condición queda pendiente y se vinculará cuando el cliente "
+                     "llegue en una OV (el archivo no trae RUC)")
+        p = parse(d.get("lote"), d.get("vida"), d.get("penalidad"))
+        if p["max_lotes_por_sku"] is None:
+            e.append(f"Regla de lotes no reconocida: '{_txt(d.get('lote'))}'")
+        if d.get("vida") and p["vida_util_meses"] is None:
+            w.append(f"Vida útil no reconocida: '{_txt(d.get('vida'))}'")
+        if d.get("penalidad") and not p["penalidad_tipos"]:
+            w.append("Penalidad sin tipo reconocido (se guarda el texto)")
+        r.errores, r.advertencias = e, w
+    b.resumen = {"filas": len(activos), "vinculables": sum(1 for r in activos if norm_name(r.datos.get("cliente")) in clientes)}
+
+
+def _c_condiciones(b, user, opciones):
+    from ..models import CustomerCondition
+    from .customer_conditions import link_all, norm_name, parse
+    s = db()
+    nuevos = act = 0
+    for r in b.rows:
+        if r.excluida:
+            continue
+        d = r.datos
+        nn = norm_name(d.get("cliente"))
+        c = s.execute(select(CustomerCondition).where(CustomerCondition.nombre_norm == nn)).scalars().first()
+        if c is None:
+            c = CustomerCondition(nombre=_txt(d.get("cliente")), nombre_norm=nn)
+            s.add(c)
+            nuevos += 1
+        else:
+            act += 1
+        p = parse(d.get("lote"), d.get("vida"), d.get("penalidad"))
+        c.ejecutivo, c.canal_comercial, c.solicitud = _txt(d.get("ejecutivo")), _txt(d.get("canal")), _txt(d.get("solicitud"))
+        c.lotes_texto, c.vida_util_texto, c.penalidades = _txt(d.get("lote")), _txt(d.get("vida")), _txt(d.get("penalidad"))
+        c.max_lotes_por_sku, c.vida_util_meses = p["max_lotes_por_sku"], p["vida_util_meses"]
+        c.penalidad_tipos, c.fill_rate_min_pct, c.origen = p["penalidad_tipos"], p["fill_rate_min_pct"], b.archivo
+    s.flush()
+    vinculados = link_all()
+    return {"nuevos": nuevos, "actualizados": act, "vinculados": vinculados}
 
 
 def _price_key(d):
@@ -966,7 +1039,11 @@ def _c_precios(b, user, opciones):
             items.append({"product_code": sku, "descripcion": _txt(d.get("descripcion")), "canal": "",
                           "precio_kg": _num(d.get("precio_kg")), "precio_saco": _num(d.get("precio_saco")),
                           "kg_saco": _num(d.get("kg_saco"))})
-    return replace_list("GENERAL" if b.tipo == "PRECIOS" else "GRANEL", items, user, b.archivo)
+    from .prices import set_validity
+    lista = "GENERAL" if b.tipo == "PRECIOS" else "GRANEL"
+    res = replace_list(lista, items, user, b.archivo)
+    set_validity(user, lista, _date(opciones.get("vigencia_desde")), _date(opciones.get("vigencia_hasta")), b.archivo)
+    return res
 
 
 def _c_liq(b, user, opciones):

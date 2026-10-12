@@ -19,7 +19,7 @@ Las tablas se crean al iniciar la aplicación (`create_all`). Para producción s
 | enviar_correo | BOOLEAN | no |  |
 | activo | BOOLEAN | no |  |
 | origen_destinatarios | VARCHAR(12) | no |  |
-| fuente | VARCHAR(200) | no |  |
+| fuente | TEXT | no |  |
 | condicion | TEXT | no |  |
 
 ## `customers`
@@ -38,6 +38,7 @@ Las tablas se crean al iniciar la aplicación (`create_all`). Para producción s
 | horario_recepcion | VARCHAR(60) | no |  |
 | requiere_cita | BOOLEAN | no |  |
 | vida_util_min_dias | INTEGER | sí |  |
+| canal_precio | VARCHAR(60) | no |  |
 
 Restricción única: (ruc)
 
@@ -68,7 +69,7 @@ Plazos de reposición comunicados por Compras (IF §7) – días naturales.
 | mes_desde | INTEGER | sí |  |
 | mes_hasta | INTEGER | sí |  |
 | descripcion | VARCHAR(200) | no |  |
-| fuente | VARCHAR(200) | no |  |
+| fuente | TEXT | no |  |
 
 ## `params`
 
@@ -82,7 +83,7 @@ Parámetro configurable (IF §16). estado: DEFINIDO / PROPUESTO / PENDIENTE / DE
 | grupo | VARCHAR(40) | no |  |
 | descripcion | TEXT | no |  |
 | estado | VARCHAR(12) | no |  |
-| fuente | VARCHAR(200) | no |  |
+| fuente | TEXT | no |  |
 | version | INTEGER | no |  |
 
 ## `permissions`
@@ -106,7 +107,7 @@ Líneas de producción (formatos PDF: Envasado R1-R2-R3, Truer, Cimbria, Selecci
 | nombre | VARCHAR(80) | no |  |
 | capacidad_kg_dia | FLOAT | sí |  |
 | activa | BOOLEAN | no |  |
-| fuente | VARCHAR(200) | no |  |
+| fuente | TEXT | no |  |
 
 ## `products`
 
@@ -131,6 +132,7 @@ Artículo (formato TABLA_DATA de 'PCP 2026 - J.xlsm' y columnas de OVS/BOM).
 | stock_minimo | FLOAT | sí |  |
 | periodo_analisis_dias | INTEGER | sí |  |
 | margen_seguridad_dias | INTEGER | sí |  |
+| proveedor_habitual | VARCHAR(160) | no |  |
 | merma_pct | FLOAT | sí |  |
 | tiempo_max_almacen_dias | INTEGER | sí |  |
 | origen | VARCHAR(40) | no |  |
@@ -144,7 +146,7 @@ Rol/perfil (IF §15).
 | code | VARCHAR(40) | no | PK |
 | nombre | VARCHAR(120) | no |  |
 | area | VARCHAR(40) | no |  |
-| fuente | VARCHAR(200) | no |  |
+| fuente | TEXT | no |  |
 | observacion | TEXT | no |  |
 
 ## `warehouses`
@@ -158,8 +160,31 @@ Almacén (IF §6.2). uso: PT / MP_INSUMOS / ALTERNATIVO / OTRO.
 | uso | VARCHAR(20) | no |  |
 | prioridad | INTEGER | no |  |
 | reservable | BOOLEAN | no |  |
-| fuente | VARCHAR(200) | no |  |
+| fuente | TEXT | no |  |
 | observacion | TEXT | no |  |
+
+## `customer_conditions`
+
+Condiciones comerciales del cliente (LISTA DE CLIENTES - CON PENALIDADES Y LOTES): ejecutivo, canal, tipo de solicitud, lotes por SKU, vida útil y penalidades. El archivo no trae RUC: se vincula por nombre normalizado.
+
+| Columna | Tipo | Nulo | Clave / referencia |
+|---|---|---|---|
+| id | INTEGER | no | PK |
+| nombre | VARCHAR(250) | no |  |
+| nombre_norm | VARCHAR(250) | no |  |
+| customer_id | INTEGER | sí | → customers.id |
+| ejecutivo | VARCHAR(120) | no |  |
+| canal_comercial | VARCHAR(80) | no |  |
+| solicitud | VARCHAR(60) | no |  |
+| lotes_texto | VARCHAR(60) | no |  |
+| max_lotes_por_sku | INTEGER | sí |  |
+| vida_util_texto | VARCHAR(120) | no |  |
+| vida_util_meses | INTEGER | sí |  |
+| penalidades | TEXT | no |  |
+| penalidad_tipos | JSON | no |  |
+| fill_rate_min_pct | FLOAT | sí |  |
+| origen | VARCHAR(200) | no |  |
+| ts | DATETIME | no |  |
 
 ## `role_permissions`
 
@@ -171,7 +196,7 @@ Matriz rol-permiso. origen: DEFINIDO (regla expresa) o PROPUESTO (derivado del a
 | role_code | VARCHAR(40) | no | → roles.code |
 | perm_code | VARCHAR(60) | no | → permissions.code |
 | origen | VARCHAR(12) | no |  |
-| fuente | VARCHAR(200) | no |  |
+| fuente | TEXT | no |  |
 
 Restricción única: (role_code, perm_code)
 
@@ -285,7 +310,7 @@ Restricción única: (user_id, type_code)
 | product_code | VARCHAR(30) | no | → products.code |
 | cantidad | FLOAT | no |  |
 | fecha_llegada_estimada | DATE | sí |  |
-| estado | VARCHAR(20) | no |  |
+| estado | VARCHAR(30) | no |  |
 | warehouse_code | VARCHAR(20) | sí | → warehouses.code |
 | cantidad_recibida | FLOAT | sí |  |
 | lote_recibido | VARCHAR(60) | no |  |
@@ -344,6 +369,57 @@ Lista de precios (decisión Q11, 13-oct-2026). Cada cambio crea una versión nue
 | motivo | TEXT | no |  |
 | user_id | INTEGER | sí | → users.id |
 
+## `price_lists`
+
+Vigencia de cada lista de precios (se avisa al vencer; no se bloquea).
+
+| Columna | Tipo | Nulo | Clave / referencia |
+|---|---|---|---|
+| lista | VARCHAR(10) | no | PK |
+| archivo | VARCHAR(200) | no |  |
+| vigencia_desde | DATE | sí |  |
+| vigencia_hasta | DATE | sí |  |
+| user_id | INTEGER | sí | → users.id |
+| ts | DATETIME | no |  |
+
+## `production_reports`
+
+Parte de producción por línea (formatos LINEA TRUER, LINEA CIMBRIA, ENVASADOS R1 R2 Y R3, SEL-MANUAL). El 'desmedro' de estos formatos es la merma (decisión del 13-oct-2026); se liga a la liquidación por el número de OF.
+
+| Columna | Tipo | Nulo | Clave / referencia |
+|---|---|---|---|
+| id | INTEGER | no | PK |
+| linea | VARCHAR(20) | no |  |
+| tipo | VARCHAR(12) | no |  |
+| fecha | DATE | no |  |
+| op | VARCHAR(20) | no |  |
+| of | VARCHAR(30) | no |  |
+| turno | VARCHAR(20) | no |  |
+| hora_inicio | VARCHAR(8) | no |  |
+| hora_fin | VARCHAR(8) | no |  |
+| horas | FLOAT | sí |  |
+| operarios | INTEGER | sí |  |
+| cliente | VARCHAR(120) | no |  |
+| product_code | VARCHAR(40) | no |  |
+| mp_codigo | VARCHAR(40) | no |  |
+| lote | VARCHAR(60) | no |  |
+| peso_entrada_kg | FLOAT | no |  |
+| granel_kg | FLOAT | no |  |
+| mp_kg | FLOAT | no |  |
+| cal3_kg | FLOAT | no |  |
+| desmedro_kg | FLOAT | no |  |
+| presentacion_kg | FLOAT | sí |  |
+| unidades | FLOAT | sí |  |
+| sobrante_kg | FLOAT | no |  |
+| rendimiento_pct | FLOAT | sí |  |
+| desmedro_pct | FLOAT | sí |  |
+| diferencia_kg | FLOAT | sí |  |
+| ratio_kg_hora | FLOAT | sí |  |
+| estado | VARCHAR(20) | no |  |
+| observacion | TEXT | no |  |
+| user_id | INTEGER | sí | → users.id |
+| ts | DATETIME | no |  |
+
 ## `sales_orders`
 
 
@@ -370,6 +446,10 @@ Lista de precios (decisión Q11, 13-oct-2026). Cada cambio crea una versión nue
 | decision_parcial | VARCHAR(20) | no |  |
 | motivo_detencion | VARCHAR(250) | no |  |
 | origen | VARCHAR(20) | no |  |
+| tipo_venta | VARCHAR(40) | no |  |
+| retenida_precio | BOOLEAN | no |  |
+| precio_observado | JSON | no |  |
+| aprobacion_precio | JSON | no |  |
 | version | INTEGER | no |  |
 | creado_por | INTEGER | sí | → users.id |
 | creado_ts | DATETIME | no |  |
@@ -378,7 +458,7 @@ Lista de precios (decisión Q11, 13-oct-2026). Cada cambio crea una versión nue
 | prep_fin | DATETIME | sí |  |
 | salida_ts | DATETIME | sí |  |
 | entrega_ts | DATETIME | sí |  |
-| corte | VARCHAR(10) | no |  |
+| corte | VARCHAR(20) | no |  |
 | alerta80_emitida | BOOLEAN | no |  |
 | parcial_aprobaciones | JSON | no |  |
 | fecha_saldo | DATE | sí |  |
@@ -492,7 +572,7 @@ Decisiones humanas ante faltantes (IF §4.5, §5, §6.3): despacho parcial, rene
 | id | INTEGER | no | PK |
 | order_id | INTEGER | no | → sales_orders.id |
 | tipo | VARCHAR(30) | no |  |
-| estado | VARCHAR(12) | no |  |
+| estado | VARCHAR(30) | no |  |
 | detalle | JSON | no |  |
 | comentario | TEXT | no |  |
 | user_id | INTEGER | sí | → users.id |
@@ -789,7 +869,7 @@ Registro de Calidad genérico por formato: MUESTREO (REG-CAL-002 / CP-FOR-CAL-10
 | destino_code | VARCHAR(20) | no | → warehouses.code |
 | cantidad | FLOAT | no |  |
 | order_id | INTEGER | sí | → sales_orders.id |
-| estado | VARCHAR(20) | no |  |
+| estado | VARCHAR(30) | no |  |
 | solicitado_por | INTEGER | sí | → users.id |
 | autorizado_por | INTEGER | sí | → users.id |
 | autorizado_ts | DATETIME | sí |  |

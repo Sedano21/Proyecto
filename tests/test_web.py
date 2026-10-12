@@ -51,7 +51,7 @@ def test_permiso_por_pantalla(app):
 PAGES = ["/", "/alertas", "/alertas?agrupar=area", "/alertas?agrupar=grupo&prioridad=ALTA", "/ov/", "/ov/nueva",
          "/ov/preparacion", "/almacen/stock", "/almacen/cargas", "/almacen/cargas/nueva?tipo=BOM", "/almacen/conteos",
          "/almacen/traslados", "/almacen/reempaques", "/produccion/", "/produccion/bom?producto=PT-901&cantidad=100",
-         "/produccion/liquidaciones", "/calidad/", "/calidad/certificados", "/abastecimiento/compras",
+         "/produccion/liquidaciones", "/produccion/partes", "/calidad/", "/calidad/certificados", "/abastecimiento/compras",
          "/abastecimiento/reposicion", "/abastecimiento/importaciones", "/distribucion/", "/distribucion/incidencias",
          "/distribucion/flota", "/configuracion", "/configuracion/productos", "/configuracion/clientes", "/usuarios",
          "/alertas/configuracion", "/correo", "/auditoria", "/alertas/preferencias",
@@ -127,7 +127,8 @@ def test_pantallas_ruta_y_folio_en_cada_etapa(app):
     s = SessionLocal()
     u = s.query(User).filter_by(username="coord.ventas").one()
     c = s.query(Customer).first()
-    o = create_order(u, "WEB-R1", c.id, date.today() + timedelta(days=1), [{"product_code": "PT-905", "cantidad": 20}])
+    o = create_order(u, "WEB-R1", c.id, date.today() + timedelta(days=1), [{"product_code": "PT-905", "cantidad": 20,
+                                                                                      "precio_unitario": 50}])
     s.commit()
     r = dist.active_stop(o).route
     for estado_paso in ("PROPUESTA", "CONFIRMADA"):

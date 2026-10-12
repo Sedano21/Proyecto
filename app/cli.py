@@ -6,6 +6,7 @@
     python -m app.cli verificar       # ejecuta verificaciones periódicas (alertas automáticas, correo)
     python -m app.cli crear-usuario <usuario> <rol> <nombre> <email>
     python -m app.cli muestras <carpeta>   # genera los Excel ficticios de ejemplo
+    python -m app.cli depurar [--aplicar]  # fotos de entrega más antiguas que la retención configurada (sin --aplicar: solo lista)
 """
 import getpass
 import os
@@ -37,6 +38,11 @@ def main(argv):
             seed_catalogs()
             r = seed_demo(os.path.join(app.instance_path, "demo_files"))
             print("Demostración creada" if r else "Ya existían usuarios; no se modificó nada")
+        elif cmd == "depurar":
+            from .services.retention import purge_photos
+            r = purge_photos(app.config["UPLOAD_DIR"], aplicar="--aplicar" in argv)
+            s.commit()
+            print(r)
         elif cmd == "verificar":
             from .services.scheduler import run_checks
             print(run_checks())

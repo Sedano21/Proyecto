@@ -9,6 +9,7 @@
 </div>
 {% if bt.estado in ['LISTO','VALIDADO_CON_ERRORES'] %}
 <form method="post" action="{{ url_for('alm.upload_action', bid=bt.id, accion='confirmar') }}" class="card">{{ csrf() }}
+{% if bt.tipo in ['PRECIOS', 'PRECIOS_GRANEL'] %}<label>Vigencia de la lista: desde</label><input type="date" name="vigencia_desde"> <label>hasta (al vencer se avisa, no se bloquea)</label><input type="date" name="vigencia_hasta"><br>{% endif %}
 {% if bt.tipo == 'BOM' %}<label>¿El Excel ya incorpora pérdidas (merma)? (IF §8.1 – evita doble contabilización)</label><select name="incluye_merma"><option value="NO_VERIFICADO">No verificado (no se aplicará merma)</option><option value="SI">Sí, ya incluye (no se aplica merma)</option><option value="NO">No incluye (se aplicará la merma configurada)</option></select>{% endif %}
 {% if bt.tipo == 'LIQUIDACION' %}<label>Origen</label><select name="origen"><option>SAP</option><option>EXCEL</option></select>{% endif %}
 {% if bt.estado=='VALIDADO_CON_ERRORES' %}<div class="note">Hay filas con error: corríjalas o exclúyalas para poder autorizar.</div>{% endif %}

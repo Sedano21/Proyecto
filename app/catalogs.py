@@ -14,6 +14,8 @@ Q3 = "Decisión del usuario Q3 (11 y 12-oct-2026)"
 Q4 = "Decisión del usuario Q4 (11-oct-2026)"
 R12 = "Decisión del usuario (12-oct-2026)"
 R13 = "Decisión del usuario (13-oct-2026)"
+R14 = "Decisión del usuario (13-oct-2026, segunda parte)"
+CANAL_GRANEL = "MAYORISTA GRANEL"
 VIRTUALES = ["ALM-002", "ALM-004", "ALM-005", "ALM-006", "ALM-007", "ALM-012", "EXT-007", "EXT-013", "PRO-*"]
 
 # ---------------------------------------------------------------------------
@@ -45,8 +47,7 @@ ROLES = [
     ("JEFE_LOGISTICA", "Jefatura de Logística", "Logística", f"{IF} §6.2, §13, §15", ""),
     ("COORD_LOGISTICA", "Coordinación de Logística", "Logística", f"{IF} §15", ""),
     ("JEFE_PRODUCCION", "Jefatura de Producción", "Producción", f"{IF} §8, §15", ""),
-    ("COORD_PRODUCCION", "Coordinación de Producción (por validar)", "Producción", f"{IF} §15", "La existencia del rol está 'por validar' (IF §15)."),
-    ("ASIST_PRODUCCION", "Asistente de Producción", "Producción", f"{IF} §15", ""),
+    ("ASIST_PRODUCCION", "Asistente de Producción", "Producción", f"{IF} §15; {R14}", "Hoy son dos asistentes; no existe Coordinación de Producción."),
     ("JEFE_CALIDAD", "Jefatura de Calidad", "Calidad", f"{IF} §9, §15", ""),
     ("SUPERV_CALIDAD", "Supervisor de Calidad", "Calidad", f"{IF} §9.3, §15", ""),
     ("ASIST_CALIDAD", "Asistente de Calidad", "Calidad", f"{IF} §9.3, §15", ""),
@@ -72,7 +73,9 @@ PERMISSIONS = [
     ("ov.decidir_alternativa", "Decidir uso de stock de otros almacenes", "Logística", "aprobacion"),
     ("ov.importar", "Importar OV desde exportación SAP", "Comercial", "edicion"),
     ("precios.ver", "Consultar listas de precios", "Comercial", "consulta"),
-    ("precios.editar", "Cargar y modificar listas de precios mínimos (solo Jefe Comercial)", "Comercial", "exclusivo"),
+    ("precios.editar", "Cargar y modificar listas de precios mínimos y su vigencia (solo Jefe Comercial)", "Comercial", "exclusivo"),
+    ("ov.aprobar_precio", "Liberar una OV retenida por precio en el límite o bajo el mínimo", "Comercial", "exclusivo"),
+    ("clientes.canal", "Asignar canal de precios y cargar condiciones de clientes (penalidades, lotes)", "Comercial", "exclusivo"),
     ("stock.ver", "Consultar stock y reservas", "Almacén", "consulta"),
     ("stock.cargar", "Cargar archivos de stock/movimientos (validación previa)", "Almacén", "edicion"),
     ("stock.autorizar_carga", "Autorizar/confirmar carga de stock", "Almacén", "aprobacion"),
@@ -128,7 +131,7 @@ PERMISSIONS = [
     ("alertas.ver_todas", "Ver alertas de todas las áreas", "Alertas", "consulta"),
     ("alertas.configurar", "Configurar destinatarios/canales/urgencia de alertas", "Alertas", "administracion"),
     ("config.ver", "Consultar configuración", "Configuración", "consulta"),
-    ("config.editar", "Editar configuración y catálogos", "Configuración", "administracion"),
+    ("config.editar", "Editar configuración y catálogos (solo Sistemas)", "Configuración", "exclusivo"),
     ("usuarios.administrar", "Administrar usuarios y matriz de permisos", "Configuración", "administracion"),
     ("auditoria.ver", "Consultar bitácora de auditoría", "Configuración", "consulta"),
     ("export.datos", "Exportar registros", "General", "consulta"),
@@ -151,8 +154,10 @@ def _p(perms, fuente=f"{IF} §3 (alcance por área) – propuesto"):
 ROLE_PERMISSIONS = {
     "GERENCIA_GENERAL": _d([p for p, _, _, t in PERMISSIONS if t != "exclusivo"] + ["precios.ver"],
                            f"{IF} §15; {Q4}: acceso completo, incluso aprobar en nombre de otros roles "
-                           f"(salvo modificar precios: exclusivo del Jefe Comercial, {R13} Q11)"),
-    "SISTEMAS": _d([p for p, _, _, t in PERMISSIONS if t not in ("aprobacion", "exclusivo")] + ["precios.ver"],
+                           f"(salvo los permisos exclusivos: precios y venta bajo mínimo del Jefe Comercial, {R13} Q11; "
+                           f"configuración de Sistemas, {R14})"),
+    "SISTEMAS": _d(["config.editar", "clientes.canal"], f"{R14}: Sistemas tiene todo el panel de configuración") + _d(
+        [p for p, _, _, t in PERMISSIONS if t not in ("aprobacion", "exclusivo")] + ["precios.ver"],
                    f"{IF} §15-§16; {Q4}: acceso completo pero NO aprueba en nombre de otros roles"),
     "GERENCIA_OPERACIONES": _p(_VIEW_OPS + ["config.ver"]) + _d(
         ["ov.renegociar"], f"{IF} §4.5, §5 (participa en renegociación)") + _d(
@@ -160,10 +165,12 @@ ROLE_PERMISSIONS = {
         ["compras.autorizar_bajo_observacion"], f"{IF} §10.8") + _p(
         ["compras.aprobar_mayor_volumen"], f"{IF} §7 – participación de GO requiere validación"),
     "GERENTE_COMERCIAL": _p(["precios.ver", "dashboard.ver", "ov.ver", "stock.ver", "distribucion.ver", "alertas.ver", "alertas.gestionar", "export.datos"]),
-    "JEFE_VENTAS": _d(["precios.ver", "precios.editar"], f"{R13} Q11: único con autorización para modificar precios") + _p(["dashboard.ver", "ov.ver", "ov.crear", "ov.modificar", "ov.importar", "stock.ver", "distribucion.ver", "alertas.ver", "alertas.gestionar", "export.datos"]) + _d(
+    "JEFE_VENTAS": _d(["precios.ver", "precios.editar"], f"{R13} Q11: único con autorización para modificar precios") + _d(
+        ["ov.aprobar_precio"], f"{R14}: la OV bajo el mínimo queda detenida hasta la confirmación del Coordinador Comercial o Jefe Comercial") + _d(
+        ["clientes.canal"], f"{R14}: el Jefe Comercial asigna y traslada clientes de canal") + _p(["dashboard.ver", "ov.ver", "ov.crear", "ov.modificar", "ov.importar", "stock.ver", "distribucion.ver", "alertas.ver", "alertas.gestionar", "export.datos"]) + _d(
         ["ov.cancelar", "ov.autorizar_modificacion"], f"{IF} §5") + _d(
         ["ov.renegociar"], f"{IF} §4.5, §5 (Comercial participa)"),
-    "COORD_VENTAS": _p(["precios.ver", "dashboard.ver", "ov.ver", "ov.crear", "ov.modificar", "ov.importar", "stock.ver", "distribucion.ver", "alertas.ver", "alertas.gestionar", "export.datos"]) + _d(
+    "COORD_VENTAS": _d(["ov.aprobar_precio"], f"{R14}: confirma OV detenida por precio (Coordinador Comercial)") + _p(["precios.ver", "dashboard.ver", "ov.ver", "ov.crear", "ov.modificar", "ov.importar", "stock.ver", "distribucion.ver", "alertas.ver", "alertas.gestionar", "export.datos"]) + _d(
         ["ov.cancelar", "ov.autorizar_modificacion"], f"{IF} §5") + _d(
         ["ov.renegociar"], f"{IF} §4.5, §5 (Comercial participa)"),
     "ASIST_VENTAS": _d(["ov.crear"], "Diagrama AS-IS L5 (Asistente comercial ingresa la OV)") + _d(
@@ -215,9 +222,6 @@ ROLE_PERMISSIONS = {
                            "alertas.ver", "alertas.gestionar", "produccion.bom_cargar", "produccion.programar",
                            "produccion.registrar", "produccion.liquidar", "export.datos"]) + _d(
         ["produccion.validar"], f"{IF} §8.2") + _d(["reempaque.ejecutar"], f"{IF} §9.1"),
-    "COORD_PRODUCCION": _p(["ov.ver", "stock.ver", "produccion.ver", "reempaque.ver", "alertas.ver", "alertas.gestionar",
-                            "produccion.programar", "produccion.registrar", "produccion.liquidar", "produccion.validar",
-                            "reempaque.ejecutar"], f"{IF} §15 – rol por validar"),
     "ASIST_PRODUCCION": _p(["produccion.ver", "reempaque.ver", "stock.ver", "alertas.ver", "produccion.registrar",
                             "produccion.liquidar", "reempaque.ejecutar"]),
     "JEFE_CALIDAD": _p(["dashboard.ver", "ov.ver", "stock.ver", "calidad.ver", "reempaque.ver", "produccion.ver",
@@ -253,7 +257,7 @@ _GO = ["GERENCIA_OPERACIONES"]
 _COM = ["JEFE_VENTAS", "COORD_VENTAS"]
 _DIST = ["COORD_DISTRIBUCION", "ASIST_DISTRIBUCION"]
 _CAL = ["JEFE_CALIDAD", "SUPERV_CALIDAD"]
-_PROD = ["JEFE_PRODUCCION", "COORD_PRODUCCION"]
+_PROD = ["JEFE_PRODUCCION", "ASIST_PRODUCCION"]  # no existe Coordinación de Producción ({R14})
 
 ALERT_TYPES = [
     # code, nombre, area, grupo, prioridad, roles, origen, fuente, condicion, correo
@@ -306,11 +310,19 @@ ALERT_TYPES = [
      f"{IF} §13", "Logística autoriza el traslado.", False),
     ("TRASLADO_DIFERENCIA", "Diferencia en recepción de traslado", "Logística", "Traslados", "ALTA", ["JEFE_LOGISTICA"] + _ALM + _GO,
      "PROPUESTO", f"{IF} §13", "Cantidad recibida distinta a la enviada.", True),
-    ("OV_PRECIO_BAJO_MINIMO", "Precio de OV en el límite o por debajo de la lista", "Comercial", "Cambios de OV", "ALTA",
-     ["JEFE_VENTAS", "GERENTE_COMERCIAL"], "DEFINIDO",
-     f"{R13} Q11: la lista es el precio mínimo; los ejecutivos o responsables de canal venden sobre ese precio",
-     "Línea de OV con precio igual o menor al mínimo de lista del canal (o dentro del margen de alerta). También se "
+    ("OV_PRECIO_BAJO_MINIMO", "OV detenida: precio en el límite o por debajo de la lista", "Comercial", "Cambios de OV", "ALTA",
+     ["JEFE_VENTAS", "COORD_VENTAS", "GERENTE_COMERCIAL"], "DEFINIDO",
+     f"{R13} Q11; {R14}: se alerta y queda detenida hasta la confirmación del Coordinador o Jefe Comercial",
+     "Línea de OV (incluidas las muestras comerciales) con precio igual o menor al mínimo de lista del canal. También se "
      "avisa al vendedor de la OV.", True),
+    ("PRECIO_FALTANTE", "Producto o cliente sin precio mínimo", "Comercial", "Cambios de OV", "MEDIA", ["JEFE_VENTAS"], "DEFINIDO",
+     f"{R14}: 'el sistema debe botar una alerta y en base a eso ir completando'",
+     "Una OV trae un producto sin precio mínimo para el canal del cliente, o un cliente sin canal de precios asignado.", True),
+    ("LISTA_PRECIOS_VENCIDA", "Lista de precios vencida o por vencer", "Comercial", "Cambios de fechas", "MEDIA", ["JEFE_VENTAS"],
+     "DEFINIDO", f"{R14}: 'se avisa pero no se bloquea'", "Fecha de vencimiento de la lista alcanzada (o dentro del aviso).", True),
+    ("CARGA_SAP_DESACTUALIZADA", "Carga de SAP sin actualizar", "Sistemas", "Diferencias de inventario", "ALTA", ["SISTEMAS"],
+     "DEFINIDO", f"{R14}: cada área exporta a diario, con cortes de 2 veces al día como mínimo",
+     "La última carga autorizada de un tipo supera las horas configuradas; se avisa al área responsable y a Sistemas.", False),
     ("PRESOLICITUD_AUTOMATICA", "Pre-solicitudes generadas por faltante", "Almacén", "Solicitudes", "ALTA", _ALM + _LOG,
      "DEFINIDO", f"{TOBE}; {R12} Q15 (orden: producir, reempaque, traslado, compra)",
      "La OV queda con faltante y el sistema genera la pre-solicitud de la primera opción viable.", True),
@@ -446,9 +458,13 @@ PARAMS = [
     ("usar_stock_seguridad", False, "bool", "Reposición",
      "Aplicar el factor de stock de seguridad AS-IS en el análisis de reposición.", "PENDIENTE", f"{IF} §16 (stock mínimo configurable)"),
     ("umbral_mayor_volumen", None, "float", "Compras",
-     "Cantidad a partir de la cual una compra se considera de mayor volumen.", "PENDIENTE", f"{IF} §7, §20"),
+     "Valor a partir del cual una compra se considera de mayor volumen (en la unidad elegida abajo).", "PENDIENTE", f"{IF} §7, §20; {R14}"),
+    ("umbral_mayor_volumen_unidad", "KG", "str", "Compras",
+     "Unidad del umbral: KG (cantidad × peso del artículo), UNIDADES o SOLES (cantidad × precio cotizado).",
+     "DEFINIDO", f"{R14}: se configura en el panel"),
     ("mayor_volumen_requiere_go", True, "bool", "Compras",
-     "Si la compra de mayor volumen requiere aprobación de Gerencia de Operaciones.", "PENDIENTE", f"{IF} §7, §20"),
+     "La compra de mayor volumen requiere aprobación de Gerencia de Operaciones (además del Jefe de Logística).",
+     "DEFINIDO", f"{IF} §7; {R14}: configuración automática Gerencia de Operaciones"),
     ("merma_pct_global", None, "float", "Producción",
      "Porcentaje de merma por defecto (el catálogo de producto/material puede tener uno propio).", "PENDIENTE", f"{IF} §8.1, §16, §20"),
     ("prefijos_no_material_bom", ["RE-"], "list", "Producción",
@@ -464,9 +480,18 @@ PARAMS = [
     ("umbrales_tamano_pedido_kg", None, "dict", "Almacén",
      "Límites en kg para clasificar pedido pequeño/mediano/grande.", "PENDIENTE", "No definido en la documentación"),
     ("umbral_alerta_preparacion_pct", 80, "int", "Almacén", "Avance de preparación que dispara la alerta.", "DEFINIDO", f"{IF} §14"),
-    ("orden_prioridad", ["fecha_compromiso", "completitud", "urgencia"], "list", "Almacén",
-     "Criterios de prioridad en el orden aplicado (los criterios están definidos; el orden de desempate es propuesto).",
-     "PROPUESTO", f"{IF} §1, §5, §12.1"),
+    ("orden_prioridad", ["fecha_compromiso", "penalidad", "completitud", "urgencia"], "list", "Almacén",
+     "Criterios de prioridad en el orden aplicado. 'penalidad': a igual fecha, primero el cliente con penalidades más "
+     "severas (lista de clientes con penalidades). El orden de desempate es propuesto.",
+     "PROPUESTO", f"{IF} §1, §5, §12.1; {R14} (lista de clientes con penalidades para priorizar)"),
+    ("peso_penalidad", {"RETIRO_PROVEEDOR": 5, "FECHA_ENTREGA": 4, "FILL_RATE": 4, "ENTREGA_PARCIAL": 3,
+                        "RUPTURA_STOCK": 3, "VENTANA_HORARIA": 2, "PESO": 2, "PALETIZADO": 2, "DOCUMENTOS": 1,
+                        "NO_CONFORMIDADES": 1}, "dict", "Almacén",
+     "Peso de cada tipo de penalidad del cliente para la prioridad (suma). Valores propuestos para validar con Comercial.",
+     "PROPUESTO", f"{R14}"),
+    ("aplicar_vida_util_cliente", False, "bool", "Almacén",
+     "Si 'vida útil 12 meses' de la lista de clientes significa vida útil RESTANTE mínima al despacho, activar: la reserva "
+     "excluye lotes con menos meses de vida. Pendiente de confirmar.", "PENDIENTE", f"{R14}"),
     ("almacen_transito_produccion", "ALM-003", "str", "Producción",
      "Almacén virtual de tránsito donde Producción deja el producto terminado hasta la validación de Almacén.",
      "DEFINIDO", f"{R12} Q5"),
@@ -487,6 +512,36 @@ PARAMS = [
     ("bloquear_salida_con_discrepancia", True, "bool", "Distribución",
      "Una discrepancia carga vs guía bloquea la salida; el Jefe o el Coordinador de Logística puede aprobar la salida "
      "mientras se resuelve la guía.", "DEFINIDO", f"{IF} §12.2; {R12} Q8"),
+    ("margen_por_proveedor", {}, "dict", "Reposición",
+     "Días de margen adicional por proveedor habitual del artículo ({proveedor: días}); prevalece sobre el margen global.",
+     "DEFINIDO", f"{IF} §16; {R14}: configurable en el panel"),
+    ("excepciones_bom", {}, "dict", "Producción",
+     "Excepciones a la proporcionalidad lineal: {producto: {componente: cantidad fija por orden}}; esa cantidad no se "
+     "escala con el tamaño de la orden.", "DEFINIDO", f"{IF} §20; {R14}: configurable en el panel"),
+    ("conversiones_calidad_permitidas", [], "list", "Calidad",
+     "Conversiones de calidad permitidas en reempaque, como 'EXTRA>SUPERIOR'. Vacío = todas se proponen para evaluación de Calidad.",
+     "DEFINIDO", f"{IF} §9.2; {R14}: configurable en el panel"),
+    ("clasificacion_abc_pct", {"A": 80, "B": 95}, "dict", "Reposición",
+     "Clasificación ABC por consumo acumulado del período de análisis: A hasta el % indicado, B hasta su %, C el resto.",
+     "PROPUESTO", f"Excel de rotación (A/B/C); {R14}: configurable en el panel"),
+    ("orden_asignacion_flota", ["PROPIO", "TERCERO", "EXTERNO"], "list", "Distribución",
+     "Orden en que la propuesta de rutas asigna unidades (propias, de terceros, transporte externo).",
+     "DEFINIDO", f"{IF} §12.1; {R14}: configurable en el panel"),
+    ("vehiculos_por_zona", {}, "dict", "Distribución",
+     "Restricción opcional de unidades por zona: {zona o distrito: [placas]}. Vacío = cualquier unidad.",
+     "DEFINIDO", f"{IF} §12.1; {R14}: configurable en el panel"),
+    ("horas_max_sin_carga", {"STOCK": 12, "OV": 12, "LIQUIDACION": 12, "SALIDAS": 24}, "dict", "Sistemas",
+     "Horas máximas desde la última carga autorizada de cada tipo antes de alertar (2 cortes al día = 12 h).",
+     "DEFINIDO", f"{R14}: diario, 2 cortes al día como mínimo"),
+    ("responsable_carga", {"STOCK": ["COORD_ALMACEN", "COORD_ALMACEN_MP"], "OV": ["ASIST_VENTAS"],
+                           "LIQUIDACION": ["ASIST_PRODUCCION"], "SALIDAS": ["COORD_ALMACEN"]}, "dict", "Sistemas",
+     "Área (roles) que genera y sube cada exportación de SAP; recibe la alerta de carga desactualizada.",
+     "PROPUESTO", f"{R14}: 'cada área'"),
+    ("correo_habilitado", False, "bool", "Sistemas",
+     "Enviar alertas por correo. Hoy no hay servidor de correo: las alertas quedan en el sistema.", "DEFINIDO", f"{R14}"),
+    ("retencion_datos_personales_dias", None, "int", "Sistemas",
+     "Días que se conservan fotos de entrega y datos personales de conductores antes de depurarlos. Vacío = no se depura. "
+     "Debe fijarse según lo que permita la Ley 29733 y las normas aplicables (validación legal).", "PENDIENTE", f"{R14}"),
     ("tolerancia_discrepancia_guia", 0, "float", "Distribución",
      "Diferencia (unidades) entre guía y carga que se tolera sin considerarla discrepancia.", "PENDIENTE", f"{R12} Q8 (tolerancia no indicada)"),
     ("zonas_distrito", {}, "dict", "Distribución",
@@ -544,9 +599,16 @@ PARAMS = [
      "La alerta salta si el precio de venta está por debajo del mínimo de lista o a menos de este % por encima "
      "('en el límite'). Con 0 se alerta solo si es igual o menor al mínimo.", "PENDIENTE",
      f"{R13} Q11 ('alertar si está en el límite o por debajo')"),
-    ("lista_granel_canales", ["MAYORISTA"], "list", "Comercial",
-     "Canales a los que se aplica la lista 'Mayorista granel' (mínimo por kg o por saco) con prioridad sobre la lista general.",
-     "PROPUESTO", f"{R13} Q11; título 'LISTA DE PRECIOS MAYORISTA GRANEL'"),
+    ("lista_granel_canales", [CANAL_GRANEL], "list", "Comercial",
+     "Canales de precio que usan la lista 'Mayorista granel' (mínimo por kg y por saco). La lista se elige por el canal del "
+     "cliente: granel (sin proceso de empaque) o presentaciones (lista por canal).", "DEFINIDO",
+     f"{R14}: 'son por el tipo de canal'"),
+    ("aviso_vencimiento_lista_dias", 7, "int", "Comercial",
+     "Días antes del vencimiento de una lista de precios en que se avisa al Jefe Comercial (no se bloquea su uso).",
+     "PROPUESTO", f"{R14}"),
+    ("retener_ov_bajo_minimo", True, "bool", "Comercial",
+     "La OV con precio en el límite o bajo el mínimo queda detenida (no se prepara ni despacha) hasta su confirmación.",
+     "DEFINIDO", f"{R14}"),
     ("programar_ruta_automatica", True, "bool", "Distribución",
      "Al quedar una OV completa (o con parcial aprobado) el sistema la programa automáticamente en la mejor ruta propuesta.",
      "DEFINIDO", "TO-BE COPROD-ONE: 'Programar automáticamente la mejor ruta para el despacho'"),

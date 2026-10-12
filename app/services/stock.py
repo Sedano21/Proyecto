@@ -70,10 +70,12 @@ def lot_usable(lot, fecha_compromiso=None, customer=None):
     ref = fecha_compromiso or date.today()
     if lot.fecha_venc and lot.fecha_venc < ref:
         return False, f"Vencido a la fecha comprometida ({lot.fecha_venc:%d/%m/%Y})"
-    if customer is not None and customer.vida_util_min_dias and lot.fecha_venc:
+    if customer is not None and lot.fecha_venc:
+        from .customer_conditions import min_shelf_days
+        minimo = max(customer.vida_util_min_dias or 0, min_shelf_days(customer) or 0)
         restante = (lot.fecha_venc - ref).days
-        if restante < customer.vida_util_min_dias:
-            return False, f"Vida útil restante {restante} d < mínimo del cliente {customer.vida_util_min_dias} d"
+        if minimo and restante < minimo:
+            return False, f"Vida útil restante {restante} d < mínimo del cliente {minimo} d"
     return True, ""
 
 
@@ -134,11 +136,31 @@ def priority_key(order):
             keys.append(-(order.cobertura_unidades or 0))
         elif crit == "urgencia":
             keys.append(0 if order.urgente else 1)
+        elif crit == "penalidad":
+            from .customer_conditions import penalty_score
+            keys.append(-penalty_score(order.customer))
     keys.append(order.id)
     return tuple(keys)
 
 
 # ------------------------------ reservas -----------------------------------
+def _best_lots(candidatos, usados, maxl, falta):
+    """Elige hasta (maxl − lotes ya usados) lotes nuevos que cubran lo que falta con la menor cantidad de lotes,
+    respetando FEFO entre opciones equivalentes (condición del cliente: N lotes por SKU)."""
+    from itertools import combinations
+    cupo = maxl - len(usados)
+    if cupo <= 0:
+        return [l for l in candidatos if l.id in usados]
+    nuevos = [l for l in candidatos if l.id not in usados][:30]
+    mejor, mejor_cub = [], -1.0
+    for k in range(1, cupo + 1):
+        for combo in combinations(nuevos, k):  # en orden FEFO: la primera combinación que cubre es la más antigua
+            cub = min(sum(free_qty(l) for l in combo), falta)
+            if cub > mejor_cub + 1e-9:
+                mejor, mejor_cub = list(combo), cub
+            if cub >= falta - 1e-9:
+                return [l for l in candidatos if l.id in usados] + list(combo)
+    return [l for l in candidatos if l.id in usados] + mejor
 def line_reserved(line):
     return sum(r.cantidad for r in line.reservations if r.estado == "ACTIVA")
 
@@ -198,15 +220,17 @@ def evaluate_order(order, user=None, motivo="CREACION"):
                     r.cantidad -= exceso
                     exceso = 0
             reservado = line_reserved(line)
-        # 3) reservar lo que falta en almacenes principales
+        # 3) reservar lo que falta en almacenes principales (respetando el máximo de lotes por SKU del cliente)
         if reservado < necesario - 1e-9:
-            for lot in _sort_lots(lots_of(line.product_code, principales)):
-                ok, _ = lot_usable(lot, order.fecha_compromiso, customer)
-                if not ok:
-                    continue
+            from .customer_conditions import max_lots
+            maxl = max_lots(customer)
+            usados = {r.lot_id for r in line.reservations if r.estado == "ACTIVA"}
+            candidatos = [lot for lot in _sort_lots(lots_of(line.product_code, principales))
+                          if lot_usable(lot, order.fecha_compromiso, customer)[0] and free_qty(lot) > 1e-9]
+            if maxl:
+                candidatos = _best_lots(candidatos, usados, maxl, necesario - reservado)
+            for lot in candidatos:
                 libre = free_qty(lot)
-                if libre <= 1e-9:
-                    continue
                 tomar = min(libre, necesario - reservado)
                 res = Reservation(ov_line_id=line.id, lot_id=lot.id, cantidad=tomar, estado="ACTIVA")
                 s.add(res)
@@ -246,7 +270,7 @@ def evaluate_order(order, user=None, motivo="CREACION"):
 def _after_evaluation(order, user):
     """Acciones del TO-BE al quedar la OV completa: aviso, certificado pre-elaborado y ruta automática."""
     from .distribution import sync_order_route
-    listo = order.estado_stock == "COMPLETA" or order.decision_parcial == "APROBADA"
+    listo = (order.estado_stock == "COMPLETA" or order.decision_parcial == "APROBADA") and not order.retenida_precio
     if order.estado_stock == "COMPLETA" and not order.completa_notificada:
         order.completa_notificada = True
         alerts.emit("OV_COMPLETA", f"OV {order.numero} completa: stock reservado al 100 %",
@@ -281,9 +305,15 @@ def _emit_evaluation_alerts(order, resumen, user, motivo, tenia_reservas):
         if order.cobertura_unidades > 0 and order.decision_parcial in ("", "RECHAZADA"):
             order.decision_parcial = "PENDIENTE"
             order.parcial_aprobaciones = {}
+            from .customer_conditions import for_customer
+            cond = for_customer(order.customer)
+            aviso = ""
+            if cond is not None and cond.fill_rate_min_pct and order.cobertura_unidades < cond.fill_rate_min_pct:
+                aviso = (f" ATENCIÓN: el cliente penaliza fill rate < {cond.fill_rate_min_pct:g}% "
+                         f"({cond.penalidades.splitlines()[0] if cond.penalidades else ''}).")
             alerts.emit("OV_DECISION_PARCIAL", f"Decidir despacho parcial de OV {order.numero}",
                         f"Hay {order.cobertura_unidades}% de unidades reservadas. Decidir despacho parcial, renegociar "
-                        f"fecha o cambiar producto.", "SalesOrder", order.id, extra_users=vendedor,
+                        f"fecha o cambiar producto.{aviso}", "SalesOrder", order.id, extra_users=vendedor,
                         dedup_key=f"OV_DECISION_PARCIAL:{order.id}", creado_por=user)
     else:
         alerts.close_by_system(f"OV_FALTANTE:{order.id}", "Faltante cubierto tras reevaluación.")
@@ -344,6 +374,9 @@ def alternatives_for_order(order):
                     libre = free_qty(lot) if ok else 0
                     if libre > 0:
                         tipo = "CONVERSION_CALIDAD" if (p2.calidad and product.calidad and p2.calidad != product.calidad) else "CAMBIO_PRESENTACION"
+                        permitidas = param("conversiones_calidad_permitidas", []) or []
+                        if tipo == "CONVERSION_CALIDAD" and permitidas and f"{p2.calidad}>{product.calidad}" not in permitidas:
+                            continue  # conversión no permitida por la configuración de Calidad
                         item["reempaque"].append({"tipo": tipo, "lot": lot, "cantidad": libre,
                                                   "motivo": f"{p2.code} {p2.descripcion} ({p2.presentacion or '-'})"})
         # c) producción

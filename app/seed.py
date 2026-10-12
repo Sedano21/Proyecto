@@ -37,8 +37,8 @@ DEMO_USERS = [
     ("jefe.logistica", "Jefatura de Logística (demo)", "JEFE_LOGISTICA"),
     ("coord.logistica", "Coordinación de Logística (demo)", "COORD_LOGISTICA"),
     ("jefe.produccion", "Jefatura de Producción (demo)", "JEFE_PRODUCCION"),
-    ("coord.produccion", "Coordinación de Producción (demo)", "COORD_PRODUCCION"),
     ("asist.produccion", "Asistente de Producción (demo)", "ASIST_PRODUCCION"),
+    ("asist.produccion2", "Asistente de Producción 2 (demo)", "ASIST_PRODUCCION"),
     ("jefe.calidad", "Jefatura de Calidad (demo)", "JEFE_CALIDAD"),
     ("superv.calidad", "Supervisor de Calidad (demo)", "SUPERV_CALIDAD"),
     ("asist.calidad", "Asistente de Calidad (demo)", "ASIST_CALIDAD"),
@@ -153,7 +153,8 @@ def seed_demo(upload_dir=None, today=None):
                                    ("BOM", "bom", {"incluye_merma": "NO"}, "jefe.produccion"),
                                    ("SALIDAS", "salidas", {}, "coord.almacen"),
                                    ("PRECIOS", "precios", {}, "jefe.ventas"),
-                                   ("PRECIOS_GRANEL", "precios_granel", {}, "jefe.ventas")):
+                                   ("PRECIOS_GRANEL", "precios_granel", {}, "jefe.ventas"),
+                                   ("CLIENTES_CONDICIONES", "clientes", {}, "jefe.ventas")):
         b = uploads.create_batch(users[quien], tipo, files[key], os.path.basename(files[key]))
         uploads.confirm(b, users[quien], opts)
     # completar catálogo de insumos y parámetros por producto

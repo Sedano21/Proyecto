@@ -64,25 +64,76 @@ def test_q11_alerta_si_la_ov_esta_en_el_limite_o_por_debajo(s, U, new_order):
     assert o.lines[0].precio_origen.startswith("Sobre") and a.estado == "CERRADA"
 
 
-def test_q11_ov_sin_precio_o_canal_sin_columna_no_se_valida(s, U, new_order):
-    o = new_order([("PT-905", 10)])  # la exportación de OV no trae precio
-    assert o.lines[0].precio_unitario == 0 and o.lines[0].precio_origen.startswith("Sin precio de venta")
-    assert not alerts_of(s, "OV_PRECIO_BAJO_MINIMO", o.id)
+def test_q11_ov_sin_precio_o_muestra_comercial_queda_detenida(s, U, new_order):
+    """Decisión 13-oct (2.ª parte): las muestras comerciales (precio 0) se incluyen en la alerta y la OV queda detenida
+    hasta la confirmación del Coordinador o Jefe Comercial."""
+    o = osvc.create_order(U("coord.ventas"), "MC-1", s.query(Customer).filter_by(ruc="20000000001").one().id,
+                          date.today() + timedelta(days=3), [{"product_code": "PT-905", "cantidad": 10}],
+                          tipo_venta="Muestra comercial")
+    s.commit()
+    assert o.retenida_precio and "sin precio de venta" in o.lines[0].precio_origen
+    a = alerts_of(s, "OV_PRECIO_BAJO_MINIMO", o.id)[0]
+    assert "Muestra comercial" in a.titulo and {"COORD_VENTAS", "JEFE_VENTAS"} <= set(a.roles)
+    assert not osvc.ready_for_preparation(o) and dist.active_stop(o) is None  # no se prepara ni se programa
+    for quien in ("gerente.general", "sistemas", "vendedor1", "asist.ventas"):
+        with pytest.raises(BusinessError):
+            prc.approve_price(o, U(quien), "ok")
+    with pytest.raises(BusinessError):  # motivo obligatorio
+        prc.approve_price(o, U("coord.ventas"), "")
+    prc.approve_price(o, U("coord.ventas"), "Muestra para cliente nuevo")
+    s.commit()
+    assert not o.retenida_precio and a.estado == "CERRADA" and osvc.ready_for_preparation(o)
+    assert dist.active_stop(o) is not None  # al liberarse se programa la ruta (TO-BE)
+    # si luego cambian los precios observados, vuelve a detenerse
+    osvc.modify_order(o, U("coord.ventas"), {"lines": [{"product_code": "PT-905", "cantidad": 12, "precio_unitario": 0.1}]})
+    s.commit()
+    assert o.retenida_precio
+
+
+def test_q11_productos_o_clientes_sin_precio_alertan_para_completar(s, U):
     c = Customer(ruc="20000000099", nombre="CLIENTE DEMO OFICINA", grupo="OFICINA")
     s.add(c)
     s.flush()
-    o2 = osvc.create_order(U("coord.ventas"), "P-2", c.id, date.today() + timedelta(days=3),
-                           [{"product_code": "PT-905", "cantidad": 5, "precio_unitario": 1}])
-    assert o2.lines[0].precio_minimo is None and "OFICINA" in o2.lines[0].precio_origen
+    o = osvc.create_order(U("coord.ventas"), "P-2", c.id, date.today() + timedelta(days=3),
+                          [{"product_code": "PT-905", "cantidad": 5, "precio_unitario": 1}])
+    assert o.lines[0].precio_minimo is None and not o.retenida_precio
+    assert "canal" in alerts_of(s, "PRECIO_FALTANTE", o.id)[0].mensaje
+    from app.services.core import has_perm
+    assert not has_perm(U("coord.ventas"), "clientes.canal")  # solo el Jefe Comercial (o Sistemas) traslada clientes
+    assert has_perm(U("jefe.ventas"), "clientes.canal") and has_perm(U("sistemas"), "clientes.canal")
+    assert not has_perm(U("gerente.general"), "clientes.canal") and not has_perm(U("gerente.general"), "config.editar")
+    o2 = osvc.create_order(U("coord.ventas"), "P-3", s.query(Customer).filter_by(ruc="20000000001").one().id,
+                           date.today() + timedelta(days=3), [{"product_code": "EN-903", "cantidad": 5, "precio_unitario": 1}])
+    assert "EN-903" in alerts_of(s, "PRECIO_FALTANTE", o2.id)[0].mensaje and not o2.retenida_precio
+    prc.add_item(U("jefe.ventas"), "GENERAL", "EN-903", canal="MAYORISTA", precio=0.8, motivo="Completar lista")
+    osvc.modify_order(o2, U("coord.ventas"), {"lines": [{"product_code": "EN-903", "cantidad": 5, "precio_unitario": 1}]})
+    s.commit()
+    assert alerts_of(s, "PRECIO_FALTANTE", o2.id)[0].estado == "CERRADA" and o2.lines[0].precio_minimo == 0.8
 
 
-def test_q11_lista_granel_manda_para_mayorista(s, U):
+def test_q11_lista_granel_por_canal_y_compara_kg_y_saco(s, U):
     from app.models import Product
-    p = s.get(Product, "MP-901")
-    minimo, origen = prc.price_for(p, s.query(Customer).filter_by(ruc="20000000001").one())
-    assert "granel" in origen and minimo in (pytest.approx(3.6), 90)
-    m2, o2 = prc.price_for(p, s.query(Customer).filter_by(ruc="20000000004").one())  # CATERING: lista general
-    assert "canal CATERING" in o2 and m2 == pytest.approx(3.10 / 0.8)
+    p = s.get(Product, "MP-901")  # granel: 90 por saco de 25 kg = 3.6 por kg
+    mayor = s.query(Customer).filter_by(ruc="20000000001").one()
+    assert prc.price_for(p, mayor)[1].startswith("Lista de precios, canal MAYORISTA")  # presentaciones
+    mayor.canal_precio = "MAYORISTA GRANEL"  # el Jefe Comercial lo traslada al canal granel
+    s.flush()
+    minimo, origen = prc.price_for(p, mayor)
+    assert "granel" in origen
+    p.um = "KILOGRAMO"
+    o = osvc.create_order(U("coord.ventas"), "G-1", mayor.id, date.today() + timedelta(days=3),
+                          [{"product_code": "MP-901", "cantidad": 100, "precio_unitario": 3.5}])
+    assert o.retenida_precio and "por kg: 3.5000 vs mínimo 3.6000" in o.lines[0].precio_origen
+    assert "por saco: 87.5000 vs mínimo 90.0000" in o.lines[0].precio_origen  # compara ambos
+
+
+def test_q11_vigencia_de_lista_avisa_sin_bloquear(s, U, new_order, today):
+    with pytest.raises(BusinessError):
+        prc.set_validity(U("gerente.general"), "GENERAL", today - timedelta(days=30), today - timedelta(days=1))
+    prc.set_validity(U("jefe.ventas"), "GENERAL", today - timedelta(days=30), today - timedelta(days=1))
+    assert prc.check_validity(today) == 1 and alerts_of(s, "LISTA_PRECIOS_VENCIDA")
+    o = new_order([("PT-905", 10)], precio=0.01)
+    assert o.lines[0].precio_minimo is not None and o.retenida_precio  # la lista vencida se sigue usando
 
 
 def test_q16_salida_requiere_tres_vistos_buenos(s, U, new_order):

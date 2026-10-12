@@ -68,7 +68,8 @@ def replenishment():
     prods = list(db().execute(select(Product).where((Product.categoria_reposicion != "") | (Product.stock_minimo.is_not(None)))
                               .order_by(Product.code)).scalars())
     analisis = [psvc.analyze_product(p) for p in prods]
-    return render_template("replenishment.html", analisis=analisis, margen=param("margen_reposicion_dias"))
+    return render_template("replenishment.html", analisis=analisis, margen=param("margen_reposicion_dias"),
+                           abc=psvc.abc_classes())
 
 
 @bp.route("/importaciones", methods=["GET", "POST"])

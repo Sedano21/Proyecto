@@ -1,6 +1,7 @@
 {% extends "base.html" %}{% from "_m.html" import b, bar, csrf %}
 {% block content %}
 <h1>Preparación OV {{ o.numero }} {{ b(o.estado) }}</h1>
+{% set cc = cond_cliente(o.customer) %}{% if cc %}<div class="note small">Condiciones del cliente: {{ cc }}</div>{% endif %}
 <p>Cliente {{ o.customer.nombre }} · comprometida {{ o.fecha_compromiso|d }} · avance {{ bar(progress) }} <b>{{ progress }}%</b></p>
 <div class="note info small">Registre la cantidad preparada indicando el lote; el sistema verifica que corresponda a los lotes reservados (lote/vencimiento validados al reservar). Al llegar al 80 % se alerta a Distribución; al 100 % el pedido queda PREPARADO y se generan los certificados de Calidad.</div>
 {% if o.estado in ['EVALUADA','EN_PREPARACION'] %}<div class="card"><b>Planificación de picking pre-asignada por el sistema</b> (lotes reservados) —

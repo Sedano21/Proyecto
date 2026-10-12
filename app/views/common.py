@@ -148,6 +148,11 @@ def install(app):
                 "alertas_abiertas": abiertas, "today": date.today(), "demo_mode": app.config.get("DEMO_MODE")}
 
     app.jinja_env.globals["csrf_token"] = csrf_token
+
+    def cond_cliente(customer):
+        from ..services.customer_conditions import summary
+        return summary(customer)
+    app.jinja_env.globals["cond_cliente"] = cond_cliente
     app.jinja_env.filters["d"] = fmt_date
     app.jinja_env.filters["n"] = fmt_num
 

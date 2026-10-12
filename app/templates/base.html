@@ -29,6 +29,7 @@
       <a href="{{ url_for('prod.requests') }}">Solicitudes y programa</a>
       <a href="{{ url_for('prod.bom') }}">Lista de materiales</a>
       <a href="{{ url_for('prod.liquidations') }}">Liquidaciones</a>
+      <a href="{{ url_for('prod.reports') }}">Partes de producción</a>
     {% endif %}
     {% if can('calidad.ver') or can('distribucion.seguridad') %}<h4>Calidad</h4>
       {% if can('calidad.ver') %}<a href="{{ url_for('cal.home') }}">Liberación y registros</a>

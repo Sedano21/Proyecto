@@ -47,7 +47,7 @@ def dispatchable_orders(fecha=None, require_prepared=True):
     for o in db().execute(q).scalars():
         if o.id in usados:
             continue
-        if not (o.estado_stock == "COMPLETA" or o.decision_parcial == "APROBADA"):
+        if not (o.estado_stock == "COMPLETA" or o.decision_parcial == "APROBADA") or o.retenida_precio:
             continue
         if fecha and o.fecha_compromiso and o.fecha_compromiso > fecha:
             continue
@@ -151,12 +151,19 @@ def propose_routes(fecha, user, orders=None, require_prepared=True, automatico=F
         pending = [(o, *order_weight_kg(o)) for o in ords]
         while pending:
             total = sum(p[1] for p in pending)
-            propios = sorted([v for v in vehicles if v.propio], key=lambda v: v.capacidad_kg)
-            terceros = sorted([v for v in vehicles if not v.propio], key=lambda v: v.capacidad_kg)
-            vehicle = next((v for v in propios if v.capacidad_kg >= total), None) or \
-                next((v for v in terceros if v.capacidad_kg >= total), None)
-            if vehicle is None and (propios or terceros):
-                vehicle = max(propios or terceros, key=lambda v: v.capacidad_kg)
+            restr = (param("vehiculos_por_zona", {}) or {}).get(zona)
+            aptos = [v for v in vehicles if not restr or v.placa in restr]
+            grupos_flota = {"PROPIO": sorted([v for v in aptos if v.propio], key=lambda v: v.capacidad_kg),
+                            "TERCERO": sorted([v for v in aptos if not v.propio], key=lambda v: v.capacidad_kg)}
+            orden = [g for g in (param("orden_asignacion_flota", ["PROPIO", "TERCERO", "EXTERNO"]) or []) if g in grupos_flota]
+            vehicle = None
+            for g in orden:
+                vehicle = next((v for v in grupos_flota[g] if v.capacidad_kg >= total), None)
+                if vehicle is not None:
+                    break
+            disponibles = [v for g in orden for v in grupos_flota[g]]
+            if vehicle is None and disponibles:
+                vehicle = max(disponibles, key=lambda v: v.capacidad_kg)
             carga, resto, peso = [], [], 0.0
             cap = vehicle.capacidad_kg if vehicle else float((param("capacidad_externo_kg", [2000, 25000]) or [0, 25000])[-1])
             for item in pending:
@@ -331,6 +338,9 @@ def confirm_departure(route, user, checklist):
     faltan = [lbl for k, lbl in CHECKLIST if not checklist.get(k)]
     if faltan:
         raise BusinessError("Antes de la salida verifique: " + ", ".join(faltan) + " (IF §12.2).")
+    retenidas = [st.order.numero for st in route.stops if st.order.retenida_precio]
+    if retenidas:
+        raise BusinessError("OV detenidas por precio (requieren confirmación comercial): " + ", ".join(retenidas))
     no_prep = [st.order.numero for st in route.stops if st.order.estado not in ("PREPARADA", "PROGRAMADA")]
     if no_prep:
         raise BusinessError("Pedidos sin preparación completa: " + ", ".join(no_prep))

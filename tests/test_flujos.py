@@ -378,6 +378,7 @@ def test_compra_nacional_flujo(s, U):
 
 # 9-10. Rechazo y devolución ----------------------------------------------------
 def test_rechazo_por_calidad_alerta_gerencia_general(s, U, new_order, today):
+    set_param("correo_habilitado", True, U("sistemas"))
     o = new_order([("PT-905", 40)])
     stop = dispatch(s, U, o, today)
     with pytest.raises(BusinessError):

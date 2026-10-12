@@ -31,6 +31,8 @@ def register_views(app):
     app.register_blueprint(calidad.bp)
     app.register_blueprint(compras.bp)
     app.register_blueprint(distribucion.bp)
+    from . import m365
+    app.register_blueprint(m365.bp)
 
     @app.errorhandler(403)
     def _403(e):
@@ -48,7 +50,10 @@ def register_views(app):
 # ------------------------------- acceso ------------------------------------
 @bp.route("/login", methods=["GET", "POST"])
 def login():
+    from .m365 import enabled as m365_enabled
     if request.method == "POST":
+        if os.environ.get("LOCAL_LOGIN", "1") == "0":
+            abort(403)  # solo Microsoft 365
         username = (request.form.get("username") or "").strip().lower()
         fails = _FAILS.get(username, [])
         fails = [t for t in fails if time.time() - t < 300]
@@ -66,7 +71,8 @@ def login():
             audit(u, "LOGIN", "User", u.id)
             db().commit()
             nxt = request.args.get("next") or url_for("main.dashboard")
-            return redirect(nxt if nxt.startswith("/") else url_for("main.dashboard"))
+            seguro = nxt.startswith("/") and not nxt.startswith("//") and "\\" not in nxt
+            return redirect(nxt if seguro else url_for("main.dashboard"))
         fails.append(time.time())
         _FAILS[username] = fails
         audit(None, "LOGIN_FALLIDO", "User", username)
@@ -75,7 +81,8 @@ def login():
     demo_users = []
     if g.get("user") is None and _demo():
         demo_users = list(db().execute(select(User).order_by(User.role_code)).scalars())
-    return render_template("login.html", demo_users=demo_users)
+    return render_template("login.html", demo_users=demo_users, m365=m365_enabled(),
+                           local_login=os.environ.get("LOCAL_LOGIN", "1") != "0")
 
 
 def _demo():
@@ -357,7 +364,8 @@ def product_edit(code):
         antes = {k: getattr(p, k) for k in ("peso_kg", "tipo", "um", "categoria_reposicion", "stock_minimo", "periodo_analisis_dias",
                                             "margen_seguridad_dias", "merma_pct", "tiempo_max_almacen_dias", "grupo_humedad",
                                             "producto_base", "calidad", "marca", "presentacion")}
-        for k in ("tipo", "um", "categoria_reposicion", "grupo_humedad", "producto_base", "calidad", "marca", "presentacion"):
+        for k in ("tipo", "um", "categoria_reposicion", "grupo_humedad", "producto_base", "calidad", "marca", "presentacion",
+                  "proveedor_habitual"):
             if k in request.form:
                 setattr(p, k, request.form.get(k, "").strip())
         for k in ("peso_kg", "stock_minimo", "merma_pct"):
@@ -391,6 +399,11 @@ def customers():
             for k in ("nombre", "grupo", "direccion", "distrito", "provincia", "horario_recepcion"):
                 if k in request.form:
                     setattr(c, k, request.form.get(k, "").strip())
+            if "canal_precio" in request.form and request.form.get("canal_precio", "") != (c.canal_precio or ""):
+                if "clientes.canal" not in g.perms:
+                    raise BusinessError("El canal de precios del cliente lo asigna el Jefe Comercial o Sistemas.")
+                audit(g.user, "CLIENTE_CANAL", "Customer", c.ruc, {"antes": c.canal_precio, "despues": request.form["canal_precio"]})
+                c.canal_precio = request.form["canal_precio"].strip()
             c.requiere_cita = request.form.get("requiere_cita") == "1"
             v = request.form.get("vida_util_min_dias", "").strip()
             c.vida_util_min_dias = int(v) if v else None
@@ -399,7 +412,10 @@ def customers():
             audit(g.user, "CLIENTE_GUARDADO", "Customer", c.ruc)
         return act(_do, "Cliente guardado.", url_for("main.customers"))
     rows = list(db().execute(select(Customer).order_by(Customer.nombre)).scalars())
-    return render_template("customers.html", rows=rows)
+    from ..services import prices as psvc
+    from ..services.core import param
+    canales = sorted(set(psvc.canales()) | set(param("lista_granel_canales", []) or []))
+    return render_template("customers.html", rows=rows, canales=canales, canal_de=psvc.channel_of)
 
 
 # ------------------------------- usuarios ----------------------------------

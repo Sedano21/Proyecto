@@ -132,6 +132,8 @@ def order_action(oid, accion):
                        lambda r: "Despacho parcial aprobado; ruta programada. El saldo se reprogramará al salir el despacho." if o.decision_parcial == "APROBADA"
                        else "Aprobación registrada; falta: " + ", ".join(osvc.partial_pending_roles(o))),
         "parcial_no": (lambda: osvc.decide_partial(o, u, False, f.get("comentario", "")), "Despacho parcial rechazado."),
+        "confirmar_precio": (lambda: __import__("app.services.prices", fromlist=["x"]).approve_price(o, u, f.get("comentario", "")),
+                             "Precio confirmado: la OV queda liberada para preparación y despacho."),
         "renegociar": (lambda: osvc.renegotiate_date(o, u, f_date("nueva_fecha", True), f.get("comentario", "")), "Fecha renegociada; OV reevaluada."),
         "cambiar_producto": (lambda: osvc.change_product(o, u, f.get("line_id"), f.get("nuevo_codigo", "").strip().upper(),
                                                           f_float("cantidad", True), f.get("comentario", "")), "Producto cambiado; OV reevaluada."),
@@ -204,6 +206,16 @@ def picking(oid):
 def prices():
     from ..models import PriceItem
     from ..services import prices as psvc
+    if request.method == "POST" and request.form.get("accion") == "agregar":
+        fm = request.form
+        return act(lambda: psvc.add_item(g.user, fm.get("lista", "GENERAL"), fm.get("sku", ""), canal=fm.get("canal", ""),
+                                         precio=f_float("precio"), precio_saco=f_float("precio_saco"), kg_saco=f_float("kg_saco"),
+                                         motivo=fm.get("motivo", "")),
+                   "Precio mínimo agregado.", url_for("com.prices", lista=fm.get("lista", "GENERAL"), q=fm.get("sku", "")))
+    if request.method == "POST" and request.form.get("accion") == "vigencia":
+        fm = request.form
+        return act(lambda: psvc.set_validity(g.user, fm.get("lista", "GENERAL"), f_date("vigencia_desde"), f_date("vigencia_hasta")),
+                   "Vigencia actualizada.", url_for("com.prices", lista=fm.get("lista", "GENERAL")))
     if request.method == "POST":
         it = db().get(PriceItem, int(request.form["item_id"]))
         if it is None:
@@ -217,5 +229,12 @@ def prices():
     canal = request.args.get("canal", "")
     rows = psvc.vigentes(lista, q, canal if lista == "GENERAL" else "")
     hist = psvc.history(request.args["sku"]) if request.args.get("sku") else None
+    from ..models import PriceListMeta
+    from ..services.core import param
+    metas = {m.lista: m for m in db().execute(select(PriceListMeta)).scalars()}
+    from ..models import Alert
+    faltantes = list(db().execute(select(Alert).where(Alert.type_code == "PRECIO_FALTANTE", Alert.estado != "CERRADA")
+                                  .order_by(Alert.id.desc()).limit(30)).scalars())
     return render_template("prices.html", rows=rows[:600], total=len(rows), lista=lista, q=q, canal=canal,
-                           canales=psvc.canales(), hist=hist, sku=request.args.get("sku", ""))
+                           canales=psvc.canales(), hist=hist, sku=request.args.get("sku", ""), metas=metas,
+                           canal_granel=(param("lista_granel_canales", []) or ["-"])[0], faltantes=faltantes)

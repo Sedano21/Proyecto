@@ -15,8 +15,15 @@ from app.db import SessionLocal  # noqa: E402
 
 @pytest.fixture()
 def app():
+    """Base nueva por prueba. Con TEST_DATABASE_URL (p. ej. PostgreSQL) se recrea el esquema en esa base."""
     d = tempfile.mkdtemp(prefix="opstest_")
-    app = create_app({"DATABASE_URL": f"sqlite:///{d}/test.db", "TESTING": True, "UPLOAD_DIR": d, "DEMO_MODE": True})
+    url = os.environ.get("TEST_DATABASE_URL") or f"sqlite:///{d}/test.db"
+    if os.environ.get("TEST_DATABASE_URL"):
+        from app.db import Base, init_engine
+        from app import models  # noqa: F401
+        eng = init_engine(url)
+        Base.metadata.drop_all(eng)
+    app = create_app({"DATABASE_URL": url, "TESTING": True, "UPLOAD_DIR": d, "DEMO_MODE": True})
     with app.app_context():
         from app.seed import seed_catalogs, seed_demo
         seed_catalogs()
@@ -60,10 +67,11 @@ def new_order(s, U, cust, today):
     from app.services.orders import create_order
     counter = {"n": 0}
 
-    def make(lines, ruc="20000000001", dias=3, user="coord.ventas", urgente=False, vendedor="vendedor1"):
+    def make(lines, ruc="20000000001", dias=3, user="coord.ventas", urgente=False, vendedor="vendedor1", precio=999.0):
+        """precio: precio de venta de cada línea (por defecto sobre cualquier mínimo de lista, para no detener la OV)."""
         counter["n"] += 1
         o = create_order(U(user), f"T-{counter['n']:03d}", cust(ruc).id, today + timedelta(days=dias),
-                         [{"product_code": c, "cantidad": q} for c, q in lines], urgente=urgente,
+                         [{"product_code": c, "cantidad": q, "precio_unitario": precio} for c, q in lines], urgente=urgente,
                          vendedor_id=U(vendedor).id if vendedor else None)
         s.commit()
         return o

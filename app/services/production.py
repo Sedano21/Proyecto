@@ -69,8 +69,12 @@ def material_requirements(product_code, cantidad, version=None):
     elif v.incluye_merma == "SI":
         res["avisos"].append("Merma NO aplicada: la lista de materiales ya incorpora pérdidas.")
     factible = True
+    excepciones = (param("excepciones_bom", {}) or {}).get(product_code, {}) or {}
     for bl in lines:
         base = bl.cantidad / (bl.cantidad_bom or 1) * cantidad
+        if bl.componente in excepciones:  # excepción a la proporcionalidad lineal (cantidad fija por orden)
+            base = float(excepciones[bl.componente])
+            res["avisos"].append(f"{bl.componente}: cantidad fija {base:g} por orden (excepción configurada).")
         if not _is_material(bl.componente):
             res["recursos"].append({"componente": bl.componente, "descripcion": bl.componente_desc, "requerido": base})
             continue
@@ -253,6 +257,14 @@ def register_liquidation(user, numero_documento, product_code, cantidad_completa
 
 
 def merma_real_pct(liq):
+    """% de merma real: desmedro de los partes de producción de la OF (desmedro / peso de entrada); si no hay parte, la
+    merma registrada en la liquidación."""
+    from ..models import ProductionReport
+    partes = list(db().execute(select(ProductionReport).where(ProductionReport.of == liq.numero_documento)).scalars())
+    if partes:
+        entrada = sum(r.peso_entrada_kg for r in partes)
+        perdida = sum(_perdida_kg(r) for r in partes)
+        return round(100.0 * perdida / entrada, 3) if entrada else None
     p = liq.product
     if liq.merma_mp_kg is None or not p or not p.peso_kg:
         return None
@@ -338,3 +350,65 @@ def bom_products():
         return []
     return list(db().execute(select(BOMLine.padre, func.min(BOMLine.padre_desc)).where(BOMLine.version_id == v.id)
                              .group_by(BOMLine.padre).order_by(BOMLine.padre)).all())
+
+
+# ----------------------------- partes de producción -------------------------
+LINEAS_ENVASADO = ("R1", "R2", "R3")
+
+
+def _perdida_kg(r):
+    if r.tipo == "ENVASADO":
+        return max(r.peso_entrada_kg - (r.unidades or 0) * (r.presentacion_kg or 0), 0)
+    return r.desmedro_kg or 0
+
+
+def register_report(user, linea, fecha, product_code, peso_entrada_kg, granel_kg=0, mp_kg=0, cal3_kg=0, desmedro_kg=0,
+                    presentacion_kg=None, unidades=None, sobrante_kg=0, of="", op="", turno="", hora_inicio="", hora_fin="",
+                    horas=None, operarios=None, cliente="", mp_codigo="", lote="", estado="EN PROCESO", observacion=""):
+    """Registra el parte de producción con las fórmulas de los formatos actuales:
+    selección (Truer, Cimbria, selección manual): total = granel + MP + cal3 + desmedro; % rendimiento = granel / peso;
+    % desmedro = desmedro / peso. Envasado (R1-R3): unidades teóricas = peso MP / presentación; % rendimiento =
+    unidades / teóricas; desmedro = kg de MP no convertidos en unidades."""
+    from ..models import ProductionReport
+    from .core import has_perm
+    if not has_perm(user, "produccion.liquidar"):
+        raise BusinessError("Registra el parte Producción (asistentes de producción).")
+    lineas = {c for c, _, _ in __import__("app.catalogs", fromlist=["x"]).PRODUCTION_LINES}
+    if linea not in lineas:
+        raise BusinessError("Línea de producción no válida.")
+    if not product_code or db().get(Product, product_code) is None:
+        raise BusinessError("Producto no existe.")
+    if not peso_entrada_kg or peso_entrada_kg <= 0:
+        raise BusinessError("Indique el peso de entrada (kg de materia prima).")
+    tipo = "ENVASADO" if linea in LINEAS_ENVASADO else "SELECCION"
+    r = ProductionReport(linea=linea, tipo=tipo, fecha=fecha or date.today(), op=op, of=(of or "").strip(), turno=turno,
+                         hora_inicio=hora_inicio, hora_fin=hora_fin, horas=horas, operarios=operarios, cliente=cliente,
+                         product_code=product_code, mp_codigo=mp_codigo, lote=lote, peso_entrada_kg=peso_entrada_kg,
+                         granel_kg=granel_kg or 0, mp_kg=mp_kg or 0, cal3_kg=cal3_kg or 0, desmedro_kg=desmedro_kg or 0,
+                         presentacion_kg=presentacion_kg, unidades=unidades, sobrante_kg=sobrante_kg or 0, estado=estado,
+                         observacion=observacion, user_id=user.id)
+    if tipo == "ENVASADO":
+        if not presentacion_kg or unidades is None:
+            raise BusinessError("En envasado indique la presentación (kg) y las unidades producidas.")
+        teoricas = peso_entrada_kg / presentacion_kg
+        r.rendimiento_pct = round(100 * unidades / teoricas, 2) if teoricas else None
+        r.granel_kg = unidades * presentacion_kg
+        r.desmedro_kg = _perdida_kg(r)
+        r.diferencia_kg = round(r.desmedro_kg - (r.cal3_kg or 0) - (r.sobrante_kg or 0), 3)
+    else:
+        total = r.granel_kg + r.mp_kg + r.cal3_kg + r.desmedro_kg
+        r.rendimiento_pct = round(100 * r.granel_kg / peso_entrada_kg, 2)
+        r.diferencia_kg = round(peso_entrada_kg - total, 3)
+    r.desmedro_pct = round(100 * _perdida_kg(r) / peso_entrada_kg, 2)
+    if horas:
+        r.ratio_kg_hora = round(r.granel_kg / horas, 1)
+    db().add(r)
+    db().flush()
+    umbral = param("umbral_merma_pct")
+    if umbral is not None and r.desmedro_pct > float(umbral):
+        alerts.emit("MERMA_FUERA_PARAMETRO", f"Desmedro {r.desmedro_pct}% en {linea} (OF {r.of or '-'})",
+                    f"Umbral configurado {umbral}%. Producto {product_code}, lote {lote}. Rendimiento {r.rendimiento_pct}%.",
+                    "ProductionRequest", "", creado_por=user)
+    audit(user, "PARTE_PRODUCCION", "ProductionReport", r.id, {"linea": linea, "of": r.of, "desmedro_pct": r.desmedro_pct,
+                                                               "rendimiento_pct": r.rendimiento_pct})
+    return r

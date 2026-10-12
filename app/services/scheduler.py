@@ -55,8 +55,35 @@ def run_checks(user=None, today=None):
             n += 1
     out["lotes_tiempo_maximo"] = n
     out["reposicion_solicitudes"] = len(run_replenishment(user, ref=today))
+    from .prices import check_validity
+    out["listas_precio_por_vencer"] = check_validity(today)
+    out["cargas_desactualizadas"] = check_upload_freshness()
     out["correo"] = flush_outbox()
     return out
+
+
+def check_upload_freshness(ahora=None):
+    """Cada área exporta de SAP a diario, con 2 cortes al día como mínimo: alerta si la última carga autorizada de un
+    tipo supera las horas configuradas (al área responsable y a Sistemas)."""
+    from datetime import datetime
+    from ..models import UploadBatch
+    ahora = ahora or datetime.now()
+    resp = param("responsable_carga", {}) or {}
+    n = 0
+    for tipo, horas in (param("horas_max_sin_carga", {}) or {}).items():
+        if not horas:
+            continue
+        ult = db().execute(select(UploadBatch).where(UploadBatch.tipo == tipo, UploadBatch.estado == "CONFIRMADO")
+                           .order_by(UploadBatch.confirmado_ts.desc())).scalars().first()
+        if ult is not None and ult.confirmado_ts and (ahora - ult.confirmado_ts).total_seconds() <= float(horas) * 3600:
+            alerts.close_by_system(f"CARGA_VIEJA:{tipo}", "Carga actualizada")
+            continue
+        desde = f"última carga {ult.confirmado_ts:%d/%m/%Y %H:%M}" if ult is not None and ult.confirmado_ts else "sin cargas autorizadas"
+        alerts.emit("CARGA_SAP_DESACTUALIZADA", f"Carga de {tipo} sin actualizar ({desde})",
+                    f"Se esperan al menos 2 cortes al día (máximo {horas} h entre cargas).", "UploadBatch", "",
+                    extra_roles=resp.get(tipo) or [], dedup_key=f"CARGA_VIEJA:{tipo}")
+        n += 1
+    return n
 
 
 def start_background(app_factory_session_commit, interval_min):

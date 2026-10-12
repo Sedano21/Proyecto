@@ -204,6 +204,26 @@ def write_prices_granel(path):
     wb.save(path)
 
 
+def write_customer_conditions(path):
+    """Lista FICTICIA de clientes con penalidades y lotes (formato del archivo de Comercial; dos bloques con encabezado)."""
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Hoja1"
+    enc = ["EJECUTIVO", "CANAL", "CLIENTE", "SOLICITUD", "LOTE", "VIDA UTIL", "Columna1"]
+    ws.append(enc)
+    ws.append(["VENDEDOR DEMO UNO", "INSTITUCIONAL", "CLIENTE DEMO INSTITUCIONAL S.A.C.", "PRODUCTO TERMINADO", "1 LOTE POR SKU",
+               "12 MESES", "PAE INCLUMPLIMENTO DE FECHA DE ENTREGA - PENALIDAD DE LA INSTIUCION TRANFERIDA A NOSOTROS"])
+    ws.append(["VENDEDOR DEMO DOS", "Catering", "CLIENTE DEMO CATERING E.I.R.L.", "PRODUCTO TERMINADO", "1 LOTE POR SKU",
+               "12 MESES", "INCUMPLIMIENTO VENTANA HORARIA - NO SE RECIBE"])
+    ws.append(enc)
+    ws.append(["VENDEDOR DEMO DOS", "Restaurantes", "CLIENTE DEMO RESTAURANTES S.A.C.", "PRODUCTO TERMINADO", "2 LOTES POR SKU",
+               "6 MESES", "FILL RATE <95% - Se Facturara lo no atendido y el margen perdido y rebate\n"
+               "INCUMPLIMIENTO VENTANA HORARIA - 100% Gastos logisticos por demoras o incumplimiento, no recepción"])
+    ws.append(["VENDEDOR DEMO UNO", "AUTOSERVICIO", "CLIENTE DEMO NUEVO S.A.C.", "MATERIA PRIMA", "1 LOTE POR SKU", "12 MESES",
+               "INCUMPLIMIENTO VENTANA HORARIA - NO SE RECIBE"])
+    wb.save(path)
+
+
 def write_all(folder, today=None):
     today = today or date.today()
     os.makedirs(folder, exist_ok=True)
@@ -217,6 +237,7 @@ def write_all(folder, today=None):
         "salidas": os.path.join(folder, "demo_historial_salidas_qy.xlsx"),
         "precios": os.path.join(folder, "demo_price_list.xlsx"),
         "precios_granel": os.path.join(folder, "demo_price_list_granel.xlsx"),
+        "clientes": os.path.join(folder, "demo_clientes_penalidades_lotes.xlsx"),
     }
     write_products(files["productos"])
     write_stock(files["stock"], today)
@@ -227,4 +248,5 @@ def write_all(folder, today=None):
     write_sales(files["salidas"], today)
     write_prices(files["precios"])
     write_prices_granel(files["precios_granel"])
+    write_customer_conditions(files["clientes"])
     return files

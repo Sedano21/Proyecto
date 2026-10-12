@@ -220,6 +220,7 @@ def test_alerta_ciclo_y_visibilidad(s, U, new_order):
 
 def test_correo_sin_smtp_no_se_simula(s, U, new_order, monkeypatch):
     monkeypatch.delenv("SMTP_HOST", raising=False)
+    set_param("correo_habilitado", True, U("sistemas"))  # hoy deshabilitado (sin servidor de correo); se prueba el canal
     new_order([("PT-903", 10)])
     from app.services.mailer import flush_outbox
     r = flush_outbox()

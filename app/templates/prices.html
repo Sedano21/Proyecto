@@ -3,6 +3,19 @@
 <p class="muted small">Fuente: listas de precios de Comercial (Q11). Es el <b>precio mínimo de venta</b> por canal: si una OV se registra o carga con un precio en el límite o por debajo, se alerta al vendedor y a Comercial.
 Solo el Jefe Comercial carga o modifica precios; cada cambio queda versionado. El costo de la empresa no se guarda en el sistema.</p>
 <p>{% if can('precios.editar') %}<a href="{{ url_for('alm.upload_new', tipo='PRECIOS') }}">Cargar lista por canal (Excel)</a> · <a href="{{ url_for('alm.upload_new', tipo='PRECIOS_GRANEL') }}">Cargar lista mayorista granel (Excel)</a>{% endif %}</p>
+<div class="card small"><b>Vigencia</b> · {% for l, nombre in [('GENERAL', 'Lista por canal (presentaciones)'), ('GRANEL', 'Lista mayorista granel (canal ' ~ canal_granel ~ ')')] %}{% set m = metas.get(l) %}
+<form method="post" class="row" style="margin:4px 0">{{ csrf() }}<input type="hidden" name="accion" value="vigencia"><input type="hidden" name="lista" value="{{ l }}"><div>{{ nombre }}{% if m %} · {{ m.archivo }}{% endif %}</div>
+<div>desde <input type="date" name="vigencia_desde" value="{{ m.vigencia_desde.isoformat() if m and m.vigencia_desde else '' }}" {{ '' if can('precios.editar') else 'disabled' }}></div>
+<div>hasta <input type="date" name="vigencia_hasta" value="{{ m.vigencia_hasta.isoformat() if m and m.vigencia_hasta else '' }}" {{ '' if can('precios.editar') else 'disabled' }}></div>
+{% if can('precios.editar') %}<div><button class="small sec">Guardar vigencia</button></div>{% endif %}</form>{% endfor %}
+<p class="muted">Al vencer, se avisa al Jefe Comercial y la lista sigue en uso. El contraste con precios de mercado queda como mejora (requiere una fuente de precios de mercado).</p></div>
+{% if faltantes %}<div class="card small"><b>Precios faltantes detectados en OV</b> (complételos abajo){% for a in faltantes %}<div>· <a href="{{ url_for('main.alert_detail', aid=a.id) }}">{{ a.titulo }}</a>: {{ a.mensaje }}</div>{% endfor %}</div>{% endif %}
+{% if can('precios.editar') %}<details class="card"><summary>Agregar un precio mínimo faltante</summary><form method="post" class="row">{{ csrf() }}<input type="hidden" name="accion" value="agregar">
+<div><label>Lista</label><select name="lista"><option value="GENERAL">Por canal</option><option value="GRANEL">Mayorista granel</option></select></div>
+<div><label>SKU</label><input name="sku" required size="10"></div><div><label>Canal (lista por canal)</label><select name="canal"><option value="">—</option>{% for c in canales %}<option>{{ c }}</option>{% endfor %}</select></div>
+<div><label>Precio mínimo</label><input type="number" step="any" min="0" name="precio" style="width:90px"></div>
+<div><label>Granel: precio x saco</label><input type="number" step="any" min="0" name="precio_saco" style="width:90px"></div><div><label>kg x saco</label><input type="number" step="any" min="0" name="kg_saco" style="width:70px"></div>
+<div><label>Motivo</label><input name="motivo" required></div><div><button>Agregar</button></div></form></details>{% endif %}
 <form class="row" method="get"><div><label>Lista</label><select name="lista"><option value="GENERAL" {{ 'selected' if lista=='GENERAL' }}>Por canal</option><option value="GRANEL" {{ 'selected' if lista=='GRANEL' }}>Mayorista granel</option></select></div>
 {% if lista=='GENERAL' %}<div><label>Canal</label><select name="canal"><option value="">Todos</option>{% for c in canales %}<option {{ 'selected' if c==canal }}>{{ c }}</option>{% endfor %}</select></div>{% endif %}
 <div><label>SKU o descripción</label><input name="q" value="{{ q }}"></div><div><button>Filtrar</button></div></form>

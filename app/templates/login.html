@@ -3,12 +3,13 @@
 <div class="login card">
   <h1>Módulo de Operaciones</h1>
   <p class="muted">Corporación Productiva · prototipo funcional</p>
-  <form method="post">
+  {% if m365 %}<p><a class="btn" href="{{ url_for('m365.start') }}">Ingresar con Microsoft 365</a></p>{% endif %}
+  {% if local_login %}<form method="post">
     <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
     <label>Usuario</label><input name="username" autofocus required style="width:100%">
     <label>Contraseña</label><input name="password" type="password" required style="width:100%">
-    <p><button>Ingresar</button></p>
-  </form>
+    <p><button>{{ 'Ingresar con usuario local' if m365 else 'Ingresar' }}</button></p>
+  </form>{% endif %}
   {% if demo_users %}
   <details><summary>Usuarios de demostración (contraseña: Demo2026!)</summary>
     <table class="small">{% for u in demo_users %}<tr><td class="mono">{{ u.username }}</td><td>{{ u.role.nombre }}</td></tr>{% endfor %}</table>

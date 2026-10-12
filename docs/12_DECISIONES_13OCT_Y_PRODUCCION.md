@@ -29,7 +29,7 @@ Lectura de solo prueba, en una base temporal que se descartó. Los archivos no s
 | Cruce con el maestro de artículos (DATA) | De los 348 SKU de la lista, 335 existen en el maestro; de los 20 de granel, 17 |
 | Cruce con las OV reales (hoja OVS) | De 187 productos con OV, 152 tienen precio mínimo y **35 no figuran en ninguna lista** (17 ME-, 5 GR-, 5 MQ-, 3 AB-, 3 PT-, 1 SU-, 1 SE-). 80 líneas son de clientes OFICINA, CANASTERIA o MINORISTA, que no tienen columna en la lista. 97 líneas son "Muestra comercial". **La exportación de OV no trae precio de venta**, así que con ese archivo el sistema no puede comparar contra el mínimo |
 
-## 3. Preguntas abiertas de esta ronda
+## 3. Preguntas abiertas de esta ronda (respondidas el 13-oct-2026; ver `13_DECISIONES_13OCT_PARTE2.md`)
 
 | # | Pregunta | Qué hace hoy el sistema |
 |---|---|---|
