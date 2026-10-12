@@ -71,11 +71,15 @@ def lot_usable(lot, fecha_compromiso=None, customer=None):
     if lot.fecha_venc and lot.fecha_venc < ref:
         return False, f"Vencido a la fecha comprometida ({lot.fecha_venc:%d/%m/%Y})"
     if customer is not None and lot.fecha_venc:
-        from .customer_conditions import min_shelf_days
-        minimo = max(customer.vida_util_min_dias or 0, min_shelf_days(customer) or 0)
+        from .customer_conditions import min_shelf_date, min_shelf_months
+        minimo = customer.vida_util_min_dias or 0
         restante = (lot.fecha_venc - ref).days
         if minimo and restante < minimo:
             return False, f"Vida útil restante {restante} d < mínimo del cliente {minimo} d"
+        fmin = min_shelf_date(customer, lot.product, ref)  # R1 (13-oct): vida útil restante mínima, meses calendario
+        if fmin and lot.fecha_venc < fmin:
+            return False, (f"Vida útil restante insuficiente: vence {lot.fecha_venc:%d/%m/%Y}; el cliente exige "
+                           f"{min_shelf_months(customer, lot.product)} meses (vencimiento desde {fmin:%d/%m/%Y})")
     return True, ""
 
 

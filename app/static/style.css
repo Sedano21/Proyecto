@@ -41,3 +41,33 @@ details{margin:6px 0}summary{cursor:pointer;color:var(--info)}
 .fcell{display:table-cell;border-bottom:1px solid var(--line);padding:6px 8px;vertical-align:top}.fh>.fcell{background:#eef1f5;font-weight:600;font-size:12.5px}
 button:disabled{opacity:.45;cursor:not-allowed}
 .small.err{color:var(--err);font-weight:600}
+/* Documentos impresos con membrete (OV, guía, certificado) – formatos del 13-oct */
+.doc{background:#fff;color:#000;font-family:Arial,Helvetica,sans-serif;font-size:12px;max-width:210mm;margin:0 auto 16px;padding:10mm 14mm;position:relative;box-shadow:0 1px 4px rgba(0,0,0,.15);overflow:hidden}
+.doc table{width:100%;border-collapse:collapse;margin:4px 0}.doc th,.doc td{border:1px solid #000;padding:2px 5px;vertical-align:top;font-size:11.5px;background:transparent;color:#000}
+.doc th{font-weight:bold;text-align:center}.doc .kv td{border:none;padding:1px 4px}.doc .kv td:nth-child(2){width:12px}
+.doc .kv.box td{border:1px solid #000}.doc h2{text-align:center;text-decoration:underline;font-size:15px;margin:14px 0 6px;color:#000}
+.doc h3{font-size:12.5px;margin:12px 0 4px;color:#000;letter-spacing:.5px}.doc h4{text-align:center;text-decoration:underline;font-size:12.5px;margin:10px 0 4px}
+.doc .ref{font-size:10px}.doc input,.doc textarea{font:inherit;width:100%;box-sizing:border-box;border:1px dashed #999;background:#fffbe6}
+.doc-head{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid #000;padding-bottom:4px}
+.doc-head .cp{height:22mm}.doc-head .marcas img{height:17mm;margin-left:6mm}
+.doc-foot{border-top:1px solid #000;margin-top:14px;padding-top:4px;text-align:center;font-size:10.5px;line-height:1.35}
+.doc-wm{position:absolute;left:50%;top:44%;transform:translate(-50%,-50%);width:62%;opacity:.55;pointer-events:none;z-index:0}
+.doc-body{position:relative;z-index:1}.doc .firma{text-align:center;margin-top:18px}.doc .firma img{height:20mm}
+.doc .firma .ln{display:inline-block;border-top:1px solid #000;padding-top:2px;min-width:60mm;font-size:11px}
+.ov-head{display:grid;grid-template-columns:1fr 1.15fr;gap:8px;align-items:start}.ov-head .cp{height:24mm}.ov-head .marcas img{height:21mm;margin:4px 8mm 0 0}
+.ov-head .tit{font-size:20px;font-weight:bold;margin:8mm 0 6mm;color:#333}.ov-head .emp{text-align:right;font-size:11px;line-height:1.5;color:#333}
+.ov-grid td.l{background:#3a3a3a;color:#fff;font-weight:bold;width:17%}.ov-grid td.v{background:#ccc}.ov-grid td{border:2px solid #fff}
+.doc .dark th{background:#3a3a3a;color:#fff;border:2px solid #fff}.doc .grey td{background:#ccc;border:2px solid #fff;text-align:center}
+.doc .lines td{border:none}.doc .lines th{background:#3a3a3a;color:#fff;border:none;font-size:11px}
+.ov-bottom{display:grid;grid-template-columns:1fr 1.4fr;gap:12px;margin-top:12mm;font-size:12px}
+@media print{body{background:#fff}.doc{box-shadow:none;margin:0;max-width:none;padding:6mm 8mm;page-break-after:always}}
+.tw{overflow-x:auto;-webkit-overflow-scrolling:touch}
+/* Gráficos de informes */
+.chart{width:100%;height:auto;max-width:760px;display:block}.chart .grid{stroke:var(--line,#e3e3e3);stroke-width:1}
+.chart .ax{font-size:11px;fill:var(--muted,#666)}.chart .val{font-size:11px;fill:var(--ink,#222)}
+.legend{display:flex;flex-wrap:wrap;gap:12px;font-size:12px;margin:4px 0}.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin:8px 0}
+.kpi{background:var(--panel,#fff);border:1px solid var(--line,#ddd);border-radius:8px;padding:10px}.kpi b{display:block;font-size:22px}
+.kpi span{font-size:12px;color:var(--muted,#666)}.kpi small{display:block;font-size:11px;color:var(--muted,#666)}
+.reco{border-left:4px solid #2a78d6;background:rgba(42,120,214,.06);padding:8px 12px;margin:6px 0}
+details.tabla>summary{cursor:pointer;font-size:12px;color:var(--muted,#666)}

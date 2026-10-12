@@ -212,14 +212,14 @@ def write_customer_conditions(path):
     enc = ["EJECUTIVO", "CANAL", "CLIENTE", "SOLICITUD", "LOTE", "VIDA UTIL", "Columna1"]
     ws.append(enc)
     ws.append(["VENDEDOR DEMO UNO", "INSTITUCIONAL", "CLIENTE DEMO INSTITUCIONAL S.A.C.", "PRODUCTO TERMINADO", "1 LOTE POR SKU",
-               "12 MESES", "PAE INCLUMPLIMENTO DE FECHA DE ENTREGA - PENALIDAD DE LA INSTIUCION TRANFERIDA A NOSOTROS"])
+               "6 MESES / 3 MESES HARINAS", "PAE INCLUMPLIMENTO DE FECHA DE ENTREGA - PENALIDAD DE LA INSTIUCION TRANFERIDA A NOSOTROS"])
     ws.append(["VENDEDOR DEMO DOS", "Catering", "CLIENTE DEMO CATERING E.I.R.L.", "PRODUCTO TERMINADO", "1 LOTE POR SKU",
-               "12 MESES", "INCUMPLIMIENTO VENTANA HORARIA - NO SE RECIBE"])
+               "6 MESES", "INCUMPLIMIENTO VENTANA HORARIA - NO SE RECIBE"])
     ws.append(enc)
     ws.append(["VENDEDOR DEMO DOS", "Restaurantes", "CLIENTE DEMO RESTAURANTES S.A.C.", "PRODUCTO TERMINADO", "2 LOTES POR SKU",
-               "6 MESES", "FILL RATE <95% - Se Facturara lo no atendido y el margen perdido y rebate\n"
+               "4 MESES", "FILL RATE <95% - Se Facturara lo no atendido y el margen perdido y rebate\n"
                "INCUMPLIMIENTO VENTANA HORARIA - 100% Gastos logisticos por demoras o incumplimiento, no recepción"])
-    ws.append(["VENDEDOR DEMO UNO", "AUTOSERVICIO", "CLIENTE DEMO NUEVO S.A.C.", "MATERIA PRIMA", "1 LOTE POR SKU", "12 MESES",
+    ws.append(["VENDEDOR DEMO UNO", "AUTOSERVICIO", "CLIENTE DEMO NUEVO S.A.C.", "MATERIA PRIMA", "1 LOTE POR SKU", "6 MESES",
                "INCUMPLIMIENTO VENTANA HORARIA - NO SE RECIBE"])
     wb.save(path)
 

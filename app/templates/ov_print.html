@@ -1,0 +1,23 @@
+{% extends "base.html" %}{% from "_doc.html" import pie %}
+{% block content %}
+<p class="noprint"><a class="btn sec" href="javascript:window.print()">Imprimir / PDF</a> <a href="{{ url_for('com.order_detail', oid=o.id) }}">Volver a la OV</a></p>
+<div class="doc">
+<div class="ov-head"><div><img class="cp" src="{{ url_for('static', filename='img/logo_corporacion_productiva.png') }}" alt="Corporación Productiva SAC">
+<div class="marcas"><img src="{{ url_for('static', filename='img/logo_cantaclaro.png') }}" alt="Cantaclaro"><img src="{{ url_for('static', filename='img/logo_cosecha_andina.png') }}" alt="Cosecha Andina"></div></div>
+<div><div class="tit">Orden de venta &nbsp; N° &nbsp; {{ o.numero }}</div><div class="emp">{{ d.razon_social }} - {{ d.ruc }}<br>{% for l in d.direccion %}{{ l }}<br>{% endfor %}</div></div></div>
+<table class="ov-grid" style="margin-top:8mm">
+<tr><td class="l">Cliente:</td><td class="v" colspan="3">{{ o.customer.nombre }}</td><td class="l">Cód. cliente:</td><td class="v">{{ d.cod_cliente }}</td></tr>
+<tr><td class="l">Dirección:</td><td class="v" colspan="5">{{ o.direccion }}{{ ' ' ~ o.distrito if o.distrito }}{{ ' ' ~ o.provincia if o.provincia }}</td></tr>
+<tr><td class="l">Forma de pago:</td><td class="v">{{ o.forma_pago or '-' }}</td><td class="l">F. Emisión:</td><td class="v">{{ o.fecha_emision.strftime('%d/%m/%Y') if o.fecha_emision }}</td><td class="l">F. Vencimiento:</td><td class="v">{{ o.fecha_compromiso.strftime('%d/%m/%Y') }}</td></tr>
+<tr><td class="l">Atendido por:</td><td class="v" colspan="5">{{ o.vendedor_nombre }}</td></tr></table>
+<table class="lines"><tr><th>CÓDIGO</th><th>DESCRIPCIÓN</th><th>UM</th><th>CANTIDAD</th><th>V.UNI</th><th>TaxCode</th><th>DESCUENTO</th><th>IMPORTE</th></tr>
+{% for l in d.lineas %}<tr><td>{{ l.codigo }}</td><td>{{ l.descripcion }}</td><td>{{ l.um }}</td><td class="r">{{ '{:,.2f}'.format(l.cantidad) }}</td><td class="r">{{ '{:,.2f}'.format(l.v_uni) }}</td><td style="text-align:center">{{ l.tax_code }}</td><td class="r">{{ '{:,.2f}'.format(l.descuento) }}</td><td class="r">{{ '{:,.2f}'.format(l.importe) }}</td></tr>{% endfor %}</table>
+<p style="font-size:13px">{{ d.en_letras }}</p>
+<table class="dark"><tr><th>IMPORTE</th><th>MONEDA</th><th>IGV 18 %</th><th>TOTAL</th></tr></table>
+<table class="grey"><tr><td>{{ '{:,.2f}'.format(d.importe) }}</td><td>{{ d.moneda }}</td><td>{{ '{:,.2f}'.format(d.igv) }}</td><td>{{ '{:,.2f}'.format(d.total) }}</td></tr></table>
+{% if d.cuentas %}<table style="width:60%;margin:8mm auto 0"><tr><th colspan="3" style="background:#3a3a3a;color:#fff">CUENTAS</th></tr><tr><th>BANCO</th><th>SOLES</th><th>DOLARES</th></tr>
+{% for c in d.cuentas %}<tr><td style="background:#3a3a3a;color:#fff;font-weight:bold">{{ c.banco }}</td><td style="text-align:center">{{ c.soles }}</td><td style="text-align:center">{{ c.dolares }}</td></tr>{% endfor %}</table>{% endif %}
+<div class="ov-bottom"><div><b>OBSERVACIONES:</b><br>{{ o.comentarios }}</div>
+<div>{% for l in d.instrucciones %}{% if loop.first %}<b>{{ l }}</b>{% else %}{{ l }}{% endif %}<br>{% endfor %}
+{% if d.asistencia %}<b>SERVICIOS DE ASISTENCIA:</b><br>{% for a in d.asistencia %}<b>{{ a.telefono }} - {{ a.area }}</b><br>{% endfor %}{% endif %}</div></div>
+</div>{% endblock %}

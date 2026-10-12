@@ -16,6 +16,7 @@
       <a href="{{ url_for('com.orders') }}">Órdenes de venta</a>
       {% if can('ov.crear') %}<a href="{{ url_for('com.order_new') }}">Registrar OV</a>{% endif %}
       {% if can('precios.ver') %}<a href="{{ url_for('com.prices') }}">Listas de precios</a>{% endif %}
+      {% if can('costos.ver') %}<a href="{{ url_for('com.costs') }}">Costos vs mercado</a>{% endif %}
     {% endif %}
     {% if can('stock.ver') %}<h4>Almacén</h4>
       <a href="{{ url_for('alm.stock') }}">Stock y reservas</a>

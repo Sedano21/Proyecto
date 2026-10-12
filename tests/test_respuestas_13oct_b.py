@@ -191,7 +191,7 @@ def test_condiciones_de_clientes_cargadas_y_vinculadas_por_nombre(s):
     conds = {c.nombre_norm: c for c in s.query(CustomerCondition)}
     assert len(conds) == 4  # el encabezado repetido se omitió
     inst = for_customer(s.query(Customer).filter_by(ruc="20000000005").one())
-    assert inst.max_lotes_por_sku == 1 and inst.penalidad_tipos == ["FECHA_ENTREGA"] and inst.vida_util_meses == 12
+    assert inst.max_lotes_por_sku == 1 and inst.penalidad_tipos == ["FECHA_ENTREGA"] and inst.vida_util_meses == 6
     rest = for_customer(s.query(Customer).filter_by(ruc="20000000002").one())
     assert rest.max_lotes_por_sku == 2 and set(rest.penalidad_tipos) == {"VENTANA_HORARIA", "FILL_RATE"}
     assert rest.fill_rate_min_pct == 95
@@ -200,6 +200,8 @@ def test_condiciones_de_clientes_cargadas_y_vinculadas_por_nombre(s):
 
 
 def test_regla_de_lotes_por_sku_en_la_reserva(s, U, new_order):
+    from app.services.core import set_param
+    set_param("aplicar_vida_util_cliente", False)  # se prueba la regla de lotes aislada (la vida útil tiene su prueba)
     # PT-901: L901B (100, vence antes) y L901A (300). Sin condición se usan los dos (FEFO).
     o = new_order([("PT-901", 350)])
     assert {r.lot.lote for r in o.lines[0].reservations if r.estado == "ACTIVA"} == {"L901A", "L901B"}

@@ -66,13 +66,15 @@ def create_order(user, numero, customer_id, fecha_compromiso, lines, urgente=Fal
     vend = db().get(User, int(vendedor_id)) if vendedor_id else (user if user and user.role_code == "EJECUTIVO_VENTAS" else None)
     o = SalesOrder(numero=numero, customer_id=c.id, fecha_compromiso=fecha_compromiso, urgente=bool(urgente),
                    comentarios=comentarios, hora_cita=hora_cita or c.horario_recepcion, cita_confirmada=bool(cita_confirmada),
-                   direccion=c.direccion, distrito=c.distrito, vendedor_id=vend.id if vend else None,
+                   direccion=c.direccion, distrito=c.distrito, provincia=c.provincia or "", vendedor_id=vend.id if vend else None,
                    vendedor_nombre=vend.nombre if vend else vendedor_nombre, fecha_emision=fecha_emision or date.today(),
                    tipo_venta=tipo_venta or "",
                    origen=origen, creado_por=user.id if user else None, corte=next_cutoff())
     for ln in lines:
         o.lines.append(SalesOrderLine(product_code=ln["product_code"].strip(), cantidad=float(ln["cantidad"]),
-                                      precio_unitario=float(ln.get("precio_unitario") or 0)))
+                                      precio_unitario=float(ln.get("precio_unitario") or 0),
+                                      descuento=float(ln.get("descuento") or 0), tax_code=ln.get("tax_code") or "",
+                                      um_venta=ln.get("um_venta") or ""))
     db().add(o)
     db().flush()
     from .prices import check_order_prices
@@ -111,6 +113,11 @@ def _apply_changes(order, user, changes):
                 line.cantidad = float(ln["cantidad"])
                 if ln.get("precio_unitario") not in (None, ""):
                     line.precio_unitario = float(ln["precio_unitario"])
+                for k in ("tax_code", "um_venta"):
+                    if ln.get(k):
+                        setattr(line, k, ln[k])
+                if ln.get("descuento") not in (None, ""):
+                    line.descuento = float(ln["descuento"])
                 line.activa = True
             elif line.activa:
                 if line.preparado > 0:
@@ -118,7 +125,9 @@ def _apply_changes(order, user, changes):
                 line.activa = False
         for code, ln in nuevas.items():
             order.lines.append(SalesOrderLine(product_code=code, cantidad=float(ln["cantidad"]),
-                                              precio_unitario=float(ln.get("precio_unitario") or 0)))
+                                              precio_unitario=float(ln.get("precio_unitario") or 0),
+                                              descuento=float(ln.get("descuento") or 0), tax_code=ln.get("tax_code") or "",
+                                              um_venta=ln.get("um_venta") or ""))
     order.version += 1
     db().flush()
     from .prices import check_order_prices

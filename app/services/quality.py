@@ -10,7 +10,7 @@ from sqlalchemy import func, select
 
 from ..catalogs import CRITERIO_PESO_PENDIENTE, CRITERIOS_PESO, PCC1_HUMEDAD, SPEC_CALIDAD_SUPERIOR
 from ..db import db
-from ..models import Certificate, Liquidation, Product, QualityRecord, StockLot, now
+from ..models import Certificate, Liquidation, Product, QualityRecord, SalesOrder, StockLot, now
 from . import alerts
 from .core import BusinessError, audit, has_perm, param
 
@@ -278,10 +278,66 @@ def _next_number(serie):
     return f"{prefijo}{n + 1:04d}"
 
 
-def certificate_data(lot, order=None):
-    """Arma los datos del certificado desde Producción (lote), Calidad (registros) y el pedido."""
+# Tipos de certificado con formato propio (modelos N°CP2026-PT3756, MP276 y CA0764; respuesta del 13-oct: "existen
+# diversos tipos de certificado de calidad"). Todos comparten el membrete (logos, marca de agua y pie).
+CERT_TIPOS = {
+    "PT": {"nombre": "Producto terminado (modelo PT3756)", "subtitulo": "INFORME DE ENSAYOS FISICOQUIMICO Y ORGANOLEPTICO",
+           "campos": ["producto_declarado", "lote", "fecha_produccion", "fecha_vencimiento", "marca", "procesado_por", "ruc",
+                      "autorizacion_sanitaria", "presentacion_muestra", "pais_origen", "tamano_lote", "fecha_analisis"],
+           "organoleptico": ["COLOR", "OLOR Y SABOR", "ASPECTO"], "especificacion": True, "sanidad": True, "inocuidad": True,
+           "referencias": True, "conclusion": "normas"},
+    "MP": {"nombre": "Materia prima / granel (modelo MP276)", "subtitulo": "INFORME DE ENSAYOS FISICOQUIMICO Y ORGANOLEPTICO",
+           "campos": ["producto_declarado", "lote", "fecha_produccion", "fecha_vencimiento", "grado", "procesado_por", "ruc",
+                      "autorizacion_sanitaria", "presentacion_muestra", "pais_origen", "tamano_lote", "fecha_analisis"],
+           "organoleptico": ["COLOR", "OLOR Y SABOR", "ASPECTO"], "especificacion": False, "sanidad": True, "inocuidad": False,
+           "referencias": True, "conclusion": "normas"},
+    "CA": {"nombre": "Cosecha Andina (modelo CA0764)", "subtitulo": "",
+           "campos": ["producto_declarado", "lote", "fecha_produccion", "fecha_vencimiento", "marca", "procesado_por", "ruc",
+                      "registro_sanitario", "presentacion_muestra", "fecha_analisis"],
+           "organoleptico": ["Apariencia", "Color", "Olor", "Sabor"], "especificacion": True, "sanidad": False, "inocuidad": False,
+           "referencias": False, "conclusion": "codex"},
+}
+CERT_ETIQUETAS = {"producto_declarado": "PRODUCTO DECLARADO", "lote": "LOTE", "fecha_produccion": "FECHA DE PRODUCCIÓN",
+                  "fecha_vencimiento": "FECHA DE VENCIMIENTO", "marca": "MARCA", "grado": "GRADO", "procesado_por": "PROCESADO POR",
+                  "ruc": "RUC", "autorizacion_sanitaria": "AUTORIZACION SANITARIA", "registro_sanitario": "REGISTRO SANITARIO",
+                  "presentacion_muestra": "PRESENTACIÓN DE LA MUESTRA", "pais_origen": "PAÍS DE ORIGEN",
+                  "tamano_lote": "TAMAÑO DE LOTE", "fecha_analisis": "FECHA DE ANALISIS"}
+HUMEDAD_METODO = ("NTP 205.002-1979(Revisada 2016) Cereales y Menestras. Determinación de contenido de humedad, Método Usual.")
+MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Setiembre", "Octubre", "Noviembre", "Diciembre"]
+
+
+def fecha_larga(d):
+    """'22 de Setiembre del 2026' (formato de los certificados modelo)."""
+    return f"{d.day} de {MESES[d.month - 1]} del {d.year}"
+
+
+def certificate_type_for(lot):
+    p = lot.product
+    por_marca = {str(k).upper(): v for k, v in (param("tipo_certificado_por_marca", {}) or {}).items()}
+    if p and (p.marca or "").upper() in por_marca and por_marca[(p.marca or "").upper()] in CERT_TIPOS:
+        return por_marca[(p.marca or "").upper()]
+    series = param("series_certificado", {}) or {}
+    t = series.get(p.tipo if p and p.tipo else lot.product_code[:2], series.get(lot.product_code[:2], "PT"))
+    return t if t in CERT_TIPOS else "PT"
+
+
+def _referencia_ntp(producto):
+    for k, v in (param("referencias_ntp", {}) or {}).items():
+        if str(k).upper() in (producto or "").upper():
+            return v
+    return ""
+
+
+def _fmt_fecha(d):
+    return d.strftime("%d-%m-%y") if d else ""
+
+
+def certificate_data(lot, order=None, tipo=None):
+    """Arma los datos del certificado desde Producción (lote), Calidad (registros) y el pedido, según el tipo."""
     s = db()
     p = lot.product
+    tipo = tipo or certificate_type_for(lot)
+    td = CERT_TIPOS[tipo]
     liq = s.execute(select(Liquidation).where(Liquidation.product_code == lot.product_code, Liquidation.lote == lot.lote)
                     .order_by(Liquidation.id.desc())).scalars().first()
     recs = list(s.execute(select(QualityRecord).where(QualityRecord.lote == lot.lote,
@@ -296,52 +352,94 @@ def certificate_data(lot, order=None):
     elif liq:
         tam = f"{liq.cantidad_completada:g} {p.um if p else ''}"
     sanidad = []
-    if rec:
+    if rec and td["sanidad"]:
         for k, lbl in DEFECTOS_MUESTREO:
             v = rec.datos.get(k)
             if v is not None and k != "humedad":
                 sanidad.append({"analisis": lbl, "resultado": f"{v}", "conclusion": "CONFORME" if rec.resultado == "CONFORME" else "REVISAR"})
     humedad = rec.datos.get("humedad") if rec else None
+    hmax = (param("humedad_maxima_por_tipo", {}) or {}).get(tipo) if td["especificacion"] else None
+    producto = (p.producto_base or p.descripcion) if p else lot.product_code
+    ref = _referencia_ntp(producto) if td["referencias"] else ""
+    fp = lot.fecha_fab or (liq.fecha_fab if liq else None)
+    if humedad is None:
+        hum_concl = ""
+    elif hmax is not None:
+        hum_concl = "CONFORME" if humedad <= hmax else "NO CONFORME"
+    else:
+        hum_concl = "CONFORME" if rec.resultado == "CONFORME" else "REVISAR"
+    if td["conclusion"] == "codex":
+        concl = (f"El área de aseguramiento de Calidad de la empresa “Corporación Productiva SAC” certifica que el producto "
+                 f"denominado como “{producto}” cumple con las especificaciones de calidad según la ficha técnica del producto y "
+                 f"el Codex Alimentarius (normas alimentarias aceptadas internacionalmente), garantizando la conformidad del producto.")
+    else:
+        concl = (f"El área de aseguramiento de Calidad de la empresa “Corporación Productiva SAC” certifica que el producto "
+                 f"denominado como “{producto}” cumple con las especificaciones de calidad según las Normas Técnicas "
+                 f"especificadas para cada ensayo, garantizando la conformidad del producto.")
     return {
-        "producto_declarado": (p.producto_base or p.descripcion) if p else lot.product_code,
+        "tipo": tipo,
+        "producto_declarado": producto,
         "descripcion_articulo": p.descripcion if p else "",
         "lote": lot.lote,
-        "fecha_produccion": (lot.fecha_fab or (liq.fecha_fab if liq else None)).isoformat() if (lot.fecha_fab or (liq and liq.fecha_fab)) else "",
-        "fecha_vencimiento": lot.fecha_venc.isoformat() if lot.fecha_venc else "",
+        "fecha_produccion": _fmt_fecha(fp),
+        "fecha_vencimiento": _fmt_fecha(lot.fecha_venc),
         "marca": p.marca if p else "", "grado": p.calidad if p else "",
         "procesado_por": param("empresa_razon_social", ""), "ruc": param("empresa_ruc", ""),
         "autorizacion_sanitaria": param("autorizacion_sanitaria", ""),
+        "registro_sanitario": pend if "registro_sanitario" in td["campos"] else "",
         "presentacion_muestra": p.presentacion if p else "",
         "pais_origen": rec.datos.get("procedencia", "") if rec else "",
         "tamano_lote": tam or pend,
-        "fecha_analisis": rec.fecha.isoformat() if rec else pend,
-        "organoleptico": [{"analisis": "COLOR", "resultado": pend, "especificacion": "", "conclusion": ""},
-                          {"analisis": "OLOR Y SABOR", "resultado": pend, "especificacion": "", "conclusion": ""},
-                          {"analisis": "ASPECTO", "resultado": pend, "especificacion": "", "conclusion": ""}],
-        "humedad": {"resultado": f"{humedad}%" if humedad is not None else pend, "especificacion": "MAX. 15%",
-                    "conclusion": ("CONFORME" if humedad is not None and humedad <= 15 else ("NO CONFORME" if humedad is not None else ""))},
+        "fecha_analisis": _fmt_fecha(rec.fecha) if rec else pend,
+        "organoleptico": [{"analisis": a, "resultado": pend, "especificacion": "", "conclusion": ""} for a in td["organoleptico"]],
+        "humedad": {"resultado": f"{humedad}%" if humedad is not None else pend,
+                    "especificacion": (f"MÁX. {hmax:g} %" if hmax is not None else ""), "conclusion": hum_concl},
+        "referencia_organoleptico": f"ANALSIS ORGANOLÉPTICO: {ref}" if ref else "",
+        "referencia_fisicoquimico": (f"{HUMEDAD_METODO} ANÁLISIS FÍSICOS-QUÍMICOS: {ref}" if ref and tipo == "PT"
+                                     else (f"ANÁLISIS FÍSICOS-QUÍMICOS: {ref}" if ref else "")),
+        "referencia_sanidad": f"ANÁLISIS SANIDAD ASPECTO: {ref}" if ref and td["sanidad"] else "",
         "sanidad": sanidad,
-        "inocuidad": "",
-        "conclusiones": "",
+        "inocuidad": (f"El producto cumple con el Decreto Supremo Nº004-2011-AG y sus modificatorias, por lo que el {producto}, "
+                      f"es un producto CONFORME.") if td["inocuidad"] else "",
+        "conclusiones": concl,
+        "fecha_emision": fecha_larga(date.today()),
         "pedido": order.numero if order else "", "cliente": order.customer.nombre if order else "",
         "fuente_calidad": f"Registro #{rec.id} ({rec.codigo_formato})" if rec else "Sin registro de Calidad para el lote",
         "fuente_produccion": f"Liquidación {liq.numero_documento}" if liq else "Sin liquidación registrada",
     }
 
 
-def generate_certificate(lot, user=None, order=None):
-    series = param("series_certificado", {}) or {}
-    p = lot.product
-    serie = series.get(p.tipo if p and p.tipo else lot.product_code[:2], series.get(lot.product_code[:2], "PT"))
-    cert = Certificate(numero=_next_number(serie), serie=serie, lot_id=lot.id, order_id=order.id if order else None,
-                       product_code=lot.product_code, datos=certificate_data(lot, order))
+def generate_certificate(lot, user=None, order=None, tipo=None):
+    tipo = tipo or certificate_type_for(lot)
+    if tipo not in CERT_TIPOS:
+        raise BusinessError(f"Tipo de certificado desconocido: {tipo}")
+    cert = Certificate(numero=_next_number(tipo), serie=tipo, lot_id=lot.id, order_id=order.id if order else None,
+                       product_code=lot.product_code, datos=certificate_data(lot, order, tipo))
     db().add(cert)
     db().flush()
     alerts.emit("CERTIFICADO_REVISION", f"Revisar certificado {cert.numero}",
                 f"Lote {lot.lote} de {lot.product_code}{' – OV ' + order.numero if order else ''}.", "Certificate", cert.id,
                 dedup_key=f"CERT:{cert.id}", creado_por=user)
-    audit(user, "CERTIFICADO_GENERADO", "Certificate", cert.numero, {"lote": lot.lote})
+    audit(user, "CERTIFICADO_GENERADO", "Certificate", cert.numero, {"lote": lot.lote, "tipo": tipo})
     return cert
+
+
+def regenerate_certificate(cert, user, tipo):
+    """Calidad cambia el tipo de un borrador: se anula y se genera uno nuevo del tipo indicado."""
+    if not has_perm(user, "calidad.certificado_revisar"):
+        raise BusinessError("Revisa el Supervisor o la Jefatura de Calidad (IF §9.4).")
+    if cert.estado != "BORRADOR":
+        raise BusinessError("Solo se regenera un certificado en borrador.")
+    if tipo not in CERT_TIPOS or tipo == (cert.datos or {}).get("tipo", cert.serie):
+        raise BusinessError("Elija un tipo de certificado distinto.")
+    lot = db().get(StockLot, cert.lot_id) if cert.lot_id else None
+    if lot is None:
+        raise BusinessError("El certificado no tiene lote asociado.")
+    order = db().get(SalesOrder, cert.order_id) if cert.order_id else None
+    cert.estado = "ANULADO"
+    alerts.close_by_system(f"CERT:{cert.id}", f"Certificado regenerado como tipo {tipo}")
+    audit(user, "CERTIFICADO_REGENERADO", "Certificate", cert.numero, {"tipo": tipo})
+    return generate_certificate(lot, user, order, tipo)
 
 
 def autogenerate_for_order(order, user=None):
@@ -365,8 +463,9 @@ def autogenerate_for_order(order, user=None):
 
 
 EDITABLE_CERT_FIELDS = ["producto_declarado", "lote", "fecha_produccion", "fecha_vencimiento", "marca", "grado",
-                        "procesado_por", "ruc", "autorizacion_sanitaria", "presentacion_muestra", "pais_origen",
-                        "tamano_lote", "fecha_analisis", "inocuidad", "conclusiones"]
+                        "procesado_por", "ruc", "autorizacion_sanitaria", "registro_sanitario", "presentacion_muestra",
+                        "pais_origen", "tamano_lote", "fecha_analisis", "inocuidad", "conclusiones", "fecha_emision",
+                        "referencia_organoleptico", "referencia_fisicoquimico", "referencia_sanidad"]
 
 
 def review_certificate(cert, user, cambios, aprobar=False):

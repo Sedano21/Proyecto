@@ -58,6 +58,8 @@ def run_checks(user=None, today=None):
     from .prices import check_validity
     out["listas_precio_por_vencer"] = check_validity(today)
     out["cargas_desactualizadas"] = check_upload_freshness()
+    from .costs import check_market_alerts
+    out["costo_vs_mercado"] = check_market_alerts(user)
     out["correo"] = flush_outbox()
     return out
 

@@ -107,6 +107,15 @@ def order_detail(oid):
                            parcial_modo=str(param("parcial_modo", "CUALQUIERA")).upper(), presol=presol)
 
 
+@bp.route("/<int:oid>/imprimir")
+@perm_required("ov.ver")
+def order_print(oid):
+    """Formato de OV con los logos de Corporación Productiva, Cantaclaro y Cosecha Andina (foto del 13-oct)."""
+    from ..services.documents import ov_document
+    o = db().get(SalesOrder, oid) or abort(404)
+    return render_template("ov_print.html", o=o, d=ov_document(o))
+
+
 @bp.route("/<int:oid>/accion/<accion>", methods=["POST"])
 @perm_required("ov.ver")
 def order_action(oid, accion):
@@ -238,3 +247,33 @@ def prices():
     return render_template("prices.html", rows=rows[:600], total=len(rows), lista=lista, q=q, canal=canal,
                            canales=psvc.canales(), hist=hist, sku=request.args.get("sku", ""), metas=metas,
                            canal_granel=(param("lista_granel_canales", []) or ["-"])[0], faltantes=faltantes)
+
+
+# ------------------------------ costos y mercado (R4, R5 – 13-oct) --------
+@bp.route("/costos", methods=["GET", "POST"])
+@perm_required("costos.ver")
+def costs():
+    from ..services import costs as csvc
+    from ..models import MarketPrice, ProductCost
+    if request.method == "POST":
+        fm = request.form
+        return act(lambda: csvc.add_market_prices([{"producto": fm.get("producto", ""), "variedad": fm.get("variedad", ""),
+                                                    "precio_kg": f_float("precio_kg", True), "tipo_precio": fm.get("tipo_precio"),
+                                                    "mercado": fm.get("mercado", ""), "fecha": f_date("fecha", True),
+                                                    "fuente": fm.get("fuente", ""), "url": fm.get("url", "")}], g.user, "Alta manual")
+                   and csvc.check_market_alerts(g.user), "Precio de mercado registrado y análisis recalculado.",
+                   url_for("com.costs"))
+    tipo = request.args.get("tipo", "MAYORISTA")
+    analisis = csvc.market_analysis(tipo)
+    costos = list(db().execute(select(ProductCost).where(ProductCost.vigente.is_(True)).order_by(ProductCost.product_code)).scalars())
+    mercado = list(db().execute(select(MarketPrice).order_by(MarketPrice.fecha.desc(), MarketPrice.producto).limit(300)).scalars())
+    from ..services import charts
+    productos = sorted({m.producto for m in mercado if m.tipo_precio == tipo})
+    sel = request.args.get("producto") or (productos[0] if productos else "")
+    serie = [(m.fecha.strftime("%d/%m/%y"), m.precio_kg) for m in reversed(mercado) if m.producto == sel and m.tipo_precio == tipo]
+    graf = charts.line([(f"{sel} ({tipo.lower()})", serie)], "S/ por kg", title=f"Precio de mercado {sel}")
+    brechas = charts.bars([(r["code"] + " " + (r["base"] or "")[:18], r["brecha_pct"]) for r in
+                           sorted(analisis, key=lambda r: r["brecha_pct"] if r["brecha_pct"] is not None else 999)
+                           if r["brecha_pct"] is not None], "%", title="Margen del mercado sobre el costo")
+    return render_template("costs.html", analisis=analisis, costos=costos, mercado=mercado, tipo=tipo, productos=productos,
+                           sel=sel, graf=graf, brechas=brechas, serie=serie)

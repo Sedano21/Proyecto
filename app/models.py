@@ -308,6 +308,8 @@ class SalesOrder(Base):
     urgente: Mapped[bool] = mapped_column(Boolean, default=False)
     direccion: Mapped[str] = mapped_column(String(250), default="")
     distrito: Mapped[str] = mapped_column(String(80), default="")
+    provincia: Mapped[str] = mapped_column(String(80), default="")
+    lugar_entrega: Mapped[str] = mapped_column(String(120), default="")  # almacén/punto de entrega del cliente
     hora_cita: Mapped[str] = mapped_column(String(20), default="")
     cita_confirmada: Mapped[bool] = mapped_column(Boolean, default=False)
     comentarios: Mapped[str] = mapped_column(Text, default="")
@@ -319,6 +321,8 @@ class SalesOrder(Base):
     motivo_detencion: Mapped[str] = mapped_column(String(250), default="")
     origen: Mapped[str] = mapped_column(String(20), default="MODULO")  # MODULO / CARGA_SAP
     tipo_venta: Mapped[str] = mapped_column(String(40), default="")  # Orden de venta / Muestra comercial / PAE (SAP)
+    forma_pago: Mapped[str] = mapped_column(String(60), default="")  # p.ej. "Crédito 30 días" (formato de OV)
+    moneda: Mapped[str] = mapped_column(String(10), default="SOLES")
     retenida_precio: Mapped[bool] = mapped_column(Boolean, default=False)  # detenida por precio bajo el mínimo
     precio_observado: Mapped[list] = mapped_column(JSON, default=list)  # líneas observadas en la última validación
     aprobacion_precio: Mapped[dict] = mapped_column(JSON, default=dict)  # confirmación del Coord./Jefe Comercial
@@ -354,6 +358,9 @@ class SalesOrderLine(Base):
     precio_unitario: Mapped[float] = mapped_column(Float, default=0)
     precio_minimo: Mapped[float | None] = mapped_column(Float, nullable=True)  # precio mínimo de lista del canal (Q11)
     precio_origen: Mapped[str] = mapped_column(String(160), default="")  # resultado de la validación contra la lista
+    descuento: Mapped[float] = mapped_column(Float, default=0)  # descuento de la línea (S/), formato de OV
+    tax_code: Mapped[str] = mapped_column(String(10), default="")  # código de impuesto SAP (EXO / IGV)
+    um_venta: Mapped[str] = mapped_column(String(10), default="")  # unidad de venta: UND / KG / SACO (granel)
     preparado: Mapped[float] = mapped_column(Float, default=0)
     despachado: Mapped[float] = mapped_column(Float, default=0)
     entregado: Mapped[float] = mapped_column(Float, default=0)
@@ -893,7 +900,7 @@ class EmailOutbox(Base):
 class PriceItem(Base):
     """Lista de precios (decisión Q11, 13-oct-2026). Cada cambio crea una versión nueva; la anterior queda con 'hasta'.
     lista GENERAL: precio por canal (columnas de PRICE_LIST); lista GRANEL: precio por kg y por saco (mayorista granel).
-    El costo de la empresa NO se guarda."""
+    El costo de la empresa se guarda aparte (ProductCost, visibilidad restringida; respuestas del 13-oct)."""
     __tablename__ = "price_items"
     id: Mapped[int] = mapped_column(primary_key=True)
     lista: Mapped[str] = mapped_column(String(10))  # GENERAL / GRANEL
@@ -910,6 +917,39 @@ class PriceItem(Base):
     origen: Mapped[str] = mapped_column(String(160), default="")  # archivo o 'edición manual'
     motivo: Mapped[str] = mapped_column(Text, default="")
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+
+
+class ProductCost(Base):
+    """Costo de la empresa por artículo (R4 y observaciones del 13-oct): sirve para (1) impedir ventas por debajo del
+    costo y (2) compararlo automáticamente con precios de mercado y su tendencia. Versionado como los precios."""
+    __tablename__ = "product_costs"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    product_code: Mapped[str] = mapped_column(String(40), index=True)
+    descripcion: Mapped[str] = mapped_column(String(250), default="")
+    costo: Mapped[float] = mapped_column(Float)
+    unidad: Mapped[str] = mapped_column(String(10), default="UND")  # UND (presentación) / KG (granel)
+    vigente: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    desde: Mapped[datetime] = mapped_column(DateTime, default=now)
+    hasta: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    origen: Mapped[str] = mapped_column(String(160), default="")
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+
+
+class MarketPrice(Base):
+    """Precio de mercado de referencia (R5, 13-oct): mayorista / minorista / importación, con fuente y fecha del dato."""
+    __tablename__ = "market_prices"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    producto: Mapped[str] = mapped_column(String(120), index=True)  # producto base normalizado (p. ej. LENTEJA)
+    variedad: Mapped[str] = mapped_column(String(120), default="")
+    precio_kg: Mapped[float] = mapped_column(Float)  # S/ por kg
+    tipo_precio: Mapped[str] = mapped_column(String(20), default="MAYORISTA")  # MAYORISTA / MINORISTA / IMPORTACION
+    mercado: Mapped[str] = mapped_column(String(160), default="")
+    fecha: Mapped[date] = mapped_column(Date)
+    fuente: Mapped[str] = mapped_column(String(250), default="")
+    url: Mapped[str] = mapped_column(Text, default="")
+    origen: Mapped[str] = mapped_column(String(160), default="")  # archivo cargado o 'alta manual'
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
 
 
 class PriceListMeta(Base):
@@ -962,12 +1002,13 @@ class ProductionReport(Base):
 
 class CustomerCondition(Base):
     """Condiciones comerciales del cliente (LISTA DE CLIENTES - CON PENALIDADES Y LOTES): ejecutivo, canal, tipo de
-    solicitud, lotes por SKU, vida útil y penalidades. El archivo no trae RUC: se vincula por nombre normalizado."""
+    solicitud, lotes por SKU, vida útil y penalidades. Se vincula por RUC si la fila lo trae; si no, por nombre normalizado."""
     __tablename__ = "customer_conditions"
     id: Mapped[int] = mapped_column(primary_key=True)
     nombre: Mapped[str] = mapped_column(String(250))
     nombre_norm: Mapped[str] = mapped_column(String(250), unique=True, index=True)
     customer_id: Mapped[int | None] = mapped_column(ForeignKey("customers.id"), nullable=True)
+    ruc: Mapped[str] = mapped_column(String(20), default="", index=True)  # opcional (se agregará a la lista, R2 13-oct)
     ejecutivo: Mapped[str] = mapped_column(String(120), default="")
     canal_comercial: Mapped[str] = mapped_column(String(80), default="")
     solicitud: Mapped[str] = mapped_column(String(60), default="")  # PRODUCTO TERMINADO / MATERIA PRIMA

@@ -60,7 +60,9 @@ SPECS = {
                  "descripcion": ["Descripción de Producto"], "solicitado": ["Solicitado"], "entregado": ["Entregado"],
                  "um": ["Unidad de medida"], "peso": ["Peso"], "tipo": ["T"], "comentarios": ["Comentarios"],
                  "precio": ["P. Unitario SOLES", "Precio Unitario", "P. Unitario", "Precio unitario SOLES", "Precio"],
-                 "tipo_venta": ["Tipo de Venta"]},
+                 "tipo_venta": ["Tipo de Venta", "Tipo de venta"],
+                 "forma_pago": ["Forma de pago", "Condición de pago", "Condicion de pago", "Términos de pago"],
+                 "moneda": ["Moneda"], "descuento": ["Descuento"], "tax_code": ["TaxCode", "Tax Code", "Código de impuesto"]},
         "req": ["numero", "fecha_compromiso", "ruc", "cliente", "producto", "solicitado"],
     },
     "LIQUIDACION": {
@@ -91,9 +93,27 @@ SPECS = {
     "CLIENTES_CONDICIONES": {
         "nombre": "Clientes: penalidades, lotes y vida útil", "perm": "clientes.canal", "confirm_perm": "clientes.canal",
         "hojas": ["Hoja1"],
-        "cols": {"ejecutivo": ["EJECUTIVO"], "canal": ["CANAL"], "cliente": ["CLIENTE"], "solicitud": ["SOLICITUD"],
+        "cols": {"ejecutivo": ["EJECUTIVO"], "canal": ["CANAL"], "cliente": ["CLIENTE"], "ruc": ["RUC", "Ruc"],
+                 "solicitud": ["SOLICITUD"],
                  "lote": ["LOTE"], "vida": ["VIDA UTIL", "VIDA ÚTIL"], "penalidad": ["PENALIDAD", "PENALIDADES", "Columna1"]},
         "req": ["cliente", "lote"],
+    },
+    "COSTOS": {
+        "nombre": "Costos de la empresa por artículo", "perm": "costos.cargar", "confirm_perm": "costos.cargar",
+        "hojas": [],
+        "cols": {"sku": ["SKU", "Código de Producto", "Codigo", "Código"], "descripcion": ["DESCRIPCIÓN", "Descripción", "DESCRIPCION"],
+                 "costo": ["COSTO EMPRESA", "COSTO", "Costo", "COSTO UNITARIO", "Costo unitario", "COSTO X KG", "COSTO POR KG"],
+                 "unidad": ["UNIDAD", "UM", "Unidad de medida"]},
+        "req": ["sku", "costo"],
+    },
+    "MERCADO": {
+        "nombre": "Precios de mercado (referencias MIDAGRI u otras)", "perm": "costos.cargar", "confirm_perm": "costos.cargar",
+        "hojas": [],
+        "cols": {"producto": ["PRODUCTO", "Producto"], "variedad": ["VARIEDAD", "Variedad"],
+                 "precio_kg": ["PRECIO", "PRECIO KG", "PRECIO X KG", "S/ x kg", "Precio (S/ por kg)"],
+                 "tipo_precio": ["TIPO", "TIPO PRECIO", "Tipo de precio"], "mercado": ["MERCADO", "Mercado", "LUGAR"],
+                 "fecha": ["FECHA", "Fecha", "FECHA DATO"], "fuente": ["FUENTE", "Fuente"], "url": ["URL", "ENLACE"]},
+        "req": ["producto", "precio_kg", "fecha"],
     },
     "PRECIOS": {
         "nombre": "Lista de precios por canal (PRICE_LIST)", "perm": "precios.editar", "confirm_perm": "precios.editar",
@@ -112,7 +132,8 @@ SPECS = {
 
 
 def _price_rows(spec, header, margins, rows):
-    """Lista de precios: columnas de canal dinámicas; recalcula fórmulas sin valor; no conserva el costo."""
+    """Lista de precios: columnas de canal dinámicas; recalcula fórmulas sin valor. El costo (COSTO EMPRESA) se conserva
+    aparte como costo del artículo (visibilidad restringida a 'costos.ver')."""
     alias = {norm(a) for names in spec["cols"].values() for a in names}
     canales = {}
     for j, v in enumerate(header):
@@ -128,6 +149,7 @@ def _price_rows(spec, header, margins, rows):
             costo = float(costo) if costo not in (None, "") else None
         except (TypeError, ValueError):
             costo = None
+        datos["costo"] = costo
         if spec.get("canales"):
             precios = {}
             for c, j in canales.items():
@@ -300,7 +322,7 @@ def create_batch(user, tipo, path, filename, hoja=None):
 def validate_batch(b):
     fn = {"STOCK": _v_stock, "BOM": _v_bom, "OV": _v_ov, "LIQUIDACION": _v_liq, "PRODUCTOS": _v_prod,
           "SALIDAS": _v_salidas, "PRECIOS": _v_precios, "PRECIOS_GRANEL": _v_precios,
-          "CLIENTES_CONDICIONES": _v_condiciones}[b.tipo]
+          "CLIENTES_CONDICIONES": _v_condiciones, "COSTOS": _v_costos, "MERCADO": _v_mercado}[b.tipo]
     for r in b.rows:
         r.errores, r.advertencias = [], []
     fn(b)
@@ -662,6 +684,7 @@ def confirm(b, user, opciones=None):
     b.opciones = opciones
     result = {"STOCK": _c_stock, "BOM": _c_bom, "OV": _c_ov, "LIQUIDACION": _c_liq, "PRODUCTOS": _c_prod,
               "PRECIOS": _c_precios, "PRECIOS_GRANEL": _c_precios, "CLIENTES_CONDICIONES": _c_condiciones,
+              "COSTOS": _c_costos, "MERCADO": _c_mercado,
               "SALIDAS": _c_salidas}[b.tipo](b, user, opciones)
     b.estado = "CONFIRMADO"
     b.confirmado_ts = now()
@@ -862,8 +885,10 @@ def _c_ov(b, user, opciones):
             _ensure_product(_txt(d["producto"]), _txt(d.get("descripcion")), tipo if tipo in ("PT", "GR", "MP") else None, um,
                             _num(d.get("peso")))
             ln = cons.setdefault(_txt(d["producto"]), {"product_code": _txt(d["producto"]), "cantidad": 0.0,
-                                                        "precio_unitario": _num(d.get("precio")) or 0})
+                                                        "precio_unitario": _num(d.get("precio")) or 0,
+                                                        "descuento": 0.0, "tax_code": _txt(d.get("tax_code")).upper()})
             ln["cantidad"] += (_num(d["solicitado"]) or 0) - (_num(d.get("entregado")) or 0)
+            ln["descuento"] += _num(d.get("descuento")) or 0
         lines = [l for l in cons.values() if l["cantidad"] > 0]
         if not lines:
             continue
@@ -877,6 +902,8 @@ def _c_ov(b, user, opciones):
                                  vendedor_nombre=_txt(d0.get("vendedor")))
                 if not vend:
                     o.vendedor_nombre = _txt(d0.get("vendedor"))
+                o.forma_pago = _txt(d0.get("forma_pago"))
+                o.moneda = (_txt(d0.get("moneda")) or "SOLES").upper()
                 creadas += 1
             else:
                 actual = {l.product_code: l.cantidad for l in o.lines if l.activa}
@@ -905,6 +932,7 @@ def _v_condiciones(b):
     from .customer_conditions import norm_name, parse
     s = db()
     clientes = {norm_name(c.nombre) for c in s.execute(select(Customer)).scalars()}
+    rucs = {c.ruc: c for c in s.execute(select(Customer)).scalars()}
     vistos = Counter()
     for r in b.rows:
         if norm_name(r.datos.get("cliente")) == "CLIENTE" and not r.excluida:  # encabezado repetido dentro de la hoja
@@ -921,7 +949,15 @@ def _v_condiciones(b):
             e.append("Cliente vacío")
         elif vistos[nn] > 1:
             e.append("Cliente repetido en el archivo")
-        elif nn not in clientes:
+        ruc = _txt(d.get("ruc"))
+        if ruc and not re.fullmatch(r"\d{11}", ruc):
+            e.append(f"RUC inválido: '{ruc}' (11 dígitos)")
+        elif ruc and ruc in rucs:
+            if norm_name(rucs[ruc].nombre) != nn:
+                w.append(f"El RUC corresponde a '{rucs[ruc].nombre}': se vincula por RUC")
+        elif ruc:
+            w.append("RUC sin cliente registrado: se vinculará cuando el cliente llegue en una OV")
+        elif nn and nn not in clientes:
             w.append("Sin cliente registrado con ese nombre: la condición queda pendiente y se vinculará cuando el cliente "
                      "llegue en una OV (el archivo no trae RUC)")
         p = parse(d.get("lote"), d.get("vida"), d.get("penalidad"))
@@ -945,7 +981,9 @@ def _c_condiciones(b, user, opciones):
             continue
         d = r.datos
         nn = norm_name(d.get("cliente"))
-        c = s.execute(select(CustomerCondition).where(CustomerCondition.nombre_norm == nn)).scalars().first()
+        ruc = _txt(d.get("ruc"))
+        c = (s.execute(select(CustomerCondition).where(CustomerCondition.ruc == ruc)).scalars().first() if ruc else None) or \
+            s.execute(select(CustomerCondition).where(CustomerCondition.nombre_norm == nn)).scalars().first()
         if c is None:
             c = CustomerCondition(nombre=_txt(d.get("cliente")), nombre_norm=nn)
             s.add(c)
@@ -953,6 +991,10 @@ def _c_condiciones(b, user, opciones):
         else:
             act += 1
         p = parse(d.get("lote"), d.get("vida"), d.get("penalidad"))
+        if ruc:
+            if c.ruc != ruc:
+                c.customer_id = None  # se vuelve a vincular por RUC
+            c.ruc = ruc
         c.ejecutivo, c.canal_comercial, c.solicitud = _txt(d.get("ejecutivo")), _txt(d.get("canal")), _txt(d.get("solicitud"))
         c.lotes_texto, c.vida_util_texto, c.penalidades = _txt(d.get("lote")), _txt(d.get("vida")), _txt(d.get("penalidad"))
         c.max_lotes_por_sku, c.vida_util_meses = p["max_lotes_por_sku"], p["vida_util_meses"]
@@ -960,6 +1002,83 @@ def _c_condiciones(b, user, opciones):
     s.flush()
     vinculados = link_all()
     return {"nuevos": nuevos, "actualizados": act, "vinculados": vinculados}
+
+
+def _v_costos(b):
+    prods = {p.code: p for p in db().execute(select(Product)).scalars()}
+    vistos = Counter(_txt(r.datos.get("sku")).upper() for r in b.rows if not r.excluida)
+    for r in b.rows:
+        if r.excluida:
+            continue
+        d, e, w = r.datos, [], []
+        sku = _txt(d.get("sku")).upper()
+        try:
+            c = _num(d.get("costo"))
+            if c is None or c <= 0:
+                e.append("Costo vacío o no positivo")
+        except ValueError as ex:
+            e.append(str(ex))
+        u = (_txt(d.get("unidad")) or "").upper()
+        if u and not (u.startswith("K") or u in ("UND", "UNIDAD", "NIU")):
+            w.append(f"Unidad '{u}' no reconocida: se toma por unidad de venta")
+        if vistos[sku] > 1:
+            e.append("SKU repetido en el archivo")
+        if sku and sku not in prods:
+            w.append("SKU no está en el catálogo: el costo se guarda y se usará cuando exista el artículo")
+        r.errores, r.advertencias = e, w
+    b.resumen = {"filas": len([r for r in b.rows if not r.excluida])}
+
+
+def _c_costos(b, user, opciones):
+    from .costs import check_market_alerts, replace_costs
+    items = []
+    for r in b.rows:
+        if r.excluida:
+            continue
+        d = r.datos
+        u = (_txt(d.get("unidad")) or "").upper()
+        items.append({"product_code": _txt(d.get("sku")).upper(), "descripcion": _txt(d.get("descripcion")),
+                      "costo": _num(d.get("costo")), "unidad": "KG" if u.startswith("K") else "UND"})
+    res = replace_costs(items, user, b.archivo)
+    res["alertas_costo_vs_mercado"] = check_market_alerts(user)
+    return res
+
+
+def _v_mercado(b):
+    for r in b.rows:
+        if r.excluida:
+            continue
+        d, e, w = r.datos, [], []
+        try:
+            p = _num(d.get("precio_kg"))
+            if p is None or p <= 0:
+                e.append("Precio vacío o no positivo")
+        except ValueError as ex:
+            e.append(str(ex))
+        try:
+            if _date(d.get("fecha")) is None:
+                e.append("Fecha vacía")
+        except (ValueError, BusinessError) as ex:
+            e.append(str(ex))
+        t = (_txt(d.get("tipo_precio")) or "MAYORISTA").upper()
+        if t not in ("MAYORISTA", "MINORISTA", "IMPORTACION", "IMPORTACIÓN"):
+            e.append("Tipo de precio debe ser MAYORISTA, MINORISTA o IMPORTACION")
+        if not _txt(d.get("fuente")):
+            w.append("Sin fuente: indique de dónde proviene el dato")
+        r.errores, r.advertencias = e, w
+    b.resumen = {"filas": len([r for r in b.rows if not r.excluida])}
+
+
+def _c_mercado(b, user, opciones):
+    from .costs import add_market_prices, check_market_alerts
+    rows = [{"producto": _txt(r.datos.get("producto")), "variedad": _txt(r.datos.get("variedad")),
+             "precio_kg": _num(r.datos.get("precio_kg")),
+             "tipo_precio": (_txt(r.datos.get("tipo_precio")) or "MAYORISTA").upper().replace("Ó", "O"),
+             "mercado": _txt(r.datos.get("mercado")), "fecha": _date(r.datos.get("fecha")), "fuente": _txt(r.datos.get("fuente")),
+             "url": _txt(r.datos.get("url"))} for r in b.rows if not r.excluida]
+    res = add_market_prices(rows, user, b.archivo)
+    res["alertas_costo_vs_mercado"] = check_market_alerts(user)
+    return res
 
 
 def _price_key(d):
@@ -1042,6 +1161,17 @@ def _c_precios(b, user, opciones):
     from .prices import set_validity
     lista = "GENERAL" if b.tipo == "PRECIOS" else "GRANEL"
     res = replace_list(lista, items, user, b.archivo)
+    if has_perm(user, "costos.cargar"):
+        from .costs import replace_costs
+        costos, vistos_c = [], set()
+        for r in b.rows:
+            sku = _price_key(r.datos)
+            if r.excluida or sku in vistos_c or r.datos.get("costo") in (None, ""):
+                continue
+            vistos_c.add(sku)
+            costos.append({"product_code": sku, "descripcion": _txt(r.datos.get("descripcion")), "costo": _num(r.datos["costo"]),
+                           "unidad": "UND" if b.tipo == "PRECIOS" else "KG"})
+        res.update(replace_costs(costos, user, b.archivo))
     set_validity(user, lista, _date(opciones.get("vigencia_desde")), _date(opciones.get("vigencia_hasta")), b.archivo)
     return res
 

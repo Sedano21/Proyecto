@@ -1,15 +1,18 @@
-{% extends "base.html" %}{% from "_m.html" import b %}
+{% extends "base.html" %}{% from "_m.html" import b %}{% from "_doc.html" import membrete %}
 {% block content %}
 <p class="noprint"><a class="btn sec" href="javascript:window.print()">Imprimir</a> <a href="{{ url_for('dist.route_detail', rid=r.id) }}">Volver a la ruta</a></p>
 {% for g in preguia %}{% set st = g.stop %}
-<div class="card" style="page-break-after:always">
-<h2>{{ 'PRE-GUÍA' if tipo=='preguia' else ('GUÍA ' ~ (st.guia_numero or '(sin número)')) }} · {{ empresa }} · RUC {{ ruc }}</h2>
-<table class="kv"><tr><td>Señor(es)</td><td>{{ g.order.customer.nombre }} · RUC {{ g.order.customer.ruc }}</td></tr>
-<tr><td>Punto de llegada</td><td>{{ g.order.direccion }} · {{ g.order.distrito }}</td></tr><tr><td>OV</td><td>{{ g.order.numero }}</td></tr>
+<div class="doc">{{ membrete() }}
+<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-top:6px"><div class="small">{{ doc_param('empresa_razon_social_completa', empresa) }} · RUC {{ ruc }}<br>{% for l in doc_param('empresa_direccion', []) %}{{ l }}<br>{% endfor %}</div>
+<div style="border:2px solid #000;padding:4px 10px;text-align:center;font-weight:bold">{{ 'PRE-GUÍA DE REMISIÓN' if tipo=='preguia' else 'GUÍA DE REMISIÓN' }}<br>{{ '(documento interno, no válido como guía SUNAT)' if tipo=='preguia' else (st.guia_numero or '(sin número)') }}</div></div>
+<table class="kv box" style="margin-top:6px"><tr><td style="width:28%">Señor(es)</td><td>{{ g.order.customer.nombre }} · RUC {{ g.order.customer.ruc }}</td></tr>
+<tr><td>Punto de partida</td><td>{% for l in doc_param('empresa_direccion', []) %}{{ l }} {% endfor %}</td></tr>
+<tr><td>Punto de llegada</td><td>{{ g.order.lugar_entrega ~ ' · ' if g.order.lugar_entrega }}{{ g.order.direccion }} · {{ g.order.distrito }}{{ ' · ' ~ g.order.provincia if g.order.provincia }}</td></tr><tr><td>OV</td><td>{{ g.order.numero }}</td></tr>
 <tr><td>Fecha / ruta</td><td>{{ r.fecha|d }} · ruta #{{ r.id }}</td></tr><tr><td>Placa / conductor</td><td>{{ r.vehicle.placa if r.vehicle }} · {{ r.driver.nombre if r.driver }} {{ r.driver.licencia if r.driver }}</td></tr></table>
-<table><tr><th>Código</th><th>Descripción · lote · FP · FV</th><th class="r">Cantidad</th></tr>
+<table><tr><th>Código</th><th>Descripción · lote · FP · FV</th><th>Cantidad</th></tr>
 {% for it in g['items'] %}<tr><td>{{ it.codigo }}</td><td>{{ it.descripcion }}{% for lt in it.lotes %}<br><span class="small">LOTE {{ lt.lote }} FP {{ lt.fp|d }} FV {{ lt.fv|d }} × {{ lt.cantidad|n }}</span>{% endfor %}</td><td class="r">{{ it.cantidad|n }}</td></tr>{% endfor %}</table>
 {% if tipo != 'preguia' %}<h3>Folio de documentos</h3><ul><li>Guía: {{ st.guia_numero or 'PENDIENTE' }} {{ '(' ~ st.guia_origen ~ ')' if st.guia_origen }}</li>
 <li>Factura: {{ st.factura_numero or 'PENDIENTE' }}{{ ' (con modificaciones)' if st.factura_con_modificaciones }}</li>
 <li>Certificados: {% for c in certs[st.id] %}{{ c.numero }} ({{ c.estado }}) {% else %}PENDIENTE{% endfor %}</li></ul>{% endif %}
+<div style="display:flex;justify-content:space-around;margin-top:16mm" class="small"><span class="ln" style="border-top:1px solid #000;min-width:50mm;text-align:center">Despachado por</span><span style="border-top:1px solid #000;min-width:50mm;text-align:center">Transportista</span><span style="border-top:1px solid #000;min-width:50mm;text-align:center">Recibí conforme</span></div>
 </div>{% endfor %}{% endblock %}

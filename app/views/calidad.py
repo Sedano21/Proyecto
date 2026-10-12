@@ -1,5 +1,7 @@
 """Vistas de Calidad: liberación, formatos REG-*, certificados."""
-from flask import Blueprint, abort, g, redirect, render_template, request, url_for
+import os
+
+from flask import Blueprint, abort, current_app, flash, g, redirect, render_template, request, send_file, url_for
 from sqlalchemy import select
 
 from ..catalogs import CRITERIO_PESO_PENDIENTE, CRITERIOS_PESO, PCC1_HUMEDAD, SPEC_CALIDAD_SUPERIOR
@@ -7,7 +9,8 @@ from ..db import db
 from ..models import Certificate, Product, PurchaseRequest, QualityRecord, StockLot
 from ..services import purchasing as buysvc
 from ..services import quality as qsvc
-from .common import act, f_date, perm_required
+from ..services.core import audit
+from .common import act, f_date, login_required, perm_required
 
 bp = Blueprint("cal", __name__, url_prefix="/calidad")
 
@@ -84,11 +87,12 @@ def certificates():
         if "calidad.certificado_revisar" not in g.perms and "calidad.registrar" not in g.perms:
             abort(403)
         lot = db().get(StockLot, int(request.form["lot_id"])) or abort(404)
-        return act(lambda: qsvc.generate_certificate(lot, g.user), lambda c: f"Certificado {c.numero} generado (borrador).",
-                   url_for("cal.certificates"))
+        tipo = request.form.get("tipo") or None
+        return act(lambda: qsvc.generate_certificate(lot, g.user, tipo=tipo),
+                   lambda c: f"Certificado {c.numero} generado (borrador).", url_for("cal.certificates"))
     rows = list(db().execute(select(Certificate).order_by(Certificate.id.desc())).scalars())
     lots = list(db().execute(select(StockLot).where(StockLot.cantidad > 0).order_by(StockLot.product_code)).scalars())
-    return render_template("certificates.html", rows=rows, lots=lots)
+    return render_template("certificates.html", rows=rows, lots=lots, tipos=qsvc.CERT_TIPOS)
 
 
 @bp.route("/certificados/<int:cid>", methods=["GET", "POST"])
@@ -96,8 +100,39 @@ def certificates():
 def certificate_detail(cid):
     c = db().get(Certificate, cid) or abort(404)
     if request.method == "POST":
+        if request.form.get("accion") == "regenerar":
+            return act(lambda: qsvc.regenerate_certificate(c, g.user, request.form.get("tipo", "")),
+                       lambda n: f"Certificado regenerado como {n.numero}.", url_for("cal.certificate_detail", cid=cid),
+                       redirect_fn=lambda n: url_for("cal.certificate_detail", cid=n.id))
         cambios = {k: v for k, v in request.form.items() if k not in ("_csrf", "accion")}
         return act(lambda: qsvc.review_certificate(c, g.user, cambios, request.form.get("accion") == "aprobar"),
                    "Certificado actualizado.", url_for("cal.certificate_detail", cid=cid))
     return render_template("certificate.html", c=c, d=c.datos, editable=qsvc.EDITABLE_CERT_FIELDS,
-                           print_mode=request.args.get("imprimir") == "1")
+                           print_mode=request.args.get("imprimir") == "1", tipos=qsvc.CERT_TIPOS, etiquetas=qsvc.CERT_ETIQUETAS,
+                           firma_url=url_for("cal.firma") if os.path.exists(_firma_path()) else None)
+
+
+def _firma_path():
+    return os.path.join(current_app.instance_path, "firmas", "firma_certificado.png")
+
+
+@bp.route("/firma", methods=["GET", "POST"])
+@login_required
+def firma():
+    """Imagen de la firma del certificado: se guarda en el servidor (fuera del repositorio) y la carga Sistemas."""
+    if request.method == "POST":
+        if "config.editar" not in g.perms:
+            abort(403)
+        f = request.files.get("archivo")
+        if not f or not f.filename.lower().endswith(".png"):
+            flash("Seleccione una imagen PNG de la firma.", "error")
+            return redirect(url_for("cal.certificates"))
+        os.makedirs(os.path.dirname(_firma_path()), exist_ok=True)
+        f.save(_firma_path())
+        audit(g.user, "FIRMA_CERTIFICADO_CARGADA", "Param", "certificado_firmante", {})
+        db().commit()
+        flash("Firma cargada.", "ok")
+        return redirect(url_for("cal.certificates"))
+    if "calidad.ver" not in g.perms or not os.path.exists(_firma_path()):
+        abort(404)
+    return send_file(_firma_path(), mimetype="image/png")

@@ -56,13 +56,16 @@ def check_csrf():
             abort(400, "Token CSRF inválido. Recargue la página.")
 
 
-def act(fn, ok_msg, redirect_to):
-    """Ejecuta una acción de negocio con commit; ante BusinessError hace rollback y muestra el mensaje."""
+def act(fn, ok_msg, redirect_to, redirect_fn=None):
+    """Ejecuta una acción de negocio con commit; ante BusinessError hace rollback y muestra el mensaje.
+    redirect_fn(resultado) permite redirigir al objeto creado cuando la acción tiene éxito."""
     try:
         result = fn()
         db().commit()
         if ok_msg:
             flash(ok_msg if not callable(ok_msg) else ok_msg(result), "ok")
+        if redirect_fn:
+            return redirect(redirect_fn(result))
     except BusinessError as e:
         db().rollback()
         flash(str(e), "error")
@@ -153,6 +156,11 @@ def install(app):
         from ..services.customer_conditions import summary
         return summary(customer)
     app.jinja_env.globals["cond_cliente"] = cond_cliente
+
+    def doc_param(key, default=None):
+        from ..services.core import param
+        return param(key, default)
+    app.jinja_env.globals["doc_param"] = doc_param
     app.jinja_env.filters["d"] = fmt_date
     app.jinja_env.filters["n"] = fmt_num
 

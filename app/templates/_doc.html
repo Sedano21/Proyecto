@@ -1,0 +1,6 @@
+{# Membrete común de los documentos impresos (formatos del 13-oct: OV N° 1635389 y certificados N°CP2026-*):
+   logos de Corporación Productiva, Cosecha Andina y Cantaclaro en todos los documentos. #}
+{% macro membrete() %}<div class="doc-head"><img class="cp" src="{{ url_for('static', filename='img/logo_corporacion_productiva.png') }}" alt="Corporación Productiva SAC">
+<div class="marcas"><img src="{{ url_for('static', filename='img/logo_cosecha_andina.png') }}" alt="Cosecha Andina"><img src="{{ url_for('static', filename='img/logo_cantaclaro.png') }}" alt="Cantaclaro"></div></div>{% endmacro %}
+{% macro marca_agua() %}<img class="doc-wm" src="{{ url_for('static', filename='img/marca_agua_cosecha_andina.png') }}" alt="">{% endmacro %}
+{% macro pie() %}<div class="doc-foot">{% for l in doc_param('documentos_pie', []) %}{{ l }}<br>{% endfor %}</div>{% endmacro %}

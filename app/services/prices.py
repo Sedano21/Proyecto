@@ -197,11 +197,21 @@ def check_order_prices(order, user=None):
     p. ej. muestras comerciales) y alerta. Productos o clientes sin mínimo generan PRECIO_FALTANTE."""
     from . import alerts
     margen = float(param("margen_alerta_precio_pct", 0) or 0)
-    observadas, faltantes = [], []
+    from .costs import cost_for_line
+    observadas, faltantes, bajo_costo = [], [], []
     for l in order.lines:
         if not l.activa:
             continue
-        m, motivo = minimum_for(l.product, order.customer)
+        m0, _ = minimum_for(l.product, order.customer)
+        costo = cost_for_line(l, (m0 or {}).get("kg_saco") if m0 else None)
+        if costo is not None and (l.precio_unitario or 0) < costo - 1e-9 and l.precio_unitario:
+            # R4 (13-oct): ninguna venta por debajo del costo. El texto visible en la OV no muestra el costo.
+            observadas.append(f"{l.product_code}: precio de venta POR DEBAJO DEL COSTO")
+            bajo_costo.append(f"{l.product_code}: {l.precio_unitario:.4f} vs costo {costo:.4f}"
+                              f"{' por ' + l.um_venta.lower() if l.um_venta else ''}")
+        m, motivo = m0, _
+        if m is None:
+            m, motivo = minimum_for(l.product, order.customer)
         if m is None:
             l.precio_minimo = None
             l.precio_origen = "Sin precio mínimo: " + motivo
@@ -222,7 +232,7 @@ def check_order_prices(order, user=None):
         aprobada_igual = bool(order.aprobacion_precio) and order.aprobacion_precio.get("lineas") == observadas
         if not aprobada_igual:
             order.aprobacion_precio = {}
-            if param("retener_ov_bajo_minimo", True):
+            if param("retener_ov_bajo_minimo", True) or (bajo_costo and param("retener_ov_bajo_costo", True)):
                 order.retenida_precio = True
                 order.motivo_detencion = "Detenida por precio en el límite o bajo el mínimo: requiere confirmación comercial."
         if observadas != previas or not aprobada_igual:
@@ -241,6 +251,14 @@ def check_order_prices(order, user=None):
             if order.motivo_detencion.startswith("Detenida por precio"):
                 order.motivo_detencion = ""
         alerts.close_by_system(key, "Precios sobre el mínimo de lista")
+    ckey = f"COSTO:{order.id}"
+    if bajo_costo:
+        alerts.emit("OV_PRECIO_BAJO_COSTO", f"OV {order.numero}{tipo}: precio por debajo del costo",
+                    f"Cliente {order.customer.nombre}, vendedor {order.vendedor_nombre or '-'}. " + "; ".join(bajo_costo)
+                    + (" La OV queda detenida hasta la confirmación del Coordinador o Jefe Comercial."
+                       if order.retenida_precio else ""), "SalesOrder", order.id, dedup_key=ckey, creado_por=user)
+    else:
+        alerts.close_by_system(ckey, "Precios sobre el costo")
     if faltantes:
         alerts.emit("PRECIO_FALTANTE", f"OV {order.numero}: falta precio mínimo para validar",
                     "; ".join(dict.fromkeys(faltantes)) + ". Complete la lista de precios o asigne el canal del cliente.",
@@ -265,6 +283,7 @@ def approve_price(order, user, comentario):
         order.motivo_detencion = ""
     from . import alerts
     alerts.close_by_system(f"PRECIO:{order.id}", f"Confirmada por {user.nombre}: {comentario}")
+    alerts.close_by_system(f"COSTO:{order.id}", f"Confirmada por {user.nombre}: {comentario}")
     audit(user, "OV_PRECIO_CONFIRMADO", "SalesOrder", order.numero, order.aprobacion_precio)
     from .stock import _after_evaluation
     _after_evaluation(order, user)

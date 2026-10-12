@@ -64,7 +64,7 @@ PERMISSIONS = [
     ("dashboard.ver", "Ver tablero de indicadores", "Gerencial", "consulta"),
     ("ov.ver", "Consultar órdenes de venta", "Comercial", "consulta"),
     ("ov.crear", "Registrar OV", "Comercial", "edicion"),
-    ("ov.modificar", "Modificar OV directamente", "Comercial", "edicion"),
+    ("ov.modificar", "Modificar OV directamente (solo Ejecutivo de cuenta, Coordinador y Jefe Comercial)", "Comercial", "exclusivo"),
     ("ov.solicitar_modificacion", "Solicitar modificación de OV (requiere autorización)", "Comercial", "edicion"),
     ("ov.autorizar_modificacion", "Autorizar modificación de OV solicitada por Asistente", "Comercial", "aprobacion"),
     ("ov.cancelar", "Cancelar OV", "Comercial", "aprobacion"),
@@ -74,6 +74,8 @@ PERMISSIONS = [
     ("ov.importar", "Importar OV desde exportación SAP", "Comercial", "edicion"),
     ("precios.ver", "Consultar listas de precios", "Comercial", "consulta"),
     ("precios.editar", "Cargar y modificar listas de precios mínimos y su vigencia (solo Jefe Comercial)", "Comercial", "exclusivo"),
+    ("costos.ver", "Ver costos de la empresa y el análisis costo vs mercado", "Comercial", "exclusivo"),
+    ("costos.cargar", "Cargar costos y precios de mercado", "Comercial", "exclusivo"),
     ("ov.aprobar_precio", "Liberar una OV retenida por precio en el límite o bajo el mínimo", "Comercial", "exclusivo"),
     ("clientes.canal", "Asignar canal de precios y cargar condiciones de clientes (penalidades, lotes)", "Comercial", "exclusivo"),
     ("stock.ver", "Consultar stock y reservas", "Almacén", "consulta"),
@@ -152,7 +154,7 @@ def _p(perms, fuente=f"{IF} §3 (alcance por área) – propuesto"):
 
 
 ROLE_PERMISSIONS = {
-    "GERENCIA_GENERAL": _d([p for p, _, _, t in PERMISSIONS if t != "exclusivo"] + ["precios.ver"],
+    "GERENCIA_GENERAL": _p(["costos.ver"], "Respuestas del 13-oct (R4): visibilidad del costo – propuesto") + _d([p for p, _, _, t in PERMISSIONS if t != "exclusivo"] + ["precios.ver"],
                            f"{IF} §15; {Q4}: acceso completo, incluso aprobar en nombre de otros roles "
                            f"(salvo los permisos exclusivos: precios y venta bajo mínimo del Jefe Comercial, {R13} Q11; "
                            f"configuración de Sistemas, {R14})"),
@@ -164,19 +166,23 @@ ROLE_PERMISSIONS = {
         ["ov.aprobar_parcial"], f"{Q3}: aprueba Gerencia de Operaciones o Jefatura de Logística") + _d(
         ["compras.autorizar_bajo_observacion"], f"{IF} §10.8") + _p(
         ["compras.aprobar_mayor_volumen"], f"{IF} §7 – participación de GO requiere validación"),
-    "GERENTE_COMERCIAL": _p(["precios.ver", "dashboard.ver", "ov.ver", "stock.ver", "distribucion.ver", "alertas.ver", "alertas.gestionar", "export.datos"]),
-    "JEFE_VENTAS": _d(["precios.ver", "precios.editar"], f"{R13} Q11: único con autorización para modificar precios") + _d(
+    "GERENTE_COMERCIAL": _p(["costos.ver"], "Respuestas del 13-oct (R4): visibilidad del costo – propuesto") + _p(["precios.ver", "dashboard.ver", "ov.ver", "stock.ver", "distribucion.ver", "alertas.ver", "alertas.gestionar", "export.datos"]),
+    "JEFE_VENTAS": _d(["precios.ver", "precios.editar"], f"{R13} Q11: único con autorización para modificar precios") + _p(
+        ["costos.ver", "costos.cargar"], "Respuestas del 13-oct (R4, R5): costos y precios de mercado los gestiona Comercial – propuesto") + _d(
+        ["ov.modificar"], f"Observaciones al demo v0.5 (13-oct): modificar OV solo Ejecutivo de cuenta, Coordinador y Jefe Comercial") + _d(
         ["ov.aprobar_precio"], f"{R14}: la OV bajo el mínimo queda detenida hasta la confirmación del Coordinador Comercial o Jefe Comercial") + _d(
         ["clientes.canal"], f"{R14}: el Jefe Comercial asigna y traslada clientes de canal") + _p(["dashboard.ver", "ov.ver", "ov.crear", "ov.modificar", "ov.importar", "stock.ver", "distribucion.ver", "alertas.ver", "alertas.gestionar", "export.datos"]) + _d(
         ["ov.cancelar", "ov.autorizar_modificacion"], f"{IF} §5") + _d(
         ["ov.renegociar"], f"{IF} §4.5, §5 (Comercial participa)"),
-    "COORD_VENTAS": _d(["ov.aprobar_precio"], f"{R14}: confirma OV detenida por precio (Coordinador Comercial)") + _p(["precios.ver", "dashboard.ver", "ov.ver", "ov.crear", "ov.modificar", "ov.importar", "stock.ver", "distribucion.ver", "alertas.ver", "alertas.gestionar", "export.datos"]) + _d(
+    "COORD_VENTAS": _d(["ov.aprobar_precio"], f"{R14}: confirma OV detenida por precio (Coordinador Comercial)") + _p(
+        ["costos.ver"], "Respuestas del 13-oct (R4): confirma OV bajo costo – propuesto") + _d(
+        ["ov.modificar"], f"Observaciones al demo v0.5 (13-oct): modificar OV solo Ejecutivo de cuenta, Coordinador y Jefe Comercial") + _p(["precios.ver", "dashboard.ver", "ov.ver", "ov.crear", "ov.modificar", "ov.importar", "stock.ver", "distribucion.ver", "alertas.ver", "alertas.gestionar", "export.datos"]) + _d(
         ["ov.cancelar", "ov.autorizar_modificacion"], f"{IF} §5") + _d(
         ["ov.renegociar"], f"{IF} §4.5, §5 (Comercial participa)"),
     "ASIST_VENTAS": _d(["ov.crear"], "Diagrama AS-IS L5 (Asistente comercial ingresa la OV)") + _d(
         ["ov.solicitar_modificacion"], f"{IF} §5 (modifica con autorización)") + _d(
         ["ov.importar"], f"{TOBE}: el asistente carga el consolidado de OV emitidas y cambios") + _p(["ov.ver", "stock.ver", "alertas.ver"]),
-    "EJECUTIVO_VENTAS": _p(["ov.ver", "ov.crear", "ov.modificar", "stock.ver", "distribucion.ver", "alertas.ver", "alertas.gestionar"]) + _d(
+    "EJECUTIVO_VENTAS": _d(["ov.modificar"], f"Observaciones al demo v0.5 (13-oct): modificar OV solo Ejecutivo de cuenta, Coordinador y Jefe Comercial") + _p(["ov.ver", "ov.crear", "stock.ver", "distribucion.ver", "alertas.ver", "alertas.gestionar"]) + _d(
         ["ov.autorizar_modificacion"], f"{IF} §5 (vendedor responsable autoriza; solo sus OV)") + _d(
         ["ov.renegociar"], f"{IF} §5 (Comercial puede renegociar)"),
     "COORD_ALMACEN": _p(_VIEW_OPS + ["stock.cargar", "stock.autorizar_carga", "stock.cambiar_estado", "stock.conteo",
@@ -315,6 +321,16 @@ ALERT_TYPES = [
      f"{R13} Q11; {R14}: se alerta y queda detenida hasta la confirmación del Coordinador o Jefe Comercial",
      "Línea de OV (incluidas las muestras comerciales) con precio igual o menor al mínimo de lista del canal. También se "
      "avisa al vendedor de la OV.", True),
+    ("OV_PRECIO_BAJO_COSTO", "OV detenida: precio de venta por debajo del costo", "Comercial", "Cambios de OV", "ALTA",
+     ["JEFE_VENTAS", "COORD_VENTAS", "GERENTE_COMERCIAL"], "DEFINIDO",
+     "Respuestas del 13-oct (R4): 'validar que ninguna venta se realice por debajo' del costo",
+     "Línea de OV con precio menor al costo vigente del artículo en la unidad de venta. La OV queda detenida hasta la "
+     "confirmación del Coordinador o Jefe Comercial. El mensaje no muestra el costo a quien no tiene 'costos.ver'.", True),
+    ("COSTO_SOBRE_MERCADO", "Costo de la empresa sobre o cerca del precio de mercado", "Comercial", "Indicadores", "MEDIA",
+     ["JEFE_VENTAS", "GERENTE_COMERCIAL"], "DEFINIDO",
+     "Respuestas del 13-oct (R4): comparar automáticamente contra costos de mercado y tendencias",
+     "Comparación automática diaria: costo por kg del artículo vs último precio mayorista del producto base, con "
+     "tendencia y recomendación.", True),
     ("PRECIO_FALTANTE", "Producto o cliente sin precio mínimo", "Comercial", "Cambios de OV", "MEDIA", ["JEFE_VENTAS"], "DEFINIDO",
      f"{R14}: 'el sistema debe botar una alerta y en base a eso ir completando'",
      "Una OV trae un producto sin precio mínimo para el canal del cliente, o un cliente sin canal de precios asignado.", True),
@@ -482,16 +498,17 @@ PARAMS = [
     ("umbral_alerta_preparacion_pct", 80, "int", "Almacén", "Avance de preparación que dispara la alerta.", "DEFINIDO", f"{IF} §14"),
     ("orden_prioridad", ["fecha_compromiso", "penalidad", "completitud", "urgencia"], "list", "Almacén",
      "Criterios de prioridad en el orden aplicado. 'penalidad': a igual fecha, primero el cliente con penalidades más "
-     "severas (lista de clientes con penalidades). El orden de desempate es propuesto.",
-     "PROPUESTO", f"{IF} §1, §5, §12.1; {R14} (lista de clientes con penalidades para priorizar)"),
+     "severas (lista de clientes con penalidades). Validado el 13-oct (R3).",
+     "DEFINIDO", f"{IF} §1, §5, §12.1; {R14} (lista de clientes con penalidades para priorizar)"),
     ("peso_penalidad", {"RETIRO_PROVEEDOR": 5, "FECHA_ENTREGA": 4, "FILL_RATE": 4, "ENTREGA_PARCIAL": 3,
                         "RUPTURA_STOCK": 3, "VENTANA_HORARIA": 2, "PESO": 2, "PALETIZADO": 2, "DOCUMENTOS": 1,
                         "NO_CONFORMIDADES": 1}, "dict", "Almacén",
-     "Peso de cada tipo de penalidad del cliente para la prioridad (suma). Valores propuestos para validar con Comercial.",
-     "PROPUESTO", f"{R14}"),
-    ("aplicar_vida_util_cliente", False, "bool", "Almacén",
-     "Si 'vida útil 12 meses' de la lista de clientes significa vida útil RESTANTE mínima al despacho, activar: la reserva "
-     "excluye lotes con menos meses de vida. Pendiente de confirmar.", "PENDIENTE", f"{R14}"),
+     "Peso de cada tipo de penalidad del cliente para la prioridad (suma). Validados el 13-oct (R3).",
+     "DEFINIDO", f"{R14}; respuesta del 13-oct (R3)"),
+    ("aplicar_vida_util_cliente", True, "bool", "Almacén",
+     "La vida útil de la lista de clientes es la vida útil RESTANTE mínima al despacho (meses calendario; admite excepciones "
+     "como '6 MESES HARINAS'): la reserva excluye lotes que no la cumplen.", "DEFINIDO",
+     f"{R14}; respuesta del 13-oct (R1)"),
     ("almacen_transito_produccion", "ALM-003", "str", "Producción",
      "Almacén virtual de tránsito donde Producción deja el producto terminado hasta la validación de Almacén.",
      "DEFINIDO", f"{R12} Q5"),
@@ -623,9 +640,58 @@ PARAMS = [
     ("empresa_ruc", "20517540341", "str", "Certificados", "RUC del emisor (certificados).", "DEFINIDO", "Certificados N°CP2026-*"),
     ("autorizacion_sanitaria", "Nº000502- MIDAGRI-SENASA-LIMA CALLAO", "str", "Certificados",
      "Autorización sanitaria (los modelos muestran 'MIDAGRI' y 'MINAGRI'; confirmar).", "PENDIENTE", "Certificados N°CP2026-MP276 y PT3756"),
+    ("margen_alerta_costo_mercado_pct", 0, "float", "Comercial",
+     "Alerta cuando el precio de mercado supera al costo por kg en menos de este % (0 = solo si el costo supera al mercado).",
+     "PROPUESTO", "Respuestas del 13-oct (R4)"),
+    ("tendencia_mercado_umbral_pct", 5, "float", "Comercial",
+     "Variación del precio de mercado (último vs promedio de 90 días) a partir de la cual se considera alza o baja.",
+     "PROPUESTO", "Respuestas del 13-oct (R4: tendencias)"),
+    ("antiguedad_max_precio_mercado_dias", 45, "int", "Comercial",
+     "Antigüedad máxima del precio de mercado antes de recomendar su actualización.", "PROPUESTO", "Respuestas del 13-oct (R5)"),
+    ("retener_ov_bajo_costo", True, "bool", "Comercial",
+     "La OV con precio menor al costo queda detenida hasta la confirmación del Coordinador o Jefe Comercial.", "DEFINIDO",
+     "Respuestas del 13-oct (R4): ninguna venta por debajo del costo"),
     ("series_certificado", {"PT": "PT", "MQ": "PT", "AB": "PT", "MP": "MP", "GR": "MP"}, "dict", "Certificados",
-     "Serie de numeración por tipo de artículo (CP{año}-{serie}{correlativo}). La serie 'CA' existe en los modelos pero su criterio no está documentado.",
-     "PENDIENTE", "Certificados N°CP2026-PT3756 / MP276 / CA0764"),
+     "Tipo/serie de certificado por tipo de artículo (CP{año}-{serie}{correlativo}). Tipos con formato propio: PT, MP y CA.",
+     "DEFINIDO", "Certificados N°CP2026-PT3756 / MP276 / CA0764; respuesta 13-oct (diversos tipos de certificado)"),
+    ("tipo_certificado_por_marca", {"COSECHA ANDINA": "CA"}, "dict", "Certificados",
+     "Marca que usa un tipo de certificado propio (prevalece sobre el tipo de artículo). Calidad puede regenerar un borrador con otro tipo.",
+     "PROPUESTO", "Certificado N°CP2026-CA0764 (marca COSECHA ANDINA); criterio de la serie CA no documentado"),
+    ("humedad_maxima_por_tipo", {"PT": 15, "CA": 21}, "dict", "Certificados",
+     "Especificación de humedad máxima (%) que se propone en el certificado según su tipo; editable en el borrador.",
+     "PROPUESTO", "Certificados PT3756 (MAX. 15%) y CA0764 (MÁX. 21 %); MP276 no muestra especificación"),
+    ("referencias_ntp", {"FRIJOL": "NTP-205.015.2015 LEGUMINOSAS DE GRANO SECO. Frijol",
+                         "LENTEJA": "NTP-205.022.2014 LEGUMINOSA. Lenteja"}, "dict", "Certificados",
+     "Norma técnica de referencia por producto base (se busca la palabra en el producto declarado). Productos sin norma: Calidad la completa.",
+     "PROPUESTO", "Certificados PT3756 (frijol) y MP276 (lenteja)"),
+    ("certificado_firmante", {"nombre": "Ing. Liesbet Cordova Garcia", "cargo": "Jefe de Aseguramiento de Calidad"}, "dict",
+     "Certificados", "Firmante del certificado. La imagen de la firma no se guarda en el repositorio: la carga Sistemas en el servidor "
+     "y se imprime solo en certificados aprobados.", "DEFINIDO", "Certificados N°CP2026-PT3756 / MP276 / CA0764"),
+    ("documentos_pie", ["Av. Aviación Nº1560 - La Victoria - Lima / Telf: 303-6446 / Cel.: 998 256 589 / 984 173 183",
+                        "E-mail: ventas1@corporacionproductiva.com / ventas2@corporacionproductiva.com",
+                        "ventas3@corporacionproductiva.com / gvila@corporacionproductiva.com",
+                        "www.corporacionproductiva.com / www.cosechaandina.com"], "list", "Documentos",
+     "Pie de página de los documentos impresos (certificado).", "DEFINIDO", "Certificados N°CP2026-* (membrete)"),
+    ("empresa_razon_social_completa", "CORPORACION PRODUCTIVA SOCIEDAD ANONIMA CERRADA", "str", "Documentos",
+     "Razón social en la cabecera de la OV.", "DEFINIDO", "Formato de OV N° 1635389 (foto, 13-oct)"),
+    ("empresa_direccion", ["AV. AVIACION NRO. 1560 (FRENTE AL GRIFO PRIMAX)", "LIMA - LIMA - LA VICTORIA"], "list", "Documentos",
+     "Dirección del emisor en la cabecera de la OV y guía.", "DEFINIDO", "Formato de OV N° 1635389 (foto, 13-oct)"),
+    ("ov_cuentas_bancarias", [
+        {"banco": "BBVA", "soles": "0011-0163-37-0100043731 CÓDIGO DE RECAUDO (6721)", "dolares": "0011-0163-0100043758"},
+        {"banco": "BCP", "soles": "194-2211886-0-81", "dolares": "194-2190284-1-89"},
+        {"banco": "Banco de la Nación", "soles": "00-098-054618 (CUENTA DE DETRACCIONES)", "dolares": "-"},
+        {"banco": "Scotiabank", "soles": "000-2171108", "dolares": "000-5130001"},
+        {"banco": "BanBif", "soles": "7000729570", "dolares": "7000729589"},
+        {"banco": "Interbank", "soles": "200-3004622764", "dolares": "200-3004622771"}], "list", "Documentos",
+     "Cuentas bancarias impresas en la OV.", "DEFINIDO", "Formato de OV N° 1635389 (foto, 13-oct)"),
+    ("ov_instrucciones_pago", ["Instrucciones de pago para clientes de provincia:",
+                               "Realizar el depósito a nuestra cuenta con el código de recaudo \"6721\".",
+                               "Si paga por aplicativo, seleccionar \"Pago de servicios\" y colocar como nombre de empresa Corporación Productiva.",
+                               "Detracciones: Realizar el abono únicamente a nuestra cuenta del Banco de la Nación."], "list", "Documentos",
+     "Instrucciones de pago impresas en la OV.", "DEFINIDO", "Formato de OV N° 1635389 (foto, 13-oct)"),
+    ("ov_servicios_asistencia", [{"telefono": "+51 959 393 886", "area": "Asistencia Logistica"},
+                                 {"telefono": "+51 971 442 700", "area": "Asistencia Calidad"}], "list", "Documentos",
+     "Servicios de asistencia impresos en la OV.", "DEFINIDO", "Formato de OV N° 1635389 (foto, 13-oct)"),
     ("muestreo_tiempo_min_por_lote", 30, "int", "Calidad", "Tiempo orientativo de muestreo por lote en reempaque.", "AS-IS",
      f"{IF} §9.2 (orientativo)"),
 ]

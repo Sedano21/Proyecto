@@ -1,6 +1,6 @@
 {% extends "base.html" %}{% from "_m.html" import b, bar, csrf, post %}
 {% block content %}
-<h1>OV {{ o.numero }} {{ b(o.estado) }} {{ b(o.estado_stock) }} {% if o.urgente %}<span class="b ALTA">URGENTE</span>{% endif %}</h1>
+<h1>OV {{ o.numero }} {{ b(o.estado) }} {{ b(o.estado_stock) }} {% if o.urgente %}<span class="b ALTA">URGENTE</span>{% endif %} <a class="btn sec" href="{{ url_for('com.order_print', oid=o.id) }}">Imprimir OV</a></h1>
 <div class="grid g2">
 <div class="card"><table class="kv">
 <tr><td>Cliente</td><td>{{ o.customer.nombre }} ({{ o.customer.ruc }}) · {{ o.customer.grupo }}</td></tr>

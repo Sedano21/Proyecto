@@ -95,7 +95,7 @@ def test_q11_productos_o_clientes_sin_precio_alertan_para_completar(s, U):
     s.add(c)
     s.flush()
     o = osvc.create_order(U("coord.ventas"), "P-2", c.id, date.today() + timedelta(days=3),
-                          [{"product_code": "PT-905", "cantidad": 5, "precio_unitario": 1}])
+                          [{"product_code": "PT-905", "cantidad": 5, "precio_unitario": 999}])
     assert o.lines[0].precio_minimo is None and not o.retenida_precio
     assert "canal" in alerts_of(s, "PRECIO_FALTANTE", o.id)[0].mensaje
     from app.services.core import has_perm
