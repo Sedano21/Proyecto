@@ -69,17 +69,40 @@ def add_cost(sh, user, concepto, monto, moneda="USD", tipo_cambio=None, document
     db().add(c)
     db().flush()
     audit(user, "IMPORTACION_COSTO", "ImportShipment", sh.id, {"concepto": c.concepto, "monto": monto, "moneda": moneda})
+    if sh.valor_mercaderia:
+        from .costs import check_quote_impact
+        check_quote_impact(sh.product, user)
     return c
+
+
+def set_goods_value(sh, user, valor, moneda="USD", tipo_cambio=None):
+    """Valor cotizado de la mercadería (FOB/CFR/CIF según la cotización de Importaciones)."""
+    _req(user)
+    if valor is None or valor <= 0:
+        raise BusinessError("Indique el valor de la mercadería.")
+    moneda = (moneda or "USD").upper()
+    if moneda == "USD" and not tipo_cambio:
+        raise BusinessError("Indique el tipo de cambio.")
+    sh.valor_mercaderia, sh.moneda_mercaderia = valor, moneda
+    sh.tipo_cambio_mercaderia = tipo_cambio if moneda == "USD" else None
+    audit(user, "IMPORTACION_VALOR", "ImportShipment", sh.id, {"valor": valor, "moneda": moneda, "tc": tipo_cambio})
+    from .costs import check_quote_impact
+    check_quote_impact(sh.product, user)
 
 
 def cost_summary(sh):
     total = sum(c.monto * (c.tipo_cambio or 1) if c.moneda == "USD" else c.monto for c in sh.costs)
     base = sh.cantidad_recibida or sh.cantidad
+    mercaderia = None
+    if sh.valor_mercaderia:
+        mercaderia = sh.valor_mercaderia * ((sh.tipo_cambio_mercaderia or 1) if sh.moneda_mercaderia == "USD" else 1)
     por_concepto = {}
     for c in sh.costs:
         por_concepto[c.concepto] = por_concepto.get(c.concepto, 0) + (c.monto * (c.tipo_cambio or 1) if c.moneda == "USD" else c.monto)
+    puesto = (mercaderia or 0) + total
     return {"total_pen": round(total, 2), "por_unidad": round(total / base, 4) if base else None, "por_concepto": por_concepto,
-            "base": base}
+            "base": base, "mercaderia_pen": round(mercaderia, 2) if mercaderia is not None else None,
+            "costo_puesto_unidad": round(puesto / base, 4) if base and mercaderia is not None else None}
 
 
 def change_arrival(sh, user, nueva, motivo):

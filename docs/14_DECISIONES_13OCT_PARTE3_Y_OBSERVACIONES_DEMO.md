@@ -98,3 +98,14 @@ marcados como tales.
 11. **Fumigación:** ¿la fecha se programa manualmente o existe una frecuencia por producto (días desde el ingreso)?
 12. **Tiempo de respuesta de Comercial (reempaque):** se mide desde que la OV queda con faltante hasta la primera
     decisión comercial registrada. ¿Es la definición correcta?
+
+## 5. Decisiones del 14-oct
+
+| Decisión | Implementación | Estado |
+|---|---|---|
+| **Plazo máximo de reserva: 7 días** (espacio físico del almacén) | Parámetro `plazo_max_reserva_dias` = 7. Una OV cuya fecha comprometida está a más de 7 días **no aparta stock**: queda «DIFERIDA», con la cobertura proyectada calculada con el stock libre (y alerta de faltante proyectado para anticipar compras o producción). La tarea diaria la reserva automáticamente al entrar en el plazo, por orden de prioridad. Si se posterga la fecha más allá del plazo, la reserva se libera. Las reservas con más de 7 días alertan `RESERVA_VENCIDA` (no se liberan solas porque el pedido puede estar en preparación). | ✅ |
+| **Compra de materia prima: siempre con Gerencia de Operaciones** | Parámetro `tipos_compra_requieren_go` = [MP]: toda compra de artículos MP requiere la aprobación de GO antes de generar la orden de compra, sin importar el volumen (las demás siguen la regla de mayor volumen). | ✅ (ver pregunta 13) |
+| **Comparar reportes de importación (internet y Estado) y cotizaciones de Importaciones y Compras nacionales con los precios** | En *Costos vs mercado*, sección **Impacto de cotizaciones**: cada cotización nacional (precio cotizado) y de importación (valor de la mercadería + costos asociados = costo puesto en almacén) se compara con el costo vigente, el precio mayorista, la referencia de importación (reportes cargados como precio de mercado tipo IMPORTACION) y el precio mínimo de lista; muestra la variación, el margen que quedaría sobre el precio mínimo, el impacto estimado en soles sobre la demanda de 90 días y si conviene importar o comprar en el país. Alerta `COTIZACION_IMPACTO` a Comercial, Compras, Importaciones y GO cuando el margen cae bajo el umbral o la cotización supera la referencia. | ✅ |
+
+13. **Granel (GR):** ¿la regla «materia prima siempre con Gerencia de Operaciones» incluye también los artículos granel (GR) o solo MP? Hoy aplica solo a MP; se cambia en Configuración.
+14. **Reservas vencidas:** ¿se deben liberar automáticamente al pasar los 7 días (si el pedido aún no está en preparación) o basta con la alerta?

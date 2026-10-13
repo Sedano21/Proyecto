@@ -21,7 +21,7 @@ th{background:#eef1f5;font-weight:600;font-size:12.5px;position:sticky;top:0}td.
 .b.ALTA,.b.err,.b.NO_CONFORME,.b.NO_UTILIZABLE,.b.DANADO,.b.SIN_STOCK,.b.RECHAZADA,.b.CANCELADA{background:var(--errbg);color:var(--err)}
 .b.MEDIA,.b.warn,.b.INCOMPLETA,.b.PENDIENTE_REVISION,.b.EN_FUMIGACION,.b.PENDIENTE,.b.PROPUESTO,.b.PROPUESTA{background:var(--warnbg);color:var(--warn)}
 .b.BAJA,.b.ok,.b.COMPLETA,.b.DISPONIBLE,.b.CONFORME,.b.CERRADA,.b.DEFINIDO,.b.ENTREGADA,.b.APROBADO,.b.APROBADA{background:var(--okbg);color:var(--ok)}
-.b.NUEVA,.b.info,.b.AS-IS,.b.DEMO,.b.EN_ATENCION,.b.ASIGNADA{background:var(--infobg);color:var(--info)}
+.b.NUEVA,.b.info,.b.DIFERIDA,.b.AS-IS,.b.DEMO,.b.EN_ATENCION,.b.ASIGNADA{background:var(--infobg);color:var(--info)}
 .flash{padding:8px 12px;border-radius:6px;margin-bottom:10px}.flash.ok{background:var(--okbg);color:var(--ok)}.flash.error{background:var(--errbg);color:var(--err)}.flash.info{background:var(--infobg);color:var(--info)}
 .note{background:var(--warnbg);border-left:4px solid var(--warn);padding:8px 12px;border-radius:4px;margin:8px 0;font-size:13px}
 .note.info{background:var(--infobg);border-color:var(--info)}

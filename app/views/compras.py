@@ -56,7 +56,8 @@ def purchase_detail(pid):
     cambios = list(db().execute(select(DateChange).where(DateChange.entidad == "COMPRA", DateChange.entidad_id == r.id)
                                 .order_by(DateChange.id)).scalars())
     whs = list(db().execute(select(Warehouse).order_by(Warehouse.prioridad)).scalars())
-    return render_template("purchase_detail.html", r=r, cambios=cambios, whs=whs, needs_go=psvc.needs_go_approval(r))
+    return render_template("purchase_detail.html", r=r, cambios=cambios, whs=whs, needs_go=psvc.needs_go_approval(r),
+                           go_motivo=psvc.go_reason(r))
 
 
 @bp.route("/reposicion", methods=["GET", "POST"])
@@ -110,6 +111,7 @@ def import_detail(sid):
             "fase_ok": lambda: isvc.complete_phase(ph, u, f_date("fecha_real")),
             "logistica": lambda: isvc.update_logistics(sh, u, f.get("contenedor", ""), f.get("tipo_contenedor", ""),
                                                        f.get("warehouse_code") or None),
+            "valor": lambda: isvc.set_goods_value(sh, u, f_float("valor", True), f.get("moneda", "USD"), f_float("tipo_cambio")),
             "costo": lambda: isvc.add_cost(sh, u, f.get("concepto", ""), f_float("monto", True), f.get("moneda", "USD"),
                                            f_float("tipo_cambio"), f.get("documento", "")),
             "recibir": lambda: isvc.receive(sh, u, f_float("cantidad", True), f.get("lote", "").strip(), f.get("warehouse_code"),

@@ -58,6 +58,9 @@ def run_checks(user=None, today=None):
     from .prices import check_validity
     out["listas_precio_por_vencer"] = check_validity(today)
     out["cargas_desactualizadas"] = check_upload_freshness()
+    from .stock import activate_deferred, check_expired_reservations
+    out["ov_reserva_activada"] = activate_deferred(user, today)
+    out["reservas_vencidas"] = check_expired_reservations(user, today)
     from .maps import check_active_routes
     out["rutas_trafico"] = check_active_routes(today)
     from .quality import fumigation_alerts

@@ -191,3 +191,114 @@ def check_market_alerts(user=None):
         else:
             alerts.close_by_system(key, "Costo bajo el precio de mercado")
     return n
+
+
+# ------------------------- impacto de cotizaciones (14-oct) ------------------
+def _por_kg(product, valor_um):
+    """Convierte un valor por UM del artículo a S/ por kg."""
+    if valor_um is None or product is None:
+        return None
+    if (product.um or "").upper().startswith("K"):
+        return valor_um
+    return valor_um / product.peso_kg if product.peso_kg else None
+
+
+def minimum_price_kg(product):
+    """Precio mínimo de lista por kg más bajo (granel por kg o el menor canal / peso de la presentación)."""
+    from ..models import PriceItem
+    s = db()
+    g = s.execute(select(PriceItem).where(PriceItem.lista == "GRANEL", PriceItem.vigente.is_(True),
+                                          PriceItem.product_code == product.code)).scalars().first()
+    if g is not None and g.precio_kg:
+        return g.precio_kg
+    ps = [i.precio for i in s.execute(select(PriceItem).where(PriceItem.lista == "GENERAL", PriceItem.vigente.is_(True),
+                                                                PriceItem.product_code == product.code)).scalars() if i.precio]
+    return _por_kg(product, min(ps)) if ps else None
+
+
+def _demanda_kg(product, dias=90):
+    from ..models import SalesHistory
+    desde = date.today() - timedelta(days=dias)
+    q = sum(h.cantidad for h in db().execute(select(SalesHistory).where(SalesHistory.product_code == product.code,
+                                                                         SalesHistory.fecha >= desde)).scalars())
+    return _por_kg(product, q) if q else None
+
+
+def quote_impact(product_codes=None):
+    """Para cada artículo con cotización (compras nacionales o importación) compara el nuevo costo con el costo vigente,
+    el precio de mercado (mayorista e importación: reportes del Estado o de internet) y el precio mínimo de lista, y
+    estima el impacto en soles sobre la demanda de los últimos 90 días."""
+    from ..models import ImportShipment, PurchaseRequest
+    from .imports import cost_summary
+    s = db()
+    cot = {}
+    for r in s.execute(select(PurchaseRequest).where(PurchaseRequest.precio.is_not(None),
+                                                     PurchaseRequest.estado != "ANULADA").order_by(PurchaseRequest.ts)).scalars():
+        cot[r.product_code] = cot.get(r.product_code, {})
+        cot[r.product_code]["nacional"] = (r, _por_kg(r.product, r.precio))
+    for sh in s.execute(select(ImportShipment).where(ImportShipment.valor_mercaderia.is_not(None)).order_by(ImportShipment.ts)).scalars():
+        cs = cost_summary(sh)
+        cot.setdefault(sh.product_code, {})["importacion"] = (sh, _por_kg(sh.product, cs["costo_puesto_unidad"]))
+    mp = list(s.execute(select(MarketPrice).order_by(MarketPrice.fecha)).scalars())
+    umbral = float(param("margen_minimo_reporte_pct", 10) or 10)
+    out = []
+    for code, fuentes in sorted(cot.items()):
+        if product_codes and code not in product_codes:
+            continue
+        p = s.get(Product, code)
+        if p is None:
+            continue
+        base = _base(p)
+        ref = {}
+        for tipo in ("MAYORISTA", "IMPORTACION"):
+            cand = [m for m in mp if m.tipo_precio == tipo and _match(base, [m.producto]) == m.producto]
+            if cand:
+                ref[tipo] = cand[-1]
+        actual = cost_per_kg(p)
+        minimo = minimum_price_kg(p)
+        demanda = _demanda_kg(p)
+        for origen, (doc, nuevo) in fuentes.items():
+            if nuevo is None:
+                continue
+            fila = {"code": code, "descripcion": p.descripcion, "origen": origen, "doc": doc, "nuevo_kg": round(nuevo, 4),
+                    "actual_kg": round(actual, 4) if actual is not None else None,
+                    "var_pct": round((nuevo - actual) / actual * 100, 1) if actual else None,
+                    "mayorista": ref.get("MAYORISTA"), "importacion_ref": ref.get("IMPORTACION"),
+                    "minimo_kg": round(minimo, 4) if minimo else None,
+                    "margen_min_pct": round((minimo - nuevo) / minimo * 100, 1) if minimo else None,
+                    "demanda_kg_90d": round(demanda, 1) if demanda else None, "impacto_soles": None, "recomendaciones": []}
+            if actual is not None and demanda:
+                fila["impacto_soles"] = round((nuevo - actual) * demanda, 2)
+            rec = fila["recomendaciones"]
+            if fila["margen_min_pct"] is not None and fila["margen_min_pct"] < umbral:
+                rec.append(f"Con este costo el margen sobre el precio mínimo de lista queda en {fila['margen_min_pct']} %: "
+                           "revisar la lista de precios antes de comprar.")
+            for tipo, m in ref.items():
+                if nuevo > m.precio_kg:
+                    rec.append(f"La cotización supera el precio {tipo.lower()} de referencia ({m.precio_kg:.2f} al {m.fecha:%d/%m/%Y}, "
+                               f"{m.fuente or m.mercado}): negociar o evaluar otra fuente.")
+            if fila["var_pct"] is not None and fila["var_pct"] >= float(param("tendencia_mercado_umbral_pct", 5) or 5):
+                rec.append(f"Sube el costo {fila['var_pct']:+.1f} % respecto al vigente"
+                           + (f" (≈ S/ {fila['impacto_soles']:,.0f} sobre la demanda de 90 días)." if fila["impacto_soles"] else "."))
+            if "nacional" in fuentes and "importacion" in fuentes and origen == "importacion":
+                nac = fuentes["nacional"][1]
+                if nac:
+                    mejor = "importación" if nuevo < nac else "compra nacional"
+                    rec.append(f"Comparación: importación S/ {nuevo:.2f}/kg vs nacional S/ {nac:.2f}/kg → conviene {mejor}.")
+            out.append(fila)
+    return out
+
+
+def check_quote_impact(product, user=None):
+    """Al registrar una cotización: alerta si deja el margen sobre el precio mínimo bajo el umbral o supera el mercado."""
+    from . import alerts
+    if product is None:
+        return
+    for f in quote_impact([product.code]):
+        key = f"COTIZACION_IMPACTO:{product.code}:{f['origen']}"
+        if f["recomendaciones"] and (f["margen_min_pct"] is not None and f["margen_min_pct"] < float(param("margen_minimo_reporte_pct", 10) or 10)
+                                     or any("supera el precio" in r for r in f["recomendaciones"])):
+            alerts.emit("COTIZACION_IMPACTO", f"{product.code}: impacto de la cotización ({f['origen']}) en precios",
+                        " ".join(f["recomendaciones"]), "Product", product.code, dedup_key=key, creado_por=user)
+        else:
+            alerts.close_by_system(key, "Cotización dentro de márgenes")

@@ -340,6 +340,9 @@ Restricción única: (user_id, type_code)
 | cantidad_recibida | FLOAT | sí |  |
 | lote_recibido | VARCHAR(60) | no |  |
 | diferencias | TEXT | no |  |
+| valor_mercaderia | FLOAT | sí |  |
+| moneda_mercaderia | VARCHAR(5) | no |  |
+| tipo_cambio_mercaderia | FLOAT | sí |  |
 | contenedor | VARCHAR(40) | no |  |
 | tipo_contenedor | VARCHAR(20) | no |  |
 | creado_por | INTEGER | sí | → users.id |

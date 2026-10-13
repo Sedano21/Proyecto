@@ -107,6 +107,9 @@ def quote(r, user, proveedor, cotizacion, precio=None, requiere_muestra=False):
     r.requiere_muestra = bool(requiere_muestra)
     r.mayor_volumen = is_mayor_volumen(r.cantidad, r.product, precio)
     check_max_cost(r, user)
+    if precio:
+        from .costs import check_quote_impact
+        check_quote_impact(r.product, user)
     if requiere_muestra:
         r.estado = "MUESTRA_EN_CALIDAD"
         r.resultado_muestra = ""
@@ -145,8 +148,19 @@ def evaluate_sample(r, user, aprobar, observacion):
     audit(user, f"COMPRA_MUESTRA_{r.resultado_muestra}", "PurchaseRequest", r.id, {"observacion": observacion})
 
 
+def go_reason(r):
+    """Motivo por el que la compra requiere Gerencia de Operaciones: materia prima (siempre, decisión del 14-oct) o
+    mayor volumen (IF §7)."""
+    p = r.product
+    if p is not None and (p.tipo or r.product_code[:2]) in (param("tipos_compra_requieren_go", ["MP"]) or []):
+        return "materia prima"
+    if r.mayor_volumen and bool(param("mayor_volumen_requiere_go", True)):
+        return "mayor volumen"
+    return ""
+
+
 def needs_go_approval(r):
-    return r.mayor_volumen and bool(param("mayor_volumen_requiere_go", True)) and not r.aprobado_gerencia_por
+    return bool(go_reason(r)) and not r.aprobado_gerencia_por
 
 
 def request_go_approval(r, user):
@@ -154,8 +168,10 @@ def request_go_approval(r, user):
     if not needs_go_approval(r):
         raise BusinessError("La compra no requiere aprobación de Gerencia de Operaciones.")
     r.estado = "PENDIENTE_APROBACION"
-    alerts.emit("COMPRA_APROBACION_GERENCIA", f"Aprobar compra de mayor volumen #{r.id}",
-                f"{r.product_code} × {r.cantidad:g} (umbral {param('umbral_mayor_volumen')}). Proveedor {r.proveedor}.",
+    motivo = go_reason(r)
+    alerts.emit("COMPRA_APROBACION_GERENCIA", f"Aprobar compra de {motivo} #{r.id}",
+                f"{r.product_code} × {r.cantidad:g}" + (f" (umbral {param('umbral_mayor_volumen')})" if motivo == "mayor volumen" else "")
+                + f". Proveedor {r.proveedor}. Precio {r.precio if r.precio is not None else '-'}.",
                 "PurchaseRequest", r.id, dedup_key=f"COMPRA_GO:{r.id}", creado_por=user)
 
 
@@ -180,7 +196,7 @@ def generate_order(r, user, numero_oc, fecha_prevista, warehouse_code):
     if r.requiere_muestra and r.resultado_muestra != "APROBADA":
         raise BusinessError("La muestra debe estar aprobada por Calidad.")
     if needs_go_approval(r):
-        raise BusinessError("Compra de mayor volumen: requiere aprobación de Gerencia de Operaciones.")
+        raise BusinessError(f"Compra de {go_reason(r)}: requiere aprobación de Gerencia de Operaciones.")
     if not numero_oc.strip() or not fecha_prevista:
         raise BusinessError("Indique número de orden y fecha prevista de recepción.")
     r.numero_oc = numero_oc.strip()

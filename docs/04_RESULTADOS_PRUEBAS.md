@@ -281,7 +281,7 @@ Hallazgo corregido durante esta prueba: la primera versión de la deduplicación
 
 ## Versión 0.6 (13-oct, tercera parte y observaciones al demo v0.5)
 
-- **140 pruebas automatizadas** en SQLite (incluye `test_respuestas_13oct_c.py`, 15 pruebas: formatos con logos, tipos
+- **146 pruebas automatizadas** en SQLite (6 de las decisiones del 14-oct en `test_decisiones_14oct.py`) (incluye `test_respuestas_13oct_c.py`, 15 pruebas: formatos con logos, tipos
   de certificado, vida útil en meses, RUC, venta bajo costo, costo vs mercado; y `test_observaciones_demo_v05.py`,
   20 pruebas: cita 24 h, lugar de entrega, venta por saco, ficha y maestro de clientes, informes, traslado con llegada,
   plan vs liquidación, parte programado, desmedro como merma, fumigación 7/3/0, costo máximo, importación con costos,

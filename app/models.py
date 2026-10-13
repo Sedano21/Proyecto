@@ -722,6 +722,10 @@ class ImportShipment(Base):
     cantidad_recibida: Mapped[float | None] = mapped_column(Float, nullable=True)
     lote_recibido: Mapped[str] = mapped_column(String(60), default="")
     diferencias: Mapped[str] = mapped_column(Text, default="")
+    # cotización / valor de la mercadería (para el costo puesto en almacén y el análisis de impacto en precios)
+    valor_mercaderia: Mapped[float | None] = mapped_column(Float, nullable=True)
+    moneda_mercaderia: Mapped[str] = mapped_column(String(5), default="USD")
+    tipo_cambio_mercaderia: Mapped[float | None] = mapped_column(Float, nullable=True)
     contenedor: Mapped[str] = mapped_column(String(40), default="")  # número de contenedor
     tipo_contenedor: Mapped[str] = mapped_column(String(20), default="")  # 20' / 40' / 40' HC / carga suelta
     creado_por: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)

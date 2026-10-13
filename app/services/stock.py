@@ -184,11 +184,106 @@ def release_order(order, motivo):
     return n
 
 
-def evaluate_order(order, user=None, motivo="CREACION"):
-    """Evalúa y reserva stock para una OV (IF §4.2-4.4, §6.3). Devuelve resumen por línea."""
+def reserve_from(order):
+    """Primer día en que se puede reservar stock para la OV: plazo máximo de reserva antes del despacho (14-oct:
+    7 días, por el espacio físico del almacén). None si el parámetro no está definido."""
+    dias = param("plazo_max_reserva_dias", 7)
+    if dias in (None, "") or order.fecha_compromiso is None:
+        return None
+    return order.fecha_compromiso - timedelta(days=int(dias))
+
+
+def is_deferred(order, hoy=None):
+    desde = reserve_from(order)
+    return desde is not None and (hoy or date.today()) < desde and order.estado in ("REGISTRADA", "EVALUADA")
+
+
+def _evaluate_deferred(order, user, motivo):
+    """OV con despacho más allá del plazo máximo de reserva: no aparta stock (libera lo que tuviera) y calcula la
+    cobertura proyectada con el stock libre para anticipar faltantes; se reserva sola al entrar al plazo."""
+    customer = order.customer
+    resumen = []
+    total_req = total_proj = 0.0
+    for line in order.lines:
+        for r in line.reservations:
+            if r.estado == "ACTIVA":
+                _release(r, f"Reserva diferida: la OV sale el {order.fecha_compromiso:%d/%m/%Y} (plazo máximo de reserva)")
+        if not line.activa:
+            continue
+        product = db().get(Product, line.product_code)
+        principales = [w.code for w in principal_warehouses(product)]
+        necesario = max(line.cantidad - line.despachado, 0)
+        libre = sum(free_qty(l) for l in lots_of(line.product_code, principales)
+                    if lot_usable(l, order.fecha_compromiso, customer)[0])
+        proy = min(libre, necesario)
+        total_req += necesario
+        total_proj += proy
+        resumen.append({"line_id": line.id, "producto": line.product_code, "solicitado": necesario, "reservado": 0,
+                        "proyectado": proy, "faltante": max(necesario - proy, 0), "almacenes": principales})
+    desde = reserve_from(order)
+    order.cobertura_unidades = round(100.0 * total_proj / total_req, 2) if total_req else 100.0
+    order.cobertura_lineas = round(100.0 * sum(1 for r in resumen if r["faltante"] <= 1e-9) / len(resumen), 2) if resumen else 100.0
+    order.estado_stock = "DIFERIDA"
+    order.evaluado_ts = now()
+    if order.estado == "REGISTRADA":
+        order.estado = "EVALUADA"
+    order.motivo_detencion = (f"Reserva diferida: se reserva automáticamente desde el {desde:%d/%m/%Y} (plazo máximo de "
+                              f"reserva {param('plazo_max_reserva_dias', 7)} días por espacio de almacén). Cobertura "
+                              f"proyectada con stock libre hoy: {order.cobertura_unidades}%.")
+    falt = [r for r in resumen if r["faltante"] > 1e-9]
+    if falt:
+        alerts.emit("OV_FALTANTE", f"Faltante proyectado en OV {order.numero} ({order.customer.nombre})",
+                    "Con el stock libre de hoy faltaría: " + "; ".join("%s %g" % (r["producto"], r["faltante"]) for r in falt)
+                    + f". La OV se reserva desde el {desde:%d/%m/%Y}; anticipe reposición o producción.", "SalesOrder",
+                    order.id, dedup_key=f"OV_FALTANTE:{order.id}", creado_por=user)
+    else:
+        alerts.close_by_system(f"OV_FALTANTE:{order.id}", "Sin faltante proyectado.")
+    db().flush()
+    audit(user, f"OV_EVALUADA_{motivo}", "SalesOrder", order.numero,
+          {"diferida_hasta": desde.isoformat(), "cobertura_proyectada": order.cobertura_unidades, "lineas": resumen})
+    from .distribution import sync_order_route
+    sync_order_route(order, user, False)
+    return resumen
+
+
+def activate_deferred(user=None, hoy=None):
+    """Tarea diaria: reserva las OV diferidas que ya entraron al plazo máximo de reserva (por prioridad)."""
+    hoy = hoy or date.today()
+    pend = [o for o in db().execute(select(SalesOrder).where(SalesOrder.estado_stock == "DIFERIDA")).scalars()
+            if not is_deferred(o, hoy) and o.estado not in ORDEN_ESTADOS_CERRADOS]
+    for o in sorted(pend, key=priority_key):
+        evaluate_order(o, user, "ACTIVACION_RESERVA", hoy=hoy)
+    return len(pend)
+
+
+def check_expired_reservations(user=None, hoy=None):
+    """Reservas activas con más días que el plazo máximo: se alerta para despachar o liberar (no se liberan solas:
+    el pedido puede estar en preparación)."""
+    hoy = hoy or date.today()
+    dias = param("plazo_max_reserva_dias", 7)
+    if dias in (None, ""):
+        return 0
+    lim = now() - timedelta(days=int(dias))
+    vencidas = {}
+    for r in db().execute(select(Reservation).where(Reservation.estado == "ACTIVA", Reservation.ts < lim)).scalars():
+        vencidas.setdefault(r.line.order, []).append(r)
+    for o, rs in vencidas.items():
+        alerts.emit("RESERVA_VENCIDA", f"OV {o.numero}: stock reservado hace más de {dias} días",
+                    f"{len(rs)} reserva(s) desde el {min(r.ts for r in rs):%d/%m/%Y} ocupan espacio en almacén "
+                    f"(fecha comprometida {o.fecha_compromiso:%d/%m/%Y}, estado {o.estado}). Despachar, reprogramar o liberar.",
+                    "SalesOrder", o.id, dedup_key=f"RESERVA_VENCIDA:{o.id}",
+                    extra_users=[o.vendedor_id] if o.vendedor_id else None)
+    return len(vencidas)
+
+
+def evaluate_order(order, user=None, motivo="CREACION", hoy=None):
+    """Evalúa y reserva stock para una OV (IF §4.2-4.4, §6.3). Devuelve resumen por línea. 'hoy' permite a la tarea
+    programada evaluar el plazo máximo de reserva con su fecha de referencia."""
     s = db()
     if order.estado in ORDEN_ESTADOS_CERRADOS:
         raise BusinessError(f"La OV {order.numero} está {order.estado}; no se evalúa.")
+    if is_deferred(order, hoy):
+        return _evaluate_deferred(order, user, motivo)
     tenia_reservas = any(line_reserved(l) > 0 for l in order.lines)
     customer = order.customer
     resumen = []

@@ -297,7 +297,7 @@ def costs():
                            sorted(analisis, key=lambda r: r["brecha_pct"] if r["brecha_pct"] is not None else 999)
                            if r["brecha_pct"] is not None], "%", title="Margen del mercado sobre el costo")
     return render_template("costs.html", analisis=analisis, costos=costos, mercado=mercado, tipo=tipo, productos=productos,
-                           sel=sel, graf=graf, brechas=brechas, serie=serie)
+                           sel=sel, graf=graf, brechas=brechas, serie=serie, impacto=csvc.quote_impact())
 
 
 # ------------------------------ ficha de cliente (13-oct) ------------------

@@ -1,7 +1,7 @@
 {% extends "base.html" %}{% from "_m.html" import b, csrf %}
 {% block content %}<h1>Compra #{{ r.id }} {{ b(r.estado) }}</h1>
 <div class="card"><table class="kv"><tr><td>Artículo</td><td>{{ r.product_code }} {{ r.product.descripcion }}</td></tr><tr><td>Cantidad / necesidad</td><td>{{ r.cantidad|n }} / {{ r.fecha_necesidad|d }}</td></tr>
-<tr><td>Origen</td><td>{{ r.origen }}</td></tr><tr><td>Mayor volumen</td><td>{{ 'Sí' if r.mayor_volumen else 'No' }}{% if needs_go %} – requiere aprobación de Gerencia de Operaciones{% endif %}{% if r.aprobado_gerencia_por %} – aprobada por GO{% endif %}</td></tr>
+<tr><td>Origen</td><td>{{ r.origen }}</td></tr><tr><td>Mayor volumen</td><td>{{ 'Sí' if r.mayor_volumen else 'No' }}{% if needs_go %} – requiere aprobación de Gerencia de Operaciones ({{ go_motivo }}){% endif %}{% if r.aprobado_gerencia_por %} – aprobada por GO{% endif %}</td></tr>
 <tr><td>Proveedor / precio</td><td>{{ r.proveedor }} {{ r.precio|n }}</td></tr><tr><td>Cotización / notas</td><td style="white-space:pre-wrap">{{ r.cotizacion }}</td></tr>
 <tr><td>Muestra</td><td>{{ 'Requiere' if r.requiere_muestra else 'No requiere' }} {{ b(r.resultado_muestra) }}</td></tr>
 <tr><td>OC / fecha prevista / almacén</td><td>{{ r.numero_oc }} / {{ r.fecha_prevista|d }} / {{ r.warehouse_code or '' }}</td></tr>
