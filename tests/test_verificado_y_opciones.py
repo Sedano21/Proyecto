@@ -84,3 +84,23 @@ def test_aprobar_presolicitud_desde_la_pantalla(app, s, U, new_order):
     assert s.get(Transfer, t.id).estado == "AUTORIZADO"
     assert re.search(r"no válida", c.post(f"/ov/{o.id}/opciones", data={"_csrf": tok, "tipo": "TRASLADO", "motivo": "xxxxxx"},
                                            follow_redirects=True).get_data(as_text=True))
+
+
+def test_generar_presolicitud_de_traslado_desde_opciones_y_ov_cerrada(app, s, U, new_order):
+    from app.services import options
+    o = new_order([("PT-901", 99999)])
+    s.commit()
+    ev = options.evaluate(o)
+    c_ops = [x for x in ev[0]["opciones"] if x["ruta"] == "C"]
+    assert c_ops and c_ops[0]["destino"]
+    antes = s.query(Transfer).filter_by(order_id=o.id).count()
+    cl = app.test_client()
+    tok, _ = login(cl, "coord.logistica")
+    r = cl.post(f"/ov/{o.id}/accion/traslado", data={"_csrf": tok, "volver": "opciones", "lot_id": c_ops[0]["lot_id"],
+                                                     "destino": c_ops[0]["destino"], "cantidad": 1, "observacion": "x"})
+    assert r.status_code == 302 and r.headers["Location"].endswith(f"/ov/{o.id}/opciones")
+    s.expire_all()
+    nuevo = s.query(Transfer).filter_by(order_id=o.id).order_by(Transfer.id.desc()).first()
+    assert s.query(Transfer).filter_by(order_id=o.id).count() == antes + 1 and nuevo.estado == "SOLICITADO"
+    o.estado = "ENTREGADA"
+    assert options.evaluate(o) == []

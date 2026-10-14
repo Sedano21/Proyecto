@@ -13,7 +13,10 @@
 <div class="tw"><table class="small"><tr><th>Ruta</th><th>Viable</th><th class="r">Cubre</th><th class="r">Plazo (días)</th><th>Disponible el</th><th>¿Cumple la fecha?</th><th>Vida útil restante</th><th>Detalle</th></tr>
 {% for x in it.opciones %}<tr {% if it.recomendada is sameas x %}style="background:var(--okbg)"{% endif %}><td><b>{{ x.ruta }}</b> {{ x.nombre }}{% if it.recomendada is sameas x %} <span class="b ok">recomendada</span>{% endif %}</td><td>{{ 'Sí' if x.viable else 'No' }}</td><td class="r">{{ x.cantidad|n }}{{ '' if x.cubre_todo else ' (parcial)' }}</td>
 <td class="r">{{ x.plazo if x.plazo is not none else '?' }}</td><td>{{ x.fecha|d if x.fecha else 'sin dato' }}</td><td>{% if x.cumple is none %}<span class="muted">sin dato</span>{% elif x.cumple %}Sí{% else %}<span class="b ALTA">No</span>{% endif %}</td>
-<td>{% if x.vida and x.vida.meses is not none %}<span class="{{ 'err' if x.vida.cumple is sameas false }}">{{ x.vida.meses }} meses{{ ' (exige ' ~ x.vida.exige ~ ')' if x.vida.exige }}</span>{% else %}-{% endif %}</td><td>{{ x.detalle }}</td></tr>
+<td>{% if x.vida and x.vida.meses is not none %}<span class="{{ 'err' if x.vida.cumple is sameas false }}">{{ x.vida.meses }} meses{{ ' (exige ' ~ x.vida.exige ~ ')' if x.vida.exige }}</span>{% else %}-{% endif %}</td><td>{{ x.detalle }}{% if x.ruta == 'C' and x.destino and (can('traslado.solicitar') or can('ov.decidir_alternativa')) %}
+<form class="inline" method="post" action="{{ url_for('com.order_action', oid=o.id, accion='traslado') }}">{{ csrf() }}<input type="hidden" name="volver" value="opciones">
+<input type="hidden" name="lot_id" value="{{ x.lot_id }}"><input type="hidden" name="destino" value="{{ x.destino }}"><input type="hidden" name="cantidad" value="{{ x.cantidad }}">
+<input type="hidden" name="observacion" value="Para OV {{ o.numero }} (panel de opciones)"><button class="small sec">Generar pre-solicitud a {{ x.destino }}</button></form>{% endif %}</td></tr>
 {% else %}<tr><td colspan="8" class="muted">Sin opciones evaluables.</td></tr>{% endfor %}</table></div>
 <div class="reco"><b>Recomendación del sistema:</b> {{ it.porque }}</div>
 <h4>Pre-solicitudes generadas para este producto</h4>
@@ -21,7 +24,7 @@
 {% for p in it.presolicitudes %}<tr><td>{{ rutas[p.ruta] }}</td><td>{{ p.tipo|capitalize }} #{{ p.id }}</td><td class="r">{{ p.cantidad|n }}</td><td>{{ b(p.estado) }}</td>
 <td>{% if p.pendiente %}<form method="post" class="row">{{ csrf() }}<input type="hidden" name="tipo" value="{{ p.tipo }}"><input type="hidden" name="id" value="{{ p.id }}"><input type="hidden" name="producto" value="{{ it.line.product_code }}">
 <div class="grow"><input name="motivo" required minlength="5" placeholder="¿Por qué se elige (o rechaza) esta opción?"></div><div><button name="accion" value="aprobar">Verificar y aprobar</button> <button class="sec" name="accion" value="rechazar">Rechazar</button></div></form>{% else %}<span class="muted">—</span>{% endif %}</td></tr>
-{% else %}<tr><td colspan="5" class="muted">Sin pre-solicitudes. Si elige otra ruta, regístrela desde la OV (alternativas ante faltante).</td></tr>{% endfor %}</table></div>
+{% else %}<tr><td colspan="5" class="muted">Sin pre-solicitudes. Si elige otra ruta, genérela desde la tabla de opciones (traslado) o desde la OV (alternativas ante faltante); la aprueba su responsable.</td></tr>{% endfor %}</table></div>
 {% else %}<div class="card muted">No hay cantidades pendientes de atender.</div>{% endfor %}
 {% if decs %}<div class="card"><h3>Decisiones registradas</h3><table class="small"><tr><th>Fecha</th><th>Usuario</th><th>Pre-solicitud</th><th>Resultado</th><th>Motivo</th><th>Recomendación del sistema en ese momento</th></tr>
 {% for d in decs %}<tr><td>{{ d.ts|d }}</td><td>{{ d.user.nombre if d.user }}</td><td>{{ d.detalle.pre_solicitud }} #{{ d.detalle.id }}</td><td>{{ b(d.estado) }}</td><td>{{ d.comentario }}</td><td>{{ d.detalle.resumen_opciones.recomendada or '-' }}</td></tr>{% endfor %}</table></div>{% endif %}

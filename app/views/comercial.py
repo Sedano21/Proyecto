@@ -209,6 +209,8 @@ def order_action(oid, accion):
     if accion not in actions:
         abort(404)
     fn, msg = actions[accion]
+    if f.get("volver") == "opciones":
+        back = url_for("com.order_options", oid=oid)
     return act(fn, msg, back)
 
 

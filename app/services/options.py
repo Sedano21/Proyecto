@@ -42,10 +42,11 @@ def evaluate(order, hoy=None):
     """Opciones por línea con faltante (o con stock aún sin reservar por estar pendiente de aprobación)."""
     from .production import material_requirements
     from .purchasing import lead_time_for
-    from .stock import (free_qty, line_reserved, lot_usable, lots_of, principal_warehouses,
+    from .stock import (ORDEN_ESTADOS_CERRADOS, free_qty, line_reserved, lot_usable, lots_of, principal_warehouses,
                         _sort_lots, alternatives_for_order)
     hoy = hoy or date.today()
-    s = db()
+    if order.estado in ORDEN_ESTADOS_CERRADOS + ("EN_RUTA",):
+        return []
     alts = {a["line"].id: a for a in alternatives_for_order(order)}
     out = []
     for line in order.lines:
@@ -71,6 +72,7 @@ def evaluate(order, hoy=None):
         for x in a["otros_almacenes"]:
             if x["apto"] and x["libre"] > 0:
                 ops.append({"ruta": "C", "viable": True, "cantidad": min(x["libre"], pendiente), "plazo": pt,
+                            "lot_id": x["lot"].id, "destino": principales[0] if principales else None,
                             "fecha": hoy + timedelta(days=pt or 0), "vida": _vida(x["lot"], order),
                             "detalle": f"Lote {x['lot'].lote} en {x['lot'].warehouse_code}"})
         # E) reempaque
@@ -128,7 +130,7 @@ def _recomendar(ops, pendiente, order):
     otras = [o for o in viables[1:] if o["ruta"] != r["ruta"]]
     if otras:
         partes.append("frente a " + "; ".join(f"{o['nombre']} ({o['plazo'] if o['plazo'] is not None else '?'} días)" for o in otras[:3]))
-    return r, ". ".join(partes) + "."
+    return r, "; ".join(partes) + "."
 
 
 def presolicitudes(order, product_code):
