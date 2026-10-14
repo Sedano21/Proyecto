@@ -13,6 +13,8 @@ from ..services import repack as rsvc
 from ..services import transfers as tsvc
 from ..services.core import BusinessError
 from ..services.stock import alternatives_for_order, line_reserved, priority_key
+from ..services import options as options_svc
+from ..services.customer_conditions import for_customer as cond_for, penalty_estimate
 from .common import act, f_bool, f_date, f_float, perm_required
 
 bp = Blueprint("com", __name__, url_prefix="/ov")
@@ -125,7 +127,35 @@ def order_detail(oid):
                            sin_peso=sin_peso, can_auth=osvc.can_authorize_change(g.user, o), prep=osvc.prep_progress(o),
                            saldos=saldos, aprobadores=osvc.partial_approvers(), pendientes_parcial=osvc.partial_pending_roles(o),
                            parcial_modo=str(param("parcial_modo", "CUALQUIERA")).upper(), presol=presol,
-                           horas=osvc.horas_cita())
+                           horas=osvc.horas_cita(), penal=penalty_estimate(o),
+                           vida=lambda lot: options_svc._vida(lot, o),
+                           hay_pendiente=o.estado not in ("CANCELADA", "DESPACHADA", "ENTREGADA") and any(
+                               l.activa and l.cantidad - l.despachado - line_reserved(l) > 1e-9 for l in o.lines))
+
+
+@bp.route("/<int:oid>/opciones", methods=["GET", "POST"])
+@perm_required("ov.ver")
+def order_options(oid):
+    """Opciones para atender la OV: información completa de la OV, todas las rutas evaluadas, la recomendación del
+    sistema y la aprobación de cada pre-solicitud con el motivo de la elección (decisión del 14-oct)."""
+    o = db().get(SalesOrder, oid) or abort(404)
+    ev = options_svc.evaluate(o)
+    if request.method == "POST":
+        f = request.form
+        resumen = {}
+        for it in ev:
+            if it["line"].product_code == f.get("producto"):
+                resumen = {"recomendada": (it["recomendada"] or {}).get("nombre"), "porque": it["porque"],
+                           "opciones": [{"ruta": x["nombre"], "cantidad": x["cantidad"], "plazo": x["plazo"],
+                                         "cumple": x["cumple"], "viable": x["viable"]} for x in it["opciones"]]}
+        return act(lambda: options_svc.decide(o, g.user, f.get("tipo"), f.get("id"), f.get("accion") == "aprobar",
+                                              f.get("motivo", ""), resumen),
+                   "Decisión registrada con su motivo.", url_for("com.order_options", oid=oid))
+    from ..models import OVDecision
+    decs = list(db().execute(select(OVDecision).where(OVDecision.order_id == o.id, OVDecision.tipo == "ELECCION_OPCION")
+                             .order_by(OVDecision.id.desc())).scalars())
+    return render_template("ov_options.html", o=o, ev=ev, penal=penalty_estimate(o), monto=osvc.order_amount(o),
+                           decs=decs, cond=cond_for(o.customer), rutas=options_svc.RUTAS)
 
 
 @bp.route("/<int:oid>/imprimir")
@@ -323,7 +353,7 @@ def customer_card(cid):
     from ..services import customers as csv_
     from ..services import prices as psvc
     from ..services.core import param
-    from ..services.customer_conditions import for_customer
+    from ..services.customer_conditions import TIPO_TXT, for_customer
     c = db().get(Customer, cid) or abort(404)
     if request.method == "POST":
         acc = request.form.get("accion")
@@ -334,7 +364,15 @@ def customer_card(cid):
                 abort(404)
             return act(lambda: csv_.save_site(g.user, c, request.form, site), "Lugar de entrega guardado.",
                        url_for("com.customer_card", cid=cid))
+        if acc == "penalidad":
+            from ..services.customer_conditions import set_penalty_amounts
+            cond = for_customer(c) or abort(404)
+            vals = {t: (request.form.get(f"modo_{t}", "FIJO"), request.form.get(f"valor_{t}", "").strip())
+                    for t in (cond.penalidad_tipos or []) if t != "FILL_RATE"}
+            return act(lambda: set_penalty_amounts(cond, g.user, vals), "Montos de penalidad guardados.",
+                       url_for("com.customer_card", cid=cid))
         return act(lambda: csv_.save_customer(g.user, c, request.form), "Ficha guardada.", url_for("com.customer_card", cid=cid))
     canales = sorted(set(psvc.canales()) | set(param("lista_granel_canales", []) or []))
     return render_template("customer_card.html", c=c, p=csv_.profile(c), cond=for_customer(c), canal=psvc.channel_of(c),
-                           canales=canales, editable=("ov.crear" in g.perms or "config.editar" in g.perms))
+                           canales=canales, editable=("ov.crear" in g.perms or "config.editar" in g.perms),
+                           tipo_txt=TIPO_TXT)

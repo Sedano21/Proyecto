@@ -1091,6 +1091,8 @@ class CustomerCondition(Base):
     vida_util_meses: Mapped[int | None] = mapped_column(Integer, nullable=True)
     penalidades: Mapped[str] = mapped_column(Text, default="")
     penalidad_tipos: Mapped[list] = mapped_column(JSON, default=list)
+    # monto por tipo de penalidad cuando la lista no lo trae: {"VENTANA_HORARIA": {"modo": "FIJO"|"PCT_OV", "valor": n}}
+    penalidad_montos: Mapped[dict] = mapped_column(JSON, default=dict)
     fill_rate_min_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
     origen: Mapped[str] = mapped_column(String(200), default="")
     ts: Mapped[datetime] = mapped_column(DateTime, default=now)

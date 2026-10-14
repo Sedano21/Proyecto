@@ -7,7 +7,7 @@
 <td>{% if can('calidad.liberar') and l.estado in ['PENDIENTE_REVISION','NO_UTILIZABLE'] %}<form method="post" action="{{ url_for('cal.release', lid=l.id) }}">{{ csrf() }}<input name="motivo" placeholder="motivo" size="10">
 <button class="small" name="decision" value="liberar">Liberar</button> <select name="estado_rechazo"><option value="NO_UTILIZABLE">No utilizable</option><option value="DANADO">Dañado</option></select><button class="small sec" name="decision" value="rechazar">Rechazar</button></form>{% endif %}</td></tr>
 {% else %}<tr><td colspan="8" class="muted">Sin lotes pendientes</td></tr>{% endfor %}</table></div>
-{% if muestras %}<h2>Muestras de compras por evaluar</h2><table>{% for m in muestras %}<tr><td>Compra #{{ m.id }} {{ m.product_code }} × {{ m.cantidad|n }} · {{ m.proveedor }}</td>
+{% if muestras %}<h2>Muestras de compras por evaluar</h2><table>{% for m in muestras %}<tr><td>Compra #{{ m.id }} {{ m.product_code }} {{ pd(m.product_code) }} × {{ m.cantidad|n }} · {{ m.proveedor }}</td>
 <td>{% if can('calidad.evaluar_muestra') %}<form method="post" action="{{ url_for('cal.sample', pid=m.id) }}">{{ csrf() }}<input name="observacion" placeholder="resultado" required><button class="small" name="decision" value="aprobar">Aprobar</button> <button class="small sec" name="decision" value="rechazar">Rechazar</button></form>{% endif %}</td></tr>{% endfor %}</table>{% endif %}
 <h2>Planeamiento de fumigación (próximos 30 días)</h2>
 <p class="small muted">Calidad recibe alertas 7 días antes, 3 días antes y el mismo día. Fecha: la programada o el fin del tiempo máximo de almacenamiento del artículo.</p>

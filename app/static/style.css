@@ -112,3 +112,4 @@ input[type=search],.grow input,.grow select{width:100%}
 .matriz button.cell.d{background:var(--ok);border-color:var(--ok)}.matriz button.cell.p{background:#c98500;border-color:#c98500}
 @media (max-width:1024px){.perm-layout{grid-template-columns:1fr}.perm-roles{max-height:none}}
 .doc .kv td:first-child{color:#000;width:auto}
+.pd{color:var(--muted);font-size:12.5px}

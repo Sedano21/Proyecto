@@ -17,6 +17,14 @@
 <tr><td>Ejecutivo / canal comercial</td><td>{{ cond.ejecutivo }} · {{ cond.canal_comercial }}</td></tr><tr><td>Solicitud</td><td>{{ cond.solicitud }}</td></tr>
 <tr><td>Lotes por SKU</td><td><b>{{ cond.lotes_texto }}</b></td></tr><tr><td>Vida útil restante mínima al despacho</td><td><b>{{ cond.vida_util_texto }}</b></td></tr>
 <tr><td>Penalidades</td><td style="white-space:pre-line">{{ cond.penalidades or '—' }}</td></tr><tr><td>Origen</td><td>{{ cond.origen }}</td></tr></table>
+{% if cond.penalidad_tipos %}<h4>Monto de penalidad por tipo</h4>
+<p class="muted small">Se usa para calcular la penalidad estimada en cada OV (fill rate se calcula con la cobertura y el mínimo del cliente).</p>
+<form method="post">{{ csrf() }}<input type="hidden" name="accion" value="penalidad"><table class="small"><tr><th>Tipo</th><th>Modo</th><th>Valor</th></tr>
+{% for t in cond.penalidad_tipos if t != 'FILL_RATE' %}{% set m = (cond.penalidad_montos or {}).get(t, {}) %}<tr><td>{{ tipo_txt.get(t, t) }}</td>
+<td><select name="modo_{{ t }}" {% if not editable %}disabled{% endif %}><option value="FIJO" {% if m.get('modo')=='FIJO' %}selected{% endif %}>Monto fijo S/</option>
+<option value="PCT_OV" {% if m.get('modo')=='PCT_OV' %}selected{% endif %}>% del monto de la OV</option></select></td>
+<td><input name="valor_{{ t }}" type="number" step="0.01" min="0" value="{{ m.get('valor', '') }}" {% if not editable %}disabled{% endif %}></td></tr>{% endfor %}
+</table>{% if editable %}<button class="btn">Guardar montos</button>{% endif %}</form>{% endif %}
 {% else %}<p class="muted">Sin condiciones registradas (lista de clientes con penalidades y lotes).</p>{% endif %}
 <h3>Productos más comprados</h3><table class="small"><tr><th>Producto</th><th class="r">Cantidad</th><th class="r">S/</th></tr>{% for k, q, so in p.top %}<tr><td>{{ k }}</td><td class="r">{{ q|n }}</td><td class="r">{{ so|n }}</td></tr>{% else %}<tr><td colspan="3" class="muted">Sin compras</td></tr>{% endfor %}</table></div></div>
 <div class="card"><h3>Lugares de entrega</h3>

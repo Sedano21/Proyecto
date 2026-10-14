@@ -109,3 +109,22 @@ marcados como tales.
 
 13. **Granel (GR):** ¿la regla «materia prima siempre con Gerencia de Operaciones» incluye también los artículos granel (GR) o solo MP? Hoy aplica solo a MP; se cambia en Configuración.
 14. **Reservas vencidas:** ¿se deben liberar automáticamente al pasar los 7 días (si el pedido aún no está en preparación) o basta con la alerta?
+
+## 6. Observación del 14-oct: nada procede sin el verificado de la persona responsable
+
+| Observación | Implementación | Estado |
+|---|---|---|
+| **OV detenida por precio no reserva** hasta que el Coordinador o Jefe Comercial la apruebe | La OV queda «POR APROBAR»: no aparta stock ni genera pre-solicitudes; muestra la cobertura proyectada. Al aprobar el precio se evalúa y reserva. | ✅ |
+| **Toda pre-solicitud del sistema la evalúa y aprueba una persona** | Traslado (Jefe o Coordinador de Logística), reempaque (Coordinador de Almacén, luego evalúa Calidad), compra (Jefe de Logística, y GO para materia prima) y producción (Almacén revisa y envía) quedan como pre-solicitud y **no comprometen stock** hasta el verificado; el traslado solicitado ya no aparta stock del lote de origen. | ✅ |
+| **La persona ve la información completa, el sistema calcula la mejor opción y quien valida indica por qué elige** | Pantalla **OV → Opciones para atender lo pendiente** (`/ov/<id>/opciones`): datos de la OV, condiciones y penalidades del cliente y, por línea, todas las rutas (A stock en almacén principal, B producción, C traslado, D compra, E reempaque) con la cantidad que cubren, el plazo, la fecha estimada, si cumplen la fecha comprometida y la vida útil restante frente a lo que exige el cliente. El sistema recomienda una opción y explica por qué. Cada pre-solicitud se aprueba o rechaza con «Verificar y aprobar» y un **motivo obligatorio**; la decisión queda registrada con el resumen de las opciones y la recomendación del sistema (historial en la misma pantalla y en auditoría). | ✅ |
+| **Condiciones del cliente: calcular o mostrar el monto de la penalidad** | En el detalle de la OV y en la pantalla de opciones: *fill rate* = lo no atendido (S/) + margen perdido cuando la cobertura queda bajo el mínimo del cliente (el rebate no se calcula: no hay dato); los demás tipos usan el monto registrado en la **ficha del cliente** (monto fijo en S/ o % del monto de la OV). Si la lista del cliente no trae el monto, se indica «Monto no definido». | ✅ (montos a registrar por Comercial) |
+| **Vida útil restante del pedido** | En cada reserva del detalle de la OV y en cada opción: meses de vida útil restantes a la fecha comprometida y el mínimo que exige el cliente. | ✅ |
+| **Producto con su descripción completa** | El código del artículo va acompañado de su descripción en OV, opciones, traslados, reempaques, liquidaciones, certificados, precios, costos, importaciones, rutas, informes y formatos de Calidad. | ✅ |
+
+Plazos usados para estimar la fecha de cada opción (parámetros PROPUESTOS, editables en Configuración, a confirmar):
+`tiempo_traslado_dias` = 2, `tiempo_reempaque_dias` = 3, `tiempo_produccion_dias` = 2; la compra usa el plazo
+(lead time) por familia ya configurado.
+
+Se mantiene sin cambio: una OV **no detenida** sigue reservando automáticamente el stock disponible en almacén
+principal (regla de reserva vigente); lo que requiere verificado es todo lo que el sistema propone para cubrir el
+faltante y la OV retenida por precio.

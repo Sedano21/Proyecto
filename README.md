@@ -16,7 +16,7 @@ python -m app.cli demo
 python run.py                                          # http://127.0.0.1:5000  · contraseña demo: Demo2026!
 ```
 
-Pruebas: `pip install -r requirements-dev.txt && python -m pytest tests -v` (146 pruebas; también en PostgreSQL con TEST_DATABASE_URL).
+Pruebas: `pip install -r requirements-dev.txt && python -m pytest tests -v` (152 pruebas; también en PostgreSQL con TEST_DATABASE_URL).
 
 ## Documentación entregada (`docs/`)
 
@@ -28,7 +28,7 @@ Pruebas: `pip install -r requirements-dev.txt && python -m pytest tests -v` (146
 | [04_RESULTADOS_PRUEBAS](docs/04_RESULTADOS_PRUEBAS.md) | 104 pruebas automatizadas (SQLite y PostgreSQL), recorridos en navegador y compatibilidad con los archivos reales |
 | [05_ESTADO_FUNCIONALIDADES](docs/05_ESTADO_FUNCIONALIDADES.md) | Implementado, parcial, pendiente y bloqueado |
 | [15_DIAGNOSTICO_ESPECIFICACION_MAESTRA](docs/15_DIAGNOSTICO_ESPECIFICACION_MAESTRA.md) | Diagnóstico de la especificación funcional maestra (14-oct): matriz, contradicciones y plan por etapas |
-| [14_DECISIONES_13OCT_PARTE3_Y_OBSERVACIONES_DEMO](docs/14_DECISIONES_13OCT_PARTE3_Y_OBSERVACIONES_DEMO.md) | v0.6: formatos con logos (OV, guía, certificados PT/MP/CA), vida útil, costos y mercado, observaciones al demo v0.5 y preguntas abiertas |
+| [14_DECISIONES_13OCT_PARTE3_Y_OBSERVACIONES_DEMO](docs/14_DECISIONES_13OCT_PARTE3_Y_OBSERVACIONES_DEMO.md) | v0.6: formatos con logos (OV, guía, certificados PT/MP/CA), vida útil, costos y mercado, observaciones al demo v0.5 y preguntas abiertas; §5–6 decisiones del 14-oct (reserva 7 días, compras MP con GO, impacto de cotizaciones, verificado obligatorio y panel de opciones) |
 | [06_MODELO_DATOS](docs/06_MODELO_DATOS.md) | Estructura de almacenamiento (generado desde el código) |
 | [07_PERFILES_PERMISOS_ALERTAS](docs/07_PERFILES_PERMISOS_ALERTAS.md) | Roles, permisos, alertas, parámetros y su origen (generado desde el código) |
 | [08_INSTALACION_DESPLIEGUE](docs/08_INSTALACION_DESPLIEGUE.md) | Instalación, configuración, puesta en marcha y despliegue |

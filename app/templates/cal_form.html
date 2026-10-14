@@ -6,7 +6,7 @@
 {% if formato=='FUMIGACION' %}<div class="note info small">Si se asocia un lote: con fecha de inicio pasa a "En fumigación"; con fecha de fin (desactivación) pasa a "Pendiente de revisión" para liberación.</div>{% endif %}
 <form method="post" class="card">{{ csrf() }}<div class="row">
 <div><label>Fecha</label><input type="date" name="fecha" value="{{ today.isoformat() }}"></div>
-<div><label>Lote en stock (opcional)</label><select name="lot_id"><option value="">(ninguno)</option>{% for l in lots %}<option value="{{ l.id }}" {{ 'selected' if lot_id==l.id|string }}>{{ l.product_code }} · {{ l.lote }} · {{ l.warehouse_code }} · {{ l.estado }}</option>{% endfor %}</select></div>
+<div><label>Lote en stock (opcional)</label><select name="lot_id"><option value="">(ninguno)</option>{% for l in lots %}<option value="{{ l.id }}" {{ 'selected' if lot_id==l.id|string }}>{{ l.product_code }} {{ pd(l.product_code) }} · {{ l.lote }} · {{ l.warehouse_code }} · {{ l.estado }}</option>{% endfor %}</select></div>
 <div><label>Producto (si no hay lote)</label><input name="product_code"></div><div><label>Lote (texto)</label><input name="lote"></div></div>
 <div class="row">{% for key, label, tipo in fdef[2] %}<div>
 <label>{{ label }}</label>{% if tipo=='textarea' %}<textarea name="{{ key }}" style="min-width:320px"></textarea>{% elif tipo=='bool' %}<select name="{{ key }}"><option value="">-</option><option value="1">Conforme / Sí</option><option value="0">No conforme / No</option></select>

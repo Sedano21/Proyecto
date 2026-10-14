@@ -521,6 +521,12 @@ PARAMS = [
     ("umbral_mayor_volumen_unidad", "KG", "str", "Compras",
      "Unidad del umbral: KG (cantidad × peso del artículo), UNIDADES o SOLES (cantidad × precio cotizado).",
      "DEFINIDO", f"{R14}: se configura en el panel"),
+    ("tiempo_traslado_dias", 2, "int", "Almacén", "Plazo estimado de un traslado desde almacén externo (para comparar opciones de la OV).",
+     "PROPUESTO", "Especificación funcional maestra (14-oct) §5.2: referencia inicial ~2 días"),
+    ("tiempo_produccion_dias", 2, "int", "Producción", "Plazo estimado de producción (para comparar opciones de la OV).",
+     "PROPUESTO", "Especificación funcional maestra (14-oct) §5.2: referencia inicial 1–2 días"),
+    ("tiempo_reempaque_dias", 3, "int", "Almacén", "Plazo estimado de reempaque (para comparar opciones de la OV).",
+     "PROPUESTO", "Especificación funcional maestra (14-oct) §5.2: referencia inicial 2–3 días"),
     ("plazo_max_reserva_dias", 7, "int", "Almacén",
      "Plazo máximo de reserva por el espacio físico del almacén: el stock de una OV se reserva recién desde esta cantidad de "
      "días antes de la fecha comprometida (antes solo se calcula la cobertura proyectada) y se alerta si una reserva supera el plazo.",

@@ -7,6 +7,7 @@
 <tr><td>Lugar de entrega</td><td>{{ o.lugar_entrega or "-" }} · {{ o.direccion }} · {{ o.distrito }}{{ " · " ~ o.provincia if o.provincia }} · <a href="{{ url_for("com.customer_card", cid=o.customer_id) }}">ficha del cliente</a></td></tr>
 <tr><td>Horario / cita</td><td>{{ o.customer.horario_recepcion }} · cita {{ o.hora_cita or '-' }} {{ '(confirmada)' if o.cita_confirmada else ('(requiere confirmación)' if o.customer.requiere_cita else '') }}</td></tr>
 <tr><td>Condición del cliente</td><td>{% if o.customer.vida_util_min_dias %}Vida útil mínima {{ o.customer.vida_util_min_dias }} días. {% endif %}{% set cc = cond_cliente(o.customer) %}{% if cc %}<b>{{ cc }}</b>{% elif not o.customer.vida_util_min_dias %}Sin condiciones registradas{% endif %}</td></tr>
+{% if penal %}<tr><td>Penalidad estimada</td><td>{% for x in penal %}<div class="small">{{ x.texto|capitalize }}: {% if x.monto is not none %}<b class="{{ 'err' if x.riesgo }}">S/ {{ '{:,.2f}'.format(x.monto) }}</b>{% else %}<span class="muted">monto no definido</span>{% endif %}{% if x.riesgo %} <span class="b ALTA">en riesgo</span>{% endif %} <span class="muted">— {{ x.base }}</span></div>{% endfor %}</td></tr>{% endif %}
 <tr><td>Emisión / comprometida</td><td>{{ o.fecha_emision|d }} / <b>{{ o.fecha_compromiso|d }}</b> · corte {{ o.corte or '-' }}</td></tr>
 <tr><td>Vendedor</td><td>{{ o.vendedor_nombre or '-' }}</td></tr>
 <tr><td>Monto / volumen</td><td>S/ {{ monto|n }} · {{ peso|n }} kg {% if sin_peso %}<span class="small muted">(sin peso: {{ sin_peso|join(', ') }})</span>{% endif %}</td></tr>
@@ -18,7 +19,7 @@
 {% if o.retenida_precio %}<div class="card" style="border-left:4px solid var(--err)"><b>OV detenida por precio</b> (en el límite o por debajo de la lista de precios mínimos). No se prepara ni se despacha hasta la confirmación del Coordinador Comercial o del Jefe Comercial.
 {% if can('ov.aprobar_precio') %}<form method="post" action="{{ url_for('com.order_action', oid=o.id, accion='confirmar_precio') }}" class="row">{{ csrf() }}<input name="comentario" placeholder="motivo de la confirmación (obligatorio)" required style="width:60%"><button>Confirmar precio y liberar</button></form>{% endif %}</div>
 {% elif o.aprobacion_precio %}<p class="small">Precio confirmado por {{ o.aprobacion_precio.user }} ({{ o.aprobacion_precio.ts[:16]|replace('T',' ') }}): {{ o.aprobacion_precio.comentario }}</p>{% endif %}
-{% set obs = [] %}{% for l in o.lines if l.activa and l.precio_origen and not l.precio_origen.startswith('Sobre') %}{% set _ = obs.append(l) %}{% endfor %}{% if obs %}<div class="note small"><b>Precio vs lista de precios mínimos:</b> {% for l in obs %}{{ l.product_code }}: {{ l.precio_origen }}{{ '; ' if not loop.last }}{% endfor %}.</div>{% endif %}
+{% set obs = [] %}{% for l in o.lines if l.activa and l.precio_origen and not l.precio_origen.startswith('Sobre') %}{% set _ = obs.append(l) %}{% endfor %}{% if obs %}<div class="note small"><b>Precio vs lista de precios mínimos:</b> {% for l in obs %}{{ l.product_code }} {{ pd(l.product_code) }}: {{ l.precio_origen }}{{ '; ' if not loop.last }}{% endfor %}.</div>{% endif %}
 <p>Evaluada: {{ o.evaluado_ts|d }} · Preparación: {{ prep }}%</p>
 {% if o.motivo_detencion %}<div class="note">{{ o.motivo_detencion }}</div>{% endif %}
 {% if o.decision_parcial %}<p>Despacho parcial: {{ b(o.decision_parcial) }}{% if o.fecha_saldo %} · saldo reprogramado al <b>{{ o.fecha_saldo|d }}</b>{% endif %}</p>
@@ -39,15 +40,16 @@
 {% for l in o.lines if l.activa %}{% set r = line_reserved(l) %}<tr><td>{{ l.product_code }}<br><span class="small muted">{{ l.product.descripcion }}</span></td>
 <td class="r">{{ l.cantidad|n }}<br><span class="small {{ 'err' if l.precio_origen and (l.precio_origen.startswith('POR DEBAJO') or l.precio_origen.startswith('EN EL LÍMITE')) else 'muted' }}" title="{{ l.precio_origen }}">{% if l.precio_unitario %}S/ {{ '%.2f'|format(l.precio_unitario) }}{% else %}sin precio{% endif %}{% if l.precio_minimo %} · mín. {{ '%.2f'|format(l.precio_minimo) }}{% endif %}</span></td><td class="r">{{ r|n }}</td><td class="r">{% set f = l.cantidad - l.despachado - r %}{% if f > 0.0001 %}<b style="color:#b3261e">{{ f|n }}</b>{% else %}0{% endif %}</td>
 <td class="r">{{ l.preparado|n }}</td><td class="r">{{ l.despachado|n }}</td><td class="r">{{ l.entregado|n }}</td>
-<td class="small">{% for rs in l.reservations if rs.estado in ['ACTIVA','CONSUMIDA'] %}{{ rs.lot.lote }} ({{ rs.lot.warehouse_code }} · {{ rs.lot.fecha_venc|d }}) × {{ rs.cantidad|n }} {{ b(rs.estado) }}<br>{% endfor %}</td></tr>{% endfor %}</table>
+<td class="small">{% for rs in l.reservations if rs.estado in ['ACTIVA','CONSUMIDA'] %}{% set vu = vida(rs.lot) %}{{ rs.lot.lote }} ({{ rs.lot.warehouse_code }} · {{ rs.lot.fecha_venc|d }}) × {{ rs.cantidad|n }} {{ b(rs.estado) }}{% if vu.meses is not none %} · <span class="{{ 'err' if vu.cumple is sameas false else '' }}">vida útil restante {{ vu.meses }} meses al despacho{{ ' (cliente exige ' ~ vu.exige ~ ')' if vu.exige }}</span>{% endif %}<br>{% endfor %}</td></tr>{% endfor %}</table>
 
+{% if hay_pendiente %}<div class="card" style="border-left:4px solid var(--info)"><b>Opciones para atender lo pendiente</b> — el sistema evaluó todas las rutas y recomienda una; quien aprueba revisa la OV y las opciones y registra por qué elige. <a class="btn" href="{{ url_for('com.order_options', oid=o.id) }}">Evaluar opciones y pre-solicitudes</a></div>{% endif %}
 {% if alts %}
 {% if presol %}<h2>Solicitudes y pre-solicitudes para esta OV</h2>
 <p class="small muted">Ante un faltante el sistema genera la pre-solicitud de la primera opción viable (producir → reempaque → traslado → compra, Q15); cada una la aprueba su responsable.</p>
 <table class="small"><tr><th>Tipo</th><th>#</th><th>Producto</th><th class="r">Cantidad</th><th>Estado</th></tr>{% for t, i, p, q, e, u in presol %}<tr><td>{{ t }}</td><td><a href="{{ u }}">#{{ i }}</a></td><td>{{ p }}</td><td class="r">{{ q|n }}</td><td>{{ b(e) }}</td></tr>{% endfor %}</table>{% endif %}
 <h2>Alternativas ante faltante</h2>
 <div class="note">Se presentan opciones; ninguna se ejecuta automáticamente. Logística decide el uso de otros almacenes y la Jefatura autoriza el traslado; Comercial y Gerencia de Operaciones participan en renegociaciones (IF §4.5, §6.2).</div>
-{% for a in alts %}<div class="card"><h3>{{ a.line.product_code }} — faltante {{ a.faltante|n }}</h3>
+{% for a in alts %}<div class="card"><h3>{{ a.line.product_code }} {{ pd(a.line.product_code) }} — faltante {{ a.faltante|n }}</h3>
 <b>1. Otros almacenes</b>
 <table class="small"><tr><th>Almacén</th><th>Lote</th><th>Vence</th><th class="r">Libre</th><th>Apto</th><th></th></tr>
 {% for x in a.otros_almacenes %}<tr><td>{{ x.lot.warehouse_code }} ({{ x.lot.warehouse.nombre }})</td><td>{{ x.lot.lote }}</td><td>{{ x.lot.fecha_venc|d }}</td><td class="r">{{ x.libre|n }}</td><td>{{ 'Sí' if x.apto else x.motivo }}</td>
@@ -57,7 +59,7 @@
 {% else %}<tr><td colspan="6" class="muted">Sin stock en almacenes alternativos</td></tr>{% endfor %}</table>
 <b>2. Reempaque</b>
 <table class="small"><tr><th>Tipo</th><th>Lote / producto</th><th class="r">Cantidad</th><th>Detalle</th><th></th></tr>
-{% for x in a.reempaque %}<tr><td>{{ x.tipo|replace('_',' ') }}</td><td>{{ x.lot.lote }} · {{ x.lot.product_code }} · {{ x.lot.warehouse_code }}</td><td class="r">{{ x.cantidad|n }}</td><td>{{ x.motivo }}</td>
+{% for x in a.reempaque %}<tr><td>{{ x.tipo|replace('_',' ') }}</td><td>{{ x.lot.lote }} · {{ x.lot.product_code }} {{ pd(x.lot.product_code) }} · {{ x.lot.warehouse_code }}</td><td class="r">{{ x.cantidad|n }}</td><td>{{ x.motivo }}</td>
 <td>{% if can('reempaque.solicitar') and x.cantidad > 0 %}<form class="inline" method="post" action="{{ url_for('com.order_action', oid=o.id, accion='reempaque') }}">{{ csrf() }}<input type="hidden" name="lot_id" value="{{ x.lot.id }}"><input type="hidden" name="tipo" value="{{ x.tipo }}"><input type="hidden" name="producto_destino" value="{{ a.line.product_code }}">
 <input type="number" step="any" name="cantidad" value="{{ [x.cantidad, a.faltante]|min }}" style="width:90px"><input type="hidden" name="motivo" value="Faltante en OV {{ o.numero }}"><button class="small">Solicitar reempaque</button></form>{% endif %}</td></tr>
 {% else %}<tr><td colspan="5" class="muted">Sin candidatos</td></tr>{% endfor %}</table>
@@ -76,7 +78,7 @@
 <form class="card" method="post" action="{{ url_for('com.order_action', oid=o.id, accion='renegociar') }}">{{ csrf() }}<h3>Renegociar fecha</h3>
 <label>Nueva fecha comprometida</label><input type="date" name="nueva_fecha" required><label>Comentario</label><input name="comentario" style="width:100%"><p><button class="sec">Registrar renegociación</button></p></form>
 <form class="card" method="post" action="{{ url_for('com.order_action', oid=o.id, accion='cambiar_producto') }}">{{ csrf() }}<h3>Proponer producto disponible</h3>
-<select name="line_id">{% for l in o.lines if l.activa %}<option value="{{ l.id }}">{{ l.product_code }}</option>{% endfor %}</select> →
+<select name="line_id">{% for l in o.lines if l.activa %}<option value="{{ l.id }}">{{ l.product_code }} {{ pd(l.product_code) }}</option>{% endfor %}</select> →
 <input name="nuevo_codigo" list="prods" placeholder="nuevo código"> cant. <input type="number" step="any" name="cantidad" style="width:90px" required>
 <label>Comentario</label><input name="comentario" style="width:100%"><p><button class="sec">Cambiar producto</button></p></form></div>{% endif %}
 <datalist id="prods">{% for p in products %}<option value="{{ p.code }}">{{ p.descripcion }}</option>{% endfor %}</datalist>

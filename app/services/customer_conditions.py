@@ -167,3 +167,66 @@ def link_all():
             cond.customer_id = cu.id
             n += 1
     return n
+
+
+def penalty_estimate(order):
+    """Penalidad estimada de la OV según las condiciones del cliente (observación del 14-oct, Asistente de Ventas).
+    - Fill rate: si la cobertura de la OV queda bajo el mínimo del cliente, se estima lo no atendido (S/) más el margen
+      perdido cuando hay costo vigente (el rebate no se puede calcular: no hay dato).
+    - Otros tipos: se usa el monto registrado en la ficha del cliente (fijo o % de la OV); si no hay, se indica.
+    Devuelve [{tipo, texto, riesgo, monto, base}]."""
+    from .costs import cost_for_line
+    from .orders import order_amount
+    c = for_customer(order.customer)
+    if c is None or not c.penalidad_tipos:
+        return []
+    montos = c.penalidad_montos or {}
+    total = order_amount(order)
+    out = []
+    incompleta = order.estado_stock in ("INCOMPLETA", "SIN_STOCK") or (order.cobertura_unidades or 100) < 100
+    for t in c.penalidad_tipos:
+        item = {"tipo": t, "texto": TIPO_TXT.get(t, t), "riesgo": None, "monto": None, "base": ""}
+        if t == "FILL_RATE" and c.fill_rate_min_pct:
+            item["riesgo"] = (order.cobertura_unidades or 0) < c.fill_rate_min_pct
+            no_atendido = sum(max(l.cantidad - l.despachado, 0) * (l.precio_unitario or 0) for l in order.lines if l.activa) \
+                * max(0.0, 1 - (order.cobertura_unidades or 0) / 100.0)
+            margen = 0.0
+            for l in order.lines:
+                if l.activa:
+                    costo = cost_for_line(l)
+                    if costo is not None and l.precio_unitario:
+                        margen += (l.precio_unitario - costo) * l.cantidad * max(0.0, 1 - (order.cobertura_unidades or 0) / 100.0)
+            item["monto"] = round(no_atendido + margen, 2) if item["riesgo"] else 0.0
+            item["base"] = (f"Cobertura {order.cobertura_unidades}% vs mínimo {c.fill_rate_min_pct:g}%: no atendido S/ "
+                            f"{no_atendido:,.2f} + margen perdido S/ {margen:,.2f} (rebate: sin dato)")
+        else:
+            if t in ("FECHA_ENTREGA", "ENTREGA_PARCIAL", "RUPTURA_STOCK"):
+                item["riesgo"] = incompleta
+            cfg = montos.get(t) or {}
+            if cfg.get("valor") not in (None, ""):
+                v = float(cfg["valor"])
+                item["monto"] = round(total * v / 100.0, 2) if cfg.get("modo") == "PCT_OV" else round(v, 2)
+                item["base"] = f"{v:g}% del monto de la OV" if cfg.get("modo") == "PCT_OV" else "Monto fijo registrado en la ficha"
+            else:
+                item["base"] = "Monto no definido en la lista del cliente: regístrelo en la ficha del cliente"
+        out.append(item)
+    return out
+
+
+def set_penalty_amounts(cond, user, valores):
+    """Comercial registra el monto de cada tipo de penalidad (fijo en S/ o % de la OV)."""
+    from .core import BusinessError, audit, has_perm
+    if not (has_perm(user, "ov.crear") or has_perm(user, "clientes.canal")):
+        raise BusinessError("Su rol no edita condiciones de clientes.")
+    nuevo = {}
+    for t, (modo, valor) in valores.items():
+        if valor in (None, ""):
+            continue
+        if modo not in ("FIJO", "PCT_OV"):
+            raise BusinessError("Modo de penalidad no válido.")
+        v = float(valor)
+        if v < 0 or (modo == "PCT_OV" and v > 100):
+            raise BusinessError("Monto de penalidad inválido.")
+        nuevo[t] = {"modo": modo, "valor": v}
+    audit(user, "CLIENTE_PENALIDAD_MONTOS", "CustomerCondition", cond.nombre, {"antes": cond.penalidad_montos, "despues": nuevo})
+    cond.penalidad_montos = nuevo

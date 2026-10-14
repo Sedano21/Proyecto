@@ -1,0 +1,28 @@
+{% extends "base.html" %}{% from "_m.html" import b, csrf %}
+{% block content %}<p class="small"><a href="{{ url_for('com.order_detail', oid=o.id) }}">← OV {{ o.numero }}</a></p>
+<h1>Opciones para atender la OV {{ o.numero }} {{ b(o.estado_stock) }}</h1>
+<div class="grid g2"><div class="card"><h3>La OV</h3><table class="kv small">
+<tr><td>Cliente</td><td>{{ o.customer.nombre }} ({{ o.customer.ruc }})</td></tr>
+<tr><td>Fecha comprometida</td><td><b>{{ o.fecha_compromiso|d }}</b>{{ ' · cita ' ~ o.hora_cita if o.hora_cita }}</td></tr>
+<tr><td>Lugar de entrega</td><td>{{ o.lugar_entrega or '-' }} · {{ o.direccion }} · {{ o.distrito }}</td></tr>
+<tr><td>Monto</td><td>S/ {{ monto|n }} · cobertura {{ o.cobertura_unidades }}%</td></tr>
+<tr><td>Estado</td><td>{{ o.motivo_detencion or o.estado }}</td></tr></table></div>
+<div class="card"><h3>Condiciones y penalidades del cliente</h3>{% if cond %}<p class="small">Lotes por SKU: <b>{{ cond.lotes_texto }}</b> · vida útil restante mínima: <b>{{ cond.vida_util_texto or '-' }}</b></p>{% endif %}
+{% for x in penal %}<div class="small">{{ x.texto|capitalize }}: {% if x.monto is not none %}<b class="{{ 'err' if x.riesgo }}">S/ {{ '{:,.2f}'.format(x.monto) }}</b>{% else %}<span class="muted">monto no definido</span>{% endif %}{% if x.riesgo %} <span class="b ALTA">en riesgo</span>{% endif %} <span class="muted">— {{ x.base }}</span></div>{% else %}<p class="muted small">Sin penalidades registradas.</p>{% endfor %}</div></div>
+{% for it in ev %}<div class="card"><h3>{{ it.line.product_code }} {{ pd(it.line.product_code) }} — pendiente {{ it.pendiente|n }}</h3>
+<div class="tw"><table class="small"><tr><th>Ruta</th><th>Viable</th><th class="r">Cubre</th><th class="r">Plazo (días)</th><th>Disponible el</th><th>¿Cumple la fecha?</th><th>Vida útil restante</th><th>Detalle</th></tr>
+{% for x in it.opciones %}<tr {% if it.recomendada is sameas x %}style="background:var(--okbg)"{% endif %}><td><b>{{ x.ruta }}</b> {{ x.nombre }}{% if it.recomendada is sameas x %} <span class="b ok">recomendada</span>{% endif %}</td><td>{{ 'Sí' if x.viable else 'No' }}</td><td class="r">{{ x.cantidad|n }}{{ '' if x.cubre_todo else ' (parcial)' }}</td>
+<td class="r">{{ x.plazo if x.plazo is not none else '?' }}</td><td>{{ x.fecha|d if x.fecha else 'sin dato' }}</td><td>{% if x.cumple is none %}<span class="muted">sin dato</span>{% elif x.cumple %}Sí{% else %}<span class="b ALTA">No</span>{% endif %}</td>
+<td>{% if x.vida and x.vida.meses is not none %}<span class="{{ 'err' if x.vida.cumple is sameas false }}">{{ x.vida.meses }} meses{{ ' (exige ' ~ x.vida.exige ~ ')' if x.vida.exige }}</span>{% else %}-{% endif %}</td><td>{{ x.detalle }}</td></tr>
+{% else %}<tr><td colspan="8" class="muted">Sin opciones evaluables.</td></tr>{% endfor %}</table></div>
+<div class="reco"><b>Recomendación del sistema:</b> {{ it.porque }}</div>
+<h4>Pre-solicitudes generadas para este producto</h4>
+<table class="small"><tr><th>Ruta</th><th>Pre-solicitud</th><th class="r">Cantidad</th><th>Estado</th><th>Decisión (motivo obligatorio)</th></tr>
+{% for p in it.presolicitudes %}<tr><td>{{ rutas[p.ruta] }}</td><td>{{ p.tipo|capitalize }} #{{ p.id }}</td><td class="r">{{ p.cantidad|n }}</td><td>{{ b(p.estado) }}</td>
+<td>{% if p.pendiente %}<form method="post" class="row">{{ csrf() }}<input type="hidden" name="tipo" value="{{ p.tipo }}"><input type="hidden" name="id" value="{{ p.id }}"><input type="hidden" name="producto" value="{{ it.line.product_code }}">
+<div class="grow"><input name="motivo" required minlength="5" placeholder="¿Por qué se elige (o rechaza) esta opción?"></div><div><button name="accion" value="aprobar">Verificar y aprobar</button> <button class="sec" name="accion" value="rechazar">Rechazar</button></div></form>{% else %}<span class="muted">—</span>{% endif %}</td></tr>
+{% else %}<tr><td colspan="5" class="muted">Sin pre-solicitudes. Si elige otra ruta, regístrela desde la OV (alternativas ante faltante).</td></tr>{% endfor %}</table></div>
+{% else %}<div class="card muted">No hay cantidades pendientes de atender.</div>{% endfor %}
+{% if decs %}<div class="card"><h3>Decisiones registradas</h3><table class="small"><tr><th>Fecha</th><th>Usuario</th><th>Pre-solicitud</th><th>Resultado</th><th>Motivo</th><th>Recomendación del sistema en ese momento</th></tr>
+{% for d in decs %}<tr><td>{{ d.ts|d }}</td><td>{{ d.user.nombre if d.user }}</td><td>{{ d.detalle.pre_solicitud }} #{{ d.detalle.id }}</td><td>{{ b(d.estado) }}</td><td>{{ d.comentario }}</td><td>{{ d.detalle.resumen_opciones.recomendada or '-' }}</td></tr>{% endfor %}</table></div>{% endif %}
+{% endblock %}

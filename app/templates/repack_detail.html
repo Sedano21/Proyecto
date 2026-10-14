@@ -1,7 +1,7 @@
 {% extends "base.html" %}{% from "_m.html" import b, csrf %}
 {% block content %}<h1>Reempaque #{{ r.id }} {{ b(r.estado) }}</h1>
 <div class="card"><table class="kv"><tr><td>Tipo</td><td>{{ tipos[r.tipo][0] }}<br><span class="small muted">{{ tipos[r.tipo][1] }}</span></td></tr>
-<tr><td>Lote origen</td><td>{{ r.lot.product_code }} · {{ r.lot.lote }} · {{ r.lot.warehouse_code }} · {{ b(r.lot.estado) }} · vence {{ r.lot.fecha_venc|d }}</td></tr>
+<tr><td>Lote origen</td><td>{{ r.lot.product_code }} {{ pd(r.lot.product_code) }} · {{ r.lot.lote }} · {{ r.lot.warehouse_code }} · {{ b(r.lot.estado) }} · vence {{ r.lot.fecha_venc|d }}</td></tr>
 <tr><td>Cantidad</td><td>{{ r.cantidad|n }} → {{ r.producto_destino }} {{ r.cantidad_destino|n }}</td></tr><tr><td>OV</td><td>{% if r.order %}<a href="{{ url_for('com.order_detail', oid=r.order_id) }}">{{ r.order.numero }}</a>{% endif %}</td></tr>
 <tr><td>Motivo</td><td>{{ r.motivo }}</td></tr><tr><td>Evaluación de Calidad</td><td>{{ r.resultado_calidad }} {{ r.evaluado_ts|d }}</td></tr>
 <tr><td>Ejecución</td><td>{{ r.ejecucion_inicio|d }} → {{ r.ejecucion_fin|d }} · lote resultante {{ r.lote_resultante }}</td></tr></table></div>

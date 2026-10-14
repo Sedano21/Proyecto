@@ -157,6 +157,17 @@ def install(app):
         return summary(customer)
     app.jinja_env.globals["cond_cliente"] = cond_cliente
 
+    def pd(code):
+        """Descripción completa del artículo junto al código (observación del 14-oct: el producto debe mostrar su descripción)."""
+        from markupsafe import Markup, escape
+        from ..models import Product
+        cache = g.setdefault("_pdesc", {})
+        if code not in cache:
+            p = db().get(Product, code) if code else None
+            cache[code] = p.descripcion if p else ""
+        return Markup(f'<span class="pd">{escape(cache[code])}</span>') if cache[code] else ""
+    app.jinja_env.globals["pd"] = pd
+
     def doc_param(key, default=None):
         from ..services.core import param
         return param(key, default)
