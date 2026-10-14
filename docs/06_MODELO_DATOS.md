@@ -21,31 +21,7 @@ Las tablas se crean al iniciar la aplicación (`create_all`). Para producción s
 | origen_destinatarios | VARCHAR(12) | no |  |
 | fuente | TEXT | no |  |
 | condicion | TEXT | no |  |
-
-## `customers`
-
-
-
-| Columna | Tipo | Nulo | Clave / referencia |
-|---|---|---|---|
-| id | INTEGER | no | PK |
-| ruc | VARCHAR(20) | no |  |
-| nombre | VARCHAR(200) | no |  |
-| grupo | VARCHAR(60) | no |  |
-| direccion | VARCHAR(250) | no |  |
-| distrito | VARCHAR(80) | no |  |
-| provincia | VARCHAR(80) | no |  |
-| horario_recepcion | VARCHAR(60) | no |  |
-| requiere_cita | BOOLEAN | no |  |
-| vida_util_min_dias | INTEGER | sí |  |
-| canal_precio | VARCHAR(60) | no |  |
-| contacto | VARCHAR(120) | no |  |
-| telefono | VARCHAR(60) | no |  |
-| correo | VARCHAR(160) | no |  |
-| codigo_sap | VARCHAR(30) | no |  |
-| observaciones | TEXT | no |  |
-
-Restricción única: (ruc)
+| naturaleza | VARCHAR(12) | no |  |
 
 ## `import_phase_templates`
 
@@ -169,48 +145,6 @@ Almacén (IF §6.2). uso: PT / MP_INSUMOS / ALTERNATIVO / OTRO.
 | fuente | TEXT | no |  |
 | observacion | TEXT | no |  |
 
-## `customer_conditions`
-
-Condiciones comerciales del cliente (LISTA DE CLIENTES - CON PENALIDADES Y LOTES): ejecutivo, canal, tipo de solicitud, lotes por SKU, vida útil y penalidades. Se vincula por RUC si la fila lo trae; si no, por nombre normalizado.
-
-| Columna | Tipo | Nulo | Clave / referencia |
-|---|---|---|---|
-| id | INTEGER | no | PK |
-| nombre | VARCHAR(250) | no |  |
-| nombre_norm | VARCHAR(250) | no |  |
-| customer_id | INTEGER | sí | → customers.id |
-| ruc | VARCHAR(20) | no |  |
-| ejecutivo | VARCHAR(120) | no |  |
-| canal_comercial | VARCHAR(80) | no |  |
-| solicitud | VARCHAR(60) | no |  |
-| lotes_texto | VARCHAR(60) | no |  |
-| max_lotes_por_sku | INTEGER | sí |  |
-| vida_util_texto | VARCHAR(120) | no |  |
-| vida_util_meses | INTEGER | sí |  |
-| penalidades | TEXT | no |  |
-| penalidad_tipos | JSON | no |  |
-| fill_rate_min_pct | FLOAT | sí |  |
-| origen | VARCHAR(200) | no |  |
-| ts | DATETIME | no |  |
-
-## `customer_sites`
-
-Lugar de entrega del cliente (almacén, tienda, sede). La OV elige uno o registra 'otro' con su dirección.
-
-| Columna | Tipo | Nulo | Clave / referencia |
-|---|---|---|---|
-| id | INTEGER | no | PK |
-| customer_id | INTEGER | no | → customers.id |
-| nombre | VARCHAR(120) | no |  |
-| direccion | VARCHAR(250) | no |  |
-| distrito | VARCHAR(80) | no |  |
-| provincia | VARCHAR(80) | no |  |
-| referencia | VARCHAR(250) | no |  |
-| horario_recepcion | VARCHAR(60) | no |  |
-| contacto | VARCHAR(120) | no |  |
-| telefono | VARCHAR(60) | no |  |
-| activo | BOOLEAN | no |  |
-
 ## `role_permissions`
 
 Matriz rol-permiso. origen: DEFINIDO (regla expresa) o PROPUESTO (derivado del alcance por área, requiere validación).
@@ -239,6 +173,7 @@ Restricción única: (role_code, perm_code)
 | password_hash | VARCHAR(255) | no |  |
 | activo | BOOLEAN | no |  |
 | debe_cambiar_clave | BOOLEAN | no |  |
+| almacen | VARCHAR(20) | no |  |
 
 Restricción única: (username)
 
@@ -260,6 +195,12 @@ Restricción única: (username)
 | roles | JSON | no |  |
 | usuarios | JSON | no |  |
 | asignado_a | INTEGER | sí | → users.id |
+| asignado_rol | VARCHAR(40) | no |  |
+| asignado_por | INTEGER | sí | → users.id |
+| resultado | VARCHAR(20) | no |  |
+| evidencia | VARCHAR(200) | no |  |
+| foto_inicio | VARCHAR(200) | no |  |
+| proceso_pendiente | TEXT | no |  |
 | creado_ts | DATETIME | no |  |
 | creado_por | INTEGER | sí | → users.id |
 | cerrado_ts | DATETIME | sí |  |
@@ -281,6 +222,38 @@ Trazabilidad de cambios, aprobaciones, cargas, etc. (IF §2, §19).
 | entidad | VARCHAR(60) | no |  |
 | entidad_id | VARCHAR(60) | no |  |
 | detalle | JSON | no |  |
+
+## `customers`
+
+
+
+| Columna | Tipo | Nulo | Clave / referencia |
+|---|---|---|---|
+| id | INTEGER | no | PK |
+| ruc | VARCHAR(20) | no |  |
+| nombre | VARCHAR(200) | no |  |
+| grupo | VARCHAR(60) | no |  |
+| direccion | VARCHAR(250) | no |  |
+| distrito | VARCHAR(80) | no |  |
+| provincia | VARCHAR(80) | no |  |
+| horario_recepcion | VARCHAR(60) | no |  |
+| requiere_cita | BOOLEAN | no |  |
+| vida_util_min_dias | INTEGER | sí |  |
+| canal_precio | VARCHAR(60) | no |  |
+| contacto | VARCHAR(120) | no |  |
+| telefono | VARCHAR(60) | no |  |
+| correo | VARCHAR(160) | no |  |
+| codigo_sap | VARCHAR(30) | no |  |
+| observaciones | TEXT | no |  |
+| celulares | JSON | no |  |
+| correos | JSON | no |  |
+| tiene_contrato | BOOLEAN | no |  |
+| contrato_archivo | VARCHAR(200) | no |  |
+| certificaciones | TEXT | no |  |
+| penalidades | TEXT | no |  |
+| vendedor_id | INTEGER | sí | → users.id |
+
+Restricción única: (ruc)
 
 ## `date_changes`
 
@@ -368,6 +341,10 @@ Precio de mercado de referencia (R5, 13-oct): mayorista / minorista / importaci�
 | origen | VARCHAR(160) | no |  |
 | user_id | INTEGER | sí | → users.id |
 | ts | DATETIME | no |  |
+| categoria | VARCHAR(20) | no |  |
+| competidor | VARCHAR(160) | no |  |
+| presentacion | VARCHAR(60) | no |  |
+| product_code | VARCHAR(40) | no |  |
 
 ## `param_history`
 
@@ -497,63 +474,12 @@ Parte de producción por línea (formatos LINEA TRUER, LINEA CIMBRIA, ENVASADOS 
 | desmedro_pct | FLOAT | sí |  |
 | diferencia_kg | FLOAT | sí |  |
 | ratio_kg_hora | FLOAT | sí |  |
+| parada_min | INTEGER | sí |  |
+| motivo_parada | VARCHAR(160) | no |  |
 | estado | VARCHAR(20) | no |  |
 | observacion | TEXT | no |  |
 | user_id | INTEGER | sí | → users.id |
 | ts | DATETIME | no |  |
-
-## `sales_orders`
-
-
-
-| Columna | Tipo | Nulo | Clave / referencia |
-|---|---|---|---|
-| id | INTEGER | no | PK |
-| numero | VARCHAR(30) | no |  |
-| customer_id | INTEGER | no | → customers.id |
-| vendedor_id | INTEGER | sí | → users.id |
-| vendedor_nombre | VARCHAR(120) | no |  |
-| fecha_emision | DATE | no |  |
-| fecha_compromiso | DATE | no |  |
-| urgente | BOOLEAN | no |  |
-| direccion | VARCHAR(250) | no |  |
-| distrito | VARCHAR(80) | no |  |
-| provincia | VARCHAR(80) | no |  |
-| lugar_entrega | VARCHAR(120) | no |  |
-| site_id | INTEGER | sí | → customer_sites.id |
-| hora_cita | VARCHAR(20) | no |  |
-| cita_confirmada | BOOLEAN | no |  |
-| comentarios | TEXT | no |  |
-| estado | VARCHAR(24) | no |  |
-| estado_stock | VARCHAR(20) | no |  |
-| cobertura_unidades | FLOAT | no |  |
-| cobertura_lineas | FLOAT | no |  |
-| decision_parcial | VARCHAR(20) | no |  |
-| motivo_detencion | VARCHAR(250) | no |  |
-| origen | VARCHAR(20) | no |  |
-| tipo_venta | VARCHAR(40) | no |  |
-| forma_pago | VARCHAR(60) | no |  |
-| moneda | VARCHAR(10) | no |  |
-| retenida_precio | BOOLEAN | no |  |
-| precio_observado | JSON | no |  |
-| aprobacion_precio | JSON | no |  |
-| version | INTEGER | no |  |
-| creado_por | INTEGER | sí | → users.id |
-| creado_ts | DATETIME | no |  |
-| evaluado_ts | DATETIME | sí |  |
-| prep_inicio | DATETIME | sí |  |
-| prep_fin | DATETIME | sí |  |
-| salida_ts | DATETIME | sí |  |
-| entrega_ts | DATETIME | sí |  |
-| corte | VARCHAR(20) | no |  |
-| alerta80_emitida | BOOLEAN | no |  |
-| parcial_aprobaciones | JSON | no |  |
-| fecha_saldo | DATE | sí |  |
-| parent_id | INTEGER | sí | → sales_orders.id |
-| completa_notificada | BOOLEAN | no |  |
-| plan_picking_validado | BOOLEAN | no |  |
-
-Restricción única: (numero)
 
 ## `upload_batches`
 
@@ -587,6 +513,25 @@ Carga de archivo con validación previa (IF §6.4, §8.1, §19). tipo: STOCK, BO
 | accion | VARCHAR(30) | no |  |
 | comentario | TEXT | no |  |
 
+## `alert_incidents`
+
+Incidencia de una tarea: situación, acciones, responsable y resolución; no cierra la tarea original.
+
+| Columna | Tipo | Nulo | Clave / referencia |
+|---|---|---|---|
+| id | INTEGER | no | PK |
+| alert_id | INTEGER | no | → alerts.id |
+| situacion | TEXT | no |  |
+| acciones | TEXT | no |  |
+| responsable_id | INTEGER | sí | → users.id |
+| resolucion | TEXT | no |  |
+| estado | VARCHAR(10) | no |  |
+| estado_previo | VARCHAR(15) | no |  |
+| creado_por | INTEGER | sí | → users.id |
+| ts | DATETIME | no |  |
+| resuelto_por | INTEGER | sí | → users.id |
+| resuelto_ts | DATETIME | sí |  |
+
 ## `bom_versions`
 
 
@@ -602,6 +547,49 @@ Carga de archivo con validación previa (IF §6.4, §8.1, §19). tipo: STOCK, BO
 | activa | BOOLEAN | no |  |
 | incluye_merma | VARCHAR(15) | no |  |
 | cambios | JSON | no |  |
+
+## `customer_conditions`
+
+Condiciones comerciales del cliente (LISTA DE CLIENTES - CON PENALIDADES Y LOTES): ejecutivo, canal, tipo de solicitud, lotes por SKU, vida útil y penalidades. Se vincula por RUC si la fila lo trae; si no, por nombre normalizado.
+
+| Columna | Tipo | Nulo | Clave / referencia |
+|---|---|---|---|
+| id | INTEGER | no | PK |
+| nombre | VARCHAR(250) | no |  |
+| nombre_norm | VARCHAR(250) | no |  |
+| customer_id | INTEGER | sí | → customers.id |
+| ruc | VARCHAR(20) | no |  |
+| ejecutivo | VARCHAR(120) | no |  |
+| canal_comercial | VARCHAR(80) | no |  |
+| solicitud | VARCHAR(60) | no |  |
+| lotes_texto | VARCHAR(60) | no |  |
+| max_lotes_por_sku | INTEGER | sí |  |
+| vida_util_texto | VARCHAR(120) | no |  |
+| vida_util_meses | INTEGER | sí |  |
+| penalidades | TEXT | no |  |
+| penalidad_tipos | JSON | no |  |
+| penalidad_montos | JSON | no |  |
+| fill_rate_min_pct | FLOAT | sí |  |
+| origen | VARCHAR(200) | no |  |
+| ts | DATETIME | no |  |
+
+## `customer_sites`
+
+Lugar de entrega del cliente (almacén, tienda, sede). La OV elige uno o registra 'otro' con su dirección.
+
+| Columna | Tipo | Nulo | Clave / referencia |
+|---|---|---|---|
+| id | INTEGER | no | PK |
+| customer_id | INTEGER | no | → customers.id |
+| nombre | VARCHAR(120) | no |  |
+| direccion | VARCHAR(250) | no |  |
+| distrito | VARCHAR(80) | no |  |
+| provincia | VARCHAR(80) | no |  |
+| referencia | VARCHAR(250) | no |  |
+| horario_recepcion | VARCHAR(60) | no |  |
+| contacto | VARCHAR(120) | no |  |
+| telefono | VARCHAR(60) | no |  |
+| activo | BOOLEAN | no |  |
 
 ## `email_outbox`
 
@@ -650,70 +638,6 @@ Costos asociados a la importación (flete, seguro, aduana, almacenaje, transport
 | recordatorio_dias | INTEGER | no |  |
 | responsable_rol | VARCHAR(40) | no |  |
 
-## `ov_change_requests`
-
-Modificación de OV por Asistente de Ventas que requiere autorización (IF §5).
-
-| Columna | Tipo | Nulo | Clave / referencia |
-|---|---|---|---|
-| id | INTEGER | no | PK |
-| order_id | INTEGER | no | → sales_orders.id |
-| solicitado_por | INTEGER | no | → users.id |
-| payload | JSON | no |  |
-| motivo | TEXT | no |  |
-| estado | VARCHAR(12) | no |  |
-| resuelto_por | INTEGER | sí | → users.id |
-| resuelto_ts | DATETIME | sí |  |
-| ts | DATETIME | no |  |
-
-## `ov_decisions`
-
-Decisiones humanas ante faltantes (IF §4.5, §5, §6.3): despacho parcial, renegociación de fecha, cambio de producto, uso de almacén alternativo.
-
-| Columna | Tipo | Nulo | Clave / referencia |
-|---|---|---|---|
-| id | INTEGER | no | PK |
-| order_id | INTEGER | no | → sales_orders.id |
-| tipo | VARCHAR(30) | no |  |
-| estado | VARCHAR(30) | no |  |
-| detalle | JSON | no |  |
-| comentario | TEXT | no |  |
-| user_id | INTEGER | sí | → users.id |
-| ts | DATETIME | no |  |
-
-## `purchase_requests`
-
-
-
-| Columna | Tipo | Nulo | Clave / referencia |
-|---|---|---|---|
-| id | INTEGER | no | PK |
-| product_code | VARCHAR(30) | no | → products.code |
-| cantidad | FLOAT | no |  |
-| fecha_necesidad | DATE | sí |  |
-| origen | VARCHAR(20) | no |  |
-| order_id | INTEGER | sí | → sales_orders.id |
-| analisis | JSON | no |  |
-| estado | VARCHAR(30) | no |  |
-| requiere_muestra | BOOLEAN | no |  |
-| resultado_muestra | VARCHAR(20) | no |  |
-| mayor_volumen | BOOLEAN | no |  |
-| aprobado_gerencia_por | INTEGER | sí | → users.id |
-| aprobado_logistica_por | INTEGER | sí | → users.id |
-| proveedor | VARCHAR(160) | no |  |
-| cotizacion | TEXT | no |  |
-| precio | FLOAT | sí |  |
-| numero_oc | VARCHAR(40) | no |  |
-| fecha_prevista | DATE | sí |  |
-| warehouse_code | VARCHAR(20) | sí | → warehouses.code |
-| cantidad_recibida | FLOAT | sí |  |
-| diferencias | TEXT | no |  |
-| autorizacion_observacion_por | INTEGER | sí | → users.id |
-| observaciones_recepcion | TEXT | no |  |
-| lote_recibido | VARCHAR(60) | no |  |
-| creado_por | INTEGER | sí | → users.id |
-| ts | DATETIME | no |  |
-
 ## `sales_history`
 
 Historial de salidas/ventas para análisis de reposición (formato hoja 'Qy' de Rotación de inventario).
@@ -727,28 +651,6 @@ Historial de salidas/ventas para análisis de reposición (formato hoja 'Qy' de 
 | documento | VARCHAR(40) | no |  |
 | origen | VARCHAR(30) | no |  |
 | upload_id | INTEGER | sí | → upload_batches.id |
-
-## `sales_order_lines`
-
-
-
-| Columna | Tipo | Nulo | Clave / referencia |
-|---|---|---|---|
-| id | INTEGER | no | PK |
-| order_id | INTEGER | no | → sales_orders.id |
-| product_code | VARCHAR(30) | no | → products.code |
-| cantidad | FLOAT | no |  |
-| precio_unitario | FLOAT | no |  |
-| precio_minimo | FLOAT | sí |  |
-| precio_origen | VARCHAR(160) | no |  |
-| descuento | FLOAT | no |  |
-| tax_code | VARCHAR(10) | no |  |
-| um_venta | VARCHAR(10) | no |  |
-| cantidad_venta | FLOAT | sí |  |
-| preparado | FLOAT | no |  |
-| despachado | FLOAT | no |  |
-| entregado | FLOAT | no |  |
-| activa | BOOLEAN | no |  |
 
 ## `stock_lots`
 
@@ -807,6 +709,7 @@ Restricción única: (product_code, warehouse_code, lote, estado)
 | disponible | BOOLEAN | no |  |
 | conductor_habitual_id | INTEGER | sí | → drivers.id |
 | observacion | VARCHAR(250) | no |  |
+| km_actual | FLOAT | sí |  |
 
 Restricción única: (placa)
 
@@ -830,27 +733,6 @@ Fila del Excel 'LISTA DE MATERIALES 2026.xlsx' (Hoja1).
 | almacen_comp | VARCHAR(20) | no |  |
 | um | VARCHAR(20) | no |  |
 | metodo_emision | VARCHAR(5) | no |  |
-
-## `certificates`
-
-Certificado de calidad autogenerado (IF §9.4; modelos N°CP2026-PT3756 / MP276 / CA0764).
-
-| Columna | Tipo | Nulo | Clave / referencia |
-|---|---|---|---|
-| id | INTEGER | no | PK |
-| numero | VARCHAR(40) | no |  |
-| serie | VARCHAR(10) | no |  |
-| lot_id | INTEGER | sí | → stock_lots.id |
-| order_id | INTEGER | sí | → sales_orders.id |
-| product_code | VARCHAR(30) | no |  |
-| datos | JSON | no |  |
-| estado | VARCHAR(20) | no |  |
-| generado_ts | DATETIME | no |  |
-| revisado_por | INTEGER | sí | → users.id |
-| revisado_ts | DATETIME | sí |  |
-| cambios | JSON | no |  |
-
-Restricción única: (numero)
 
 ## `physical_count_lines`
 
@@ -893,48 +775,6 @@ Registro de Calidad genérico por formato: MUESTREO (REG-CAL-002 / CP-FOR-CAL-10
 | user_id | INTEGER | sí | → users.id |
 | ts | DATETIME | no |  |
 
-## `repack_requests`
-
-
-
-| Columna | Tipo | Nulo | Clave / referencia |
-|---|---|---|---|
-| id | INTEGER | no | PK |
-| tipo | VARCHAR(30) | no |  |
-| lot_id | INTEGER | no | → stock_lots.id |
-| cantidad | FLOAT | no |  |
-| producto_destino | VARCHAR(30) | sí | → products.code |
-| cantidad_destino | FLOAT | sí |  |
-| order_id | INTEGER | sí | → sales_orders.id |
-| motivo | TEXT | no |  |
-| estado | VARCHAR(20) | no |  |
-| solicitado_por | INTEGER | sí | → users.id |
-| evaluado_por | INTEGER | sí | → users.id |
-| evaluado_ts | DATETIME | sí |  |
-| resultado_calidad | TEXT | no |  |
-| ejecutado_por | INTEGER | sí | → users.id |
-| ejecucion_inicio | DATETIME | sí |  |
-| ejecucion_fin | DATETIME | sí |  |
-| lote_resultante | VARCHAR(60) | no |  |
-| nueva_fecha_fab | DATE | sí |  |
-| nueva_fecha_venc | DATE | sí |  |
-| lot_resultante_id | INTEGER | sí | → stock_lots.id |
-| ts | DATETIME | no |  |
-
-## `reservations`
-
-
-
-| Columna | Tipo | Nulo | Clave / referencia |
-|---|---|---|---|
-| id | INTEGER | no | PK |
-| ov_line_id | INTEGER | no | → sales_order_lines.id |
-| lot_id | INTEGER | no | → stock_lots.id |
-| cantidad | FLOAT | no |  |
-| estado | VARCHAR(12) | no |  |
-| ts | DATETIME | no |  |
-| motivo_liberacion | VARCHAR(200) | no |  |
-
 ## `routes`
 
 
@@ -969,6 +809,281 @@ Registro de Calidad genérico por formato: MUESTREO (REG-CAL-002 / CP-FOR-CAL-10
 | cierre_ts | DATETIME | sí |  |
 | creado_por | INTEGER | sí | → users.id |
 | ts | DATETIME | no |  |
+| hora_salida_prog | VARCHAR(5) | no |  |
+| km_salida | FLOAT | sí |  |
+| km_retorno | FLOAT | sí |  |
+| costo_transporte | FLOAT | sí |  |
+| costo_estiba | FLOAT | sí |  |
+
+## `sales_orders`
+
+
+
+| Columna | Tipo | Nulo | Clave / referencia |
+|---|---|---|---|
+| id | INTEGER | no | PK |
+| numero | VARCHAR(30) | no |  |
+| customer_id | INTEGER | no | → customers.id |
+| vendedor_id | INTEGER | sí | → users.id |
+| vendedor_nombre | VARCHAR(120) | no |  |
+| fecha_emision | DATE | no |  |
+| fecha_compromiso | DATE | no |  |
+| urgente | BOOLEAN | no |  |
+| direccion | VARCHAR(250) | no |  |
+| distrito | VARCHAR(80) | no |  |
+| provincia | VARCHAR(80) | no |  |
+| lugar_entrega | VARCHAR(120) | no |  |
+| site_id | INTEGER | sí | → customer_sites.id |
+| hora_cita | VARCHAR(20) | no |  |
+| cita_confirmada | BOOLEAN | no |  |
+| comentarios | TEXT | no |  |
+| estado | VARCHAR(24) | no |  |
+| estado_stock | VARCHAR(20) | no |  |
+| cobertura_unidades | FLOAT | no |  |
+| cobertura_lineas | FLOAT | no |  |
+| decision_parcial | VARCHAR(20) | no |  |
+| motivo_detencion | VARCHAR(250) | no |  |
+| origen | VARCHAR(20) | no |  |
+| tipo_venta | VARCHAR(40) | no |  |
+| forma_pago | VARCHAR(60) | no |  |
+| moneda | VARCHAR(10) | no |  |
+| retenida_precio | BOOLEAN | no |  |
+| precio_observado | JSON | no |  |
+| aprobacion_precio | JSON | no |  |
+| version | INTEGER | no |  |
+| creado_por | INTEGER | sí | → users.id |
+| creado_ts | DATETIME | no |  |
+| evaluado_ts | DATETIME | sí |  |
+| prep_inicio | DATETIME | sí |  |
+| prep_fin | DATETIME | sí |  |
+| salida_ts | DATETIME | sí |  |
+| entrega_ts | DATETIME | sí |  |
+| corte | VARCHAR(20) | no |  |
+| alerta80_emitida | BOOLEAN | no |  |
+| parcial_aprobaciones | JSON | no |  |
+| fecha_saldo | DATE | sí |  |
+| parent_id | INTEGER | sí | → sales_orders.id |
+| completa_notificada | BOOLEAN | no |  |
+| plan_picking_validado | BOOLEAN | no |  |
+| canal_precio | VARCHAR(60) | no |  |
+
+Restricción única: (numero)
+
+## `vehicle_maintenances`
+
+Mantenimientos del vehículo y el próximo por kilometraje o fecha.
+
+| Columna | Tipo | Nulo | Clave / referencia |
+|---|---|---|---|
+| id | INTEGER | no | PK |
+| vehicle_id | INTEGER | no | → vehicles.id |
+| fecha | DATE | no |  |
+| tipo | VARCHAR(15) | no |  |
+| km | FLOAT | sí |  |
+| descripcion | TEXT | no |  |
+| costo | FLOAT | sí |  |
+| proximo_km | FLOAT | sí |  |
+| proxima_fecha | DATE | sí |  |
+| user_id | INTEGER | sí | → users.id |
+| ts | DATETIME | no |  |
+
+## `certificates`
+
+Certificado de calidad autogenerado (IF §9.4; modelos N°CP2026-PT3756 / MP276 / CA0764).
+
+| Columna | Tipo | Nulo | Clave / referencia |
+|---|---|---|---|
+| id | INTEGER | no | PK |
+| numero | VARCHAR(40) | no |  |
+| serie | VARCHAR(10) | no |  |
+| lot_id | INTEGER | sí | → stock_lots.id |
+| order_id | INTEGER | sí | → sales_orders.id |
+| product_code | VARCHAR(30) | no |  |
+| datos | JSON | no |  |
+| estado | VARCHAR(20) | no |  |
+| generado_ts | DATETIME | no |  |
+| revisado_por | INTEGER | sí | → users.id |
+| revisado_ts | DATETIME | sí |  |
+| cambios | JSON | no |  |
+
+Restricción única: (numero)
+
+## `fuel_logs`
+
+Consumo de combustible por vehículo.
+
+| Columna | Tipo | Nulo | Clave / referencia |
+|---|---|---|---|
+| id | INTEGER | no | PK |
+| vehicle_id | INTEGER | no | → vehicles.id |
+| fecha | DATE | no |  |
+| km | FLOAT | no |  |
+| galones | FLOAT | no |  |
+| monto | FLOAT | sí |  |
+| route_id | INTEGER | sí | → routes.id |
+| driver_id | INTEGER | sí | → drivers.id |
+| user_id | INTEGER | sí | → users.id |
+| ts | DATETIME | no |  |
+
+## `ov_change_requests`
+
+Modificación de OV por Asistente de Ventas que requiere autorización (IF §5).
+
+| Columna | Tipo | Nulo | Clave / referencia |
+|---|---|---|---|
+| id | INTEGER | no | PK |
+| order_id | INTEGER | no | → sales_orders.id |
+| solicitado_por | INTEGER | no | → users.id |
+| payload | JSON | no |  |
+| motivo | TEXT | no |  |
+| estado | VARCHAR(12) | no |  |
+| resuelto_por | INTEGER | sí | → users.id |
+| resuelto_ts | DATETIME | sí |  |
+| ts | DATETIME | no |  |
+
+## `ov_decisions`
+
+Decisiones humanas ante faltantes (IF §4.5, §5, §6.3): despacho parcial, renegociación de fecha, cambio de producto, uso de almacén alternativo.
+
+| Columna | Tipo | Nulo | Clave / referencia |
+|---|---|---|---|
+| id | INTEGER | no | PK |
+| order_id | INTEGER | no | → sales_orders.id |
+| tipo | VARCHAR(30) | no |  |
+| estado | VARCHAR(30) | no |  |
+| detalle | JSON | no |  |
+| comentario | TEXT | no |  |
+| user_id | INTEGER | sí | → users.id |
+| ts | DATETIME | no |  |
+
+## `picking_tasks`
+
+Programación del picking de una OV en un almacén (observaciones al demo v0.6): el sistema la preprograma, el Líder Operativo o el Coordinador la asigna a una persona o grupo y la modifica; el auxiliar la ejecuta con fotos.
+
+| Columna | Tipo | Nulo | Clave / referencia |
+|---|---|---|---|
+| id | INTEGER | no | PK |
+| order_id | INTEGER | no | → sales_orders.id |
+| warehouse_code | VARCHAR(20) | no |  |
+| fecha | DATE | no |  |
+| asignados | JSON | no |  |
+| asignado_por | INTEGER | sí | → users.id |
+| estado | VARCHAR(15) | no |  |
+| inicio_ts | DATETIME | sí |  |
+| fin_ts | DATETIME | sí |  |
+| foto_inicio | VARCHAR(200) | no |  |
+| foto_listo | VARCHAR(200) | no |  |
+| observacion | TEXT | no |  |
+| verificador | VARCHAR(120) | no |  |
+| ts | DATETIME | no |  |
+
+## `purchase_requests`
+
+
+
+| Columna | Tipo | Nulo | Clave / referencia |
+|---|---|---|---|
+| id | INTEGER | no | PK |
+| product_code | VARCHAR(30) | no | → products.code |
+| cantidad | FLOAT | no |  |
+| fecha_necesidad | DATE | sí |  |
+| origen | VARCHAR(20) | no |  |
+| order_id | INTEGER | sí | → sales_orders.id |
+| analisis | JSON | no |  |
+| estado | VARCHAR(30) | no |  |
+| requiere_muestra | BOOLEAN | no |  |
+| resultado_muestra | VARCHAR(20) | no |  |
+| mayor_volumen | BOOLEAN | no |  |
+| aprobado_gerencia_por | INTEGER | sí | → users.id |
+| aprobado_logistica_por | INTEGER | sí | → users.id |
+| proveedor | VARCHAR(160) | no |  |
+| cotizacion | TEXT | no |  |
+| precio | FLOAT | sí |  |
+| numero_oc | VARCHAR(40) | no |  |
+| fecha_prevista | DATE | sí |  |
+| warehouse_code | VARCHAR(20) | sí | → warehouses.code |
+| cantidad_recibida | FLOAT | sí |  |
+| diferencias | TEXT | no |  |
+| autorizacion_observacion_por | INTEGER | sí | → users.id |
+| observaciones_recepcion | TEXT | no |  |
+| lote_recibido | VARCHAR(60) | no |  |
+| creado_por | INTEGER | sí | → users.id |
+| ts | DATETIME | no |  |
+
+## `repack_requests`
+
+
+
+| Columna | Tipo | Nulo | Clave / referencia |
+|---|---|---|---|
+| id | INTEGER | no | PK |
+| tipo | VARCHAR(30) | no |  |
+| lot_id | INTEGER | no | → stock_lots.id |
+| cantidad | FLOAT | no |  |
+| producto_destino | VARCHAR(30) | sí | → products.code |
+| cantidad_destino | FLOAT | sí |  |
+| order_id | INTEGER | sí | → sales_orders.id |
+| motivo | TEXT | no |  |
+| estado | VARCHAR(20) | no |  |
+| solicitado_por | INTEGER | sí | → users.id |
+| evaluado_por | INTEGER | sí | → users.id |
+| evaluado_ts | DATETIME | sí |  |
+| resultado_calidad | TEXT | no |  |
+| ejecutado_por | INTEGER | sí | → users.id |
+| ejecucion_inicio | DATETIME | sí |  |
+| ejecucion_fin | DATETIME | sí |  |
+| lote_resultante | VARCHAR(60) | no |  |
+| nueva_fecha_fab | DATE | sí |  |
+| nueva_fecha_venc | DATE | sí |  |
+| lot_resultante_id | INTEGER | sí | → stock_lots.id |
+| ts | DATETIME | no |  |
+
+## `route_stops`
+
+
+
+| Columna | Tipo | Nulo | Clave / referencia |
+|---|---|---|---|
+| id | INTEGER | no | PK |
+| route_id | INTEGER | no | → routes.id |
+| order_id | INTEGER | no | → sales_orders.id |
+| orden | INTEGER | no |  |
+| peso_kg | FLOAT | no |  |
+| estado | VARCHAR(20) | no |  |
+| llegada_ts | DATETIME | sí |  |
+| entrega_ts | DATETIME | sí |  |
+| foto_path | VARCHAR(250) | no |  |
+| guia_firmada_path | VARCHAR(250) | no |  |
+| guia_numero | VARCHAR(40) | no |  |
+| guia_origen | VARCHAR(10) | no |  |
+| guia_path | VARCHAR(250) | no |  |
+| factura_numero | VARCHAR(40) | no |  |
+| factura_path | VARCHAR(250) | no |  |
+| factura_con_modificaciones | BOOLEAN | no |  |
+| factura_ts | DATETIME | sí |  |
+| observacion | TEXT | no |  |
+
+## `sales_order_lines`
+
+
+
+| Columna | Tipo | Nulo | Clave / referencia |
+|---|---|---|---|
+| id | INTEGER | no | PK |
+| order_id | INTEGER | no | → sales_orders.id |
+| product_code | VARCHAR(30) | no | → products.code |
+| cantidad | FLOAT | no |  |
+| precio_unitario | FLOAT | no |  |
+| precio_minimo | FLOAT | sí |  |
+| precio_origen | VARCHAR(160) | no |  |
+| descuento | FLOAT | no |  |
+| tax_code | VARCHAR(10) | no |  |
+| um_venta | VARCHAR(10) | no |  |
+| cantidad_venta | FLOAT | sí |  |
+| preparado | FLOAT | no |  |
+| despachado | FLOAT | no |  |
+| entregado | FLOAT | no |  |
+| activa | BOOLEAN | no |  |
 
 ## `transfers`
 
@@ -993,6 +1108,67 @@ Registro de Calidad genérico por formato: MUESTREO (REG-CAL-002 / CP-FOR-CAL-10
 | diferencia | FLOAT | no |  |
 | observacion | TEXT | no |  |
 | llegada_estimada | DATETIME | sí |  |
+| ts | DATETIME | no |  |
+
+## `vehicle_documents`
+
+Seguimiento de documentos y obligaciones del vehículo: SOAT, revisión técnica, impuesto vehicular, multas, etc.
+
+| Columna | Tipo | Nulo | Clave / referencia |
+|---|---|---|---|
+| id | INTEGER | no | PK |
+| vehicle_id | INTEGER | no | → vehicles.id |
+| tipo | VARCHAR(30) | no |  |
+| numero | VARCHAR(60) | no |  |
+| fecha | DATE | sí |  |
+| hora | VARCHAR(5) | no |  |
+| vencimiento | DATE | sí |  |
+| monto | FLOAT | sí |  |
+| estado | VARCHAR(15) | no |  |
+| driver_id | INTEGER | sí | → drivers.id |
+| route_id | INTEGER | sí | → routes.id |
+| archivo | VARCHAR(200) | no |  |
+| observacion | TEXT | no |  |
+| user_id | INTEGER | sí | → users.id |
+| ts | DATETIME | no |  |
+
+## `incidents`
+
+Incidencias de distribución (IF §12.3), clasificadas por tipo y subtipo (observaciones al demo v0.5).
+
+| Columna | Tipo | Nulo | Clave / referencia |
+|---|---|---|---|
+| id | INTEGER | no | PK |
+| tipo | VARCHAR(30) | no |  |
+| grupo | VARCHAR(20) | no |  |
+| route_id | INTEGER | sí | → routes.id |
+| stop_id | INTEGER | sí | → route_stops.id |
+| order_id | INTEGER | sí | → sales_orders.id |
+| descripcion | TEXT | no |  |
+| cantidad_afectada | FLOAT | sí |  |
+| estado | VARCHAR(15) | no |  |
+| user_id | INTEGER | sí | → users.id |
+| ts | DATETIME | no |  |
+| alert_id | INTEGER | sí | → alerts.id |
+| entrega | VARCHAR(10) | no |  |
+| lineas | JSON | no |  |
+
+## `picking_records`
+
+Lo que llena a mano el auxiliar en el formato 'Seguimiento de control de despacho de producto terminado': cantidad despachada, lote, fecha de producción y fecha de vencimiento (por línea y lote).
+
+| Columna | Tipo | Nulo | Clave / referencia |
+|---|---|---|---|
+| id | INTEGER | no | PK |
+| order_id | INTEGER | no | → sales_orders.id |
+| line_id | INTEGER | no | → sales_order_lines.id |
+| task_id | INTEGER | sí | → picking_tasks.id |
+| lote | VARCHAR(60) | no |  |
+| cantidad | FLOAT | no |  |
+| fecha_produccion | DATE | sí |  |
+| fecha_venc | DATE | sí |  |
+| comentario | VARCHAR(250) | no |  |
+| user_id | INTEGER | sí | → users.id |
 | ts | DATETIME | no |  |
 
 ## `production_requests`
@@ -1023,49 +1199,19 @@ Solicitud preliminar de producción (IF §8.2).
 | bom_revision | JSON | no |  |
 | ts | DATETIME | no |  |
 
-## `route_stops`
+## `reservations`
 
 
 
 | Columna | Tipo | Nulo | Clave / referencia |
 |---|---|---|---|
 | id | INTEGER | no | PK |
-| route_id | INTEGER | no | → routes.id |
-| order_id | INTEGER | no | → sales_orders.id |
-| orden | INTEGER | no |  |
-| peso_kg | FLOAT | no |  |
-| estado | VARCHAR(20) | no |  |
-| llegada_ts | DATETIME | sí |  |
-| entrega_ts | DATETIME | sí |  |
-| foto_path | VARCHAR(250) | no |  |
-| guia_firmada_path | VARCHAR(250) | no |  |
-| guia_numero | VARCHAR(40) | no |  |
-| guia_origen | VARCHAR(10) | no |  |
-| guia_path | VARCHAR(250) | no |  |
-| factura_numero | VARCHAR(40) | no |  |
-| factura_path | VARCHAR(250) | no |  |
-| factura_con_modificaciones | BOOLEAN | no |  |
-| factura_ts | DATETIME | sí |  |
-| observacion | TEXT | no |  |
-
-## `incidents`
-
-Incidencias de distribución (IF §12.3), clasificadas por tipo y subtipo (observaciones al demo v0.5).
-
-| Columna | Tipo | Nulo | Clave / referencia |
-|---|---|---|---|
-| id | INTEGER | no | PK |
-| tipo | VARCHAR(30) | no |  |
-| grupo | VARCHAR(20) | no |  |
-| route_id | INTEGER | sí | → routes.id |
-| stop_id | INTEGER | sí | → route_stops.id |
-| order_id | INTEGER | sí | → sales_orders.id |
-| descripcion | TEXT | no |  |
-| cantidad_afectada | FLOAT | sí |  |
-| estado | VARCHAR(15) | no |  |
-| user_id | INTEGER | sí | → users.id |
+| ov_line_id | INTEGER | no | → sales_order_lines.id |
+| lot_id | INTEGER | no | → stock_lots.id |
+| cantidad | FLOAT | no |  |
+| estado | VARCHAR(12) | no |  |
 | ts | DATETIME | no |  |
-| alert_id | INTEGER | sí | → alerts.id |
+| motivo_liberacion | VARCHAR(200) | no |  |
 
 ## `liquidations`
 

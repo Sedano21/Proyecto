@@ -15,9 +15,9 @@ Origen: **D** = definido expresamente en la documentación; **P** = propuesto (d
 | ASIST_VENTAS | Asistente de Ventas | Comercial | Informe Funcional §5, §15 | Modifica OV solo con autorización. |
 | EJECUTIVO_VENTAS | Ejecutivo de Ventas (vendedor por canal) | Comercial | Informe Funcional §5, §15 | Vendedor responsable de la OV. |
 | COORD_ALMACEN | Coordinación de Almacén 1560 (producto terminado) | Almacén | Informe Funcional §6, §15; decisión Q17 (12-oct-2026) | Maneja el almacén 1560 (ALM-001) y el tránsito de Producción ALM-003. |
-| COORD_ALMACEN_MP | Coordinación de Almacén 1524 (materia prima, granel e insumos) | Almacén | TO-BE COPROD-ONE (L5) (dos coordinadores); decisión Q17 (12-oct-2026) | Maneja el almacén 1524 (EXT-002). |
+| COORD_ALMACEN_MP | Coordinación de Almacén 1524 (materia prima, granel e insumos) | Almacén | Diagrama de procesos COPROD-ONE (L5) (dos coordinadores); decisión Q17 (12-oct-2026) | Maneja el almacén 1524 (EXT-002). |
 | SUPERV_ALMACEN | Supervisión de Almacén (por almacén) | Almacén | Informe Funcional §15 |  |
-| LIDER_ALMACEN | Líder Operativo de Almacén | Almacén | Informe Funcional §15; diagrama AS-IS L5 | Autoriza la salida del camión (Q16). |
+| LIDER_ALMACEN | Líder Operativo de Almacén | Almacén | Informe Funcional §15; diagrama de proceso actual L5 | Autoriza la salida del camión (Q16). |
 | AUX_ALMACEN | Auxiliar / Asistente de Almacén | Almacén | Informe Funcional §6.2, §15 |  |
 | MONTACARGUISTA | Montacarguista | Almacén | Informe Funcional §8.3, §15 |  |
 | COORD_DISTRIBUCION | Coordinador de Distribución | Distribución | Informe Funcional §12, §15 |  |
@@ -34,7 +34,7 @@ Origen: **D** = definido expresamente en la documentación; **P** = propuesto (d
 | COMPRAS | Coordinador de Compras | Compras | Informe Funcional §10, §15 |  |
 | IMPORTACIONES | Coordinador de Importación | Importaciones | Informe Funcional §11, §15; Decisión del usuario (13-oct-2026) Q10 | Responsable de las fases de importación. |
 | SEGURIDAD | Seguridad | Seguridad | Informe Funcional §12.2, §13, §15 |  |
-| FACTURACION | Facturación | Facturación | TO-BE COPROD-ONE (carril Facturación) | Evalúa el pedido validado y carga la factura. |
+| FACTURACION | Facturación | Facturación | Diagrama de procesos COPROD-ONE (carril Facturación) | Evalúa el pedido validado y carga la factura. |
 
 ## Permisos (separación consulta / edición / aprobación / administración, IF §19)
 
@@ -115,33 +115,54 @@ Origen: **D** = definido expresamente en la documentación; **P** = propuesto (d
 | config.ver | Consultar configuración | Configuración | consulta |
 | config.editar | Editar configuración y catálogos (solo Sistemas) | Configuración | exclusivo |
 | usuarios.administrar | Administrar usuarios y matriz de permisos | Configuración | administracion |
-| auditoria.ver | Consultar bitácora de auditoría | Configuración | consulta |
+| auditoria.ver | Consultar bitácora de auditoría (solo Sistemas) | Configuración | exclusivo |
+| dashboard.precios | Tablero: montos de OV y OV con precio en el límite o bajo el mínimo | Gerencial | consulta |
+| dashboard.operaciones | Tablero: tiempos de preparación y salida, compras/producción pendientes, diferencias de inventario | Gerencial | consulta |
+| dashboard.merma | Tablero: merma prevista vs real | Gerencial | consulta |
+| informes.comercial | Informe Comercial (ventas, comportamiento de clientes, penalidades) | Informes | consulta |
+| informes.reempaque | Informe de Reempaque (cómo se atendieron las solicitudes) | Informes | consulta |
+| informes.produccion | Informe de Producción (capacidad, programado vs real, solicitudes) | Informes | consulta |
+| informes.distribucion | Informe de Distribución (a tiempo, desviación, costos de transporte y estiba) | Informes | consulta |
+| informes.almacen | Informe de movimiento de stock del almacén (picos, bajas, demoras, stock de reserva) | Informes | consulta |
+| ov.opciones | Ver las opciones evaluadas por el sistema para una OV y aprobar/derivar sus pre-solicitudes | Almacén | consulta |
+| clientes.ver | Consultar fichas de clientes | Comercial | consulta |
+| clientes.editar | Modificar o completar fichas de clientes (solo Comercial) | Comercial | exclusivo |
+| produccion.bom_aprobar | Revisar y aprobar/modificar la lista de materiales usada para producir | Producción | aprobacion |
+| flota.ver | Consultar seguimiento de flota (SOAT, impuestos, multas, combustible, mantenimiento) | Distribución | consulta |
+| tareas.ejecutar | Registrar inicio y fin de tareas operativas con foto (picking, traslado interno) | Almacén | edicion |
+| picking.asignar | Asignar el picking preprogramado a auxiliares o grupos | Almacén | edicion |
 | export.datos | Exportar registros | General | consulta |
 
 ## Permisos por rol
 
 ### Gerencia General
 
-Todos los permisos (71) — D: Respuestas del 13-oct (R4): visibilidad del costo – propuesto. Las aprobaciones no se omiten; quedan auditadas (decisión pendiente IF §15).
+Todos los permisos (84) — D: Respuestas del 13-oct (R4): visibilidad del costo – propuesto. Las aprobaciones no se omiten; quedan auditadas (decisión pendiente IF §15).
 
 ### Sistemas
 
-Todos los permisos (53) — D: Decisión del usuario (13-oct-2026, segunda parte): Sistemas tiene todo el panel de configuración. Las aprobaciones no se omiten; quedan auditadas (decisión pendiente IF §15).
+Todos los permisos (66) — D: Decisión del usuario (13-oct-2026, segunda parte): Sistemas tiene todo el panel de configuración. Las aprobaciones no se omiten; quedan auditadas (decisión pendiente IF §15).
 
 ### Gerencia de Operaciones
 
 - `alertas.gestionar` – Asignar, atender, comentar y cerrar alertas (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `alertas.ver` – Ver alertas propias/del rol (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `calidad.ver` – Consultar registros de Calidad (**P**; Informe Funcional §3 (alcance por área) – propuesto)
+- `clientes.ver` – Consultar fichas de clientes (**D**; Observaciones al demo v0.6 (14-oct-2026))
 - `compras.aprobar_mayor_volumen` – Aprobar compra de mayor volumen (**P**; Informe Funcional §7 – participación de GO requiere validación)
 - `compras.autorizar_bajo_observacion` – Autorizar recepción bajo observaciones (**D**; Informe Funcional §10.8)
 - `compras.ver` – Consultar compras (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `config.ver` – Consultar configuración (**P**; Informe Funcional §3 (alcance por área) – propuesto)
+- `dashboard.merma` – Tablero: merma prevista vs real (**D**; Observaciones al demo v0.6 (14-oct-2026))
+- `dashboard.operaciones` – Tablero: tiempos de preparación y salida, compras/producción pendientes, diferencias de inventario (**D**; Observaciones al demo v0.6 (14-oct-2026))
+- `dashboard.precios` – Tablero: montos de OV y OV con precio en el límite o bajo el mínimo (**P**; Observaciones al demo v0.6 (14-oct-2026) – propuesto, por validar)
 - `dashboard.ver` – Ver tablero de indicadores (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `distribucion.ver` – Consultar distribución (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `export.datos` – Exportar registros (**P**; Informe Funcional §3 (alcance por área) – propuesto)
+- `flota.ver` – Consultar seguimiento de flota (SOAT, impuestos, multas, combustible, mantenimiento) (**P**; Observaciones al demo v0.6 (14-oct-2026) – propuesto, por validar)
 - `importaciones.ver` – Consultar importaciones (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `ov.aprobar_parcial` – Aprobar despacho parcial (**D**; Decisión del usuario Q3 (11 y 12-oct-2026): aprueba Gerencia de Operaciones o Jefatura de Logística)
+- `ov.opciones` – Ver las opciones evaluadas por el sistema para una OV y aprobar/derivar sus pre-solicitudes (**D**; Observaciones al demo v0.6 (14-oct-2026))
 - `ov.renegociar` – Registrar renegociación de fecha / cambio de producto (**D**; Informe Funcional §4.5, §5 (participa en renegociación))
 - `ov.ver` – Consultar órdenes de venta (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `produccion.ver` – Consultar producción (**P**; Informe Funcional §3 (alcance por área) – propuesto)
@@ -153,10 +174,14 @@ Todos los permisos (53) — D: Decisión del usuario (13-oct-2026, segunda parte
 
 - `alertas.gestionar` – Asignar, atender, comentar y cerrar alertas (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `alertas.ver` – Ver alertas propias/del rol (**P**; Informe Funcional §3 (alcance por área) – propuesto)
+- `clientes.editar` – Modificar o completar fichas de clientes (solo Comercial) (**D**; Observaciones al demo v0.6 (14-oct-2026))
+- `clientes.ver` – Consultar fichas de clientes (**D**; Observaciones al demo v0.6 (14-oct-2026))
 - `costos.ver` – Ver costos de la empresa y el análisis costo vs mercado (**P**; Respuestas del 13-oct (R4): visibilidad del costo – propuesto)
+- `dashboard.precios` – Tablero: montos de OV y OV con precio en el límite o bajo el mínimo (**D**; Observaciones al demo v0.6 (14-oct-2026))
 - `dashboard.ver` – Ver tablero de indicadores (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `distribucion.ver` – Consultar distribución (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `export.datos` – Exportar registros (**P**; Informe Funcional §3 (alcance por área) – propuesto)
+- `informes.comercial` – Informe Comercial (ventas, comportamiento de clientes, penalidades) (**D**; Observaciones al demo v0.6 (14-oct-2026))
 - `ov.ver` – Consultar órdenes de venta (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `precios.ver` – Consultar listas de precios (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `stock.ver` – Consultar stock y reservas (**P**; Informe Funcional §3 (alcance por área) – propuesto)
@@ -166,11 +191,15 @@ Todos los permisos (53) — D: Decisión del usuario (13-oct-2026, segunda parte
 - `alertas.gestionar` – Asignar, atender, comentar y cerrar alertas (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `alertas.ver` – Ver alertas propias/del rol (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `clientes.canal` – Asignar canal de precios y cargar condiciones de clientes (penalidades, lotes) (**D**; Decisión del usuario (13-oct-2026, segunda parte): el Jefe Comercial asigna y traslada clientes de canal)
+- `clientes.editar` – Modificar o completar fichas de clientes (solo Comercial) (**D**; Observaciones al demo v0.6 (14-oct-2026))
+- `clientes.ver` – Consultar fichas de clientes (**D**; Observaciones al demo v0.6 (14-oct-2026))
 - `costos.cargar` – Cargar costos y precios de mercado (**P**; Respuestas del 13-oct (R4, R5): costos y precios de mercado los gestiona Comercial – propuesto)
 - `costos.ver` – Ver costos de la empresa y el análisis costo vs mercado (**P**; Respuestas del 13-oct (R4, R5): costos y precios de mercado los gestiona Comercial – propuesto)
+- `dashboard.precios` – Tablero: montos de OV y OV con precio en el límite o bajo el mínimo (**D**; Observaciones al demo v0.6 (14-oct-2026))
 - `dashboard.ver` – Ver tablero de indicadores (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `distribucion.ver` – Consultar distribución (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `export.datos` – Exportar registros (**P**; Informe Funcional §3 (alcance por área) – propuesto)
+- `informes.comercial` – Informe Comercial (ventas, comportamiento de clientes, penalidades) (**D**; Observaciones al demo v0.6 (14-oct-2026))
 - `ov.aprobar_precio` – Liberar una OV retenida por precio en el límite o bajo el mínimo (**D**; Decisión del usuario (13-oct-2026, segunda parte): la OV bajo el mínimo queda detenida hasta la confirmación del Coordinador Comercial o Jefe Comercial)
 - `ov.autorizar_modificacion` – Autorizar modificación de OV solicitada por Asistente (**D**; Informe Funcional §5)
 - `ov.cancelar` – Cancelar OV (**D**; Informe Funcional §5)
@@ -187,10 +216,14 @@ Todos los permisos (53) — D: Decisión del usuario (13-oct-2026, segunda parte
 
 - `alertas.gestionar` – Asignar, atender, comentar y cerrar alertas (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `alertas.ver` – Ver alertas propias/del rol (**P**; Informe Funcional §3 (alcance por área) – propuesto)
+- `clientes.editar` – Modificar o completar fichas de clientes (solo Comercial) (**D**; Observaciones al demo v0.6 (14-oct-2026))
+- `clientes.ver` – Consultar fichas de clientes (**D**; Observaciones al demo v0.6 (14-oct-2026))
 - `costos.ver` – Ver costos de la empresa y el análisis costo vs mercado (**P**; Respuestas del 13-oct (R4): confirma OV bajo costo – propuesto)
+- `dashboard.precios` – Tablero: montos de OV y OV con precio en el límite o bajo el mínimo (**D**; Observaciones al demo v0.6 (14-oct-2026))
 - `dashboard.ver` – Ver tablero de indicadores (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `distribucion.ver` – Consultar distribución (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `export.datos` – Exportar registros (**P**; Informe Funcional §3 (alcance por área) – propuesto)
+- `informes.comercial` – Informe Comercial (ventas, comportamiento de clientes, penalidades) (**D**; Observaciones al demo v0.6 (14-oct-2026))
 - `ov.aprobar_precio` – Liberar una OV retenida por precio en el límite o bajo el mínimo (**D**; Decisión del usuario (13-oct-2026, segunda parte): confirma OV detenida por precio (Coordinador Comercial))
 - `ov.autorizar_modificacion` – Autorizar modificación de OV solicitada por Asistente (**D**; Informe Funcional §5)
 - `ov.cancelar` – Cancelar OV (**D**; Informe Funcional §5)
@@ -205,8 +238,11 @@ Todos los permisos (53) — D: Decisión del usuario (13-oct-2026, segunda parte
 ### Asistente de Ventas
 
 - `alertas.ver` – Ver alertas propias/del rol (**P**; Informe Funcional §3 (alcance por área) – propuesto)
-- `ov.crear` – Registrar OV (**D**; Diagrama AS-IS L5 (Asistente comercial ingresa la OV))
-- `ov.importar` – Importar OV desde exportación SAP (**D**; TO-BE COPROD-ONE (L5): el asistente carga el consolidado de OV emitidas y cambios)
+- `clientes.editar` – Modificar o completar fichas de clientes (solo Comercial) (**D**; Observaciones al demo v0.6 (14-oct-2026))
+- `clientes.ver` – Consultar fichas de clientes (**D**; Observaciones al demo v0.6 (14-oct-2026))
+- `informes.comercial` – Informe Comercial (ventas, comportamiento de clientes, penalidades) (**D**; Observaciones al demo v0.6 (14-oct-2026))
+- `ov.crear` – Registrar OV (**D**; Diagrama de proceso actual L5 (Asistente comercial ingresa la OV))
+- `ov.importar` – Importar OV desde exportación SAP (**D**; Diagrama de procesos COPROD-ONE (L5): el asistente carga el consolidado de OV emitidas y cambios)
 - `ov.solicitar_modificacion` – Solicitar modificación de OV (requiere autorización) (**D**; Informe Funcional §5 (modifica con autorización))
 - `ov.ver` – Consultar órdenes de venta (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `stock.ver` – Consultar stock y reservas (**P**; Informe Funcional §3 (alcance por área) – propuesto)
@@ -215,7 +251,10 @@ Todos los permisos (53) — D: Decisión del usuario (13-oct-2026, segunda parte
 
 - `alertas.gestionar` – Asignar, atender, comentar y cerrar alertas (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `alertas.ver` – Ver alertas propias/del rol (**P**; Informe Funcional §3 (alcance por área) – propuesto)
+- `clientes.editar` – Modificar o completar fichas de clientes (solo Comercial) (**D**; Observaciones al demo v0.6 (14-oct-2026))
+- `clientes.ver` – Consultar fichas de clientes (**D**; Observaciones al demo v0.6 (14-oct-2026))
 - `distribucion.ver` – Consultar distribución (**P**; Informe Funcional §3 (alcance por área) – propuesto)
+- `informes.comercial` – Informe Comercial (ventas, comportamiento de clientes, penalidades) (**D**; Observaciones al demo v0.6 (14-oct-2026))
 - `ov.autorizar_modificacion` – Autorizar modificación de OV solicitada por Asistente (**D**; Informe Funcional §5 (vendedor responsable autoriza; solo sus OV))
 - `ov.crear` – Registrar OV (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `ov.modificar` – Modificar OV directamente (solo Ejecutivo de cuenta, Coordinador y Jefe Comercial) (**D**; Observaciones al demo v0.5 (13-oct): modificar OV solo Ejecutivo de cuenta, Coordinador y Jefe Comercial)
@@ -227,16 +266,21 @@ Todos los permisos (53) — D: Decisión del usuario (13-oct-2026, segunda parte
 
 - `alertas.gestionar` – Asignar, atender, comentar y cerrar alertas (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `alertas.ver` – Ver alertas propias/del rol (**P**; Informe Funcional §3 (alcance por área) – propuesto)
-- `calidad.ver` – Consultar registros de Calidad (**P**; Informe Funcional §3 (alcance por área) – propuesto)
+- `clientes.ver` – Consultar fichas de clientes (**D**; Observaciones al demo v0.6 (14-oct-2026))
 - `compras.recibir` – Registrar recepción de compra (**D**; Informe Funcional §8.3, §10.6-10.7)
 - `compras.solicitar` – Originar solicitud de compra (**D**; Informe Funcional §7, §10.1)
 - `compras.ver` – Consultar compras (**P**; Informe Funcional §3 (alcance por área) – propuesto)
+- `dashboard.operaciones` – Tablero: tiempos de preparación y salida, compras/producción pendientes, diferencias de inventario (**D**; Observaciones al demo v0.6 (14-oct-2026))
 - `dashboard.ver` – Ver tablero de indicadores (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `distribucion.ver` – Consultar distribución (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `export.datos` – Exportar registros (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `importaciones.recibir` – Registrar recepción de importación (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `importaciones.ver` – Consultar importaciones (**P**; Informe Funcional §3 (alcance por área) – propuesto)
+- `informes.almacen` – Informe de movimiento de stock del almacén (picos, bajas, demoras, stock de reserva) (**D**; Observaciones al demo v0.6 (14-oct-2026))
+- `informes.reempaque` – Informe de Reempaque (cómo se atendieron las solicitudes) (**D**; Observaciones al demo v0.6 (14-oct-2026))
+- `ov.opciones` – Ver las opciones evaluadas por el sistema para una OV y aprobar/derivar sus pre-solicitudes (**D**; Observaciones al demo v0.6 (14-oct-2026))
 - `ov.ver` – Consultar órdenes de venta (**P**; Informe Funcional §3 (alcance por área) – propuesto)
+- `picking.asignar` – Asignar el picking preprogramado a auxiliares o grupos (**D**; Observaciones al demo v0.6 (14-oct-2026))
 - `preparacion.registrar` – Registrar preparación/picking (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `produccion.recibir_pt` – Validar recepción de PT y diferencias (**D**; Informe Funcional §8.3, §10.6-10.7)
 - `produccion.solicitud` – Crear/revisar/enviar solicitud preliminar de producción (**D**; Informe Funcional §8.2 (Almacén revisa y envía))
@@ -259,11 +303,14 @@ Todos los permisos (53) — D: Decisión del usuario (13-oct-2026, segunda parte
 - `compras.recibir` – Registrar recepción de compra (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `compras.solicitar` – Originar solicitud de compra (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `compras.ver` – Consultar compras (**P**; Informe Funcional §3 (alcance por área) – propuesto)
+- `dashboard.operaciones` – Tablero: tiempos de preparación y salida, compras/producción pendientes, diferencias de inventario (**D**; Observaciones al demo v0.6 (14-oct-2026))
 - `dashboard.ver` – Ver tablero de indicadores (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `distribucion.ver` – Consultar distribución (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `export.datos` – Exportar registros (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `importaciones.recibir` – Registrar recepción de importación (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `importaciones.ver` – Consultar importaciones (**P**; Informe Funcional §3 (alcance por área) – propuesto)
+- `informes.almacen` – Informe de movimiento de stock del almacén (picos, bajas, demoras, stock de reserva) (**P**; Observaciones al demo v0.6 (14-oct-2026) – propuesto, por validar)
+- `informes.reempaque` – Informe de Reempaque (cómo se atendieron las solicitudes) (**P**; Observaciones al demo v0.6 (14-oct-2026) – propuesto, por validar)
 - `ov.ver` – Consultar órdenes de venta (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `preparacion.registrar` – Registrar preparación/picking (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `produccion.recibir_pt` – Validar recepción de PT y diferencias (**P**; Informe Funcional §3 (alcance por área) – propuesto)
@@ -285,10 +332,13 @@ Todos los permisos (53) — D: Decisión del usuario (13-oct-2026, segunda parte
 - `alertas.ver` – Ver alertas propias/del rol (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `distribucion.confirmar_salida` – Autorizar y confirmar la salida del camión (**D**; Decisión del usuario (12-oct-2026) Q16: el Líder Operativo autoriza la salida)
 - `distribucion.ver` – Consultar distribución (**P**; Informe Funcional §3 (alcance por área) – propuesto)
+- `informes.almacen` – Informe de movimiento de stock del almacén (picos, bajas, demoras, stock de reserva) (**P**; Observaciones al demo v0.6 (14-oct-2026) – propuesto, por validar)
 - `ov.ver` – Consultar órdenes de venta (**P**; Informe Funcional §3 (alcance por área) – propuesto)
-- `preparacion.registrar` – Registrar preparación/picking (**D**; Diagrama AS-IS L5 (Líder operativo designa y verifica picking))
+- `picking.asignar` – Asignar el picking preprogramado a auxiliares o grupos (**D**; Observaciones al demo v0.6 (14-oct-2026))
+- `preparacion.registrar` – Registrar preparación/picking (**D**; Diagrama de proceso actual L5 (Líder operativo designa y verifica picking))
 - `stock.conteo` – Registrar conteos físicos (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `stock.ver` – Consultar stock y reservas (**P**; Informe Funcional §3 (alcance por área) – propuesto)
+- `tareas.ejecutar` – Registrar inicio y fin de tareas operativas con foto (picking, traslado interno) (**P**; Observaciones al demo v0.6 (14-oct-2026) – propuesto, por validar)
 - `traslados.ver` – Consultar traslados (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 
 ### Auxiliar / Asistente de Almacén
@@ -298,21 +348,24 @@ Todos los permisos (53) — D: Decisión del usuario (13-oct-2026, segunda parte
 - `preparacion.registrar` – Registrar preparación/picking (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `stock.conteo` – Registrar conteos físicos (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `stock.ver` – Consultar stock y reservas (**P**; Informe Funcional §3 (alcance por área) – propuesto)
+- `tareas.ejecutar` – Registrar inicio y fin de tareas operativas con foto (picking, traslado interno) (**D**; Observaciones al demo v0.6 (14-oct-2026))
 - `traslado.recibir` – Confirmar recepción de traslado en destino (**D**; Informe Funcional §6.2 (Coordinador de Almacén o asistente confirma recepción))
 - `traslados.ver` – Consultar traslados (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 
 ### Montacarguista
 
-- `alertas.gestionar` – Asignar, atender, comentar y cerrar alertas (**P**; Informe Funcional §8.3 (recibe alerta de liquidación) – propuesto)
 - `alertas.ver` – Ver alertas propias/del rol (**P**; Informe Funcional §8.3 (recibe alerta de liquidación) – propuesto)
 - `stock.ver` – Consultar stock y reservas (**P**; Informe Funcional §8.3 (recibe alerta de liquidación) – propuesto)
+- `tareas.ejecutar` – Registrar inicio y fin de tareas operativas con foto (picking, traslado interno) (**D**; Observaciones al demo v0.6 (14-oct-2026))
 
 ### Coordinador de Distribución
 
 - `alertas.gestionar` – Asignar, atender, comentar y cerrar alertas (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `alertas.ver` – Ver alertas propias/del rol (**P**; Informe Funcional §3 (alcance por área) – propuesto)
+- `clientes.ver` – Consultar fichas de clientes (**D**; Observaciones al demo v0.6 (14-oct-2026))
+- `dashboard.operaciones` – Tablero: tiempos de preparación y salida, compras/producción pendientes, diferencias de inventario (**P**; Observaciones al demo v0.6 (14-oct-2026) – propuesto, por validar)
 - `dashboard.ver` – Ver tablero de indicadores (**P**; Informe Funcional §3 (alcance por área) – propuesto)
-- `distribucion.documentos` – Generar/cargar guía y emitir folio de documentos (**D**; TO-BE COPROD-ONE (L5): Distribución genera/carga guía e imprime folio)
+- `distribucion.documentos` – Generar/cargar guía y emitir folio de documentos (**D**; Diagrama de procesos COPROD-ONE (L5): Distribución genera/carga guía e imprime folio)
 - `distribucion.entrega` – Registrar avance y entrega con evidencia (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `distribucion.flota` – Mantener flota y conductores (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `distribucion.incidencia` – Registrar incidencias (**P**; Informe Funcional §3 (alcance por área) – propuesto)
@@ -320,6 +373,8 @@ Todos los permisos (53) — D: Decisión del usuario (13-oct-2026, segunda parte
 - `distribucion.validar_externo` – Validar el transporte externo asignado a una ruta (**D**; Observaciones al demo v0.5 (13-oct): el sistema puede asignar transporte externo pero lo valida el coordinador de distribución)
 - `distribucion.ver` – Consultar distribución (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `export.datos` – Exportar registros (**P**; Informe Funcional §3 (alcance por área) – propuesto)
+- `flota.ver` – Consultar seguimiento de flota (SOAT, impuestos, multas, combustible, mantenimiento) (**D**; Observaciones al demo v0.6 (14-oct-2026))
+- `informes.distribucion` – Informe de Distribución (a tiempo, desviación, costos de transporte y estiba) (**D**; Observaciones al demo v0.6 (14-oct-2026))
 - `ov.ver` – Consultar órdenes de venta (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `stock.ver` – Consultar stock y reservas (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 
@@ -327,18 +382,21 @@ Todos los permisos (53) — D: Decisión del usuario (13-oct-2026, segunda parte
 
 - `alertas.gestionar` – Asignar, atender, comentar y cerrar alertas (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `alertas.ver` – Ver alertas propias/del rol (**P**; Informe Funcional §3 (alcance por área) – propuesto)
+- `clientes.ver` – Consultar fichas de clientes (**D**; Observaciones al demo v0.6 (14-oct-2026))
 - `distribucion.documentos` – Generar/cargar guía y emitir folio de documentos (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `distribucion.entrega` – Registrar avance y entrega con evidencia (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `distribucion.flota` – Mantener flota y conductores (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `distribucion.incidencia` – Registrar incidencias (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `distribucion.programar` – Generar/ajustar programación de rutas (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `distribucion.ver` – Consultar distribución (**P**; Informe Funcional §3 (alcance por área) – propuesto)
+- `flota.ver` – Consultar seguimiento de flota (SOAT, impuestos, multas, combustible, mantenimiento) (**D**; Observaciones al demo v0.6 (14-oct-2026))
+- `informes.distribucion` – Informe de Distribución (a tiempo, desviación, costos de transporte y estiba) (**D**; Observaciones al demo v0.6 (14-oct-2026))
 - `ov.ver` – Consultar órdenes de venta (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 
 ### Conductor
 
 - `alertas.ver` – Ver alertas propias/del rol (**P**; Informe Funcional §3 (alcance por área) – propuesto)
-- `distribucion.carga` – Registrar fotos y validación de la carga (auxiliar y chofer) (**D**; TO-BE COPROD-ONE (L5): validación de carga y foto (auxiliar y chofer))
+- `distribucion.carga` – Registrar fotos y validación de la carga (auxiliar y chofer) (**D**; Diagrama de procesos COPROD-ONE (L5): validación de carga y foto (auxiliar y chofer))
 - `distribucion.entrega` – Registrar avance y entrega con evidencia (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `distribucion.incidencia` – Registrar incidencias (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `distribucion.ver` – Consultar distribución (**P**; Informe Funcional §3 (alcance por área) – propuesto)
@@ -347,8 +405,8 @@ Todos los permisos (53) — D: Decisión del usuario (13-oct-2026, segunda parte
 
 - `alertas.gestionar` – Asignar, atender, comentar y cerrar alertas (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `alertas.ver` – Ver alertas propias/del rol (**P**; Informe Funcional §3 (alcance por área) – propuesto)
-- `distribucion.carga` – Registrar fotos y validación de la carga (auxiliar y chofer) (**D**; TO-BE COPROD-ONE (L5): fotos, validación de carga, entrega con foto y guía firmada)
-- `distribucion.entrega` – Registrar avance y entrega con evidencia (**D**; TO-BE COPROD-ONE (L5): fotos, validación de carga, entrega con foto y guía firmada)
+- `distribucion.carga` – Registrar fotos y validación de la carga (auxiliar y chofer) (**D**; Diagrama de procesos COPROD-ONE (L5): fotos, validación de carga, entrega con foto y guía firmada)
+- `distribucion.entrega` – Registrar avance y entrega con evidencia (**D**; Diagrama de procesos COPROD-ONE (L5): fotos, validación de carga, entrega con foto y guía firmada)
 - `distribucion.incidencia` – Registrar incidencias (**D**; Informe Funcional §12.3)
 - `distribucion.ver` – Consultar distribución (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `distribucion.visto_bueno_salida` – Dar visto bueno a la salida del camión (Auxiliar de Despacho) (**D**; Decisión del usuario (13-oct-2026) Q16: visto bueno de Seguridad, Líder Operativo y Auxiliar de Despacho)
@@ -360,13 +418,21 @@ Todos los permisos (53) — D: Decisión del usuario (13-oct-2026, segunda parte
 - `calidad.ver` – Consultar registros de Calidad (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `compras.aprobar_solicitud` – Aprobar la solicitud de compra antes de pasar a Compras (**D**; Decisión del usuario (12-oct-2026) Q14: el Jefe de Logística aprueba la solicitud de compra)
 - `compras.ver` – Consultar compras (**P**; Informe Funcional §3 (alcance por área) – propuesto)
+- `dashboard.merma` – Tablero: merma prevista vs real (**D**; Observaciones al demo v0.6 (14-oct-2026))
+- `dashboard.operaciones` – Tablero: tiempos de preparación y salida, compras/producción pendientes, diferencias de inventario (**D**; Observaciones al demo v0.6 (14-oct-2026))
 - `dashboard.ver` – Ver tablero de indicadores (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `distribucion.aprobar_salida_discrepancia` – Aprobar la salida con discrepancia de guía mientras se resuelve (**D**; Decisión del usuario (12-oct-2026) Q8)
 - `distribucion.ver` – Consultar distribución (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `export.datos` – Exportar registros (**P**; Informe Funcional §3 (alcance por área) – propuesto)
+- `flota.ver` – Consultar seguimiento de flota (SOAT, impuestos, multas, combustible, mantenimiento) (**P**; Observaciones al demo v0.6 (14-oct-2026) – propuesto, por validar)
 - `importaciones.ver` – Consultar importaciones (**P**; Informe Funcional §3 (alcance por área) – propuesto)
+- `informes.almacen` – Informe de movimiento de stock del almacén (picos, bajas, demoras, stock de reserva) (**P**; Observaciones al demo v0.6 (14-oct-2026) – propuesto, por validar)
+- `informes.distribucion` – Informe de Distribución (a tiempo, desviación, costos de transporte y estiba) (**P**; Observaciones al demo v0.6 (14-oct-2026) – propuesto, por validar)
+- `informes.produccion` – Informe de Producción (capacidad, programado vs real, solicitudes) (**P**; Observaciones al demo v0.6 (14-oct-2026) – propuesto, por validar)
+- `informes.reempaque` – Informe de Reempaque (cómo se atendieron las solicitudes) (**P**; Observaciones al demo v0.6 (14-oct-2026) – propuesto, por validar)
 - `ov.aprobar_parcial` – Aprobar despacho parcial (**D**; Decisión del usuario Q3 (11 y 12-oct-2026): aprueba Gerencia de Operaciones o Jefatura de Logística)
 - `ov.decidir_alternativa` – Decidir uso de stock de otros almacenes (**D**; Informe Funcional §4.5, §6.2, §13; Decisión del usuario (12-oct-2026) Q13)
+- `ov.opciones` – Ver las opciones evaluadas por el sistema para una OV y aprobar/derivar sus pre-solicitudes (**D**; Observaciones al demo v0.6 (14-oct-2026))
 - `ov.ver` – Consultar órdenes de venta (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `produccion.ver` – Consultar producción (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `reempaque.ver` – Consultar reempaques (**P**; Informe Funcional §3 (alcance por área) – propuesto)
@@ -385,12 +451,18 @@ Todos los permisos (53) — D: Decisión del usuario (13-oct-2026, segunda parte
 - `alertas.ver` – Ver alertas propias/del rol (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `calidad.ver` – Consultar registros de Calidad (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `compras.ver` – Consultar compras (**P**; Informe Funcional §3 (alcance por área) – propuesto)
+- `dashboard.merma` – Tablero: merma prevista vs real (**D**; Observaciones al demo v0.6 (14-oct-2026))
+- `dashboard.operaciones` – Tablero: tiempos de preparación y salida, compras/producción pendientes, diferencias de inventario (**D**; Observaciones al demo v0.6 (14-oct-2026))
 - `dashboard.ver` – Ver tablero de indicadores (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `distribucion.aprobar_salida_discrepancia` – Aprobar la salida con discrepancia de guía mientras se resuelve (**D**; Decisión del usuario (12-oct-2026) Q8)
 - `distribucion.ver` – Consultar distribución (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `export.datos` – Exportar registros (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `importaciones.ver` – Consultar importaciones (**P**; Informe Funcional §3 (alcance por área) – propuesto)
+- `informes.almacen` – Informe de movimiento de stock del almacén (picos, bajas, demoras, stock de reserva) (**P**; Observaciones al demo v0.6 (14-oct-2026) – propuesto, por validar)
+- `informes.distribucion` – Informe de Distribución (a tiempo, desviación, costos de transporte y estiba) (**P**; Observaciones al demo v0.6 (14-oct-2026) – propuesto, por validar)
+- `informes.reempaque` – Informe de Reempaque (cómo se atendieron las solicitudes) (**P**; Observaciones al demo v0.6 (14-oct-2026) – propuesto, por validar)
 - `ov.decidir_alternativa` – Decidir uso de stock de otros almacenes (**D**; Informe Funcional §4.5, §6.2 (Logística decide))
+- `ov.opciones` – Ver las opciones evaluadas por el sistema para una OV y aprobar/derivar sus pre-solicitudes (**D**; Observaciones al demo v0.6 (14-oct-2026))
 - `ov.ver` – Consultar órdenes de venta (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `produccion.ver` – Consultar producción (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `reempaque.ver` – Consultar reempaques (**P**; Informe Funcional §3 (alcance por área) – propuesto)
@@ -408,9 +480,14 @@ Todos los permisos (53) — D: Decisión del usuario (13-oct-2026, segunda parte
 - `alertas.gestionar` – Asignar, atender, comentar y cerrar alertas (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `alertas.ver` – Ver alertas propias/del rol (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `calidad.ver` – Consultar registros de Calidad (**P**; Informe Funcional §3 (alcance por área) – propuesto)
+- `dashboard.merma` – Tablero: merma prevista vs real (**D**; Observaciones al demo v0.6 (14-oct-2026))
+- `dashboard.operaciones` – Tablero: tiempos de preparación y salida, compras/producción pendientes, diferencias de inventario (**D**; Observaciones al demo v0.6 (14-oct-2026))
 - `dashboard.ver` – Ver tablero de indicadores (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `export.datos` – Exportar registros (**P**; Informe Funcional §3 (alcance por área) – propuesto)
+- `informes.produccion` – Informe de Producción (capacidad, programado vs real, solicitudes) (**D**; Observaciones al demo v0.6 (14-oct-2026))
+- `informes.reempaque` – Informe de Reempaque (cómo se atendieron las solicitudes) (**D**; Observaciones al demo v0.6 (14-oct-2026))
 - `ov.ver` – Consultar órdenes de venta (**P**; Informe Funcional §3 (alcance por área) – propuesto)
+- `produccion.bom_aprobar` – Revisar y aprobar/modificar la lista de materiales usada para producir (**D**; Observaciones al demo v0.6 (14-oct-2026))
 - `produccion.bom_cargar` – Cargar lista de materiales (Excel) (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `produccion.liquidar` – Registrar/cargar liquidación (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `produccion.programar` – Programar producción (**P**; Informe Funcional §3 (alcance por área) – propuesto)
@@ -424,6 +501,11 @@ Todos los permisos (53) — D: Decisión del usuario (13-oct-2026, segunda parte
 ### Asistente de Producción
 
 - `alertas.ver` – Ver alertas propias/del rol (**P**; Informe Funcional §3 (alcance por área) – propuesto)
+- `dashboard.merma` – Tablero: merma prevista vs real (**P**; Observaciones al demo v0.6 (14-oct-2026) – propuesto, por validar)
+- `informes.produccion` – Informe de Producción (capacidad, programado vs real, solicitudes) (**D**; Observaciones al demo v0.6 (14-oct-2026))
+- `informes.reempaque` – Informe de Reempaque (cómo se atendieron las solicitudes) (**D**; Observaciones al demo v0.6 (14-oct-2026))
+- `produccion.bom_aprobar` – Revisar y aprobar/modificar la lista de materiales usada para producir (**D**; Observaciones al demo v0.6 (14-oct-2026))
+- `produccion.bom_cargar` – Cargar lista de materiales (Excel) (**D**; Observaciones al demo v0.6 (14-oct-2026))
 - `produccion.liquidar` – Registrar/cargar liquidación (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `produccion.registrar` – Registrar inicio/fin de producción (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `produccion.ver` – Consultar producción (**P**; Informe Funcional §3 (alcance por área) – propuesto)
@@ -445,6 +527,7 @@ Todos los permisos (53) — D: Decisión del usuario (13-oct-2026, segunda parte
 - `distribucion.ver` – Consultar distribución (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `export.datos` – Exportar registros (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `importaciones.ver` – Consultar importaciones (**P**; Informe Funcional §3 (alcance por área) – propuesto)
+- `informes.reempaque` – Informe de Reempaque (cómo se atendieron las solicitudes) (**P**; Observaciones al demo v0.6 (14-oct-2026) – propuesto, por validar)
 - `ov.ver` – Consultar órdenes de venta (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `produccion.ver` – Consultar producción (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `reempaque.evaluar` – Evaluar y aprobar/desaprobar reempaque (**D**; Informe Funcional §9.1, §9.3, §10.3)
@@ -463,6 +546,7 @@ Todos los permisos (53) — D: Decisión del usuario (13-oct-2026, segunda parte
 - `compras.ver` – Consultar compras (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `distribucion.ver` – Consultar distribución (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `importaciones.ver` – Consultar importaciones (**P**; Informe Funcional §3 (alcance por área) – propuesto)
+- `informes.reempaque` – Informe de Reempaque (cómo se atendieron las solicitudes) (**P**; Observaciones al demo v0.6 (14-oct-2026) – propuesto, por validar)
 - `ov.ver` – Consultar órdenes de venta (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `produccion.ver` – Consultar producción (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `reempaque.evaluar` – Evaluar y aprobar/desaprobar reempaque (**P**; Informe Funcional §3 (alcance por área) – propuesto)
@@ -484,6 +568,7 @@ Todos los permisos (53) — D: Decisión del usuario (13-oct-2026, segunda parte
 - `alertas.ver` – Ver alertas propias/del rol (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `compras.gestionar` – Cotizar, generar orden y actualizar fechas (**D**; Informe Funcional §10)
 - `compras.ver` – Consultar compras (**P**; Informe Funcional §3 (alcance por área) – propuesto)
+- `dashboard.operaciones` – Tablero: tiempos de preparación y salida, compras/producción pendientes, diferencias de inventario (**P**; Observaciones al demo v0.6 (14-oct-2026) – propuesto, por validar)
 - `dashboard.ver` – Ver tablero de indicadores (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `export.datos` – Exportar registros (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `importaciones.ver` – Consultar importaciones (**P**; Informe Funcional §3 (alcance por área) – propuesto)
@@ -502,32 +587,37 @@ Todos los permisos (53) — D: Decisión del usuario (13-oct-2026, segunda parte
 
 - `alertas.gestionar` – Asignar, atender, comentar y cerrar alertas (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `alertas.ver` – Ver alertas propias/del rol (**P**; Informe Funcional §3 (alcance por área) – propuesto)
-- `distribucion.seguridad` – Control de Seguridad: ingreso, inspección, carga vs guía y revisión de documentos (**D**; Informe Funcional §12.2, §13; TO-BE COPROD-ONE (L5): revisa documentos completos (la salida la autoriza el Líder Operativo, Q16))
+- `distribucion.seguridad` – Control de Seguridad: ingreso, inspección, carga vs guía y revisión de documentos (**D**; Informe Funcional §12.2, §13; Diagrama de procesos COPROD-ONE (L5): revisa documentos completos (la salida la autoriza el Líder Operativo, Q16))
 - `distribucion.ver` – Consultar distribución (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 - `traslados.ver` – Consultar traslados (**P**; Informe Funcional §3 (alcance por área) – propuesto)
 
 ### Facturación
 
-- `alertas.gestionar` – Asignar, atender, comentar y cerrar alertas (**P**; TO-BE COPROD-ONE (L5))
-- `alertas.ver` – Ver alertas propias/del rol (**P**; TO-BE COPROD-ONE (L5))
-- `distribucion.ver` – Consultar distribución (**P**; TO-BE COPROD-ONE (L5))
-- `facturacion.cargar` – Evaluar pedido validado y cargar factura (**D**; TO-BE COPROD-ONE (L5): evaluar pedido validado, generar factura en SAP y cargarla al sistema)
-- `ov.ver` – Consultar órdenes de venta (**P**; TO-BE COPROD-ONE (L5))
+- `alertas.gestionar` – Asignar, atender, comentar y cerrar alertas (**P**; Diagrama de procesos COPROD-ONE (L5))
+- `alertas.ver` – Ver alertas propias/del rol (**P**; Diagrama de procesos COPROD-ONE (L5))
+- `distribucion.ver` – Consultar distribución (**P**; Diagrama de procesos COPROD-ONE (L5))
+- `facturacion.cargar` – Evaluar pedido validado y cargar factura (**D**; Diagrama de procesos COPROD-ONE (L5): evaluar pedido validado, generar factura en SAP y cargarla al sistema)
+- `ov.ver` – Consultar órdenes de venta (**P**; Diagrama de procesos COPROD-ONE (L5))
 
 ### Coordinación de Almacén 1524 (materia prima, granel e insumos)
 
 - `alertas.gestionar` – Asignar, atender, comentar y cerrar alertas (**P**; Decisión del usuario (12-oct-2026) Q17: mismas funciones que el coordinador 1560, sobre el almacén 1524)
 - `alertas.ver` – Ver alertas propias/del rol (**P**; Decisión del usuario (12-oct-2026) Q17: mismas funciones que el coordinador 1560, sobre el almacén 1524)
-- `calidad.ver` – Consultar registros de Calidad (**P**; Decisión del usuario (12-oct-2026) Q17: mismas funciones que el coordinador 1560, sobre el almacén 1524)
+- `clientes.ver` – Consultar fichas de clientes (**D**; Observaciones al demo v0.6 (14-oct-2026))
 - `compras.recibir` – Registrar recepción de compra (**D**; Decisión del usuario (12-oct-2026) Q17: mismas funciones que el coordinador 1560, sobre el almacén 1524)
 - `compras.solicitar` – Originar solicitud de compra (**D**; Decisión del usuario (12-oct-2026) Q17: mismas funciones que el coordinador 1560, sobre el almacén 1524)
 - `compras.ver` – Consultar compras (**P**; Decisión del usuario (12-oct-2026) Q17: mismas funciones que el coordinador 1560, sobre el almacén 1524)
+- `dashboard.operaciones` – Tablero: tiempos de preparación y salida, compras/producción pendientes, diferencias de inventario (**D**; Observaciones al demo v0.6 (14-oct-2026))
 - `dashboard.ver` – Ver tablero de indicadores (**P**; Decisión del usuario (12-oct-2026) Q17: mismas funciones que el coordinador 1560, sobre el almacén 1524)
 - `distribucion.ver` – Consultar distribución (**P**; Decisión del usuario (12-oct-2026) Q17: mismas funciones que el coordinador 1560, sobre el almacén 1524)
 - `export.datos` – Exportar registros (**P**; Decisión del usuario (12-oct-2026) Q17: mismas funciones que el coordinador 1560, sobre el almacén 1524)
 - `importaciones.recibir` – Registrar recepción de importación (**P**; Decisión del usuario (12-oct-2026) Q17: mismas funciones que el coordinador 1560, sobre el almacén 1524)
 - `importaciones.ver` – Consultar importaciones (**P**; Decisión del usuario (12-oct-2026) Q17: mismas funciones que el coordinador 1560, sobre el almacén 1524)
+- `informes.almacen` – Informe de movimiento de stock del almacén (picos, bajas, demoras, stock de reserva) (**D**; Observaciones al demo v0.6 (14-oct-2026))
+- `informes.reempaque` – Informe de Reempaque (cómo se atendieron las solicitudes) (**D**; Observaciones al demo v0.6 (14-oct-2026))
+- `ov.opciones` – Ver las opciones evaluadas por el sistema para una OV y aprobar/derivar sus pre-solicitudes (**D**; Observaciones al demo v0.6 (14-oct-2026))
 - `ov.ver` – Consultar órdenes de venta (**P**; Decisión del usuario (12-oct-2026) Q17: mismas funciones que el coordinador 1560, sobre el almacén 1524)
+- `picking.asignar` – Asignar el picking preprogramado a auxiliares o grupos (**D**; Observaciones al demo v0.6 (14-oct-2026))
 - `preparacion.registrar` – Registrar preparación/picking (**P**; Decisión del usuario (12-oct-2026) Q17: mismas funciones que el coordinador 1560, sobre el almacén 1524)
 - `produccion.recibir_pt` – Validar recepción de PT y diferencias (**D**; Decisión del usuario (12-oct-2026) Q17: mismas funciones que el coordinador 1560, sobre el almacén 1524)
 - `produccion.solicitud` – Crear/revisar/enviar solicitud preliminar de producción (**D**; Decisión del usuario (12-oct-2026) Q17: mismas funciones que el coordinador 1560, sobre el almacén 1524)
@@ -551,30 +641,30 @@ Canales: panel del módulo y correo (si hay SMTP). Ciclo: Nueva → Asignada →
 |---|---|---|---|---|---|---|---|---|
 | OV_FALTANTE | Faltante de stock en OV | Almacén / Faltantes y cobertura | ALTA | COORD_ALMACEN, COORD_ALMACEN_MP, JEFE_LOGISTICA, COORD_LOGISTICA, GERENCIA_OPERACIONES | DEFINIDO | sí | Al evaluar una OV nueva o modificada con cobertura < 100 %. | Informe Funcional §6.3 |
 | OV_DECISION_PARCIAL | Decisión de despacho parcial requerida | Logística / Faltantes y cobertura | ALTA | JEFE_LOGISTICA, GERENCIA_OPERACIONES, JEFE_VENTAS, COORD_VENTAS | DEFINIDO | sí | OV con faltante y stock reservado parcial. Comercial es informado; aprueba GO o Jefatura de Logística. | Informe Funcional §6.3; aprueba GO o Jefatura de Logística (Q3) |
-| OV_COMPLETA | OV completa con stock reservado | Almacén / Estados de pedidos | MEDIA | JEFE_LOGISTICA, JEFE_VENTAS, COORD_ALMACEN, COORD_ALMACEN_MP | DEFINIDO | no | La evaluación reserva el 100 % de la OV. | TO-BE COPROD-ONE: 'Avisar (Jefe de logística, Jefe comercial, coordinador almacén)' |
+| OV_COMPLETA | OV completa con stock reservado | Almacén / Estados de pedidos | MEDIA | JEFE_LOGISTICA, JEFE_VENTAS, COORD_ALMACEN, COORD_ALMACEN_MP | DEFINIDO | no | La evaluación reserva el 100 % de la OV. | Diagrama de procesos COPROD-ONE: 'Avisar (Jefe de logística, Jefe comercial, coordinador almacén)' |
 | OV_SALDO_REPROGRAMADO | Saldo de despacho parcial reprogramado | Comercial / Faltantes y cobertura | ALTA | JEFE_VENTAS, COORD_VENTAS, COORD_ALMACEN, COORD_ALMACEN_MP, JEFE_LOGISTICA, GERENCIA_OPERACIONES | PROPUESTO | sí | Al salir un despacho parcial se crea la OV de saldo con la fecha reprogramada. | Decisión Q3 (11-oct-2026): lo que falta despachar se reprograma |
 | OV_PARCIAL_APROBADO | Despacho parcial aprobado | Distribución / Rutas | ALTA | COORD_DISTRIBUCION, ASIST_DISTRIBUCION | DEFINIDO | sí | Se aprueba entrega parcial; se genera propuesta de ruta. | Informe Funcional §6.3 |
-| OV_CAMBIO | Cambio de OV con reserva existente | Comercial / Cambios de OV | MEDIA | JEFE_LOGISTICA, COORD_LOGISTICA, COORD_ALMACEN, COORD_ALMACEN_MP, GERENCIA_OPERACIONES | DEFINIDO | sí | Modificación de una OV que ya tenía reservas. | Informe Funcional §6.3, §14 |
+| OV_CAMBIO | Cambio de OV con reserva existente | Comercial / Cambios de OV | MEDIA | JEFE_LOGISTICA, COORD_LOGISTICA, COORD_ALMACEN, COORD_ALMACEN_MP, GERENCIA_OPERACIONES, COORD_DISTRIBUCION, ASIST_DISTRIBUCION | DEFINIDO | sí | Modificación de una OV que ya tenía reservas. | Informe Funcional §6.3, §14; Observaciones al demo v0.6 (14-oct-2026): Distribución recibe los cambios que afectan su plan (p. ej. fecha de entrega) |
 | OV_MODIF_SOLICITUD | Solicitud de modificación de OV (Asistente) | Comercial / Cambios de OV | MEDIA | JEFE_VENTAS, COORD_VENTAS | DEFINIDO | sí | El Asistente de Ventas solicita modificar una OV; autorizan Coord./Jefe de Ventas o vendedor responsable. | Informe Funcional §5 |
 | OV_CANCELADA | OV cancelada (reserva y ruta liberadas) | Comercial / Cambios de OV | MEDIA | COORD_ALMACEN, COORD_ALMACEN_MP, COORD_DISTRIBUCION, ASIST_DISTRIBUCION, JEFE_LOGISTICA | PROPUESTO | sí | Cancelación por Coordinador o Jefe de Ventas. | Informe Funcional §5, §14 |
 | OV_ESTADO | Cambio de estado de pedido | Comercial / Estados de pedidos | BAJA | COORD_VENTAS | PROPUESTO | no | Cambio de estado relevante de la OV (preparada, despachada, entregada). | Informe Funcional §14 |
 | OV_80_PREPARACION | Pedido al 80 % de preparación | Almacén / Estados de pedidos | MEDIA | COORD_DISTRIBUCION, ASIST_DISTRIBUCION, COORD_VENTAS | PROPUESTO | no | Avance de preparación ≥ umbral configurado (80 %). | Informe Funcional §14 (condición definida; destinatarios propuestos) |
-| OV_PREPARADA | Término del picking: pedido listo para despacho | Almacén / Estados de pedidos | MEDIA | JEFE_VENTAS, COORD_VENTAS, GERENCIA_OPERACIONES, JEFE_LOGISTICA, COORD_DISTRIBUCION, ASIST_DISTRIBUCION, JEFE_CALIDAD, SUPERV_CALIDAD | DEFINIDO | sí | Preparación al 100 %. | TO-BE COPROD-ONE: 'Generar alerta (comercial, GO, jefe de logística) y documentos para calidad, distribución' |
+| OV_PREPARADA | Término del picking: pedido listo para despacho | Almacén / Estados de pedidos | MEDIA | JEFE_VENTAS, COORD_VENTAS, GERENCIA_OPERACIONES, JEFE_LOGISTICA, COORD_DISTRIBUCION, ASIST_DISTRIBUCION, JEFE_CALIDAD, SUPERV_CALIDAD | DEFINIDO | sí | Preparación al 100 %. | Diagrama de procesos COPROD-ONE: 'Generar alerta (comercial, GO, jefe de logística) y documentos para calidad, distribución' |
 | OV_RETRASO | OV no despachada en la fecha comprometida | Distribución / Retrasos | ALTA | GERENCIA_OPERACIONES, JEFE_LOGISTICA, COORD_VENTAS | PROPUESTO | sí | Fecha comprometida vencida sin salida registrada. | Informe Funcional §14 ('retrasos') |
 | RESERVA_AFECTADA | Reserva afectada por actualización de stock | Almacén / Faltantes y cobertura | ALTA | COORD_ALMACEN, COORD_ALMACEN_MP, JEFE_LOGISTICA | PROPUESTO | sí | La nueva carga reduce un lote por debajo de lo reservado. | Informe Funcional §14 ('reservas') |
 | STOCK_CARGA_DIFERENCIAS | Diferencias/errores en carga de stock | Sistemas / Diferencias de inventario | MEDIA | SISTEMAS, COORD_ALMACEN, COORD_ALMACEN_MP | DEFINIDO | sí | Carga confirmada con filas corregidas/excluidas o diferencias. | Informe Funcional §6.4 (alertar a Sistemas) |
 | INVENTARIO_DIFERENCIA | Diferencia de inventario en conteo físico | Almacén / Diferencias de inventario | MEDIA | SISTEMAS, COORD_ALMACEN, COORD_ALMACEN_MP, GERENCIA_OPERACIONES | PROPUESTO | sí | Conteo cerrado con faltantes o sobrantes. | Informe Funcional §6.4, §14 |
 | STOCK_PENDIENTE_REVISION | Carga recibida pendiente de revisión de Calidad | Calidad / Calidad | MEDIA | JEFE_CALIDAD, SUPERV_CALIDAD | PROPUESTO | no | Nuevo lote en estado Pendiente de revisión. | Informe Funcional §6.1, §9.4 |
 | STOCK_NO_UTILIZABLE | Producto no utilizable / requiere fumigación | Calidad / Fumigación y no utilizables | ALTA | JEFE_CALIDAD, SUPERV_CALIDAD, COORD_ALMACEN, COORD_ALMACEN_MP, JEFE_LOGISTICA | PROPUESTO | sí | Lote pasa a No utilizable o supera tiempo máximo de almacenamiento configurado. | Informe Funcional §6.1, §14 |
-| FUMIGACION | Fumigación iniciada/finalizada | Calidad / Fumigación y no utilizables | MEDIA | JEFE_CALIDAD, SUPERV_CALIDAD, COORD_ALMACEN, COORD_ALMACEN_MP | PROPUESTO | no | Registro de inicio/fin de fumigación. | Informe Funcional §14; REG-BPM-CAL-005 |
+| FUMIGACION | Fumigación iniciada/finalizada | Calidad / Fumigación y no utilizables | MEDIA | JEFE_CALIDAD, SUPERV_CALIDAD, COORD_ALMACEN, COORD_ALMACEN_MP, JEFE_LOGISTICA, COORD_LOGISTICA, GERENCIA_OPERACIONES | DEFINIDO | no | Registro de inicio/fin de fumigación. | Informe Funcional §14; REG-BPM-CAL-005; Observaciones al demo v0.6 (14-oct-2026): la reciben Almacén, Calidad, Logística y GO |
 | VENCIMIENTO_PROXIMO | Lote próximo a vencer | Almacén / Faltantes y cobertura | MEDIA | COORD_ALMACEN, COORD_ALMACEN_MP, COORD_VENTAS | PENDIENTE | no | Solo si se configura 'dias_vencimiento_proximo'. | Informe Funcional §21 (caso 'vencimiento'); umbral no definido |
 | TRASLADO_SOLICITADO | Traslado pendiente de autorización | Logística / Traslados | MEDIA | JEFE_LOGISTICA, COORD_LOGISTICA | DEFINIDO | sí | Se solicita (o el sistema pre-solicita) un traslado desde almacén alternativo. | Informe Funcional §6.2, §13; Decisión del usuario (12-oct-2026) Q13 |
-| TRASLADO_AUTORIZADO | Traslado autorizado | Almacén / Traslados | MEDIA | COORD_ALMACEN, COORD_ALMACEN_MP, AUX_ALMACEN | PROPUESTO | no | Logística autoriza el traslado. | Informe Funcional §13 |
+| TRASLADO_AUTORIZADO | Traslado autorizado | Almacén / Traslados | MEDIA | COORD_ALMACEN, COORD_ALMACEN_MP, AUX_ALMACEN, MONTACARGUISTA | DEFINIDO | no | Logística autoriza el traslado. | Informe Funcional §13; Observaciones al demo v0.6 (14-oct-2026): la planeación del traslado le llega al montacarguista |
 | COTIZACION_IMPACTO | Cotización con impacto en precios | Comercial / Indicadores | ALTA | JEFE_VENTAS, GERENTE_COMERCIAL, COMPRAS, IMPORTACIONES, GERENCIA_OPERACIONES | DEFINIDO | no | Una cotización deja el margen sobre el precio mínimo bajo el umbral o supera el precio de referencia de mercado/importación. | Decisión del usuario (14-oct-2026): comparar cotizaciones de importación y compras nacionales y reportes de importación (internet y Estado) con los precios para ver el posible impacto |
 | RESERVA_VENCIDA | Reserva que supera el plazo máximo | Almacén / Estados de pedidos | MEDIA | COORD_ALMACEN, COORD_ALMACEN_MP, JEFE_LOGISTICA, COORD_LOGISTICA, COORD_VENTAS | DEFINIDO | no | Stock reservado para una OV hace más días que el plazo máximo (ocupa espacio). Se avisa también al vendedor. | Decisión del usuario (14-oct-2026): plazo máximo de reserva 7 días por el espacio físico del almacén |
-| TRASLADO_LLEGADA | Llegada programada de traslado | Almacén / Traslados | MEDIA | COORD_ALMACEN, COORD_ALMACEN_MP, AUX_ALMACEN, JEFE_CALIDAD, SUPERV_CALIDAD, ASIST_CALIDAD | DEFINIDO | no | Se registra o cambia la fecha y hora de llegada de un traslado autorizado; se repite el día de la llegada si no se recibió. | Observaciones al demo v0.5 (13-oct): al autorizar se ingresa fecha y hora de llegada para alertar a Calidad (revisión) y Almacén (almacenamiento) |
+| TRASLADO_LLEGADA | Llegada programada de traslado | Almacén / Traslados | MEDIA | COORD_ALMACEN, COORD_ALMACEN_MP, AUX_ALMACEN, MONTACARGUISTA, JEFE_CALIDAD, SUPERV_CALIDAD, ASIST_CALIDAD | DEFINIDO | no | Se registra o cambia la fecha y hora de llegada de un traslado autorizado; se repite el día de la llegada si no se recibió. | Observaciones al demo v0.5 (13-oct): al autorizar se ingresa fecha y hora de llegada para alertar a Calidad (revisión) y Almacén (almacenamiento) |
 | COMPRA_SOBRE_COSTO_MAXIMO | Cotización sobre el costo máximo de compra | Compras / Compras | ALTA | COMPRAS, JEFE_LOGISTICA, COORD_LOGISTICA | DEFINIDO | no | El precio cotizado supera el costo máximo de compra configurado para el artículo. | Observaciones al demo v0.5 (13-oct): costo máximo a que se debe comprar para no caer en pérdida (configurable) |
-| FUMIGACION_PROXIMA | Fumigación próxima (7 días, 3 días y el mismo día) | Calidad / Calidad | ALTA | JEFE_CALIDAD, SUPERV_CALIDAD, ASIST_CALIDAD, COORD_ALMACEN, COORD_ALMACEN_MP | DEFINIDO | no | Lote con fumigación programada o con fin del tiempo máximo de almacenamiento a 7, 3 o 0 días. | Observaciones al demo v0.5 (13-oct): alerta a Calidad 7 días antes, 3 días antes y el mismo día para planear la fumigación |
+| FUMIGACION_PROXIMA | Fumigación próxima (7 días, 3 días y el mismo día) | Calidad / Calidad | ALTA | JEFE_CALIDAD, SUPERV_CALIDAD, ASIST_CALIDAD, COORD_ALMACEN, COORD_ALMACEN_MP, JEFE_LOGISTICA, COORD_LOGISTICA, GERENCIA_OPERACIONES | DEFINIDO | no | Lote con fumigación programada o con fin del tiempo máximo de almacenamiento a 7, 3 o 0 días. | Observaciones al demo v0.5 (13-oct): alerta a Calidad 7 días antes, 3 días antes y el mismo día para planear la fumigación |
 | RUTA_EXTERNO_VALIDAR | Ruta con transporte externo por validar | Distribución / Programación | ALTA | COORD_DISTRIBUCION | DEFINIDO | no | La programación asigna transporte externo (sin unidad propia con capacidad o unidad de tercero). | Observaciones al demo v0.5 (13-oct): el transporte externo lo valida el coordinador de distribución |
 | RUTA_TRAFICO | Tráfico que puede comprometer la entrega | Distribución / Programación | ALTA | COORD_DISTRIBUCION, ASIST_DISTRIBUCION, JEFE_LOGISTICA, COORD_LOGISTICA | DEFINIDO | no | Con el servicio de mapas configurado: el tráfico agrega más del umbral o una cita ya no se alcanza. Se avisa también al vendedor. | Observaciones al demo v0.5 (13-oct): alertas de tráfico que podrían comprometer la entrega |
 | BOM_OBSERVADA | Lista de materiales observada por Producción | Producción / Solicitudes | MEDIA | JEFE_PRODUCCION, SISTEMAS | DEFINIDO | no | Producción indica que la lista de materiales de una solicitud no es la correcta. | Observaciones al demo v0.5 (13-oct): Producción visualiza si la lista de materiales asignada es la correcta |
@@ -585,17 +675,17 @@ Canales: panel del módulo y correo (si hay SMTP). Ciclo: Nueva → Asignada →
 | PRECIO_FALTANTE | Producto o cliente sin precio mínimo | Comercial / Cambios de OV | MEDIA | JEFE_VENTAS | DEFINIDO | sí | Una OV trae un producto sin precio mínimo para el canal del cliente, o un cliente sin canal de precios asignado. | Decisión del usuario (13-oct-2026, segunda parte): 'el sistema debe botar una alerta y en base a eso ir completando' |
 | LISTA_PRECIOS_VENCIDA | Lista de precios vencida o por vencer | Comercial / Cambios de fechas | MEDIA | JEFE_VENTAS | DEFINIDO | sí | Fecha de vencimiento de la lista alcanzada (o dentro del aviso). | Decisión del usuario (13-oct-2026, segunda parte): 'se avisa pero no se bloquea' |
 | CARGA_SAP_DESACTUALIZADA | Carga de SAP sin actualizar | Sistemas / Diferencias de inventario | ALTA | SISTEMAS | DEFINIDO | no | La última carga autorizada de un tipo supera las horas configuradas; se avisa al área responsable y a Sistemas. | Decisión del usuario (13-oct-2026, segunda parte): cada área exporta a diario, con cortes de 2 veces al día como mínimo |
-| PRESOLICITUD_AUTOMATICA | Pre-solicitudes generadas por faltante | Almacén / Solicitudes | ALTA | COORD_ALMACEN, COORD_ALMACEN_MP, JEFE_LOGISTICA, COORD_LOGISTICA | DEFINIDO | sí | La OV queda con faltante y el sistema genera la pre-solicitud de la primera opción viable. | TO-BE COPROD-ONE (L5); Decisión del usuario (12-oct-2026) Q15 (orden: producir, reempaque, traslado, compra) |
+| PRESOLICITUD_AUTOMATICA | Pre-solicitudes generadas por faltante | Almacén / Solicitudes | ALTA | COORD_ALMACEN, COORD_ALMACEN_MP, JEFE_LOGISTICA, COORD_LOGISTICA | DEFINIDO | sí | La OV queda con faltante y el sistema genera la pre-solicitud de la primera opción viable. | Diagrama de procesos COPROD-ONE (L5); Decisión del usuario (12-oct-2026) Q15 (orden: producir, reempaque, traslado, compra) |
 | PRODUCCION_SOLICITUD | Solicitud de producción enviada | Producción / Solicitudes | ALTA | JEFE_PRODUCCION, ASIST_PRODUCCION | DEFINIDO | sí | Almacén envía solicitud preliminar. | Informe Funcional §8.2, §14 |
 | PRODUCCION_RESPUESTA | Solicitud de producción validada/rechazada | Producción / Solicitudes | MEDIA | COORD_ALMACEN, COORD_ALMACEN_MP, COORD_VENTAS | PROPUESTO | sí | Producción valida o rechaza. | Informe Funcional §8.2 |
 | LIQUIDACION_MONTACARGUISTA | Liquidación registrada: mover producto terminado | Almacén / Solicitudes | ALTA | MONTACARGUISTA, COORD_ALMACEN, COORD_ALMACEN_MP | DEFINIDO | no | Al registrar una liquidación. | Informe Funcional §8.3 |
 | LIQUIDACION_DIFERENCIA | Diferencia entre liquidación y recepción de PT | Almacén / Diferencias de inventario | ALTA | JEFE_PRODUCCION, ASIST_PRODUCCION, COORD_ALMACEN, COORD_ALMACEN_MP | PROPUESTO | sí | Recepción física ≠ cantidad completada. | Informe Funcional §8.3; hoja 'Cruce' de Recep. pt.xlsx |
 | MERMA_FUERA_PARAMETRO | Merma fuera de parámetros | Producción / Merma | ALTA | JEFE_PRODUCCION, ASIST_PRODUCCION, GERENCIA_OPERACIONES | PENDIENTE | sí | Solo si se configura 'umbral_merma_pct'. | Informe Funcional §14 ('cuando se defina el umbral') |
-| REEMPAQUE_PRESOLICITUD | Pre-solicitud de reempaque por aprobar | Almacén / Solicitudes | ALTA | COORD_ALMACEN, COORD_ALMACEN_MP | DEFINIDO | sí | El sistema genera la pre-solicitud; el Coordinador de Almacén la aprueba y envía a Calidad. | TO-BE COPROD-ONE (L5); Decisión del usuario (12-oct-2026) Q12 |
+| REEMPAQUE_PRESOLICITUD | Pre-solicitud de reempaque por aprobar | Almacén / Solicitudes | ALTA | COORD_ALMACEN, COORD_ALMACEN_MP | DEFINIDO | sí | El sistema genera la pre-solicitud; el Coordinador de Almacén la aprueba y envía a Calidad. | Diagrama de procesos COPROD-ONE (L5); Decisión del usuario (12-oct-2026) Q12 |
 | REEMPAQUE_SOLICITUD | Solicitud de reempaque para evaluación | Calidad / Solicitudes | ALTA | JEFE_CALIDAD, SUPERV_CALIDAD | DEFINIDO | sí | El Coordinador de Almacén aprueba y envía la solicitud. | Informe Funcional §9.1; Decisión del usuario (12-oct-2026) Q12 |
 | REEMPAQUE_APROBADO | Reempaque aprobado: ejecutar | Producción / Solicitudes | ALTA | COORD_ALMACEN, COORD_ALMACEN_MP, JEFE_PRODUCCION, ASIST_PRODUCCION | DEFINIDO | sí | Calidad aprueba. | Informe Funcional §9.1 (notifica a Almacén y envía a Producción) |
 | REEMPAQUE_DESAPROBADO | Reempaque desaprobado | Almacén / Solicitudes | MEDIA | COORD_ALMACEN, COORD_ALMACEN_MP | PROPUESTO | sí | Calidad desaprueba. | Informe Funcional §9.1 |
-| COMPRA_APROBACION_LOGISTICA | Solicitud de compra por aprobar (Jefe de Logística) | Logística / Solicitudes | ALTA | JEFE_LOGISTICA | DEFINIDO | sí | Almacén envía la solicitud o el sistema genera la pre-solicitud. | TO-BE COPROD-ONE (L5); Decisión del usuario (12-oct-2026) Q14 |
+| COMPRA_APROBACION_LOGISTICA | Solicitud de compra por aprobar (Jefe de Logística) | Logística / Solicitudes | ALTA | JEFE_LOGISTICA | DEFINIDO | sí | Almacén envía la solicitud o el sistema genera la pre-solicitud. | Diagrama de procesos COPROD-ONE (L5); Decisión del usuario (12-oct-2026) Q14 |
 | COMPRA_SOLICITUD | Solicitud de compra aprobada por Logística | Compras / Solicitudes | MEDIA | COMPRAS | DEFINIDO | sí | El Jefe de Logística aprueba la solicitud. | Informe Funcional §10.1, §14; Decisión del usuario (12-oct-2026) Q14 |
 | COMPRA_MUESTRA | Muestra de compra para evaluación | Calidad / Solicitudes | MEDIA | JEFE_CALIDAD, SUPERV_CALIDAD | DEFINIDO | sí | Compras lleva muestra a Calidad. | Informe Funcional §10.2-10.3 |
 | COMPRA_APROBACION_GERENCIA | Compra que requiere aprobación de Gerencia de Operaciones | Gerencia / Solicitudes | ALTA | GERENCIA_OPERACIONES | DEFINIDO | sí | Compra de materia prima (siempre) o de mayor volumen (cantidad ≥ umbral configurado). | Informe Funcional §7; decisión del usuario (14-oct-2026): materia prima siempre requiere a Gerencia de Operaciones |
@@ -608,23 +698,30 @@ Canales: panel del módulo y correo (si hay SMTP). Ciclo: Nueva → Asignada →
 | IMPORT_FASE_VENCIDA | Fase de importación fuera de fecha | Importaciones / Retrasos | ALTA | IMPORTACIONES | DEFINIDO | sí | Fecha prevista de fase vencida sin fecha real. | Informe Funcional §11 |
 | IMPORT_RECORDATORIO | Recordatorio de fase de importación | Importaciones / Cambios de fechas | BAJA | IMPORTACIONES | DEFINIDO | no | Faltan N días para la fecha prevista de una fase. | Informe Funcional §11 (recordatorios configurables) |
 | IMPORT_DIFERENCIA | Diferencias en recepción de importación | Importaciones / Diferencias de inventario | ALTA | IMPORTACIONES, JEFE_CALIDAD, SUPERV_CALIDAD | DEFINIDO | sí | Recepción con diferencias. | Informe Funcional §11 |
-| DIST_PROGRAMACION | Programación de distribución generada | Distribución / Rutas | MEDIA | COORD_DISTRIBUCION, ASIST_DISTRIBUCION, JEFE_LOGISTICA, COORD_LOGISTICA, GERENCIA_OPERACIONES, JEFE_VENTAS, COORD_VENTAS, JEFE_CALIDAD, SUPERV_CALIDAD | DEFINIDO | sí | Se genera/confirma la programación de rutas. | Informe Funcional §12.1; TO-BE: notificar a todas las áreas (calidad, comercial, GO, jefe de logística) |
-| RUTA_ASIGNADA | Ruta asignada (chofer y auxiliar) | Distribución / Rutas | MEDIA | AUX_DESPACHO, CONDUCTOR | DEFINIDO | no | Distribución aprueba la ruta. | TO-BE COPROD-ONE: 'Generar alerta para chofer y auxiliar de las rutas que le fueron asignadas' |
-| MONTACARGUISTA_DESPACHO | Trasladar mercadería a la zona de despacho | Almacén / Rutas | MEDIA | MONTACARGUISTA | DEFINIDO | no | Ruta aprobada con pedidos preparados. | TO-BE COPROD-ONE: 'Generar alerta para el traslado del montacarguista' |
-| CARGA_INCONGRUENCIA | Incongruencia en la carga: validación cruzada | Almacén / Guías | ALTA | LIDER_ALMACEN, COORD_ALMACEN | DEFINIDO | sí | El auxiliar detecta productos incorrectos o incompletos frente a la pre-guía. | TO-BE COPROD-ONE: 'Avisar a almacenero asignado para la validación cruzada' |
-| CAMION_CARGADO | Camión cargado y validado | Distribución / Rutas | MEDIA | JEFE_VENTAS, COORD_VENTAS, GERENCIA_OPERACIONES, JEFE_LOGISTICA, COORD_DISTRIBUCION, FACTURACION | DEFINIDO | sí | Carga validada completa y correcta con foto. | TO-BE COPROD-ONE: 'Generar alerta de camión cargado (comercial, GO, jefe de logística, distribución, facturación)' |
-| INC_CARGA | Incidencia durante la carga (Seguridad) | Seguridad / Incidencias | ALTA | COORD_DISTRIBUCION, JEFE_LOGISTICA, GERENCIA_OPERACIONES | PROPUESTO | sí | Seguridad registra una incidencia con foto, motivo y hora. | TO-BE COPROD-ONE: 'Subir foto de la incidencia ocurrida mientras se despachaba' |
-| DOCUMENTOS_FALTANTES | Documentos faltantes para la salida | Seguridad / Guías | ALTA | COORD_DISTRIBUCION, FACTURACION, JEFE_LOGISTICA, JEFE_CALIDAD, SUPERV_CALIDAD, GERENCIA_OPERACIONES | DEFINIDO | sí | Seguridad revisa y faltan guía, factura o certificado aprobado. | TO-BE COPROD-ONE: 'Reportar documentos faltantes (distribución, facturación, calidad, jefe logística, GO)' |
-| DIST_LLEGADA | Llegada al punto de entrega | Distribución / Rutas | BAJA | COORD_DISTRIBUCION, JEFE_LOGISTICA, GERENCIA_OPERACIONES | DEFINIDO | no | Llegada registrada. | TO-BE COPROD-ONE: 'Notificar a coordinador de distribución, jefe de logística, GO que se llegó' |
-| DIST_ENTREGADO | Pedido entregado con conformidad | Distribución / Rutas | BAJA | COORD_DISTRIBUCION, JEFE_LOGISTICA, GERENCIA_OPERACIONES, JEFE_VENTAS, COORD_VENTAS | DEFINIDO | no | Entrega con foto y guía firmada. | TO-BE COPROD-ONE: 'Notificar a coordinador de distribución, jefe de logística, GO, comercial que se entregó' |
+| DIST_PROGRAMACION | Programación de distribución generada | Distribución / Rutas | MEDIA | COORD_DISTRIBUCION, ASIST_DISTRIBUCION, JEFE_LOGISTICA, COORD_LOGISTICA, GERENCIA_OPERACIONES, JEFE_VENTAS, COORD_VENTAS, JEFE_CALIDAD, SUPERV_CALIDAD | DEFINIDO | sí | Se genera/confirma la programación de rutas. | Informe Funcional §12.1; diagrama de procesos: notificar a todas las áreas (calidad, comercial, GO, jefe de logística) |
+| RUTA_ASIGNADA | Ruta asignada (chofer y auxiliar) | Distribución / Rutas | MEDIA | AUX_DESPACHO, CONDUCTOR | DEFINIDO | no | Distribución aprueba la ruta. | Diagrama de procesos COPROD-ONE: 'Generar alerta para chofer y auxiliar de las rutas que le fueron asignadas' |
+| MONTACARGUISTA_DESPACHO | Trasladar mercadería a la zona de despacho | Almacén / Rutas | MEDIA | MONTACARGUISTA | DEFINIDO | no | Ruta aprobada con pedidos preparados. | Diagrama de procesos COPROD-ONE: 'Generar alerta para el traslado del montacarguista' |
+| CARGA_INCONGRUENCIA | Incongruencia en la carga: validación cruzada | Almacén / Guías | ALTA | LIDER_ALMACEN, COORD_ALMACEN | DEFINIDO | sí | El auxiliar detecta productos incorrectos o incompletos frente a la pre-guía. | Diagrama de procesos COPROD-ONE: 'Avisar a almacenero asignado para la validación cruzada' |
+| CAMION_CARGADO | Camión cargado y validado | Distribución / Rutas | MEDIA | JEFE_VENTAS, COORD_VENTAS, GERENCIA_OPERACIONES, JEFE_LOGISTICA, COORD_DISTRIBUCION, FACTURACION | DEFINIDO | sí | Carga validada completa y correcta con foto. | Diagrama de procesos COPROD-ONE: 'Generar alerta de camión cargado (comercial, GO, jefe de logística, distribución, facturación)' |
+| INC_CARGA | Incidencia durante la carga (Seguridad) | Seguridad / Incidencias | ALTA | COORD_DISTRIBUCION, JEFE_LOGISTICA, GERENCIA_OPERACIONES | PROPUESTO | sí | Seguridad registra una incidencia con foto, motivo y hora. | Diagrama de procesos COPROD-ONE: 'Subir foto de la incidencia ocurrida mientras se despachaba' |
+| DOCUMENTOS_FALTANTES | Documentos faltantes para la salida | Seguridad / Guías | ALTA | COORD_DISTRIBUCION, FACTURACION, JEFE_LOGISTICA, JEFE_CALIDAD, SUPERV_CALIDAD, GERENCIA_OPERACIONES | DEFINIDO | sí | Seguridad revisa y faltan guía, factura o certificado aprobado. | Diagrama de procesos COPROD-ONE: 'Reportar documentos faltantes (distribución, facturación, calidad, jefe logística, GO)' |
+| DIST_LLEGADA | Llegada al punto de entrega | Distribución / Rutas | BAJA | COORD_DISTRIBUCION, JEFE_LOGISTICA, GERENCIA_OPERACIONES | DEFINIDO | no | Llegada registrada. | Diagrama de procesos COPROD-ONE: 'Notificar a coordinador de distribución, jefe de logística, GO que se llegó' |
+| DIST_ENTREGADO | Pedido entregado con conformidad | Distribución / Rutas | BAJA | COORD_DISTRIBUCION, JEFE_LOGISTICA, GERENCIA_OPERACIONES, JEFE_VENTAS, COORD_VENTAS | DEFINIDO | no | Entrega con foto y guía firmada. | Diagrama de procesos COPROD-ONE: 'Notificar a coordinador de distribución, jefe de logística, GO, comercial que se entregó' |
 | DIST_AVANCE_RUTA | Avance de ruta | Distribución / Rutas | BAJA | JEFE_VENTAS, COORD_VENTAS, JEFE_LOGISTICA, COORD_LOGISTICA, COORD_DISTRIBUCION | DEFINIDO | no | Salida, llegada, entrega. | Informe Funcional §12.3 |
 | GUIA_DISCREPANCIA | Discrepancia entre carga y guía: salida bloqueada | Seguridad / Guías | ALTA | COORD_DISTRIBUCION, SEGURIDAD, JEFE_LOGISTICA, COORD_LOGISTICA | DEFINIDO | sí | Cantidad cargada ≠ guía o presentación no coincide. Bloquea la salida salvo aprobación de Logística. | Informe Funcional §12.2, §14; Decisión del usuario (12-oct-2026) Q8 |
 | SALIDA_CON_DISCREPANCIA | Salida aprobada con guía por resolver | Logística / Guías | ALTA | COORD_DISTRIBUCION, SEGURIDAD, LIDER_ALMACEN, JEFE_LOGISTICA, COORD_LOGISTICA, GERENCIA_OPERACIONES | DEFINIDO | sí | Jefe o Coordinador de Logística aprueba la salida mientras se resuelve la guía. | Decisión del usuario (12-oct-2026) Q8 |
-| INC_RECHAZO_CALIDAD | Incidencia de calidad (rechazo, infestación, fuera de características) | Distribución / Incidencias | ALTA | GERENCIA_GENERAL, GERENCIA_OPERACIONES, JEFE_LOGISTICA, COORD_LOGISTICA, COORD_ALMACEN, COORD_ALMACEN_MP, JEFE_VENTAS, COORD_VENTAS, COORD_DISTRIBUCION, JEFE_CALIDAD, SUPERV_CALIDAD | DEFINIDO | sí | Incidencia de tipo Calidad. | Informe Funcional §12.3 (tabla de destinatarios); TO-BE (coord. distribución); observaciones al demo v0.5 (tipo Calidad: también a Calidad) |
-| INC_GENERAL | Incidencia de distribución (llegada tarde u otra condición) | Distribución / Incidencias | ALTA | GERENCIA_OPERACIONES, JEFE_LOGISTICA, COORD_LOGISTICA, COORD_ALMACEN, COORD_ALMACEN_MP, JEFE_VENTAS, COORD_VENTAS, COORD_DISTRIBUCION | DEFINIDO | sí | Retraso, rechazo por cita, devolución, parcial, vehículo esperando, etc. | Informe Funcional §12.3 (tabla de destinatarios); TO-BE (coord. distribución) |
-| CERTIFICADO_REVISION | Certificado pre-elaborado pendiente de revisión | Calidad / Certificados | MEDIA | JEFE_CALIDAD, SUPERV_CALIDAD | DEFINIDO | no | Se genera el certificado cuando la OV queda completa (TO-BE) o al terminar la preparación. | Informe Funcional §9.3, §9.4; TO-BE: 'Informar a Calidad para la validación del certificado pre-elaborado' |
-| CERTIFICADO_LISTO | Certificado aprobado y cargado | Calidad / Certificados | MEDIA | COORD_DISTRIBUCION, GERENCIA_OPERACIONES, JEFE_LOGISTICA | DEFINIDO | no | Calidad aprueba el certificado. | TO-BE COPROD-ONE: 'Notifica a distribución, GO, jefe de logística que el certificado fue cargado' |
+| INC_RECHAZO_CALIDAD | Incidencia de calidad (rechazo, infestación, fuera de características) | Distribución / Incidencias | ALTA | GERENCIA_GENERAL, GERENCIA_OPERACIONES, JEFE_LOGISTICA, COORD_LOGISTICA, COORD_ALMACEN, COORD_ALMACEN_MP, JEFE_VENTAS, COORD_VENTAS, COORD_DISTRIBUCION, JEFE_CALIDAD, SUPERV_CALIDAD | DEFINIDO | sí | Incidencia de tipo Calidad. | Informe Funcional §12.3 (tabla de destinatarios); diagrama de procesos (coord. distribución); observaciones al demo v0.5 (tipo Calidad: también a Calidad) |
+| INC_GENERAL | Incidencia de distribución (llegada tarde u otra condición) | Distribución / Incidencias | ALTA | GERENCIA_OPERACIONES, JEFE_LOGISTICA, COORD_LOGISTICA, COORD_ALMACEN, COORD_ALMACEN_MP, JEFE_VENTAS, COORD_VENTAS, COORD_DISTRIBUCION | DEFINIDO | sí | Retraso, rechazo por cita, devolución, parcial, vehículo esperando, etc. | Informe Funcional §12.3 (tabla de destinatarios); diagrama de procesos (coord. distribución) |
+| CERTIFICADO_REVISION | Certificado pre-elaborado pendiente de revisión | Calidad / Certificados | MEDIA | JEFE_CALIDAD, SUPERV_CALIDAD | DEFINIDO | no | Se genera el certificado cuando la OV queda completa (diagrama de procesos) o al terminar la preparación. | Informe Funcional §9.3, §9.4; diagrama de procesos: 'Informar a Calidad para la validación del certificado pre-elaborado' |
+| CERTIFICADO_LISTO | Certificado aprobado y cargado | Calidad / Certificados | MEDIA | COORD_DISTRIBUCION, GERENCIA_OPERACIONES, JEFE_LOGISTICA | DEFINIDO | no | Calidad aprueba el certificado. | Diagrama de procesos COPROD-ONE: 'Notifica a distribución, GO, jefe de logística que el certificado fue cargado' |
 | CALIDAD_NO_CONFORME | Producto/registro no conforme | Calidad / Calidad | ALTA | JEFE_CALIDAD, SUPERV_CALIDAD, GERENCIA_OPERACIONES | PROPUESTO | sí | Registro de Calidad con resultado No conforme. | REG-BPM-CAL-013, REG-HACCP-CAL-002 |
+| OV_CONDICION_CLIENTE | Stock que no cumple la condición del cliente | Almacén / Faltantes y cobertura | ALTA | COORD_ALMACEN, COORD_ALMACEN_MP, JEFE_LOGISTICA, COORD_LOGISTICA | DEFINIDO | sí | Hay lotes del producto pero no cumplen la vida útil u otra condición del cliente. | Observaciones al demo v0.6 (14-oct-2026): solo se toman productos que cumplan la condición del cliente; si no, se alerta el motivo |
+| CLIENTE_VARIACION_COMPRA | Cliente pide más o menos de lo habitual | Comercial / Comportamiento de clientes | MEDIA | JEFE_VENTAS, COORD_VENTAS, GERENTE_COMERCIAL | DEFINIDO | no | Variación de la cantidad pedida por producto o presentación sobre el umbral configurado. | Observaciones al demo v0.6 (14-oct-2026): alertas si el cliente pide menos o más y de qué productos o presentaciones |
+| PICKING_PROGRAMADO | Picking preprogramado por el sistema | Almacén / Preparación | MEDIA | LIDER_ALMACEN, COORD_ALMACEN, COORD_ALMACEN_MP | DEFINIDO | sí | OV lista para preparar: picking programado con auxiliar propuesto para revisar y asignar. | Observaciones al demo v0.6 (14-oct-2026): al líder y al coordinador de almacén les llega la preprogramación del picking |
+| PICKING_ASIGNADO | Picking asignado | Almacén / Preparación | MEDIA |  | DEFINIDO | sí | Se le asignó un picking (persona o grupo). | Observaciones al demo v0.6 (14-oct-2026): al auxiliar le llega su programación de picking |
+| FLOTA_DOCUMENTO | Documento del vehículo por vencer o vencido (SOAT, revisión, impuestos) | Distribución / Flota | ALTA | COORD_DISTRIBUCION, ASIST_DISTRIBUCION | DEFINIDO | sí | Vencimiento dentro de los días de aviso configurados. | Observaciones al demo v0.6 (14-oct-2026): alerta cuando el SOAT, impuestos u otros estén por vencer |
+| FLOTA_MANTENIMIENTO | Mantenimiento de vehículo por kilometraje o fecha | Distribución / Flota | MEDIA | COORD_DISTRIBUCION, ASIST_DISTRIBUCION | DEFINIDO | sí | El vehículo se acerca al kilometraje o fecha del próximo mantenimiento. | Observaciones al demo v0.6 (14-oct-2026): alertas respecto a los kilometrajes y estado de mantenimiento |
+| TAREA_ASIGNADA | Tarea designada a usted o a su cargo | General / Tareas | MEDIA |  | DEFINIDO | sí | Una persona de su área le designó una tarea. | Observaciones al demo v0.6 (14-oct-2026): el designado recibe la tarea en su inicio y una alerta |
 
 ## Tipos de incidencia (IF §12.3)
 
@@ -652,19 +749,31 @@ Canales: panel del módulo y correo (si hay SMTP). Ciclo: Nueva → Asignada →
 | Parámetro | Valor inicial | Estado | Descripción | Fuente |
 |---|---|---|---|---|
 | margen_reposicion_dias | `None` | PENDIENTE | Margen adicional (días naturales) por posibles atrasos; aplicable por producto/material (campo en catálogo) o global. | Informe Funcional §7, §16, §20 |
-| periodo_analisis_dias | `15` | AS-IS | Período de análisis por defecto para consumo promedio (cada producto puede tener el suyo). | Macro VBA 'TraerLotesStock' (PROM_15D) en PCP 2026 - J.xlsm |
-| factor_stock_seguridad | `0.3` | AS-IS | Stock de seguridad como % del consumo mensual promedio observado en el Excel actual. Solo se aplica si 'usar_stock_seguridad' = sí. | Rotacion de inventario - Almacenes.xlsx, hoja Reporte ('30% stk seg') |
-| usar_stock_seguridad | `False` | PENDIENTE | Aplicar el factor de stock de seguridad AS-IS en el análisis de reposición. | Informe Funcional §16 (stock mínimo configurable) |
+| periodo_analisis_dias | `15` | ACTUAL | Período de análisis por defecto para consumo promedio (cada producto puede tener el suyo). | Macro VBA 'TraerLotesStock' (PROM_15D) en PCP 2026 - J.xlsm |
+| factor_stock_seguridad | `0.3` | ACTUAL | Stock de seguridad como % del consumo mensual promedio observado en el Excel actual. Solo se aplica si 'usar_stock_seguridad' = sí. | Rotacion de inventario - Almacenes.xlsx, hoja Reporte ('30% stk seg') |
+| usar_stock_seguridad | `False` | PENDIENTE | Aplicar el factor de stock de seguridad proceso actual en el análisis de reposición. | Informe Funcional §16 (stock mínimo configurable) |
 | umbral_mayor_volumen | `None` | PENDIENTE | Valor a partir del cual una compra se considera de mayor volumen (en la unidad elegida abajo). | Informe Funcional §7, §20; Decisión del usuario (13-oct-2026, segunda parte) |
 | umbral_mayor_volumen_unidad | `KG` | DEFINIDO | Unidad del umbral: KG (cantidad × peso del artículo), UNIDADES o SOLES (cantidad × precio cotizado). | Decisión del usuario (13-oct-2026, segunda parte): se configura en el panel |
+| tiempo_traslado_dias | `2` | PROPUESTO | Plazo estimado de un traslado desde almacén externo (para comparar opciones de la OV). | Especificación funcional maestra (14-oct) §5.2: referencia inicial ~2 días |
+| tiempo_produccion_dias | `2` | PROPUESTO | Plazo estimado de producción (para comparar opciones de la OV). | Especificación funcional maestra (14-oct) §5.2: referencia inicial 1–2 días |
+| tiempo_reempaque_dias | `3` | PROPUESTO | Plazo estimado de reempaque (para comparar opciones de la OV). | Especificación funcional maestra (14-oct) §5.2: referencia inicial 2–3 días |
+| productos_sustitutos | `{}` | PENDIENTE | Productos sustitutos de cada producto base que ofrecemos, para extraer sus precios de los informes (p. ej. {"LENTEJA": ["..."]}). | Observaciones al demo v0.6: competencia directa y sustitutos; la lista la define Comercial |
+| variacion_compra_alerta_pct | `30` | PROPUESTO | Variación (%) de la cantidad pedida por producto o presentación de un cliente que genera alerta (segunda mitad del periodo vs primera). | Observaciones al demo v0.6: alertas si el cliente pide menos o más; umbral por validar |
+| variacion_compra_dias | `90` | PROPUESTO | Periodo (días) para comparar el comportamiento de compra del cliente. | Observaciones al demo v0.6; periodo por validar |
+| dias_picking_antes_despacho | `1` | PROPUESTO | Días antes de la fecha comprometida en que el sistema preprograma el picking (nunca antes de hoy). | Observaciones al demo v0.6: preprogramación del picking; anticipación por validar |
+| capacidad_lineas | `[{'grupo': 'IQ+CIMB', 'proceso': 'SELECCION', 'lineas': ['CIMBRIA'], 'kg_dia': 25500}, {'grupo': 'TRUER', 'proceso': 'SELECCION', 'lineas': ['TRUER'], 'kg_dia': 12750}, {'grupo': 'SEL. MANUAL', 'proceso': 'SELECCION', 'lineas': ['SEL_MANUAL'], 'kg_dia': 4250}, {'grupo': 'RAUMAK 1 Y 2', 'proceso': 'ENVASADO', 'lineas': ['R1', 'R2'], 'kg_dia': 18700}, {'grupo': 'RAUMAK 3', 'proceso': 'ENVASADO', 'lineas': ['R3'], 'kg_dia': 29750}, {'grupo': 'ENV. MANUAL', 'proceso': 'ENVASADO', 'lineas': ['ENV_MANUAL'], 'kg_dia': 2550}]` | DEFINIDO | Capacidad por línea (kg/día) por proceso. La relación de cada grupo con las líneas del sistema (IQ+CIMB = Cimbria; RAUMAK 1 y 2 = R1 y R2; RAUMAK 3 = R3) es una interpretación por confirmar. | Tabla de capacidades enviada por el usuario (14-oct-2026); la correspondencia con los códigos de línea es propuesta |
+| dias_no_operativos | `[]` | PENDIENTE | Días de la semana sin operación (0 = lunes … 6 = domingo) para calcular la capacidad del periodo. | Observaciones al demo v0.6: capacidad vs producido; calendario de operación por confirmar (hoy se cuentan todos los días) |
+| dias_aviso_documentos_vehiculo | `15` | PROPUESTO | Días de anticipación para alertar el vencimiento de SOAT, revisión técnica, impuestos y otros documentos del vehículo. | Observaciones al demo v0.6; anticipación por validar |
+| margen_km_mantenimiento | `500` | PROPUESTO | Kilómetros antes del próximo mantenimiento en que se alerta. | Observaciones al demo v0.6; margen por validar |
+| exigir_fotos_vehiculo | `True` | DEFINIDO | El chofer sube foto del vehículo al salir (antes de autorizar la salida) y al retornar (vehículos propios). | Observaciones al demo v0.6: antes de cada ruta el chofer sube foto de cómo saca el carro y al retornar |
 | plazo_max_reserva_dias | `7` | DEFINIDO | Plazo máximo de reserva por el espacio físico del almacén: el stock de una OV se reserva recién desde esta cantidad de días antes de la fecha comprometida (antes solo se calcula la cobertura proyectada) y se alerta si una reserva supera el plazo. | Decisión del usuario (14-oct-2026): 'Plazo máximo de reserva 7 días por el espacio físico de almacén' |
-| tipos_compra_requieren_go | `['MP']` | DEFINIDO | Tipos de artículo cuya compra requiere SIEMPRE la aprobación de Gerencia de Operaciones, sin importar el volumen. | Decisión del usuario (14-oct-2026): 'compras materia prima requiere autorización de Gerencia de Operaciones sí o sí' |
+| tipos_compra_requieren_go | `['MP', 'GR']` | DEFINIDO | Tipos de artículo cuya compra requiere SIEMPRE la aprobación de Gerencia de Operaciones, sin importar el volumen. | Decisión del usuario (14-oct-2026): 'compras materia prima requiere autorización de Gerencia de Operaciones sí o sí'; observaciones al demo v0.6: también las de granel (GR) |
 | mayor_volumen_requiere_go | `True` | DEFINIDO | La compra de mayor volumen requiere aprobación de Gerencia de Operaciones (además del Jefe de Logística). | Informe Funcional §7; Decisión del usuario (13-oct-2026, segunda parte): configuración automática Gerencia de Operaciones |
 | merma_pct_global | `None` | PENDIENTE | Porcentaje de merma por defecto (el catálogo de producto/material puede tener uno propio). | Informe Funcional §8.1, §16, §20 |
 | prefijos_no_material_bom | `['RE-']` | PROPUESTO | Prefijos de componentes BOM que no son materiales inventariables (mano de obra, costo CIF). No se verifican contra stock. | LISTA DE MATERIALES 2026.xlsx (RE-xxx = 'MANO DE OBRA' / 'COSTO CIF') |
 | umbral_merma_pct | `None` | PENDIENTE | Merma real (%) a partir de la cual se alerta 'merma fuera de parámetros'. | Informe Funcional §14 |
 | cortes_preparacion | `[]` | PENDIENTE | Horarios de corte (HH:MM) que organizan la preparación. | Informe Funcional §4.9, §16 |
-| tiempos_preparacion | `{'PEQUENO': '20-30 min', 'MEDIANO': '1 h - 1 h 30', 'GRANDE': '4 h (requiere 2 días de anticipación)'}` | AS-IS | Tiempos de preparación iniciales por tamaño de pedido (provisionales; medir y ajustar). | Diagrama AS-IS L5 (Revisar el stock físico vs. lo solicitado); IF §20 |
+| tiempos_preparacion | `{'PEQUENO': '20-30 min', 'MEDIANO': '1 h - 1 h 30', 'GRANDE': '4 h (requiere 2 días de anticipación)'}` | ACTUAL | Tiempos de preparación iniciales por tamaño de pedido (provisionales; medir y ajustar). | Diagrama de proceso actual L5 (Revisar el stock físico vs. lo solicitado); IF §20 |
 | umbrales_tamano_pedido_kg | `None` | PENDIENTE | Límites en kg para clasificar pedido pequeño/mediano/grande. | No definido en la documentación |
 | umbral_alerta_preparacion_pct | `80` | DEFINIDO | Avance de preparación que dispara la alerta. | Informe Funcional §14 |
 | orden_prioridad | `['fecha_compromiso', 'penalidad', 'completitud', 'urgencia']` | DEFINIDO | Criterios de prioridad en el orden aplicado. 'penalidad': a igual fecha, primero el cliente con penalidades más severas (lista de clientes con penalidades). Validado el 13-oct (R3). | Informe Funcional §1, §5, §12.1; Decisión del usuario (13-oct-2026, segunda parte) (lista de clientes con penalidades para priorizar) |
@@ -690,14 +799,14 @@ Canales: panel del módulo y correo (si hay SMTP). Ciclo: Nueva → Asignada →
 | retencion_datos_personales_dias | `None` | PENDIENTE | Días que se conservan fotos de entrega y datos personales de conductores antes de depurarlos. Vacío = no se depura. Debe fijarse según lo que permita la Ley 29733 y las normas aplicables (validación legal). | Decisión del usuario (13-oct-2026, segunda parte) |
 | tolerancia_discrepancia_guia | `0` | PENDIENTE | Diferencia (unidades) entre guía y carga que se tolera sin considerarla discrepancia. | Decisión del usuario (12-oct-2026) Q8 (tolerancia no indicada) |
 | zonas_distrito | `{}` | PENDIENTE | Agrupación de distritos en zonas de reparto (si está vacío se agrupa por distrito). | Informe Funcional §12.1 |
-| capacidad_externo_kg | `[2000, 25000]` | AS-IS | Rango de capacidad de transportes externos (kg). | Imagen tabla de transportes (2 TN a 25 TN) |
+| capacidad_externo_kg | `[2000, 25000]` | ACTUAL | Rango de capacidad de transportes externos (kg). | Imagen tabla de transportes (2 TN a 25 TN) |
 | otif_definicion | `SALIDA` | DEFINIDO | OTIF = pedido que sale del almacén completo y a tiempo (la variante ENTREGA queda como referencia). | Informe Funcional §17; Decisión del usuario (12-oct-2026) Q2 |
 | etapa_por_incidencia | `{'SALIDA_INCOMPLETA': 'Abastecimiento (stock, producción, compras)', 'SALIDA_TARDIA': 'Preparación y despacho', 'RECHAZO_CALIDAD': 'Calidad', 'PARTICULARIDAD_DESCARGA': 'Almacén (preparación/carga)', 'INCIDENCIA_CARGA': 'Almacén (preparación/carga)', 'INFESTACION_INTERNA': 'Calidad', 'INFESTACION_EXTERNA': 'Calidad', 'FUERA_CARACTERISTICAS': 'Calidad', 'PRODUCTO_ROTO': 'Distribución', 'LLEGADA_TARDE': 'Distribución', 'RETRASO': 'Distribución', 'VEHICULO_ESPERANDO': 'Distribución', 'CAMBIO_RUTA': 'Distribución', 'CONDUCTOR_NO_DISPONIBLE': 'Distribución', 'CLIENTE_AUSENTE': 'Cliente / Comercial', 'CLIENTE_NO_RETIRA': 'Cliente / Comercial', 'CANCELACION': 'Cliente / Comercial', 'ENTREGA_PARCIAL': 'Distribución', 'DEVOLUCION': 'Sin clasificar', 'RECHAZO_OTRO': 'Sin clasificar'}` | PROPUESTO | Etapa del proceso a la que se atribuye cada motivo de rechazo/incidencia en el análisis del fill rate. | Decisión del usuario (12-oct-2026) Q2 ('identificar en qué parte del proceso están los mayores errores') |
 | ambito_gerencia_operaciones | `['Almacén', 'Distribución', 'Logística', 'Producción', 'Calidad', 'Compras', 'Importaciones', 'Seguridad', 'Comercial', 'Gerencia']` | PENDIENTE | Áreas cuyas alertas ve Gerencia de Operaciones. | Informe Funcional §14 ('alertas de su ámbito') |
 | acceso_completo_omite_aprobaciones | `False` | DEFINIDO | Gerencia General tiene acceso completo y puede aprobar en nombre de otros roles (queda auditado como tal); Sistemas tiene acceso completo pero no aprueba. Ningún paso se omite. | Informe Funcional §15; Decisión del usuario Q4 (11-oct-2026) |
 | parcial_aprobadores | `['GERENCIA_OPERACIONES', 'JEFE_LOGISTICA']` | DEFINIDO | Roles que pueden aprobar el despacho parcial. Gerencia General puede aprobar en nombre de ellos. | Decisión del usuario Q3 (11 y 12-oct-2026) |
 | parcial_modo | `CUALQUIERA` | DEFINIDO | CUALQUIERA: basta la aprobación de uno de los roles; TODOS: deben aprobar todos. | Decisión del usuario Q3 (11 y 12-oct-2026): 'Gerencia de Operaciones o Jefe de Logística' (12-oct) |
-| presolicitudes_automaticas | `True` | DEFINIDO | Ante un faltante el sistema genera la pre-solicitud de la primera opción viable (las personas aprueban). | TO-BE COPROD-ONE (L5); Decisión del usuario (12-oct-2026) Q15 |
+| presolicitudes_automaticas | `True` | DEFINIDO | Ante un faltante el sistema genera la pre-solicitud de la primera opción viable (las personas aprueban). | Diagrama de procesos COPROD-ONE (L5); Decisión del usuario (12-oct-2026) Q15 |
 | orden_presolicitudes | `['PRODUCCION', 'REEMPAQUE', 'TRASLADO', 'COMPRA']` | DEFINIDO | Orden de preferencia de la pre-solicitud automática; si la primera opción no cubre todo, el saldo pasa a la siguiente. | Decisión del usuario (12-oct-2026) Q15: producir, reempaque, traslado desde almacén externo, compra |
 | alcance_almacen_por_rol | `{'COORD_ALMACEN': ['ALM-001', 'ALM-003', 'ALM-002', 'ALM-004', 'ALM-005', 'ALM-006', 'ALM-007', 'ALM-012', 'EXT-007', 'EXT-013', 'PRO-*'], 'COORD_ALMACEN_MP': ['EXT-002'], 'COORD_LOGISTICA': ['ALM-002', 'ALM-004', 'ALM-005', 'ALM-006', 'ALM-007', 'ALM-012', 'EXT-007', 'EXT-013', 'PRO-*'], 'JEFE_LOGISTICA': ['ALM-002', 'ALM-004', 'ALM-005', 'ALM-006', 'ALM-007', 'ALM-012', 'EXT-007', 'EXT-013', 'PRO-*']}` | DEFINIDO | Almacenes que maneja cada rol: solo actúa sobre los suyos (los no asignados, como los alternativos, los opera cualquier coordinador). 'PRO-*' abarca todos los códigos que empiezan con PRO-. Las alertas de almacén se dirigen al coordinador del almacén involucrado. | Decisión del usuario (12-oct-2026) Q17 (1560 y 1524); Decisión del usuario (13-oct-2026) Q5 (virtuales: Coord. 1560, Coord. y Jefe de Logística) y Q17 (alternativos: cualquiera) |
 | vistos_buenos_salida | `['SEGURIDAD', 'AUX_DESPACHO', 'LIDER_ALMACEN']` | DEFINIDO | Roles cuya autorización y visto bueno requiere la salida del camión (el Líder Operativo da el último). | Decisión del usuario (13-oct-2026) Q16 |
@@ -706,9 +815,9 @@ Canales: panel del módulo y correo (si hay SMTP). Ciclo: Nueva → Asignada →
 | lista_granel_canales | `['MAYORISTA GRANEL']` | DEFINIDO | Canales de precio que usan la lista 'Mayorista granel' (mínimo por kg y por saco). La lista se elige por el canal del cliente: granel (sin proceso de empaque) o presentaciones (lista por canal). | Decisión del usuario (13-oct-2026, segunda parte): 'son por el tipo de canal' |
 | aviso_vencimiento_lista_dias | `7` | PROPUESTO | Días antes del vencimiento de una lista de precios en que se avisa al Jefe Comercial (no se bloquea su uso). | Decisión del usuario (13-oct-2026, segunda parte) |
 | retener_ov_bajo_minimo | `True` | DEFINIDO | La OV con precio en el límite o bajo el mínimo queda detenida (no se prepara ni despacha) hasta su confirmación. | Decisión del usuario (13-oct-2026, segunda parte) |
-| programar_ruta_automatica | `True` | DEFINIDO | Al quedar una OV completa (o con parcial aprobado) el sistema la programa automáticamente en la mejor ruta propuesta. | TO-BE COPROD-ONE: 'Programar automáticamente la mejor ruta para el despacho' |
-| certificado_previo_al_picking | `True` | DEFINIDO | Pre-elaborar los certificados al quedar la OV completa (antes del picking) para validación de Calidad. | TO-BE COPROD-ONE: 'Informar a Calidad para la validación del certificado pre-elaborado' |
-| documentos_salida | `['GUIA', 'FACTURA', 'CERTIFICADO']` | DEFINIDO | Documentos que Seguridad verifica por pedido antes de autorizar la salida (certificado = aprobado por Calidad). | TO-BE COPROD-ONE: Seguridad 'Documentos completos?' / reportar faltantes a distribución, facturación y calidad |
+| programar_ruta_automatica | `True` | DEFINIDO | Al quedar una OV completa (o con parcial aprobado) el sistema la programa automáticamente en la mejor ruta propuesta. | Diagrama de procesos COPROD-ONE: 'Programar automáticamente la mejor ruta para el despacho' |
+| certificado_previo_al_picking | `True` | DEFINIDO | Pre-elaborar los certificados al quedar la OV completa (antes del picking) para validación de Calidad. | Diagrama de procesos COPROD-ONE: 'Informar a Calidad para la validación del certificado pre-elaborado' |
+| documentos_salida | `['GUIA', 'FACTURA', 'CERTIFICADO']` | DEFINIDO | Documentos que Seguridad verifica por pedido antes de autorizar la salida (certificado = aprobado por Calidad). | Diagrama de procesos COPROD-ONE: Seguridad 'Documentos completos?' / reportar faltantes a distribución, facturación y calidad |
 | empresa_razon_social | `CORPORACION PRODUCTIVA S.A.C.` | DEFINIDO | Procesado por (certificados). | Certificados N°CP2026-PT3756 / MP276 / CA0764 |
 | empresa_ruc | `20517540341` | DEFINIDO | RUC del emisor (certificados). | Certificados N°CP2026-* |
 | autorizacion_sanitaria | `Nº000502- MIDAGRI-SENASA-LIMA CALLAO` | PENDIENTE | Autorización sanitaria (los modelos muestran 'MIDAGRI' y 'MINAGRI'; confirmar). | Certificados N°CP2026-MP276 y PT3756 |
@@ -736,7 +845,7 @@ Canales: panel del módulo y correo (si hay SMTP). Ciclo: Nueva → Asignada →
 | ov_cuentas_bancarias | `[{'banco': 'BBVA', 'soles': '0011-0163-37-0100043731 CÓDIGO DE RECAUDO (6721)', 'dolares': '0011-0163-0100043758'}, {'banco': 'BCP', 'soles': '194-2211886-0-81', 'dolares': '194-2190284-1-89'}, {'banco': 'Banco de la Nación', 'soles': '00-098-054618 (CUENTA DE DETRACCIONES)', 'dolares': '-'}, {'banco': 'Scotiabank', 'soles': '000-2171108', 'dolares': '000-5130001'}, {'banco': 'BanBif', 'soles': '7000729570', 'dolares': '7000729589'}, {'banco': 'Interbank', 'soles': '200-3004622764', 'dolares': '200-3004622771'}]` | DEFINIDO | Cuentas bancarias impresas en la OV. | Formato de OV N° 1635389 (foto, 13-oct) |
 | ov_instrucciones_pago | `['Instrucciones de pago para clientes de provincia:', 'Realizar el depósito a nuestra cuenta con el código de recaudo "6721".', 'Si paga por aplicativo, seleccionar "Pago de servicios" y colocar como nombre de empresa Corporación Productiva.', 'Detracciones: Realizar el abono únicamente a nuestra cuenta del Banco de la Nación.']` | DEFINIDO | Instrucciones de pago impresas en la OV. | Formato de OV N° 1635389 (foto, 13-oct) |
 | ov_servicios_asistencia | `[{'telefono': '+51 959 393 886', 'area': 'Asistencia Logistica'}, {'telefono': '+51 971 442 700', 'area': 'Asistencia Calidad'}]` | DEFINIDO | Servicios de asistencia impresos en la OV. | Formato de OV N° 1635389 (foto, 13-oct) |
-| muestreo_tiempo_min_por_lote | `30` | AS-IS | Tiempo orientativo de muestreo por lote en reempaque. | Informe Funcional §9.2 (orientativo) |
+| muestreo_tiempo_min_por_lote | `30` | ACTUAL | Tiempo orientativo de muestreo por lote en reempaque. | Informe Funcional §9.2 (orientativo) |
 
 Valores de demostración aplicados por `seed_demo` (estado DEMO): `cortes_preparacion` = 09:00/13:00/16:00, `dias_vencimiento_proximo` = 30. Plantilla de fases de importación: DEMO.
 

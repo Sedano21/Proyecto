@@ -149,7 +149,7 @@ PERMISSIONS = [
     ("informes.almacen", "Informe de movimiento de stock del almacén (picos, bajas, demoras, stock de reserva)", "Informes", "consulta"),
     ("ov.opciones", "Ver las opciones evaluadas por el sistema para una OV y aprobar/derivar sus pre-solicitudes", "Almacén", "consulta"),
     ("clientes.ver", "Consultar fichas de clientes", "Comercial", "consulta"),
-    ("clientes.editar", "Modificar o completar fichas de clientes (solo Comercial)", "Comercial", "edicion"),
+    ("clientes.editar", "Modificar o completar fichas de clientes (solo Comercial)", "Comercial", "exclusivo"),
     ("produccion.bom_aprobar", "Revisar y aprobar/modificar la lista de materiales usada para producir", "Producción", "aprobacion"),
     ("flota.ver", "Consultar seguimiento de flota (SOAT, impuestos, multas, combustible, mantenimiento)", "Distribución", "consulta"),
     ("tareas.ejecutar", "Registrar inicio y fin de tareas operativas con foto (picking, traslado interno)", "Almacén", "edicion"),
