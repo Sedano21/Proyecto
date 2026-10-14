@@ -1,5 +1,6 @@
 {% extends "base.html" %}{% from "_m.html" import csrf %}
 {% block content %}<h1>Costos vs mercado</h1>
+<p><a class="btn" href="{{ url_for('com.market_analysis') }}">Análisis de mercado en dos niveles (compra y venta)</a>{% if can('costos.cargar') %} <a class="btn sec" href="{{ url_for('com.market_report') }}">Importar informe (Excel o PDF)</a>{% endif %}</p>
 <p class="muted small">Respuestas del 13-oct: el costo sirve para (1) impedir ventas por debajo del costo (la OV queda detenida hasta la confirmación del Coordinador o Jefe Comercial) y (2) compararlo automáticamente con precios de mercado y su tendencia. El análisis se recalcula al cargar costos o precios de mercado y en la tarea diaria. Información restringida (permiso «Ver costos»).</p>
 <form class="row" method="get"><div><label>Tipo de precio de mercado</label><select name="tipo" onchange="this.form.submit()">{% for t in ['MAYORISTA','MINORISTA','IMPORTACION'] %}<option {{ 'selected' if t==tipo }}>{{ t }}</option>{% endfor %}</select></div>
 <div><label>Producto (tendencia)</label><select name="producto" onchange="this.form.submit()">{% for p in productos %}<option {{ 'selected' if p==sel }}>{{ p }}</option>{% endfor %}</select></div></form>

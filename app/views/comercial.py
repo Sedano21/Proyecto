@@ -1,7 +1,7 @@
 """Vistas de Comercial (OV, decisiones ante faltantes) y preparación."""
 from datetime import date
 
-from flask import Blueprint, abort, g, redirect, render_template, request, url_for
+from flask import Blueprint, abort, flash, g, redirect, render_template, request, url_for
 from sqlalchemy import select
 
 from ..db import db
@@ -79,7 +79,7 @@ def order_new():
                                   f_date("fecha_compromiso", True), _lines_from_form(), urgente=f_bool("urgente"),
                                   comentarios=fm.get("comentarios", ""), hora_cita=fm.get("hora_cita", ""),
                                   cita_confirmada=f_bool("cita_confirmada"), vendedor_id=fm.get("vendedor_id") or None,
-                                  entrega=entrega)
+                                  entrega=entrega, canal_precio=fm.get("canal_precio", ""))
             holder["o"] = o
             return o
         resp = act(_do, lambda o: f"OV {o.numero} registrada y evaluada: cobertura {o.cobertura_unidades}% unidades / "
@@ -93,8 +93,12 @@ def order_new():
                                  "provincia": x.provincia, "horario": x.horario_recepcion} for x in c.sites if x.activo]}
               for c in customers}
     granel = {p.code for p in products if osvc.kg_por_saco(p.code)}
+    from ..services import prices as psvc
+    from ..services.core import param
+    canales = sorted(set(psvc.canales()) | set(param("lista_granel_canales", []) or []))
+    canal_cliente = {c.id: psvc.channel_of(c) for c in customers}
     return render_template("ov_new.html", customers=customers, vendedores=vendedores, products=products, sitios=sitios,
-                           horas=osvc.horas_cita(), granel=granel)
+                           horas=osvc.horas_cita(), granel=granel, canales=canales, canal_cliente=canal_cliente)
 
 
 @bp.route("/<int:oid>")
@@ -348,12 +352,16 @@ def customer_list():
     if request.method == "POST":
         return act(lambda: csv_.save_customer(g.user, None, request.form), lambda c: f"Cliente {c.nombre} creado.",
                    url_for("com.customer_list"), redirect_fn=lambda c: url_for("com.customer_card", cid=c.id))
-    q = request.args.get("q", "").strip().upper()
-    rows = list(db().execute(select(Customer).order_by(Customer.nombre)).scalars())
-    if q:
-        rows = [c for c in rows if q in c.nombre.upper() or q in c.ruc or q in (c.grupo or "").upper()]
     from ..services import prices as psvc
-    return render_template("customer_list.html", rows=rows, q=q, canal_de=psvc.channel_of)
+    a = request.args
+    f = {"q": a.get("q", ""), "grupo": a.get("grupo", ""), "canal": a.get("canal", ""), "vendedor_id": a.get("vendedor_id", "")}
+    rows = csv_.search(f["q"], f["grupo"], f["canal"], f["vendedor_id"] or None)
+    todos = list(db().execute(select(Customer)).scalars())
+    vendedores = list(db().execute(select(User).where(User.role_code.in_(("EJECUTIVO_VENTAS", "COORD_VENTAS", "JEFE_VENTAS")))
+                                   .order_by(User.nombre)).scalars())
+    return render_template("customer_list.html", rows=rows, f=f, canal_de=psvc.channel_of, vendedores=vendedores,
+                           grupos=sorted({c.grupo for c in todos if c.grupo}),
+                           canales=sorted({psvc.channel_of(c) for c in todos if psvc.channel_of(c)}))
 
 
 @bp.route("/clientes/<int:cid>", methods=["GET", "POST"])
@@ -381,8 +389,100 @@ def customer_card(cid):
                     for t in (cond.penalidad_tipos or []) if t != "FILL_RATE"}
             return act(lambda: set_penalty_amounts(cond, g.user, vals), "Montos de penalidad guardados.",
                        url_for("com.customer_card", cid=cid))
-        return act(lambda: csv_.save_customer(g.user, c, request.form), "Ficha guardada.", url_for("com.customer_card", cid=cid))
+        def _guardar():
+            from flask import current_app
+            from ..services.distribution import save_upload
+            datos = request.form.to_dict(flat=False)
+            datos = {k: (v if k in ("celulares", "correos") else v[0]) for k, v in datos.items()}
+            arch = save_upload(request.files.get("contrato"), current_app.config["UPLOAD_DIR"], f"contrato_{c.ruc}")
+            if arch:
+                datos["contrato_archivo"] = arch
+            return csv_.save_customer(g.user, c, datos)
+        return act(_guardar, "Ficha guardada.", url_for("com.customer_card", cid=cid))
     canales = sorted(set(psvc.canales()) | set(param("lista_granel_canales", []) or []))
     return render_template("customer_card.html", c=c, p=csv_.profile(c), cond=for_customer(c), canal=psvc.channel_of(c),
                            canales=canales, editable="clientes.editar" in g.perms,
-                           tipo_txt=TIPO_TXT)
+                           tipo_txt=TIPO_TXT, vendedores=list(db().execute(select(User).where(User.role_code.in_(
+                               ("EJECUTIVO_VENTAS", "COORD_VENTAS", "JEFE_VENTAS"))).order_by(User.nombre)).scalars()))
+
+
+# ------------------- precios de mercado por origen (obs. demo v0.6) -------------------
+@bp.route("/mercado/registrar", methods=["POST"])
+@perm_required("costos.cargar", "compras.gestionar", "importaciones.gestionar")
+def market_add():
+    from ..services import market
+    fm = request.form
+    fila = {"producto": fm.get("producto", ""), "variedad": fm.get("variedad", ""), "precio_kg": f_float("precio_kg", True),
+            "tipo_precio": fm.get("tipo_precio") or "MAYORISTA", "mercado": fm.get("mercado", ""), "fecha": f_date("fecha", True),
+            "fuente": fm.get("fuente", ""), "competidor": fm.get("competidor", ""), "presentacion": fm.get("presentacion", ""),
+            "product_code": fm.get("product_code", "")}
+    volver = fm.get("volver") or url_for("com.market_analysis")
+    if not volver.startswith("/") or volver.startswith("//"):
+        volver = url_for("com.market_analysis")
+    return act(lambda: market.add(g.user, fm.get("categoria", ""), [fila], "Alta manual"), "Precio registrado.", volver)
+
+
+@bp.route("/mercado/informe", methods=["GET", "POST"])
+@perm_required("costos.cargar")
+def market_report():
+    """Importa un informe (Excel o PDF) y extrae los precios de productos compatibles para revisión."""
+    from flask import current_app
+    from ..services import market
+    up = current_app.config["UPLOAD_DIR"]
+    token = request.values.get("token")
+    if request.method == "POST" and request.form.get("accion") == "confirmar":
+        def _confirmar():
+            prev = market.load_preview(up, token)
+            elegidas = set(request.form.getlist("fila"))
+            fecha = f_date("fecha", True)
+            n = 0
+            for i, x in enumerate(prev["filas"]):
+                if str(i) not in elegidas:
+                    continue
+                cat = request.form.get(f"cat_{i}", x["categoria"])
+                n += market.add(g.user, cat, [{"producto": x["producto"], "precio_kg": request.form.get(f"pkg_{i}") or x["precio_kg"],
+                                               "fecha": fecha, "fuente": x["fuente"], "competidor": request.form.get(f"comp_{i}", ""),
+                                               "presentacion": f"{x['presentacion_kg']:g} kg" if x.get("presentacion_kg") else "",
+                                               "product_code": x["product_code"], "variedad": x["texto"][:100],
+                                               "tipo_precio": "MINORISTA"}], prev["meta"]["archivo"])
+            return n
+        return act(_confirmar, lambda n: f"{n} precio(s) registrados desde el informe.", url_for("com.market_analysis"))
+    if request.method == "POST":
+        def _subir():
+            f = request.files.get("archivo")
+            if f is None or not f.filename:
+                raise BusinessError("Seleccione el informe (Excel o PDF).")
+            import os
+            import tempfile
+            ext = os.path.splitext(f.filename)[1].lower()
+            with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
+                f.save(tmp.name)
+            try:
+                filas = market.parse_report(tmp.name, f.filename)
+            finally:
+                os.unlink(tmp.name)
+            return market.save_preview(up, filas, {"archivo": f.filename})
+        resp = act(_subir, "Informe leído: revise las filas compatibles.", url_for("com.market_report"),
+                   redirect_fn=lambda tk: url_for("com.market_report", token=tk))
+        return resp
+    prev = None
+    if token:
+        try:
+            prev = market.load_preview(up, token)
+        except BusinessError as e:
+            flash(str(e), "error")
+    return render_template("market_report.html", prev=prev, token=token, categorias=market.categorias_para(g.user),
+                           hoy=date.today())
+
+
+@bp.route("/mercado/analisis")
+@perm_required("costos.ver")
+def market_analysis():
+    from ..services import charts, market
+    dias = int(request.args.get("dias") or 180)
+    d = market.analysis(dias)
+    graf = {f["producto"]: charts.line([(n, s) for n, s in (("Compra nacional", f["serie_nacional"]),
+                                                             ("Importación", f["serie_importacion"])) if s],
+                                       "S/ por kg", title=f"{f['producto']}: a cuánto compramos")
+            for f in d["compra"] if f["serie_nacional"] or f["serie_importacion"]}
+    return render_template("market_analysis.html", d=d, graf=graf, dias=dias, categorias=market.categorias_para(g.user))

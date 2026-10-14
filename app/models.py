@@ -174,6 +174,15 @@ class Customer(Base):
     correo: Mapped[str] = mapped_column(String(160), default="")
     codigo_sap: Mapped[str] = mapped_column(String(30), default="")
     observaciones: Mapped[str] = mapped_column(Text, default="")
+    # Observaciones al demo v0.6: hasta 3 celulares y 3 correos, contrato, certificaciones, penalidades, vendedor
+    celulares: Mapped[list] = mapped_column(JSON, default=list)
+    correos: Mapped[list] = mapped_column(JSON, default=list)
+    tiene_contrato: Mapped[bool] = mapped_column(Boolean, default=False)
+    contrato_archivo: Mapped[str] = mapped_column(String(200), default="")
+    certificaciones: Mapped[str] = mapped_column(Text, default="")  # certificaciones que pide el cliente
+    penalidades: Mapped[str] = mapped_column(Text, default="")  # penalidades establecidas con el cliente
+    vendedor_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)  # vendedor responsable
+    vendedor = relationship("User", foreign_keys=[vendedor_id])
     sites = relationship("CustomerSite", back_populates="customer", order_by="CustomerSite.id")
 
 
@@ -371,6 +380,8 @@ class SalesOrder(Base):
     completa_notificada: Mapped[bool] = mapped_column(Boolean, default=False)
     plan_picking_validado: Mapped[bool] = mapped_column(Boolean, default=False)
     customer = relationship("Customer")
+    # canal / grupo de precios elegido al registrar (el mínimo varía por canal; observaciones al demo v0.6)
+    canal_precio: Mapped[str] = mapped_column(String(60), default="")
     lines = relationship("SalesOrderLine", back_populates="order", cascade="all, delete-orphan",
                          order_by="SalesOrderLine.id")
     parent = relationship("SalesOrder", remote_side="SalesOrder.id")
@@ -1036,6 +1047,12 @@ class MarketPrice(Base):
     origen: Mapped[str] = mapped_column(String(160), default="")  # archivo cargado o 'alta manual'
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    # Observaciones al demo v0.6: quién registra y qué representa el precio (compra nacional, importación, competencia
+    # directa, sustituto o referencia de mercado), con la marca/empresa y el producto nuestro compatible.
+    categoria: Mapped[str] = mapped_column(String(20), default="MERCADO")
+    competidor: Mapped[str] = mapped_column(String(160), default="")
+    presentacion: Mapped[str] = mapped_column(String(60), default="")
+    product_code: Mapped[str] = mapped_column(String(40), default="")
 
 
 class PriceListMeta(Base):

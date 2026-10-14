@@ -2,7 +2,9 @@
 {% block content %}<h1>Cargas de archivos{{ ' – ' ~ area if area }}</h1>
 <p class="muted small">Cada archivo se valida (formato, obligatorios, duplicados, diferencias) antes de incorporarse; quien carga corrige o excluye filas y luego se autoriza (IF §6.4, §19). Cada área ve sus propias cargas.</p>
 {% if areas|length > 1 %}<p class="tabs">{% for a in areas %}<a class="btn {{ '' if a == area else 'sec' }}" href="{{ url_for('alm.uploads', area=a) }}">{{ a }}</a> {% endfor %}{% if area %}<a class="btn sec" href="{{ url_for('alm.uploads') }}">Todas</a>{% endif %}</p>{% endif %}
-<div class="card"><b>Nueva carga:</b> {% for k, s in propios.items() %}<a class="btn sec" href="{{ url_for('alm.upload_new', tipo=k) }}">{{ s.nombre }}</a> {% endfor %}</div>
+{% if propios %}<form class="card row" method="get" action="{{ url_for('alm.upload_new') }}"><div class="grow"><label for="tipo_carga">Nueva carga: tipo de archivo</label>
+<select name="tipo" id="tipo_carga" required><option value="">Seleccione el tipo de carga…</option>{% for k, s in propios.items()|sort(attribute='1.nombre') %}<option value="{{ k }}">{{ s.nombre }}</option>{% endfor %}</select></div>
+<div><button>Continuar</button></div></form>{% endif %}
 <div class="tw"><table><tr><th>#</th><th>Tipo</th><th>Archivo / hoja</th><th>Fecha</th><th>Usuario</th><th>Estado</th><th>Resumen</th></tr>
 {% for r in rows %}<tr><td><a href="{{ url_for('alm.upload_detail', bid=r.id) }}">{{ r.id }}</a></td><td>{{ specs[r.tipo].nombre }}</td><td>{{ r.archivo }} / {{ r.hoja }}</td><td>{{ r.ts|d }}</td><td>{{ r.user.nombre if r.user }}</td><td>{{ b(r.estado) }}</td>
 <td class="small">{{ r.resumen.filas }} filas · {{ r.resumen.con_error }} con error · {{ r.resumen.con_advertencia }} adv.</td></tr>{% else %}<tr><td colspan="7" class="muted">Sin cargas</td></tr>{% endfor %}</table></div>{% endblock %}

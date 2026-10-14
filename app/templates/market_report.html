@@ -1,0 +1,16 @@
+{% extends "base.html" %}{% from "_m.html" import csrf %}
+{% block content %}<p class="small"><a href="{{ url_for('com.market_analysis') }}">← Análisis de precios de mercado</a></p>
+<h1>Importar informe de precios</h1>
+<p class="muted">Cargue un informe en Excel o PDF (reportes del Estado, de mercado o de la competencia). El sistema extrae solo las filas de productos compatibles con lo que ofrecemos: <b>competencia directa</b> (mismo producto base) y <b>sustitutos</b> (según el parámetro <i>productos_sustitutos</i>). Nada se registra hasta que usted lo revise y confirme.</p>
+{% if not prev %}<form class="card row" method="post" enctype="multipart/form-data">{{ csrf() }}<div class="grow"><label>Informe (.xlsx o .pdf)</label><input type="file" name="archivo" accept=".xlsx,.xlsm,.pdf" required></div><div><button>Leer informe</button></div></form>
+{% else %}<form class="card" method="post">{{ csrf() }}<input type="hidden" name="accion" value="confirmar"><input type="hidden" name="token" value="{{ token }}">
+<h3>{{ prev.meta.archivo }}: {{ prev.filas|length }} fila(s) compatibles</h3>
+<div class="row"><div><label>Fecha de los precios</label><input type="date" name="fecha" value="{{ hoy.isoformat() }}" required></div></div>
+<div class="tw"><table class="small"><tr><th>Registrar</th><th>Texto del informe</th><th>Producto base</th><th>Nuestro artículo</th><th>Origen</th><th class="r">Precio</th><th>Presentación</th><th>S/ por kg</th><th>Competidor / marca</th></tr>
+{% for x in prev.filas %}<tr><td><input type="checkbox" name="fila" value="{{ loop.index0 }}" checked aria-label="Registrar fila {{ loop.index }}"></td><td>{{ x.texto }}<br><span class="muted">{{ x.fuente }}</span></td><td>{{ x.producto }}</td><td>{{ x.product_code }} {{ pd(x.product_code) if x.product_code }}</td>
+<td><select name="cat_{{ loop.index0 }}">{% for k, v in categorias.items() if k in ['COMPETENCIA','SUSTITUTO','MERCADO'] %}<option value="{{ k }}" {{ 'selected' if k == x.categoria }}>{{ v }}</option>{% endfor %}</select></td>
+<td class="r">{{ x.precio }}</td><td>{{ (x.presentacion_kg ~ ' kg') if x.presentacion_kg else '—' }}{% if x.unidad_supuesta %}<br><span class="b MEDIA">{{ x.unidad_supuesta }}</span>{% endif %}</td>
+<td><input type="number" step="0.0001" min="0" name="pkg_{{ loop.index0 }}" value="{{ x.precio_kg }}" style="width:100px"></td><td><input name="comp_{{ loop.index0 }}" style="width:140px"></td></tr>
+{% else %}<tr><td colspan="9" class="muted">El informe no tiene productos compatibles con los que ofrecemos.</td></tr>{% endfor %}</table></div>
+{% if prev.filas %}<p><button>Registrar seleccionados</button> <a class="btn sec" href="{{ url_for('com.market_report') }}">Cargar otro informe</a></p>{% endif %}</form>{% endif %}
+{% endblock %}

@@ -4,7 +4,7 @@
 Solo el Jefe Comercial carga o modifica precios; cada cambio queda versionado. El costo de la empresa no se guarda en el sistema.</p>
 <p>{% if can('precios.editar') %}<a href="{{ url_for('alm.upload_new', tipo='PRECIOS') }}">Cargar lista por canal (Excel)</a> · <a href="{{ url_for('alm.upload_new', tipo='PRECIOS_GRANEL') }}">Cargar lista mayorista granel (Excel)</a>{% endif %}</p>
 <div class="card small"><b>Vigencia</b> · {% for l, nombre in [('GENERAL', 'Lista por canal (presentaciones)'), ('GRANEL', 'Lista mayorista granel (canal ' ~ canal_granel ~ ')')] %}{% set m = metas.get(l) %}
-<form method="post" class="row" style="margin:4px 0">{{ csrf() }}<input type="hidden" name="accion" value="vigencia"><input type="hidden" name="lista" value="{{ l }}"><div>{{ nombre }}{% if m %} · {{ m.archivo }}{% endif %}</div>
+<form method="post" class="row" style="margin:4px 0">{{ csrf() }}<input type="hidden" name="accion" value="vigencia"><input type="hidden" name="lista" value="{{ l }}"><div>{{ nombre }}</div>
 <div>desde <input type="date" name="vigencia_desde" value="{{ m.vigencia_desde.isoformat() if m and m.vigencia_desde else '' }}" {{ '' if can('precios.editar') else 'disabled' }}></div>
 <div>hasta <input type="date" name="vigencia_hasta" value="{{ m.vigencia_hasta.isoformat() if m and m.vigencia_hasta else '' }}" {{ '' if can('precios.editar') else 'disabled' }}></div>
 {% if can('precios.editar') %}<div><button class="small sec">Guardar vigencia</button></div>{% endif %}</form>{% endfor %}

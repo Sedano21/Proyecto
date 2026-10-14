@@ -10,7 +10,17 @@ from ..models import Customer, CustomerSite, Incident, SalesOrder
 from .core import BusinessError, audit, has_perm
 
 CAMPOS = ("nombre", "grupo", "direccion", "distrito", "provincia", "horario_recepcion", "contacto", "telefono", "correo",
-          "codigo_sap", "observaciones")
+          "codigo_sap", "observaciones", "certificaciones", "penalidades")
+MAX_CONTACTOS = 3  # hasta 3 celulares y 3 correos (observaciones al demo v0.6)
+
+
+def _lista(datos, clave):
+    if hasattr(datos, "getlist"):
+        vals = datos.getlist(clave)
+    else:
+        vals = datos.get(clave) or []
+        vals = [vals] if isinstance(vals, str) else list(vals)
+    return [str(v).strip() for v in vals if str(v or "").strip()]
 
 
 def _require(user):
@@ -42,6 +52,29 @@ def save_customer(user, c, datos):
     if "vida_util_min_dias" in datos:
         v = str(datos.get("vida_util_min_dias") or "").strip()
         c.vida_util_min_dias = int(v) if v else None
+    if "celulares" in datos:
+        cels = _lista(datos, "celulares")
+        if len(cels) > MAX_CONTACTOS:
+            raise BusinessError("Máximo 3 celulares.")
+        if any(not x.replace(" ", "").replace("+", "").isdigit() for x in cels):
+            raise BusinessError("Celular inválido (solo números).")
+        c.celulares = cels
+    if "correos" in datos:
+        mails = _lista(datos, "correos")
+        if len(mails) > MAX_CONTACTOS:
+            raise BusinessError("Máximo 3 correos.")
+        if any("@" not in x for x in mails):
+            raise BusinessError("Correo inválido.")
+        c.correos = mails
+        c.correo = mails[0] if mails else ""
+    if "tiene_contrato" in datos:
+        c.tiene_contrato = str(datos["tiene_contrato"]) in ("1", "true", "True", "on")
+    if datos.get("contrato_archivo"):
+        c.contrato_archivo = datos["contrato_archivo"]
+        c.tiene_contrato = True
+    if "vendedor_id" in datos:
+        v = str(datos.get("vendedor_id") or "").strip()
+        c.vendedor_id = int(v) if v else None
     if c.correo and "@" not in c.correo:
         raise BusinessError("Correo inválido.")
     if not c.nombre:
@@ -66,6 +99,28 @@ def save_site(user, c, datos, site=None):
     db().flush()
     audit(user, "CLIENTE_LUGAR_GUARDADO", "Customer", c.ruc, {"lugar": site.nombre})
     return site
+
+
+def search(q="", grupo="", canal="", vendedor_id=None):
+    """Búsqueda de clientes por nombre o RUC, grupo, canal de precios o vendedor responsable."""
+    from .prices import channel_of
+    rows = list(db().execute(select(Customer).order_by(Customer.nombre)).scalars())
+    q = (q or "").strip().upper()
+    if q:
+        rows = [c for c in rows if q in c.nombre.upper() or q in c.ruc]
+    if grupo:
+        rows = [c for c in rows if (c.grupo or "").upper() == grupo.upper()]
+    if canal:
+        rows = [c for c in rows if (channel_of(c) or "") == canal]
+    if vendedor_id:
+        vid = int(vendedor_id)
+        rows = [c for c in rows if c.vendedor_id == vid or (c.vendedor_id is None and vid in _vendedores_ov(c))]
+    return rows
+
+
+def _vendedores_ov(c):
+    return {o.vendedor_id for o in db().execute(select(SalesOrder).where(SalesOrder.customer_id == c.id)).scalars()
+            if o.vendedor_id}
 
 
 def profile(c):

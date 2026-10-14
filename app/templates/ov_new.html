@@ -8,6 +8,7 @@
 <div class="grow"><label>Cliente</label><input name="cliente_txt" id="cliente_txt" list="clientes" required placeholder="Escriba nombre o RUC" autocomplete="off"><input type="hidden" name="customer_id" id="customer_id">
 <datalist id="clientes">{% for c in customers %}<option value="{{ c.nombre }} · {{ c.ruc }}" data-id="{{ c.id }}"></option>{% endfor %}</datalist></div>
 <div><label>Fecha comprometida de despacho</label><input type="date" name="fecha_compromiso" required></div>
+<div><label>Canal / grupo de precios</label><select name="canal_precio" id="canal_precio"><option value="">(según ficha del cliente)</option>{% for x in canales %}<option>{{ x }}</option>{% endfor %}</select><small class="muted" id="canal_cli"></small></div>
 <div><label>Vendedor responsable</label><select name="vendedor_id"><option value="">(—)</option>{% for v in vendedores %}<option value="{{ v.id }}" {{ 'selected' if v.id==user.id }}>{{ v.nombre }}</option>{% endfor %}</select></div>
 </div>
 <fieldset class="card"><legend>Entrega</legend>
@@ -57,4 +58,5 @@
   cli.addEventListener('change', onCli); cli.addEventListener('input', onCli); sel.addEventListener('change', onSite);
   document.getElementById('ovform').addEventListener('submit', function(e){ if (!cid.value) { e.preventDefault(); alert('Elija un cliente de la lista.'); } });
 })();
-</script>{% endblock %}
+</script><script>(function(){var cc={{ canal_cliente|tojson }};var s=document.querySelector('[name=customer_id]');function u(){var v=cc[s.value]||'';document.getElementById('canal_cli').textContent=v?('Canal de la ficha: '+v):'El cliente no tiene canal asignado';var c=document.getElementById('canal_precio');if(v&&!c.dataset.touched)c.value=v;}var ct=document.getElementById('cliente_txt');if(ct){['change','input'].forEach(function(e){ct.addEventListener(e,function(){setTimeout(u,0);});});u();}document.getElementById('canal_precio').addEventListener('change',function(){this.dataset.touched=1;});})();</script>
+{% endblock %}

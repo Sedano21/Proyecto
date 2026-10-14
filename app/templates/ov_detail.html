@@ -10,6 +10,7 @@
 {% if penal %}<tr><td>Penalidad estimada</td><td>{% for x in penal %}<div class="small">{{ x.texto|capitalize }}: {% if x.monto is not none %}<b class="{{ 'err' if x.riesgo }}">S/ {{ '{:,.2f}'.format(x.monto) }}</b>{% else %}<span class="muted">monto no definido</span>{% endif %}{% if x.riesgo %} <span class="b ALTA">en riesgo</span>{% endif %} <span class="muted">— {{ x.base }}</span></div>{% endfor %}</td></tr>{% endif %}
 <tr><td>Emisión / comprometida</td><td>{{ o.fecha_emision|d }} / <b>{{ o.fecha_compromiso|d }}</b> · corte {{ o.corte or '-' }}</td></tr>
 <tr><td>Vendedor</td><td>{{ o.vendedor_nombre or '-' }}</td></tr>
+<tr><td>Canal de precios</td><td>{{ o.canal_precio or 'según ficha del cliente' }}</td></tr>
 <tr><td>Monto / volumen</td><td>S/ {{ monto|n }} · {{ peso|n }} kg {% if sin_peso %}<span class="small muted">(sin peso: {{ sin_peso|join(', ') }})</span>{% endif %}</td></tr>
 <tr><td>Versión / origen</td><td>v{{ o.version }} · {{ o.origen }}</td></tr>
 <tr><td>Comentarios</td><td>{{ o.comentarios }}</td></tr>

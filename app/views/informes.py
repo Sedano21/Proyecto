@@ -51,7 +51,29 @@ def show(nombre):
                 "pres": charts.bars([(str(k), v) for k, v in d["presentaciones"]], "", title="Presentaciones preferidas", color=6),
                 "margen": charts.bars([(f"{k} {n[:16]}", m) for k, n, m in d["margen_producto"][:15]], "%",
                                       title="Margen por producto (menores primero)", color=2)}
-        return render_template("informe_comercial.html", d=d, graf=graf, items=disponibles(), actual=nombre)
+        from ..services.customer_behavior import behavior
+        cb = behavior(d["desde"], d["hasta"])
+        graf["cumplimiento"] = charts.bars([(x["customer"].nombre[:22], x["cumplimiento"] or 0) for x in cb["clientes"][:15]], "%",
+                                           title="Cumplimiento por cliente (atendidos / pedidos)", color=2)
+        return render_template("informe_comercial.html", d=d, cb=cb, graf=graf, items=disponibles(), actual=nombre)
     fn = getattr(rsvc, nombre)
     d = fn(desde, hasta)
     return render_template(f"informe_{nombre}.html", d=d, charts=charts, items=disponibles(), actual=nombre)
+
+
+@bp.route("/comercial/cliente/<int:cid>")
+@login_required
+def customer_behavior(cid):
+    """Detalle del comportamiento de un cliente: cada OV con su atención, retraso, rechazos, modificaciones y penalidad."""
+    from ..services.customer_behavior import behavior
+    if "informes.comercial" not in g.perms:
+        abort(403)
+    desde, hasta = _periodo()
+    d = behavior(desde, hasta, cid)
+    if not d["clientes"]:
+        from ..db import db
+        from ..models import Customer
+        c = db().get(Customer, cid) or abort(404)
+        return render_template("informe_cliente.html", d=d, c=None, cliente=c, items=disponibles(), actual="comercial")
+    return render_template("informe_cliente.html", d=d, c=d["clientes"][0], cliente=d["clientes"][0]["customer"],
+                           items=disponibles(), actual="comercial")

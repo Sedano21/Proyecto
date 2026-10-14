@@ -123,12 +123,12 @@ def channel_of(customer):
     return (param("canal_precio_por_grupo", {}) or {}).get((customer.grupo or "").strip().upper(), "")
 
 
-def minimum_for(product, customer):
+def minimum_for(product, customer, canal=None):
     """Mínimo aplicable: dict(tipo='GENERAL', precio, canal) o dict(tipo='GRANEL', precio_kg, precio_saco, kg_saco),
-    o (None, motivo) si no hay."""
+    o (None, motivo) si no hay. 'canal' es el canal o grupo elegido en la OV (si no, el del cliente)."""
     if product is None or customer is None:
         return None, "producto o cliente no identificado"
-    canal = channel_of(customer)
+    canal = canal or channel_of(customer)
     if not canal:
         return None, f"el cliente {customer.nombre} (grupo '{customer.grupo or '-'}') no tiene canal de precios asignado"
     s = db()
@@ -146,9 +146,9 @@ def minimum_for(product, customer):
     return {"tipo": "GENERAL", "canal": canal, "precio": it.precio}, ""
 
 
-def price_for(product, customer):
+def price_for(product, customer, canal=None):
     """(mínimo de referencia en la unidad de venta, descripción) o (None, motivo)."""
-    m, motivo = minimum_for(product, customer)
+    m, motivo = minimum_for(product, customer, canal)
     if m is None:
         return None, "Sin precio mínimo: " + motivo
     if m["tipo"] == "GENERAL":
@@ -202,7 +202,7 @@ def check_order_prices(order, user=None):
     for l in order.lines:
         if not l.activa:
             continue
-        m0, _ = minimum_for(l.product, order.customer)
+        m0, _ = minimum_for(l.product, order.customer, order.canal_precio or None)
         costo = cost_for_line(l, (m0 or {}).get("kg_saco") if m0 else None)
         if costo is not None and (l.precio_unitario or 0) < costo - 1e-9 and l.precio_unitario:
             # R4 (13-oct): ninguna venta por debajo del costo. El texto visible en la OV no muestra el costo.
@@ -211,13 +211,13 @@ def check_order_prices(order, user=None):
                               f"{' por ' + l.um_venta.lower() if l.um_venta else ''}")
         m, motivo = m0, _
         if m is None:
-            m, motivo = minimum_for(l.product, order.customer)
+            m, motivo = minimum_for(l.product, order.customer, order.canal_precio or None)
         if m is None:
             l.precio_minimo = None
             l.precio_origen = "Sin precio mínimo: " + motivo
             faltantes.append(motivo)
             continue
-        ref, _ = price_for(l.product, order.customer)
+        ref, _ = price_for(l.product, order.customer, order.canal_precio or None)
         l.precio_minimo = ref
         estado, detalle = _compare(l, l.product, m, margen)
         sin = "" if l.precio_unitario else " (OV sin precio de venta)"

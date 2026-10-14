@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% from "_m.html" import b, csrf %}
+{% extends "base.html" %}{% from "_m.html" import b, csrf %}{% from "_market.html" import market_form %}
 {% block content %}<h1>Compras nacionales</h1>
 <p class="muted small">Almacén origina → Compras cotiza (y lleva muestra a Calidad cuando corresponde) → genera la orden y registra fecha prevista → se alerta a Almacén → recepción con validación de diferencias (IF §10). Umbral de mayor volumen: {{ umbral if umbral is not none else 'no definido (pendiente)' }}.</p>
 {% if can('compras.solicitar') %}<form method="post" class="row card">{{ csrf() }}<div><label>Artículo</label><input name="product_code" list="prods" required></div><div><label>Cantidad</label><input type="number" step="any" name="cantidad" required></div><div><label>Fecha de necesidad</label><input type="date" name="fecha_necesidad"></div><div><button>Solicitar compra</button></div>
@@ -9,4 +9,5 @@
 <p><a href="{{ url_for('buy.replenishment') }}">Análisis de reposición</a> {% if can('export.datos') %}· <a href="{{ url_for('main.export', entidad='compras') }}">Exportar</a>{% endif %}</p>
 <table><tr><th>#</th><th>Artículo</th><th class="r">Cantidad</th><th>Necesidad</th><th>Origen</th><th>Estado</th><th>Proveedor</th><th>OC</th><th>Fecha prevista</th></tr>
 {% for r in rows %}<tr><td><a href="{{ url_for('buy.purchase_detail', pid=r.id) }}">{{ r.id }}</a></td><td>{{ r.product_code }} <span class="small muted">{{ r.product.descripcion }}</span></td><td class="r">{{ r.cantidad|n }}</td><td>{{ r.fecha_necesidad|d }}</td><td>{{ r.origen }}</td><td>{{ b(r.estado) }}{% if r.mayor_volumen %} <span class="b warn">mayor volumen</span>{% endif %}</td><td>{{ r.proveedor }}</td><td>{{ r.numero_oc }}</td><td>{{ r.fecha_prevista|d }}</td></tr>
-{% else %}<tr><td colspan="9" class="muted">Sin compras</td></tr>{% endfor %}</table>{% endblock %}
+{% else %}<tr><td colspan="9" class="muted">Sin compras</td></tr>{% endfor %}</table>{% if can('compras.gestionar') %}<details class="card"><summary><b>Registrar precio de compra nacional (para el análisis de mercado)</b></summary>{{ market_form({'COMPRA_NACIONAL': 'Compra nacional'}, fija='COMPRA_NACIONAL', volver=request.path, titulo='Nuevo precio') }}</details>{% endif %}
+{% endblock %}

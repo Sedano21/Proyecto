@@ -527,13 +527,16 @@ ALERT_TYPES += [
     ("OV_CONDICION_CLIENTE", "Stock que no cumple la condición del cliente", "Almacén", "Faltantes y cobertura", "ALTA",
      _ALM + _LOG, "DEFINIDO", f"{O6}: solo se toman productos que cumplan la condición del cliente; si no, se alerta el motivo",
      "Hay lotes del producto pero no cumplen la vida útil u otra condición del cliente.", True),
+    ("CLIENTE_VARIACION_COMPRA", "Cliente pide más o menos de lo habitual", "Comercial", "Comportamiento de clientes", "MEDIA",
+     _COM + ["GERENTE_COMERCIAL"], "DEFINIDO", f"{O6}: alertas si el cliente pide menos o más y de qué productos o presentaciones",
+     "Variación de la cantidad pedida por producto o presentación sobre el umbral configurado.", False),
     ("TAREA_ASIGNADA", "Tarea designada a usted o a su cargo", "General", "Tareas", "MEDIA", [], "DEFINIDO",
      f"{O6}: el designado recibe la tarea en su inicio y una alerta", "Una persona de su área le designó una tarea.", True),
 ]
 
 # Naturaleza de cada tipo (observaciones al demo v0.6): solo se vuelven tareas las que requieren aprobación o atención;
 # las informativas se reconocen. Clasificación PROPUESTA, editable en Configuración de alertas.
-ALERT_INFORMATIVAS = {"OV_COMPLETA", "OV_SALDO_REPROGRAMADO", "OV_CANCELADA", "OV_ESTADO", "OV_80_PREPARACION", "OV_PREPARADA",
+ALERT_INFORMATIVAS = {"CLIENTE_VARIACION_COMPRA", "OV_COMPLETA", "OV_SALDO_REPROGRAMADO", "OV_CANCELADA", "OV_ESTADO", "OV_80_PREPARACION", "OV_PREPARADA",
                       "VENCIMIENTO_PROXIMO", "FUMIGACION", "COTIZACION_IMPACTO", "COSTO_SOBRE_MERCADO", "PRODUCCION_RESPUESTA",
                       "REEMPAQUE_DESAPROBADO", "COMPRA_FECHA_CAMBIO", "IMPORT_LLEGADA", "IMPORT_MODIFICACION",
                       "IMPORT_RECORDATORIO", "DIST_PROGRAMACION", "CAMION_CARGADO", "DIST_LLEGADA", "DIST_ENTREGADO",
@@ -597,6 +600,14 @@ PARAMS = [
      "PROPUESTO", "Especificación funcional maestra (14-oct) §5.2: referencia inicial 1–2 días"),
     ("tiempo_reempaque_dias", 3, "int", "Almacén", "Plazo estimado de reempaque (para comparar opciones de la OV).",
      "PROPUESTO", "Especificación funcional maestra (14-oct) §5.2: referencia inicial 2–3 días"),
+    ("productos_sustitutos", {}, "dict", "Comercial",
+     "Productos sustitutos de cada producto base que ofrecemos, para extraer sus precios de los informes "
+     "(p. ej. {\"LENTEJA\": [\"...\"]}).", "PENDIENTE", "Observaciones al demo v0.6: competencia directa y sustitutos; la lista la define Comercial"),
+    ("variacion_compra_alerta_pct", 30, "float", "Comercial",
+     "Variación (%) de la cantidad pedida por producto o presentación de un cliente que genera alerta (segunda mitad del periodo vs primera).",
+     "PROPUESTO", "Observaciones al demo v0.6: alertas si el cliente pide menos o más; umbral por validar"),
+    ("variacion_compra_dias", 90, "int", "Comercial", "Periodo (días) para comparar el comportamiento de compra del cliente.",
+     "PROPUESTO", "Observaciones al demo v0.6; periodo por validar"),
     ("plazo_max_reserva_dias", 7, "int", "Almacén",
      "Plazo máximo de reserva por el espacio físico del almacén: el stock de una OV se reserva recién desde esta cantidad de "
      "días antes de la fecha comprometida (antes solo se calcula la cobertura proyectada) y se alerta si una reserva supera el plazo.",

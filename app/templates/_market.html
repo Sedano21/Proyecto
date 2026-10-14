@@ -1,0 +1,12 @@
+{% macro market_form(categorias, fija=None, volver='', titulo='Registrar precio') %}
+{% if categorias %}<form class="card" method="post" action="{{ url_for('com.market_add') }}"><input type="hidden" name="_csrf" value="{{ csrf_token() }}"><input type="hidden" name="volver" value="{{ volver }}">
+<h3>{{ titulo }}</h3><div class="row">
+<div><label>Origen del precio</label>{% if fija %}<input type="hidden" name="categoria" value="{{ fija }}"><input value="{{ categorias.get(fija, fija) }}" disabled>{% else %}<select name="categoria">{% for k, v in categorias.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select>{% endif %}</div>
+<div class="grow"><label>Producto base (p. ej. LENTEJA)</label><input name="producto" required></div>
+<div><label>Precio S/ por kg</label><input name="precio_kg" type="number" step="0.0001" min="0.0001" required></div>
+<div><label>Fecha del dato</label><input name="fecha" type="date" required></div></div>
+<div class="row"><div><label>Proveedor / competidor / marca</label><input name="competidor"></div><div><label>Presentación</label><input name="presentacion" placeholder="500 g, saco 50 kg…"></div>
+<div><label>Tipo</label><select name="tipo_precio"><option>MAYORISTA</option><option>MINORISTA</option></select></div>
+<div class="grow"><label>Fuente</label><input name="fuente" placeholder="cotización, reporte, visita a punto de venta…"></div></div>
+<p><button>Registrar precio</button></p></form>{% endif %}
+{% endmacro %}

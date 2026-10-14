@@ -62,7 +62,9 @@ PAGES = ["/", "/alertas", "/alertas?agrupar=area", "/alertas?agrupar=grupo&prior
          "/ov/clientes", "/ov/clientes/1", "/ov/costos", "/produccion/plan", "/produccion/plan?periodo=SEMANA",
          "/usuarios/permisos", "/usuarios/permisos?vista=matriz", "/almacen/cargas?area=Comercial",
          "/almacen/cargas?area=Producción", "/almacen/cargas/nueva?tipo=CLIENTES", "/almacen/cargas/nueva?tipo=COSTOS",
-         "/almacen/cargas/nueva?tipo=MERCADO"] + \
+         "/almacen/cargas/nueva?tipo=MERCADO",
+         # v0.7: mercado por origen, comportamiento de clientes
+         "/ov/mercado/analisis", "/ov/mercado/informe", "/informes/comercial/cliente/1", "/ov/clientes?grupo=X&canal=Y"] + \
         [f"/calidad/registro/nuevo/{f}" for f in ["MUESTREO", "RECEPCION_MP", "FUMIGACION", "NO_CONFORME", "QUEJA", "NC_ACCION",
                                                   "CONTROL_PESOS", "CONTROL_GRANOS", "RECEPCION_IMPORTADO", "VEHICULO",
                                                   "DISENO_BOBINA", "PROCESO", "INSPECCION_CARGA"]]

@@ -69,6 +69,8 @@ def run_checks(user=None, today=None):
     out["traslados_llegan_hoy"] = remind_arrivals(today)
     from .costs import check_market_alerts
     out["costo_vs_mercado"] = check_market_alerts(user)
+    from .customer_behavior import check_purchase_variations
+    out["variacion_compra_clientes"] = check_purchase_variations(user, today)
     out["correo"] = flush_outbox()
     return out
 

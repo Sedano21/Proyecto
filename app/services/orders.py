@@ -130,7 +130,7 @@ def next_cutoff(ts=None):
 
 def create_order(user, numero, customer_id, fecha_compromiso, lines, urgente=False, comentarios="", hora_cita="",
                  cita_confirmada=False, vendedor_id=None, fecha_emision=None, origen="MODULO", evaluar=True,
-                 tipo_venta="", vendedor_nombre="", entrega=None):
+                 tipo_venta="", vendedor_nombre="", entrega=None, canal_precio=""):
     """entrega: dict de resolve_delivery (lugar, dirección, distrito, provincia). En el módulo es obligatorio."""
     if origen == "MODULO" and not has_perm(user, "ov.crear"):
         raise BusinessError("Su rol no puede registrar OV.")
@@ -152,7 +152,7 @@ def create_order(user, numero, customer_id, fecha_compromiso, lines, urgente=Fal
                    direccion=entrega["direccion"], distrito=entrega["distrito"], provincia=entrega["provincia"],
                    lugar_entrega=entrega["lugar_entrega"], site_id=entrega["site_id"], vendedor_id=vend.id if vend else None,
                    vendedor_nombre=vend.nombre if vend else vendedor_nombre, fecha_emision=fecha_emision or date.today(),
-                   tipo_venta=tipo_venta or "",
+                   tipo_venta=tipo_venta or "", canal_precio=(canal_precio or "").strip(),
                    origen=origen, creado_por=user.id if user else None, corte=next_cutoff())
     for ln in lines:
         o.lines.append(SalesOrderLine(product_code=ln["product_code"].strip(), cantidad=float(ln["cantidad"]),
@@ -164,7 +164,7 @@ def create_order(user, numero, customer_id, fecha_compromiso, lines, urgente=Fal
     from .prices import check_order_prices
     check_order_prices(o, user)  # Q11: la lista es el precio mínimo; alerta si la OV está en el límite o debajo
     audit(user, "OV_CREADA", "SalesOrder", o.numero, {"lineas": lines, "fecha_compromiso": fecha_compromiso,
-                                                      "urgente": urgente})
+                                                      "urgente": urgente, "canal_precio": o.canal_precio})
     if evaluar:
         evaluate_order(o, user, "CREACION")
     return o
