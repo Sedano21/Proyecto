@@ -9,14 +9,14 @@
 {% if user %}
 <div class="layout">
   <nav class="side">
-    <div class="brand">Módulo de Operaciones<small>Corporación Productiva · prototipo v0.6</small></div>
+    <div class="brand">Módulo de Operaciones<small>Corporación Productiva · prototipo v0.7</small></div>
     <a href="{{ url_for('main.dashboard') }}">Inicio / Tablero</a>
-    <a href="{{ url_for('rep.home') }}">Informes</a>
+    {% if can('informes.comercial') or can('informes.reempaque') or can('informes.produccion') or can('informes.distribucion') or can('informes.almacen') %}<a href="{{ url_for('rep.home') }}">Informes</a>{% endif %}
     <a href="{{ url_for('main.alerts') }}">Alertas{% if alertas_abiertas %}<span class="badge-al">{{ alertas_abiertas }}</span>{% endif %}</a>
     {% if can('ov.ver') %}<h4>Comercial</h4>
       <a href="{{ url_for('com.orders') }}">Órdenes de venta</a>
       {% if can('ov.crear') %}<a href="{{ url_for('com.order_new') }}">Registrar OV</a>{% endif %}
-      <a href="{{ url_for('com.customer_list') }}">Clientes (fichas)</a>
+      {% if can('clientes.ver') %}<a href="{{ url_for('com.customer_list') }}">Clientes (fichas)</a>{% endif %}
       {% if can('ov.importar') or can('precios.editar') or can('costos.cargar') or can('clientes.canal') %}<a href="{{ url_for('alm.uploads', area='Comercial') }}">Cargas de archivos</a>{% endif %}
       {% if can('precios.ver') %}<a href="{{ url_for('com.prices') }}">Listas de precios</a>{% endif %}
       {% if can('costos.ver') %}<a href="{{ url_for('com.costs') }}">Costos vs mercado</a>{% endif %}

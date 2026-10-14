@@ -89,9 +89,15 @@ def test_flujo_web_ov_y_detalles(app):
                                   "product_code": ["PT-901", "PT-903"], "cantidad": ["50", "10"], "precio_unitario": ["999", "999"]},
                follow_redirects=True)
     html = r.get_data(as_text=True)
-    assert r.status_code == 200 and "OV WEB-1" in html and "Alternativas ante faltante" in html
+    # Comercial ve solo el avance de su pedido, no la evaluación de opciones (observaciones al demo v0.6)
+    assert r.status_code == 200 and "OV WEB-1" in html and "Seguimiento del pedido" in html
+    assert "Alternativas ante faltante" not in html and "Historial (auditoría)" not in html
     from app.models import SalesOrder
     o = SessionLocal().query(SalesOrder).filter_by(numero="WEB-1").one()
+    assert c.get(f"/ov/{o.id}/opciones").status_code == 403
+    ca = app.test_client()
+    login(ca, "coord.almacen")
+    assert "Alternativas ante faltante" in ca.get(f"/ov/{o.id}").get_data(as_text=True)
     assert o.estado_stock == "INCOMPLETA"
     # exportación
     r = c.get("/exportar/ov.xlsx")

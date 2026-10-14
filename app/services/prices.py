@@ -292,6 +292,23 @@ def approve_price(order, user, comentario):
         evaluate_order(order, user, "APROBACION_PRECIO")
 
 
+
+def reject_price(order, user, comentario):
+    """Desaprobación del precio (observaciones al demo v0.6): la OV sigue detenida, sin reservar, hasta que Comercial
+    corrija el precio o la anule; el motivo es obligatorio."""
+    if not has_perm(user, "ov.aprobar_precio"):
+        raise BusinessError("La OV detenida por precio la resuelve el Coordinador Comercial o el Jefe Comercial.")
+    if not order.retenida_precio:
+        raise BusinessError("La OV no está detenida por precio.")
+    if not (comentario or "").strip():
+        raise BusinessError("Indique el motivo de la desaprobación.")
+    order.motivo_detencion = (f"Detenida por precio: desaprobado por {user.nombre} ({comentario.strip()}). "
+                              "Corrija el precio o anule la OV; no se reserva stock.")
+    from . import alerts
+    alerts.close_by_system(f"PRECIO:{order.id}", f"Desaprobada por {user.nombre}: {comentario}")
+    alerts.close_by_system(f"COSTO:{order.id}", f"Desaprobada por {user.nombre}: {comentario}")
+    audit(user, "OV_PRECIO_DESAPROBADO", "SalesOrder", order.numero, {"comentario": comentario.strip()})
+
 def add_item(user, lista, product_code, descripcion="", canal="", precio=None, precio_kg=None, precio_saco=None,
              kg_saco=None, motivo=""):
     """El Jefe Comercial completa un precio faltante (alerta PRECIO_FALTANTE)."""

@@ -26,7 +26,13 @@ def main(argv):
         s = SessionLocal()
         from .seed import seed_catalogs, seed_demo
         if cmd == "init":
-            print("Catálogos creados" if seed_catalogs() else "Catálogos ya existían")
+            if seed_catalogs():
+                print("Catálogos creados")
+            else:
+                from .seed import sync_catalogs
+                n = sync_catalogs()
+                s.commit()
+                print(f"Catálogos ya existían; se agregaron {n} registros nuevos del catálogo (sin modificar lo configurado)")
         elif cmd in ("demo", "reset-demo"):
             if cmd == "reset-demo":
                 if not app.config["DATABASE_URL"].startswith("sqlite"):

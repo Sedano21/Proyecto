@@ -889,6 +889,8 @@ class AlertType(Base):
     origen_destinatarios: Mapped[str] = mapped_column(String(12), default="PROPUESTO")
     fuente: Mapped[str] = mapped_column(Text, default="")
     condicion: Mapped[str] = mapped_column(Text, default="")
+    # TAREA (requiere aprobación/atención) o INFORMATIVA (solo se reconoce) – observaciones al demo v0.6
+    naturaleza: Mapped[str] = mapped_column(String(12), default="TAREA")
 
 
 class Alert(Base):
@@ -901,10 +903,16 @@ class Alert(Base):
     area: Mapped[str] = mapped_column(String(40))
     entidad: Mapped[str] = mapped_column(String(40), default="")
     entidad_id: Mapped[str] = mapped_column(String(40), default="")
-    estado: Mapped[str] = mapped_column(String(15), default="NUEVA")  # NUEVA / ASIGNADA / EN_ATENCION / CERRADA
+    # PENDIENTE / EN_EJECUCION / INCIDENCIA / COMPLETADA / DESAPROBADA (tareas) · PENDIENTE / RECONOCIDA (informativas)
+    estado: Mapped[str] = mapped_column(String(15), default="PENDIENTE")
     roles: Mapped[list] = mapped_column(JSON, default=list)
     usuarios: Mapped[list] = mapped_column(JSON, default=list)
     asignado_a: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    asignado_rol: Mapped[str] = mapped_column(String(40), default="")  # designación a un cargo de la misma área
+    asignado_por: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    resultado: Mapped[str] = mapped_column(String(20), default="")  # APROBADA / DESAPROBADA / ATENDIDA / SISTEMA
+    evidencia: Mapped[str] = mapped_column(String(200), default="")
+    proceso_pendiente: Mapped[str] = mapped_column(Text, default="")  # p. ej. recepción o contabilización pendiente
     creado_ts: Mapped[datetime] = mapped_column(DateTime, default=now)
     creado_por: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     cerrado_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -916,6 +924,27 @@ class Alert(Base):
     asignado = relationship("User", foreign_keys=[asignado_a])
     events = relationship("AlertEvent", back_populates="alert", order_by="AlertEvent.ts",
                           cascade="all, delete-orphan")
+    incidents = relationship("AlertIncident", back_populates="alert", order_by="AlertIncident.id",
+                             cascade="all, delete-orphan")
+
+
+class AlertIncident(Base):
+    """Incidencia de una tarea: situación, acciones, responsable y resolución; no cierra la tarea original."""
+    __tablename__ = "alert_incidents"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    alert_id: Mapped[int] = mapped_column(ForeignKey("alerts.id"))
+    situacion: Mapped[str] = mapped_column(Text)
+    acciones: Mapped[str] = mapped_column(Text, default="")
+    responsable_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    resolucion: Mapped[str] = mapped_column(Text, default="")
+    estado: Mapped[str] = mapped_column(String(10), default="ABIERTA")  # ABIERTA / RESUELTA
+    estado_previo: Mapped[str] = mapped_column(String(15), default="PENDIENTE")
+    creado_por: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    resuelto_por: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    resuelto_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    alert = relationship("Alert", back_populates="incidents")
+    responsable = relationship("User", foreign_keys=[responsable_id])
 
 
 class AlertEvent(Base):

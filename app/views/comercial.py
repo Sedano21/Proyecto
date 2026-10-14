@@ -14,7 +14,7 @@ from ..services import transfers as tsvc
 from ..services.core import BusinessError
 from ..services.stock import alternatives_for_order, line_reserved, priority_key
 from ..services import options as options_svc
-from ..services.customer_conditions import for_customer as cond_for, penalty_estimate
+from ..services.customer_conditions import by_product as cond_por_producto, for_customer as cond_for, penalty_estimate
 from .common import act, f_bool, f_date, f_float, perm_required
 
 bp = Blueprint("com", __name__, url_prefix="/ov")
@@ -101,13 +101,15 @@ def order_new():
 @perm_required("ov.ver")
 def order_detail(oid):
     o = db().get(SalesOrder, oid) or abort(404)
-    alts = alternatives_for_order(o) if o.estado_stock in ("INCOMPLETA", "SIN_STOCK") and o.estado not in (
+    ve_opciones = "ov.opciones" in g.perms  # Comercial ve solo el avance de su pedido (observaciones al demo v0.6)
+    alts = alternatives_for_order(o) if ve_opciones and o.estado_stock in ("INCOMPLETA", "SIN_STOCK") and o.estado not in (
         "CANCELADA", "DESPACHADA", "ENTREGADA") else []
     whs = list(db().execute(select(Warehouse).order_by(Warehouse.prioridad)).scalars())
     reqs = list(db().execute(select(OVChangeRequest).where(OVChangeRequest.order_id == o.id).order_by(OVChangeRequest.id.desc())).scalars())
-    decs = list(db().execute(select(OVDecision).where(OVDecision.order_id == o.id).order_by(OVDecision.id.desc())).scalars())
+    decs = [d for d in db().execute(select(OVDecision).where(OVDecision.order_id == o.id).order_by(OVDecision.id.desc())).scalars()
+            if ve_opciones or d.tipo not in ("ELECCION_OPCION", "USO_ALMACEN_ALTERNATIVO")]
     hist = list(db().execute(select(AuditLog).where(AuditLog.entidad == "SalesOrder", AuditLog.entidad_id == o.numero)
-                             .order_by(AuditLog.id.desc()).limit(60)).scalars())
+                             .order_by(AuditLog.id.desc()).limit(60)).scalars()) if "auditoria.ver" in g.perms else []
     certs = list(db().execute(select(Certificate).where(Certificate.order_id == o.id)).scalars())
     products = list(db().execute(select(Product).where(Product.tipo.in_(["PT", "GR", "MP"])).order_by(Product.code)).scalars())
     peso, sin_peso = osvc.order_weight_kg(o, "solicitado")
@@ -128,18 +130,22 @@ def order_detail(oid):
                            saldos=saldos, aprobadores=osvc.partial_approvers(), pendientes_parcial=osvc.partial_pending_roles(o),
                            parcial_modo=str(param("parcial_modo", "CUALQUIERA")).upper(), presol=presol,
                            horas=osvc.horas_cita(), penal=penalty_estimate(o),
-                           vida=lambda lot: options_svc._vida(lot, o),
+                           vida=lambda lot: options_svc._vida(lot, o), seguimiento=options_svc.progress(o),
+                           ve_opciones=ve_opciones, cond_prod=cond_por_producto(o),
                            hay_pendiente=o.estado not in ("CANCELADA", "DESPACHADA", "ENTREGADA") and any(
                                l.activa and l.cantidad - l.despachado - line_reserved(l) > 1e-9 for l in o.lines))
 
 
 @bp.route("/<int:oid>/opciones", methods=["GET", "POST"])
-@perm_required("ov.ver")
+@perm_required("ov.opciones")
 def order_options(oid):
     """Opciones para atender la OV: información completa de la OV, todas las rutas evaluadas, la recomendación del
     sistema y la aprobación de cada pre-solicitud con el motivo de la elección (decisión del 14-oct)."""
     o = db().get(SalesOrder, oid) or abort(404)
     ev = options_svc.evaluate(o)
+    if request.method == "POST" and request.form.get("accion") == "designar":
+        return act(lambda: options_svc.delegate(o, g.user, request.form.get("user_id"), request.form.get("comentario", "")),
+                   "Revisión designada.", url_for("com.order_options", oid=oid))
     if request.method == "POST":
         f = request.form
         resumen = {}
@@ -154,8 +160,10 @@ def order_options(oid):
     from ..models import OVDecision
     decs = list(db().execute(select(OVDecision).where(OVDecision.order_id == o.id, OVDecision.tipo == "ELECCION_OPCION")
                              .order_by(OVDecision.id.desc())).scalars())
+    from ..services import alerts as alert_svc
     return render_template("ov_options.html", o=o, ev=ev, penal=penalty_estimate(o), monto=osvc.order_amount(o),
-                           decs=decs, cond=cond_for(o.customer), rutas=options_svc.RUTAS)
+                           decs=decs, cond=cond_for(o.customer), rutas=options_svc.RUTAS,
+                           designables=alert_svc.assignable(g.user)[0], tarea=options_svc.review_task(o))
 
 
 @bp.route("/<int:oid>/imprimir")
@@ -334,7 +342,7 @@ def costs():
 
 # ------------------------------ ficha de cliente (13-oct) ------------------
 @bp.route("/clientes", methods=["GET", "POST"])
-@perm_required("ov.ver", "config.ver")
+@perm_required("clientes.ver")
 def customer_list():
     from ..services import customers as csv_
     if request.method == "POST":
@@ -349,7 +357,7 @@ def customer_list():
 
 
 @bp.route("/clientes/<int:cid>", methods=["GET", "POST"])
-@perm_required("ov.ver", "config.ver")
+@perm_required("clientes.ver")
 def customer_card(cid):
     from ..models import CustomerSite
     from ..services import customers as csv_
@@ -376,5 +384,5 @@ def customer_card(cid):
         return act(lambda: csv_.save_customer(g.user, c, request.form), "Ficha guardada.", url_for("com.customer_card", cid=cid))
     canales = sorted(set(psvc.canales()) | set(param("lista_granel_canales", []) or []))
     return render_template("customer_card.html", c=c, p=csv_.profile(c), cond=for_customer(c), canal=psvc.channel_of(c),
-                           canales=canales, editable=("ov.crear" in g.perms or "config.editar" in g.perms),
+                           canales=canales, editable="clientes.editar" in g.perms,
                            tipo_txt=TIPO_TXT)

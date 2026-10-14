@@ -216,7 +216,7 @@ def penalty_estimate(order):
 def set_penalty_amounts(cond, user, valores):
     """Comercial registra el monto de cada tipo de penalidad (fijo en S/ o % de la OV)."""
     from .core import BusinessError, audit, has_perm
-    if not (has_perm(user, "ov.crear") or has_perm(user, "clientes.canal")):
+    if not (has_perm(user, "clientes.editar") or has_perm(user, "clientes.canal")):
         raise BusinessError("Su rol no edita condiciones de clientes.")
     nuevo = {}
     for t, (modo, valor) in valores.items():
@@ -230,3 +230,62 @@ def set_penalty_amounts(cond, user, valores):
         nuevo[t] = {"modo": modo, "valor": v}
     audit(user, "CLIENTE_PENALIDAD_MONTOS", "CustomerCondition", cond.nombre, {"antes": cond.penalidad_montos, "despues": nuevo})
     cond.penalidad_montos = nuevo
+
+
+def by_product(order):
+    """Condición del cliente aplicada a cada producto de la OV (observaciones al demo v0.6): vida útil restante mínima
+    al despacho para ESE producto (con la excepción por familia, p. ej. harinas), lotes por SKU, cuántos lotes cumplen y,
+    si no alcanza, por qué y qué corresponde: reempaque cuando lo único que no cumple es la fecha de vencimiento, o
+    producir (o ampliar la producción en curso) cuando no hay producto que pueda adecuarse. La regla de acción es la
+    descrita por el usuario y queda por confirmar ("hay que definir eso")."""
+    from .stock import line_reserved, lot_usable, lots_of, principal_warehouses
+    c = for_customer(order.customer)
+    out = []
+    for line in order.lines:
+        if not line.activa or line.product is None:
+            continue
+        p = line.product
+        meses = min_shelf_months(order.customer, p)
+        texto = []
+        if meses:
+            texto.append(f"vida útil restante mínima al despacho {meses} meses"
+                         + (" (regla por familia)" if c and c.vida_util_texto and str(meses) != str(c.vida_util_meses) else ""))
+        if order.customer.vida_util_min_dias:
+            texto.append(f"vida útil mínima {order.customer.vida_util_min_dias} días")
+        if c and c.max_lotes_por_sku:
+            texto.append(f"máx. {c.max_lotes_por_sku} lote(s) por SKU")
+        necesario = max(line.cantidad - line.despachado, 0)
+        faltante = max(necesario - line_reserved(line), 0)
+        cumplen, por_fecha = [], []
+        for lot in lots_of(line.product_code, [w.code for w in principal_warehouses(p)]):
+            ok, why = lot_usable(lot, order.fecha_compromiso, order.customer)
+            if ok:
+                cumplen.append(lot)
+            elif "Vida útil" in why or "Vencido" in why:
+                por_fecha.append((lot, why))
+        accion, motivo = "", ""
+        if faltante > 1e-9 and por_fecha:
+            cant = sum(l.cantidad for l, _ in por_fecha)
+            motivo = "; ".join(f"lote {l.lote}: {w}" for l, w in por_fecha[:3])
+            accion = ("Reempaque por actualización de fecha (lo único que no cumple es el vencimiento)" if cant >= faltante - 1e-9
+                      else "Reempaque por actualización de fecha de lo disponible y producir el saldo")
+        elif faltante > 1e-9:
+            motivo = "No hay stock que cumpla la condición del cliente"
+            accion = "Producir (o ampliar la producción en curso)"
+        out.append({"line": line, "condicion": "; ".join(texto) or "Sin condición específica para este producto",
+                    "meses": meses, "cumplen": len(cumplen), "no_cumplen": len(por_fecha), "faltante": faltante,
+                    "motivo": motivo, "accion": accion})
+    return out
+
+
+def check_condition_alerts(order, user=None):
+    """Alerta a Almacén y Logística el motivo cuando el stock existente no cumple la condición del cliente."""
+    from . import alerts
+    for x in by_product(order):
+        key = f"OV_COND:{order.id}:{x['line'].id}"
+        if x["no_cumplen"] and x["faltante"] > 1e-9:
+            alerts.emit("OV_CONDICION_CLIENTE", f"OV {order.numero}: {x['line'].product_code} no cumple la condición del cliente",
+                        f"{x['line'].product.descripcion}. Condición: {x['condicion']}. Motivo: {x['motivo']}. "
+                        f"Acción sugerida: {x['accion']}.", "SalesOrder", order.id, dedup_key=key, creado_por=user)
+        else:
+            alerts.close_by_system(key, "La línea ya cumple o no tiene faltante")

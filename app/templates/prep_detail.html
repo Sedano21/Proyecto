@@ -7,7 +7,7 @@
 {% if o.estado in ['EVALUADA','EN_PREPARACION'] %}<div class="card"><b>Planificación de picking pre-asignada por el sistema</b> (lotes reservados) —
 {% if o.plan_picking_validado %}<span class="b ok">validada</span>{% else %}<span class="b warn">pendiente de validación</span>
 {% if can('preparacion.registrar') %}<form method="post" class="inline">{{ csrf() }}<button name="accion" value="validar_plan">Validar planificación</button></form>{% endif %}{% endif %}
-<p class="small muted">TO-BE: si la planificación no es correcta, modifíquela cambiando el lote pre-asignado (solo antes de iniciar el picking de la línea).</p></div>{% endif %}
+<p class="small muted">Si la planificación no es correcta, modifíquela cambiando el lote pre-asignado (solo antes de iniciar el picking de la línea).</p></div>{% endif %}
 <table><tr><th>Producto</th><th class="r">A preparar (reservado)</th><th class="r">Preparado</th><th>Lotes reservados</th><th>Registrar</th></tr>
 {% for l in o.lines if l.activa %}<tr><td>{{ l.product_code }} <span class="small muted">{{ l.product.descripcion }}</span></td><td class="r">{{ line_reserved(l)|n }}</td><td class="r">{{ l.preparado|n }}</td>
 <td class="small">{% for r in l.reservations if r.estado=='ACTIVA' %}{{ r.lot.lote }} × {{ r.cantidad|n }} (vence {{ r.lot.fecha_venc|d }})

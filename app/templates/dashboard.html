@@ -16,13 +16,13 @@
   <div class="tile"><div class="v">{% if k.otif_salida %}{{ k.otif_salida[0] }}%{% else %}—{% endif %}</div><div class="l">OTIF: salió completo y a tiempo ({% if k.otif_salida %}{{ k.otif_salida[1] }}/{{ k.otif_salida[2] }}{% else %}sin datos{% endif %})</div></div>
   <div class="tile"><div class="v">{% if k.fill_rate_unidades is not none %}{{ k.fill_rate_unidades }}%{% else %}—{% endif %}</div><div class="l">Fill rate a la salida (unidades){% if k.fill_rate_lineas is not none %} · líneas {{ k.fill_rate_lineas }}%{% endif %}</div></div>
   <div class="tile"><div class="v">{% if k.fill_rate_pedidos %}{{ k.fill_rate_pedidos[0] }}%{% else %}—{% endif %}</div><div class="l">Pedidos que salieron al 100 %{% if k.fill_rate_pedidos %} ({{ k.fill_rate_pedidos[1] }}/{{ k.fill_rate_pedidos[2] }}){% endif %}{% if k.completos_con_rechazo %} · {{ k.completos_con_rechazo[0] }} con rechazo posterior{% endif %}</div></div>
-  <div class="tile"><div class="v">S/ {{ k.monto_total|n }}</div><div class="l">Monto OV (pendiente S/ {{ k.monto_pendiente|n }})</div></div>
-  <div class="tile"><div class="v">{{ k.precio_bajo_minimo }}</div><div class="l">OV con precio en el límite o bajo el mínimo de lista · {{ k.ov_sin_precio }} OV sin precio de venta</div></div>
+  {% if can('dashboard.precios') %}<div class="tile"><div class="v">S/ {{ k.monto_total|n }}</div><div class="l">Monto OV (pendiente S/ {{ k.monto_pendiente|n }})</div></div>
+  <div class="tile"><div class="v">{{ k.precio_bajo_minimo }}</div><div class="l">OV con precio en el límite o bajo el mínimo de lista · {{ k.ov_sin_precio }} OV sin precio de venta</div></div>{% endif %}
   <div class="tile"><div class="v">{{ k.volumen_kg|n }} kg</div><div class="l">Volumen OV (pendiente {{ k.volumen_pendiente_kg|n }} kg)</div></div>
-  <div class="tile"><div class="v">{{ k.tiempo_preparacion_h if k.tiempo_preparacion_h is not none else '—' }} h</div><div class="l">Tiempo promedio de preparación</div></div>
+  {% if can('dashboard.operaciones') %}<div class="tile"><div class="v">{{ k.tiempo_preparacion_h if k.tiempo_preparacion_h is not none else '—' }} h</div><div class="l">Tiempo promedio de preparación</div></div>
   <div class="tile"><div class="v">{{ k.tiempo_despacho_h if k.tiempo_despacho_h is not none else '—' }} h</div><div class="l">Tiempo preparado → salida</div></div>
   <div class="tile"><div class="v">{{ k.compras_pendientes }} / {{ k.produccion_pendiente }}</div><div class="l">Compras / producción pendientes</div></div>
-  <div class="tile"><div class="v">{{ k.diferencias_inventario }}</div><div class="l">Diferencias de inventario (conteos) · {{ k.diferencias_liquidacion }} en recepción de PT</div></div>
+  <div class="tile"><div class="v">{{ k.diferencias_inventario }}</div><div class="l">Diferencias de inventario (conteos) · {{ k.diferencias_liquidacion }} en recepción de PT</div></div>{% endif %}
   <div class="tile"><div class="v">{{ k.rechazos }} / {{ k.devoluciones }} / {{ k.entregas_parciales }}</div><div class="l">Rechazos / devoluciones / entregas parciales</div></div>
 </div>
 <div class="note small">OTIF (decisión Q2): pedido que sale del almacén completo y en o antes de la fecha comprometida. Referencia: OTIF por entrega en destino {% if k.otif_entrega %}{{ k.otif_entrega[0] }}% ({{ k.otif_entrega[1] }}/{{ k.otif_entrega[2] }}){% else %}sin datos{% endif %}.
@@ -41,14 +41,18 @@ Fill rate: lo que salió frente a lo pedido; para los que salieron al 100 % se i
     <table>{% for n, c, m in k.detenidos %}<tr><td>{{ n }}</td><td>{{ c }}</td><td class="small">{{ m }}</td></tr>{% else %}<tr><td class="muted">Ninguno</td></tr>{% endfor %}</table></div>
   <div class="card"><h3>Estados de pedidos</h3><table>{% for e, n in k.estados.items() %}<tr><td>{{ b(e) }}</td><td class="r">{{ n }}</td></tr>{% endfor %}</table></div>
   <div class="card"><h3>Incidencias por tipo</h3><table>{% for t, n in k.incidencias.items() %}<tr><td>{{ t }}</td><td class="r">{{ n }}</td></tr>{% else %}<tr><td class="muted">Sin incidencias</td></tr>{% endfor %}</table></div>
-  <div class="card"><h3>Merma prevista vs real (liquidaciones con dato)</h3>
+  {% if can('dashboard.merma') %}<div class="card"><h3>Merma prevista vs real (liquidaciones con dato)</h3>
     <table><tr><th>Liquidación</th><th>Producto</th><th class="r">Prevista %</th><th class="r">Real %</th></tr>
-    {% for d, p, pr, r in k.merma %}<tr><td>{{ d }}</td><td>{{ p }}</td><td class="r">{{ pr if pr is not none else 'no definida' }}</td><td class="r">{{ r }}</td></tr>{% else %}<tr><td colspan="4" class="muted">Sin datos suficientes</td></tr>{% endfor %}</table></div>
+    {% for d, p, pr, r in k.merma %}<tr><td>{{ d }}</td><td>{{ p }}</td><td class="r">{{ pr if pr is not none else 'no definida' }}</td><td class="r">{{ r }}</td></tr>{% else %}<tr><td colspan="4" class="muted">Sin datos suficientes</td></tr>{% endfor %}</table></div>{% endif %}
 </div>
 {% endif %}
-<div class="card"><h3>Mis alertas abiertas</h3>
+<div class="card"><h3>Mis tareas <span class="muted small">(designadas a usted o a su cargo)</span></h3>
+<table><tr><th>#</th><th>Prioridad</th><th>Tarea</th><th>Área</th><th>Estado</th><th>Creada</th></tr>
+{% for a in tareas %}<tr><td><a href="{{ url_for('main.alert_detail', aid=a.id) }}">{{ a.id }}</a></td><td>{{ b(a.prioridad) }}</td><td><a href="{{ url_for('main.alert_detail', aid=a.id) }}">{{ a.titulo }}</a></td><td>{{ a.area }}</td><td><span class="b {{ a.estado }}">{{ estado_txt.get(a.estado, a.estado) }}</span></td><td>{{ a.creado_ts|d }}</td></tr>
+{% else %}<tr><td colspan="6" class="muted">No tiene tareas designadas</td></tr>{% endfor %}</table></div>
+<div class="card"><h3>Alertas abiertas de su área</h3>
 <table><tr><th>#</th><th>Prioridad</th><th>Título</th><th>Área</th><th>Estado</th><th>Creada</th></tr>
-{% for a in mis_alertas %}<tr><td><a href="{{ url_for('main.alert_detail', aid=a.id) }}">{{ a.id }}</a></td><td>{{ b(a.prioridad) }}</td><td>{{ a.titulo }}</td><td>{{ a.area }}</td><td>{{ b(a.estado) }}</td><td>{{ a.creado_ts|d }}</td></tr>
+{% for a in mis_alertas %}<tr><td><a href="{{ url_for('main.alert_detail', aid=a.id) }}">{{ a.id }}</a></td><td>{{ b(a.prioridad) }}</td><td><a href="{{ url_for('main.alert_detail', aid=a.id) }}">{{ a.titulo }}</a>{% if a.type and a.type.naturaleza == 'INFORMATIVA' %} <span class="muted small">aviso</span>{% endif %}</td><td>{{ a.area }}</td><td><span class="b {{ a.estado }}">{{ estado_txt.get(a.estado, a.estado) }}</span></td><td>{{ a.creado_ts|d }}</td></tr>
 {% else %}<tr><td colspan="6" class="muted">Sin alertas abiertas</td></tr>{% endfor %}</table>
 <p><a href="{{ url_for('main.alerts') }}">Ver todas</a></p></div>
 {% if can('dashboard.ver') %}<form method="post" action="{{ url_for('main.run_checks') }}" class="noprint">{{ csrf() }}<button class="sec">Ejecutar verificaciones automáticas ahora</button> <span class="muted small">(retrasos, fases de importación, vencimientos, reposición, correo)</span></form>{% endif %}

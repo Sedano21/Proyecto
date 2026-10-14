@@ -429,11 +429,11 @@ def test_importacion_fases_y_cambio_fecha(s, U, today):
     n = imp.check_phases(today)
     s.commit()
     vencidas = alerts_of(s, "IMPORT_FASE_VENCIDA")
-    assert n >= 1 and vencidas and vencidas[0].estado == "NUEVA"
+    assert n >= 1 and vencidas and vencidas[0].estado == "PENDIENTE"
     assert imp.check_phases(today) >= 1 and len(alerts_of(s, "IMPORT_FASE_VENCIDA")) == len(vencidas)  # sin duplicar
     imp.complete_phase(sh.phases[0], U("importaciones"))
     s.commit()
-    assert s.query(Alert).filter_by(dedup_key=f"IMPORT_FASE:{sh.phases[0].id}").one().estado == "CERRADA"
+    assert s.query(Alert).filter_by(dedup_key=f"IMPORT_FASE:{sh.phases[0].id}").one().estado == "COMPLETADA"
     imp.receive(sh, U("coord.almacen.mp"), 990, "M902I", "EXT-002", diferencias="10 kg faltantes")
     s.commit()
     assert sh.estado == "RECIBIDA_CON_DIFERENCIAS" and alerts_of(s, "IMPORT_DIFERENCIA")

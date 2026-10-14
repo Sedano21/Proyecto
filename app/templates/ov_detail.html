@@ -42,6 +42,18 @@
 <td class="r">{{ l.preparado|n }}</td><td class="r">{{ l.despachado|n }}</td><td class="r">{{ l.entregado|n }}</td>
 <td class="small">{% for rs in l.reservations if rs.estado in ['ACTIVA','CONSUMIDA'] %}{% set vu = vida(rs.lot) %}{{ rs.lot.lote }} ({{ rs.lot.warehouse_code }} · {{ rs.lot.fecha_venc|d }}) × {{ rs.cantidad|n }} {{ b(rs.estado) }}{% if vu.meses is not none %} · <span class="{{ 'err' if vu.cumple is sameas false else '' }}">vida útil restante {{ vu.meses }} meses al despacho{{ ' (cliente exige ' ~ vu.exige ~ ')' if vu.exige }}</span>{% endif %}<br>{% endfor %}</td></tr>{% endfor %}</table>
 
+<div class="grid g2"><div class="card"><h3>Seguimiento del pedido</h3>
+<p>Completado: <b>{{ seguimiento.pct }}%</b> de las unidades {{ bar(seguimiento.pct) }} · líneas completas <b>{{ seguimiento.completas }} de {{ seguimiento.total }}</b></p>
+<table class="small"><tr><th>Producto</th><th class="r">Pedido</th><th class="r">Listo</th><th class="r">%</th><th>Cómo se completa</th></tr>
+{% for x in seguimiento.lineas %}<tr><td>{{ x.line.product_code }} {{ pd(x.line.product_code) }}</td><td class="r">{{ x.cantidad|n }}</td><td class="r">{{ x.listo|n }}</td><td class="r">{{ x.pct }}%</td>
+<td>{% if x.pct >= 100 %}Completo{% elif x.en_curso %}{{ x.en_curso|join('; ') }}{% else %}<span class="muted">En evaluación por Almacén y Logística</span>{% endif %}</td></tr>{% endfor %}</table></div>
+<div class="card"><h3>Condición del cliente por producto</h3>
+<table class="small"><tr><th>Producto</th><th>Condición aplicable</th><th>Lotes que cumplen</th><th>Observación</th></tr>
+{% for x in cond_prod %}<tr><td>{{ x.line.product_code }} {{ pd(x.line.product_code) }}</td><td>{{ x.condicion }}</td><td>{{ x.cumplen }}{% if x.no_cumplen %} <span class="muted">({{ x.no_cumplen }} no cumplen)</span>{% endif %}</td>
+<td>{% if x.accion %}<span class="b ALTA">No cumple</span> {{ x.motivo }}{% if ve_opciones %}<br><b>Acción sugerida:</b> {{ x.accion }}{% endif %}{% else %}—{% endif %}</td></tr>
+{% else %}<tr><td colspan="4" class="muted">Sin líneas</td></tr>{% endfor %}</table>
+<p class="small muted">Solo se reservan productos que cumplen la condición del cliente.</p></div></div>
+{% if ve_opciones %}
 {% if hay_pendiente %}<div class="card" style="border-left:4px solid var(--info)"><b>Opciones para atender lo pendiente</b> — el sistema evaluó todas las rutas y recomienda una; quien aprueba revisa la OV y las opciones y registra por qué elige. <a class="btn" href="{{ url_for('com.order_options', oid=o.id) }}">Evaluar opciones y pre-solicitudes</a></div>{% endif %}
 {% if alts %}
 {% if presol %}<h2>Solicitudes y pre-solicitudes para esta OV</h2>
@@ -73,6 +85,7 @@
 </div>{% endfor %}
 {% endif %}
 
+{% endif %}
 {% if can('ov.renegociar') and o.estado not in ['CANCELADA','DESPACHADA','ENTREGADA','EN_RUTA'] %}
 <div class="grid g2">
 <form class="card" method="post" action="{{ url_for('com.order_action', oid=o.id, accion='renegociar') }}">{{ csrf() }}<h3>Renegociar fecha</h3>
@@ -107,7 +120,7 @@
 
 {% if decs %}<h2>Decisiones registradas</h2><table><tr><th>Fecha</th><th>Tipo</th><th>Estado</th><th>Detalle</th><th>Comentario</th><th>Usuario</th></tr>
 {% for d in decs %}<tr><td>{{ d.ts|d }}</td><td>{{ d.tipo }}</td><td>{{ b(d.estado) }}</td><td class="mono small">{{ d.detalle|tojson }}</td><td>{{ d.comentario }}</td><td>{{ d.user.nombre if d.user else '' }}</td></tr>{% endfor %}</table>{% endif %}
-<h2>Historial (auditoría)</h2>
+{% if hist %}<h2>Historial (auditoría)</h2>
 <div class="tbl" style="max-height:320px"><table class="small"><tr><th>Fecha</th><th>Usuario</th><th>Acción</th><th>Detalle</th></tr>
-{% for h in hist %}<tr><td>{{ h.ts|d }}</td><td>{{ h.user.nombre if h.user else 'Sistema' }}</td><td>{{ h.accion }}</td><td class="mono">{{ h.detalle|tojson|truncate(300) }}</td></tr>{% endfor %}</table></div>
+{% for h in hist %}<tr><td>{{ h.ts|d }}</td><td>{{ h.user.nombre if h.user else 'Sistema' }}</td><td>{{ h.accion }}</td><td class="mono">{{ h.detalle|tojson|truncate(300) }}</td></tr>{% endfor %}</table></div>{% endif %}
 {% endblock %}

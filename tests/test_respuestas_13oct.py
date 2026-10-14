@@ -57,11 +57,11 @@ def test_q11_alerta_si_la_ov_esta_en_el_limite_o_por_debajo(s, U, new_order):
     assert l.precio_unitario == pytest.approx(minimo - 0.01, abs=1e-4)  # el sistema no cambia el precio de la OV
     osvc.modify_order(o, U("coord.ventas"), {"lines": [{"product_code": "PT-905", "cantidad": 10, "precio_unitario": minimo}]})
     s.commit()
-    assert o.lines[0].precio_origen.startswith("EN EL LÍMITE") and a.estado != "CERRADA"
+    assert o.lines[0].precio_origen.startswith("EN EL LÍMITE") and a.estado not in ("COMPLETADA", "RECONOCIDA")
     osvc.modify_order(o, U("coord.ventas"), {"lines": [{"product_code": "PT-905", "cantidad": 10,
                                                         "precio_unitario": minimo * 1.2}]})
     s.commit()
-    assert o.lines[0].precio_origen.startswith("Sobre") and a.estado == "CERRADA"
+    assert o.lines[0].precio_origen.startswith("Sobre") and a.estado == "COMPLETADA"
 
 
 def test_q11_ov_sin_precio_o_muestra_comercial_queda_detenida(s, U, new_order):
@@ -82,7 +82,7 @@ def test_q11_ov_sin_precio_o_muestra_comercial_queda_detenida(s, U, new_order):
         prc.approve_price(o, U("coord.ventas"), "")
     prc.approve_price(o, U("coord.ventas"), "Muestra para cliente nuevo")
     s.commit()
-    assert not o.retenida_precio and a.estado == "CERRADA" and osvc.ready_for_preparation(o)
+    assert not o.retenida_precio and a.estado == "COMPLETADA" and osvc.ready_for_preparation(o)
     assert dist.active_stop(o) is not None  # al liberarse se programa la ruta (TO-BE)
     # si luego cambian los precios observados, vuelve a detenerse
     osvc.modify_order(o, U("coord.ventas"), {"lines": [{"product_code": "PT-905", "cantidad": 12, "precio_unitario": 0.1}]})
@@ -108,7 +108,7 @@ def test_q11_productos_o_clientes_sin_precio_alertan_para_completar(s, U):
     prc.add_item(U("jefe.ventas"), "GENERAL", "EN-903", canal="MAYORISTA", precio=0.8, motivo="Completar lista")
     osvc.modify_order(o2, U("coord.ventas"), {"lines": [{"product_code": "EN-903", "cantidad": 5, "precio_unitario": 1}]})
     s.commit()
-    assert alerts_of(s, "PRECIO_FALTANTE", o2.id)[0].estado == "CERRADA" and o2.lines[0].precio_minimo == 0.8
+    assert alerts_of(s, "PRECIO_FALTANTE", o2.id)[0].estado == "COMPLETADA" and o2.lines[0].precio_minimo == 0.8
 
 
 def test_q11_lista_granel_por_canal_y_compara_kg_y_saco(s, U):

@@ -204,14 +204,16 @@ def test_alerta_ciclo_y_visibilidad(s, U, new_order):
         al.attend(a, U("montacarguista"))
     al.assign(a, U("coord.almacen"), U("aux.almacen").id, "revisar")
     assert al.can_see(U("aux.almacen"), a)  # asignado
-    al.attend(a, U("coord.almacen"), "en revisión")
+    with pytest.raises(BusinessError, match="responsable"):
+        al.attend(a, U("coord.almacen"), "en revisión")  # solo el designado la pone en ejecución
+    al.attend(a, U("aux.almacen"), "en revisión")
     al.comment(a, U("gerente.general"), "Priorizar")
     with pytest.raises(BusinessError):
         al.close(a, U("coord.almacen"), "", "")
     al.close(a, U("coord.almacen"), "Stock trasladado", "Traslado desde 767")
     s.commit()
     acciones = [e.accion for e in a.events]
-    assert acciones == ["CREADA", "ASIGNADA", "EN_ATENCION", "COMENTARIO", "CERRADA"]
+    assert acciones == ["CREADA", "DESIGNADA", "EN_EJECUCION", "COMENTARIO", "COMPLETADA"]
     assert all(e.ts for e in a.events) and a.cerrado_por == U("coord.almacen").id
     # filtros/agrupación de Gerencia General
     rows = al.visible_alerts(U("gerente.general"), prioridad="ALTA", area="Almacén")

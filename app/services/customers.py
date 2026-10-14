@@ -14,8 +14,8 @@ CAMPOS = ("nombre", "grupo", "direccion", "distrito", "provincia", "horario_rece
 
 
 def _require(user):
-    if not (has_perm(user, "ov.crear") or has_perm(user, "config.editar")):
-        raise BusinessError("Su rol no edita clientes.")
+    if not has_perm(user, "clientes.editar"):
+        raise BusinessError("La ficha del cliente la modifica o completa solo el área Comercial.")
 
 
 def save_customer(user, c, datos):

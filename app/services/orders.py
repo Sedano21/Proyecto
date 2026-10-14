@@ -379,7 +379,7 @@ def decide_partial(order, user, aprobar, comentario="", fecha_saldo=None):
     if faltan:
         order.decision_parcial = "PENDIENTE"
         a = db().execute(select(Alert).where(Alert.dedup_key == f"OV_DECISION_PARCIAL:{order.id}",
-                                             Alert.estado != "CERRADA")).scalars().first()
+                                             Alert.estado.notin_(alerts.CERRADOS))).scalars().first()
         if a is not None:
             from ..models import AlertEvent
             db().add(AlertEvent(alert_id=a.id, user_id=user.id, accion="APROBACION_PARCIAL",
@@ -546,7 +546,7 @@ def register_picking(order, user, line_id, cantidad, lote):
     if not ready_for_preparation(order):
         raise BusinessError("La OV no está lista para preparar (requiere cobertura completa o despacho parcial aprobado).")
     if not order.plan_picking_validado:
-        raise BusinessError("Primero valide la planificación de picking pre-asignada por el sistema (TO-BE).")
+        raise BusinessError("Primero valide la planificación de picking pre-asignada por el sistema.")
     line = next((l for l in order.lines if l.id == int(line_id) and l.activa), None)
     if line is None:
         raise BusinessError("Línea no encontrada.")

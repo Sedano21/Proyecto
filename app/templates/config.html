@@ -1,14 +1,14 @@
 {% extends "base.html" %}{% from "_m.html" import b, csrf %}
 {% block content %}
 <h1>Configuración</h1>
-<p class="muted">Sistemas y Gerencia General administran la configuración (IF §16). Cada cambio crea una nueva versión y queda auditado. Estados: {{ b('DEFINIDO') }} regla expresa · {{ b('PROPUESTO') }} requiere validación · {{ b('PENDIENTE') }} decisión pendiente · {{ b('AS-IS') }} observado en archivos actuales · {{ b('DEMO') }} solo demostración.</p>
+<p class="muted">Sistemas y Gerencia General administran la configuración (IF §16). Cada cambio crea una nueva versión y queda auditado. Estados: {{ b('DEFINIDO') }} regla expresa · {{ b('PROPUESTO') }} requiere validación · {{ b('PENDIENTE') }} decisión pendiente · {{ b('ACTUAL') }} observado en archivos actuales · {{ b('DEMO') }} solo demostración.</p>
 <p><a href="{{ url_for('main.products') }}">Catálogo de artículos</a> · <a href="{{ url_for('main.customers') }}">Clientes</a> · <a href="#almacenes">Almacenes</a> · <a href="#plazos">Plazos de compra</a> · <a href="#lineas">Líneas de producción</a> · <a href="#fases">Fases de importación</a></p>
 <h2 id="params">Parámetros</h2>
 <div class="tbl"><table><tr><th>Grupo</th><th>Parámetro</th><th>Valor</th><th>Estado</th><th>Descripción / fuente</th></tr>
 {% for p in params %}<tr><td>{{ p.grupo }}</td><td class="mono">{{ p.key }}<br><a class="small" href="{{ url_for('main.param_history', key=p.key) }}">v{{ p.version }} · historial</a></td>
 <td>{% if can('config.editar') %}<form method="post" action="{{ url_for('main.param_edit', key=p.key) }}">{{ csrf() }}
 <input name="valor" value="{{ p.valor.v|tojson if p.tipo in ['list','dict'] else (p.valor.v if p.valor.v is not none else '') }}" style="width:260px" placeholder="(vacío = no definido)">
-<select name="estado">{% for e in ['DEFINIDO','PROPUESTO','PENDIENTE','AS-IS','DEMO'] %}<option {{ 'selected' if p.estado==e }}>{{ e }}</option>{% endfor %}</select>
+<select name="estado">{% for e in ['DEFINIDO','PROPUESTO','PENDIENTE','ACTUAL','DEMO'] %}<option {{ 'selected' if p.estado==e }}>{{ e }}</option>{% endfor %}</select>
 <button class="small">Guardar</button></form>{% else %}{{ p.valor.v }}{% endif %}</td>
 <td>{{ b(p.estado) }}</td><td class="small">{{ p.descripcion }}<br><span class="muted">Fuente: {{ p.fuente }}</span></td></tr>{% endfor %}</table></div>
 

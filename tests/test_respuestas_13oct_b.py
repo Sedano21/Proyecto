@@ -112,7 +112,7 @@ def test_alerta_si_las_cargas_de_sap_no_se_actualizan(s, U):
     assert "OV" in a  # sin ninguna carga de OV
     assert check_upload_freshness(datetime.now()) >= 1  # OV sigue sin cargas; STOCK al día se cierra
     s.commit()
-    assert a["STOCK"].estado == "CERRADA"
+    assert a["STOCK"].estado == "COMPLETADA"
 
 
 def test_correo_deshabilitado_alertas_solo_en_sistema(s, U, new_order):

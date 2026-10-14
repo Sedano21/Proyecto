@@ -4,17 +4,18 @@ Convenciones de origen (IF = Informe Funcional, v1.0, 9-oct-2026):
 - DEFINIDO: regla expresamente indicada en la documentación.
 - PROPUESTO: organización derivada (p.ej. del alcance por área, IF §3) que requiere validación.
 - PENDIENTE: valor/decisión que la documentación declara pendiente; se deja configurable y vacío o inactivo.
-- AS-IS: valor observado en archivos operativos actuales (Excel/PDF/diagrama); no es regla aprobada.
+- proceso actual: valor observado en archivos operativos actuales (Excel/PDF/diagrama); no es regla aprobada.
 - DEMO: valor colocado solo para demostrar el prototipo; debe reemplazarse.
 """
 
 IF = "Informe Funcional"
-TOBE = "TO-BE COPROD-ONE (L5)"
+TOBE = "Diagrama de procesos COPROD-ONE (L5)"
 Q3 = "Decisión del usuario Q3 (11 y 12-oct-2026)"
 Q4 = "Decisión del usuario Q4 (11-oct-2026)"
 R12 = "Decisión del usuario (12-oct-2026)"
 R13 = "Decisión del usuario (13-oct-2026)"
 R14 = "Decisión del usuario (13-oct-2026, segunda parte)"
+O6 = "Observaciones al demo v0.6 (14-oct-2026)"
 CANAL_GRANEL = "MAYORISTA GRANEL"
 VIRTUALES = ["ALM-002", "ALM-004", "ALM-005", "ALM-006", "ALM-007", "ALM-012", "EXT-007", "EXT-013", "PRO-*"]
 
@@ -37,7 +38,7 @@ ROLES = [
     ("COORD_ALMACEN_MP", "Coordinación de Almacén 1524 (materia prima, granel e insumos)", "Almacén",
      f"{TOBE} (dos coordinadores); decisión Q17 (12-oct-2026)", "Maneja el almacén 1524 (EXT-002)."),
     ("SUPERV_ALMACEN", "Supervisión de Almacén (por almacén)", "Almacén", f"{IF} §15", ""),
-    ("LIDER_ALMACEN", "Líder Operativo de Almacén", "Almacén", f"{IF} §15; diagrama AS-IS L5", "Autoriza la salida del camión (Q16)."),
+    ("LIDER_ALMACEN", "Líder Operativo de Almacén", "Almacén", f"{IF} §15; diagrama de proceso actual L5", "Autoriza la salida del camión (Q16)."),
     ("AUX_ALMACEN", "Auxiliar / Asistente de Almacén", "Almacén", f"{IF} §6.2, §15", ""),
     ("MONTACARGUISTA", "Montacarguista", "Almacén", f"{IF} §8.3, §15", ""),
     ("COORD_DISTRIBUCION", "Coordinador de Distribución", "Distribución", f"{IF} §12, §15", ""),
@@ -54,7 +55,7 @@ ROLES = [
     ("COMPRAS", "Coordinador de Compras", "Compras", f"{IF} §10, §15", ""),
     ("IMPORTACIONES", "Coordinador de Importación", "Importaciones", f"{IF} §11, §15; {R13} Q10", "Responsable de las fases de importación."),
     ("SEGURIDAD", "Seguridad", "Seguridad", f"{IF} §12.2, §13, §15", ""),
-    ("FACTURACION", "Facturación", "Facturación", "TO-BE COPROD-ONE (carril Facturación)", "Evalúa el pedido validado y carga la factura."),
+    ("FACTURACION", "Facturación", "Facturación", "Diagrama de procesos COPROD-ONE (carril Facturación)", "Evalúa el pedido validado y carga la factura."),
 ]
 
 # ---------------------------------------------------------------------------
@@ -136,7 +137,23 @@ PERMISSIONS = [
     ("config.ver", "Consultar configuración", "Configuración", "consulta"),
     ("config.editar", "Editar configuración y catálogos (solo Sistemas)", "Configuración", "exclusivo"),
     ("usuarios.administrar", "Administrar usuarios y matriz de permisos", "Configuración", "administracion"),
-    ("auditoria.ver", "Consultar bitácora de auditoría", "Configuración", "consulta"),
+    ("auditoria.ver", "Consultar bitácora de auditoría (solo Sistemas)", "Configuración", "exclusivo"),
+    # Observaciones al demo v0.6: visibilidad por área
+    ("dashboard.precios", "Tablero: montos de OV y OV con precio en el límite o bajo el mínimo", "Gerencial", "consulta"),
+    ("dashboard.operaciones", "Tablero: tiempos de preparación y salida, compras/producción pendientes, diferencias de inventario", "Gerencial", "consulta"),
+    ("dashboard.merma", "Tablero: merma prevista vs real", "Gerencial", "consulta"),
+    ("informes.comercial", "Informe Comercial (ventas, comportamiento de clientes, penalidades)", "Informes", "consulta"),
+    ("informes.reempaque", "Informe de Reempaque (cómo se atendieron las solicitudes)", "Informes", "consulta"),
+    ("informes.produccion", "Informe de Producción (capacidad, programado vs real, solicitudes)", "Informes", "consulta"),
+    ("informes.distribucion", "Informe de Distribución (a tiempo, desviación, costos de transporte y estiba)", "Informes", "consulta"),
+    ("informes.almacen", "Informe de movimiento de stock del almacén (picos, bajas, demoras, stock de reserva)", "Informes", "consulta"),
+    ("ov.opciones", "Ver las opciones evaluadas por el sistema para una OV y aprobar/derivar sus pre-solicitudes", "Almacén", "consulta"),
+    ("clientes.ver", "Consultar fichas de clientes", "Comercial", "consulta"),
+    ("clientes.editar", "Modificar o completar fichas de clientes (solo Comercial)", "Comercial", "edicion"),
+    ("produccion.bom_aprobar", "Revisar y aprobar/modificar la lista de materiales usada para producir", "Producción", "aprobacion"),
+    ("flota.ver", "Consultar seguimiento de flota (SOAT, impuestos, multas, combustible, mantenimiento)", "Distribución", "consulta"),
+    ("tareas.ejecutar", "Registrar inicio y fin de tareas operativas con foto (picking, traslado interno)", "Almacén", "edicion"),
+    ("picking.asignar", "Asignar el picking preprogramado a auxiliares o grupos", "Almacén", "edicion"),
     ("export.datos", "Exportar registros", "General", "consulta"),
 ]
 ALL_PERMS = [p[0] for p in PERMISSIONS]
@@ -180,7 +197,7 @@ ROLE_PERMISSIONS = {
         ["ov.modificar"], f"Observaciones al demo v0.5 (13-oct): modificar OV solo Ejecutivo de cuenta, Coordinador y Jefe Comercial") + _p(["precios.ver", "dashboard.ver", "ov.ver", "ov.crear", "ov.modificar", "ov.importar", "stock.ver", "distribucion.ver", "alertas.ver", "alertas.gestionar", "export.datos"]) + _d(
         ["ov.cancelar", "ov.autorizar_modificacion"], f"{IF} §5") + _d(
         ["ov.renegociar"], f"{IF} §4.5, §5 (Comercial participa)"),
-    "ASIST_VENTAS": _d(["ov.crear"], "Diagrama AS-IS L5 (Asistente comercial ingresa la OV)") + _d(
+    "ASIST_VENTAS": _d(["ov.crear"], "Diagrama de proceso actual L5 (Asistente comercial ingresa la OV)") + _d(
         ["ov.solicitar_modificacion"], f"{IF} §5 (modifica con autorización)") + _d(
         ["ov.importar"], f"{TOBE}: el asistente carga el consolidado de OV emitidas y cambios") + _p(["ov.ver", "stock.ver", "alertas.ver"]),
     "EJECUTIVO_VENTAS": _d(["ov.modificar"], f"Observaciones al demo v0.5 (13-oct): modificar OV solo Ejecutivo de cuenta, Coordinador y Jefe Comercial") + _p(["ov.ver", "ov.crear", "stock.ver", "distribucion.ver", "alertas.ver", "alertas.gestionar"]) + _d(
@@ -198,7 +215,7 @@ ROLE_PERMISSIONS = {
                           "compras.solicitar", "compras.recibir", "produccion.recibir_pt", "importaciones.recibir", "export.datos"]),
     "LIDER_ALMACEN": _p(["ov.ver", "stock.ver", "alertas.ver", "alertas.gestionar", "stock.conteo", "traslados.ver",
                          "distribucion.ver"]) + _d(
-        ["preparacion.registrar"], "Diagrama AS-IS L5 (Líder operativo designa y verifica picking)") + _d(
+        ["preparacion.registrar"], "Diagrama de proceso actual L5 (Líder operativo designa y verifica picking)") + _d(
         ["distribucion.confirmar_salida"], f"{R12} Q16: el Líder Operativo autoriza la salida"),
     "AUX_ALMACEN": _p(["ov.ver", "stock.ver", "alertas.ver", "stock.conteo", "preparacion.registrar", "traslados.ver"]) + _d(
         ["traslado.recibir"], f"{IF} §6.2 (Coordinador de Almacén o asistente confirma recepción)"),
@@ -256,6 +273,43 @@ ROLE_PERMISSIONS = {
 ROLE_PERMISSIONS["COORD_ALMACEN_MP"] = [(p, o, f"{R12} Q17: mismas funciones que el coordinador 1560, sobre el almacén 1524")
                                        for p, o, _ in ROLE_PERMISSIONS["COORD_ALMACEN"]]
 
+# Observaciones al demo v0.6 (14-oct): visibilidad por área.
+_COMERCIAL_ROLES = ["JEFE_VENTAS", "COORD_VENTAS", "ASIST_VENTAS", "EJECUTIVO_VENTAS", "GERENTE_COMERCIAL"]
+_O6 = {
+    "dashboard.precios": (["JEFE_VENTAS", "COORD_VENTAS", "GERENTE_COMERCIAL"], "DEFINIDO", ["GERENCIA_OPERACIONES"]),
+    "dashboard.operaciones": (["COORD_ALMACEN", "COORD_ALMACEN_MP", "SUPERV_ALMACEN", "JEFE_LOGISTICA", "COORD_LOGISTICA",
+                               "JEFE_PRODUCCION", "GERENCIA_OPERACIONES"], "DEFINIDO", ["COMPRAS", "COORD_DISTRIBUCION"]),
+    "dashboard.merma": (["JEFE_PRODUCCION", "JEFE_LOGISTICA", "COORD_LOGISTICA", "GERENCIA_OPERACIONES"], "DEFINIDO",
+                        ["ASIST_PRODUCCION"]),
+    "informes.comercial": (_COMERCIAL_ROLES, "DEFINIDO", []),
+    "informes.reempaque": (["COORD_ALMACEN", "COORD_ALMACEN_MP", "JEFE_PRODUCCION", "ASIST_PRODUCCION"], "DEFINIDO",
+                           ["JEFE_CALIDAD", "SUPERV_CALIDAD", "JEFE_LOGISTICA", "COORD_LOGISTICA", "SUPERV_ALMACEN"]),
+    "informes.produccion": (["JEFE_PRODUCCION", "ASIST_PRODUCCION"], "DEFINIDO", ["JEFE_LOGISTICA"]),
+    "informes.distribucion": (["COORD_DISTRIBUCION", "ASIST_DISTRIBUCION"], "DEFINIDO", ["JEFE_LOGISTICA", "COORD_LOGISTICA"]),
+    "informes.almacen": (["COORD_ALMACEN", "COORD_ALMACEN_MP"], "DEFINIDO",
+                         ["LIDER_ALMACEN", "SUPERV_ALMACEN", "JEFE_LOGISTICA", "COORD_LOGISTICA"]),
+    "ov.opciones": (["COORD_ALMACEN", "COORD_ALMACEN_MP", "JEFE_LOGISTICA", "COORD_LOGISTICA", "GERENCIA_OPERACIONES"],
+                    "DEFINIDO", []),
+    "clientes.ver": (_COMERCIAL_ROLES + ["COORD_ALMACEN", "COORD_ALMACEN_MP", "COORD_DISTRIBUCION", "ASIST_DISTRIBUCION",
+                                         "GERENCIA_OPERACIONES"], "DEFINIDO", []),
+    "clientes.editar": (_COMERCIAL_ROLES, "DEFINIDO", []),
+    "produccion.bom_aprobar": (["JEFE_PRODUCCION", "ASIST_PRODUCCION"], "DEFINIDO", []),
+    "flota.ver": (["COORD_DISTRIBUCION", "ASIST_DISTRIBUCION"], "DEFINIDO", ["JEFE_LOGISTICA", "GERENCIA_OPERACIONES"]),
+    "tareas.ejecutar": (["MONTACARGUISTA", "AUX_ALMACEN"], "DEFINIDO", ["LIDER_ALMACEN"]),
+    "picking.asignar": (["LIDER_ALMACEN", "COORD_ALMACEN", "COORD_ALMACEN_MP"], "DEFINIDO", []),
+    "auditoria.ver": (["SISTEMAS"], "DEFINIDO", []),
+}
+for _perm, (_def, _o, _prop) in _O6.items():
+    for _r in _def:
+        ROLE_PERMISSIONS.setdefault(_r, []).append((_perm, _o, f"{O6}"))
+    for _r in _prop:
+        ROLE_PERMISSIONS.setdefault(_r, []).append((_perm, "PROPUESTO", f"{O6} – propuesto, por validar"))
+# Retiros (observaciones al demo v0.6): Almacén no accede a los registros de Calidad (formatos); la BOM la aprueba
+# Producción y no Almacén.
+_RETIROS = {"COORD_ALMACEN": {"calidad.ver"}, "COORD_ALMACEN_MP": {"calidad.ver"}}
+for _r, _quitar in _RETIROS.items():
+    ROLE_PERMISSIONS[_r] = [x for x in ROLE_PERMISSIONS[_r] if x[0] not in _quitar]
+
 # ---------------------------------------------------------------------------
 # Tipos de alerta (IF §14 y secciones de proceso)
 # ---------------------------------------------------------------------------
@@ -275,15 +329,15 @@ ALERT_TYPES = [
      ["JEFE_LOGISTICA"] + _GO + _COM, "DEFINIDO", f"{IF} §6.3; aprueba GO o Jefatura de Logística (Q3)",
      "OV con faltante y stock reservado parcial. Comercial es informado; aprueba GO o Jefatura de Logística.", True),
     ("OV_COMPLETA", "OV completa con stock reservado", "Almacén", "Estados de pedidos", "MEDIA",
-     ["JEFE_LOGISTICA", "JEFE_VENTAS"] + _ALM, "DEFINIDO", "TO-BE COPROD-ONE: 'Avisar (Jefe de logística, Jefe comercial, coordinador almacén)'",
+     ["JEFE_LOGISTICA", "JEFE_VENTAS"] + _ALM, "DEFINIDO", "Diagrama de procesos COPROD-ONE: 'Avisar (Jefe de logística, Jefe comercial, coordinador almacén)'",
      "La evaluación reserva el 100 % de la OV.", False),
     ("OV_SALDO_REPROGRAMADO", "Saldo de despacho parcial reprogramado", "Comercial", "Faltantes y cobertura", "ALTA",
      _COM + _ALM + ["JEFE_LOGISTICA"] + _GO, "PROPUESTO", "Decisión Q3 (11-oct-2026): lo que falta despachar se reprograma",
      "Al salir un despacho parcial se crea la OV de saldo con la fecha reprogramada.", True),
     ("OV_PARCIAL_APROBADO", "Despacho parcial aprobado", "Distribución", "Rutas", "ALTA", _DIST, "DEFINIDO",
      f"{IF} §6.3", "Se aprueba entrega parcial; se genera propuesta de ruta.", True),
-    ("OV_CAMBIO", "Cambio de OV con reserva existente", "Comercial", "Cambios de OV", "MEDIA", _LOG + _ALM + _GO, "DEFINIDO",
-     f"{IF} §6.3, §14", "Modificación de una OV que ya tenía reservas.", True),
+    ("OV_CAMBIO", "Cambio de OV con reserva existente", "Comercial", "Cambios de OV", "MEDIA", _LOG + _ALM + _GO + _DIST, "DEFINIDO",
+     f"{IF} §6.3, §14; {O6}: Distribución recibe los cambios que afectan su plan (p. ej. fecha de entrega)", "Modificación de una OV que ya tenía reservas.", True),
     ("OV_MODIF_SOLICITUD", "Solicitud de modificación de OV (Asistente)", "Comercial", "Cambios de OV", "MEDIA", _COM, "DEFINIDO",
      f"{IF} §5", "El Asistente de Ventas solicita modificar una OV; autorizan Coord./Jefe de Ventas o vendedor responsable.", True),
     ("OV_CANCELADA", "OV cancelada (reserva y ruta liberadas)", "Comercial", "Cambios de OV", "MEDIA", _ALM + _DIST + ["JEFE_LOGISTICA"],
@@ -294,7 +348,7 @@ ALERT_TYPES = [
      "PROPUESTO", f"{IF} §14 (condición definida; destinatarios propuestos)", "Avance de preparación ≥ umbral configurado (80 %).", False),
     ("OV_PREPARADA", "Término del picking: pedido listo para despacho", "Almacén", "Estados de pedidos", "MEDIA",
      _COM + _GO + ["JEFE_LOGISTICA"] + _DIST + _CAL, "DEFINIDO",
-     "TO-BE COPROD-ONE: 'Generar alerta (comercial, GO, jefe de logística) y documentos para calidad, distribución'",
+     "Diagrama de procesos COPROD-ONE: 'Generar alerta (comercial, GO, jefe de logística) y documentos para calidad, distribución'",
      "Preparación al 100 %.", True),
     ("OV_RETRASO", "OV no despachada en la fecha comprometida", "Distribución", "Retrasos", "ALTA", _GO + ["JEFE_LOGISTICA", "COORD_VENTAS"],
      "PROPUESTO", f"{IF} §14 ('retrasos')", "Fecha comprometida vencida sin salida registrada.", True),
@@ -308,8 +362,8 @@ ALERT_TYPES = [
      f"{IF} §6.1, §9.4", "Nuevo lote en estado Pendiente de revisión.", False),
     ("STOCK_NO_UTILIZABLE", "Producto no utilizable / requiere fumigación", "Calidad", "Fumigación y no utilizables", "ALTA",
      _CAL + _ALM + ["JEFE_LOGISTICA"], "PROPUESTO", f"{IF} §6.1, §14", "Lote pasa a No utilizable o supera tiempo máximo de almacenamiento configurado.", True),
-    ("FUMIGACION", "Fumigación iniciada/finalizada", "Calidad", "Fumigación y no utilizables", "MEDIA", _CAL + _ALM, "PROPUESTO",
-     f"{IF} §14; REG-BPM-CAL-005", "Registro de inicio/fin de fumigación.", False),
+    ("FUMIGACION", "Fumigación iniciada/finalizada", "Calidad", "Fumigación y no utilizables", "MEDIA", _CAL + _ALM + _LOG + _GO, "DEFINIDO",
+     f"{IF} §14; REG-BPM-CAL-005; {O6}: la reciben Almacén, Calidad, Logística y GO", "Registro de inicio/fin de fumigación.", False),
     ("VENCIMIENTO_PROXIMO", "Lote próximo a vencer", "Almacén", "Faltantes y cobertura", "MEDIA", _ALM + ["COORD_VENTAS"], "PENDIENTE",
      f"{IF} §21 (caso 'vencimiento'); umbral no definido", "Solo si se configura 'dias_vencimiento_proximo'.", False),
     ("TRASLADO_SOLICITADO", "Traslado pendiente de autorización", "Logística", "Traslados", "MEDIA", _LOG, "DEFINIDO",
@@ -331,7 +385,7 @@ ALERT_TYPES = [
      "Observaciones al demo v0.5 (13-oct): costo máximo a que se debe comprar para no caer en pérdida (configurable)",
      "El precio cotizado supera el costo máximo de compra configurado para el artículo.", False),
     ("FUMIGACION_PROXIMA", "Fumigación próxima (7 días, 3 días y el mismo día)", "Calidad", "Calidad", "ALTA",
-     _CAL + ["ASIST_CALIDAD"] + _ALM, "DEFINIDO",
+     _CAL + ["ASIST_CALIDAD"] + _ALM + _LOG + _GO, "DEFINIDO",
      "Observaciones al demo v0.5 (13-oct): alerta a Calidad 7 días antes, 3 días antes y el mismo día para planear la fumigación",
      "Lote con fumigación programada o con fin del tiempo máximo de almacenamiento a 7, 3 o 0 días.", False),
     ("RUTA_EXTERNO_VALIDAR", "Ruta con transporte externo por validar", "Distribución", "Programación", "ALTA",
@@ -419,31 +473,31 @@ ALERT_TYPES = [
     ("IMPORT_DIFERENCIA", "Diferencias en recepción de importación", "Importaciones", "Diferencias de inventario", "ALTA",
      ["IMPORTACIONES"] + _CAL, "DEFINIDO", f"{IF} §11", "Recepción con diferencias.", True),
     ("DIST_PROGRAMACION", "Programación de distribución generada", "Distribución", "Rutas", "MEDIA", _DIST + _LOG + _GO + _COM + _CAL,
-     "DEFINIDO", f"{IF} §12.1; TO-BE: notificar a todas las áreas (calidad, comercial, GO, jefe de logística)",
+     "DEFINIDO", f"{IF} §12.1; diagrama de procesos: notificar a todas las áreas (calidad, comercial, GO, jefe de logística)",
      "Se genera/confirma la programación de rutas.", True),
     ("RUTA_ASIGNADA", "Ruta asignada (chofer y auxiliar)", "Distribución", "Rutas", "MEDIA", ["AUX_DESPACHO", "CONDUCTOR"], "DEFINIDO",
-     "TO-BE COPROD-ONE: 'Generar alerta para chofer y auxiliar de las rutas que le fueron asignadas'", "Distribución aprueba la ruta.", False),
+     "Diagrama de procesos COPROD-ONE: 'Generar alerta para chofer y auxiliar de las rutas que le fueron asignadas'", "Distribución aprueba la ruta.", False),
     ("MONTACARGUISTA_DESPACHO", "Trasladar mercadería a la zona de despacho", "Almacén", "Rutas", "MEDIA", ["MONTACARGUISTA"], "DEFINIDO",
-     "TO-BE COPROD-ONE: 'Generar alerta para el traslado del montacarguista'", "Ruta aprobada con pedidos preparados.", False),
+     "Diagrama de procesos COPROD-ONE: 'Generar alerta para el traslado del montacarguista'", "Ruta aprobada con pedidos preparados.", False),
     ("CARGA_INCONGRUENCIA", "Incongruencia en la carga: validación cruzada", "Almacén", "Guías", "ALTA", ["LIDER_ALMACEN", "COORD_ALMACEN"],
-     "DEFINIDO", "TO-BE COPROD-ONE: 'Avisar a almacenero asignado para la validación cruzada'",
+     "DEFINIDO", "Diagrama de procesos COPROD-ONE: 'Avisar a almacenero asignado para la validación cruzada'",
      "El auxiliar detecta productos incorrectos o incompletos frente a la pre-guía.", True),
     ("CAMION_CARGADO", "Camión cargado y validado", "Distribución", "Rutas", "MEDIA",
      _COM + _GO + ["JEFE_LOGISTICA", "COORD_DISTRIBUCION", "FACTURACION"], "DEFINIDO",
-     "TO-BE COPROD-ONE: 'Generar alerta de camión cargado (comercial, GO, jefe de logística, distribución, facturación)'",
+     "Diagrama de procesos COPROD-ONE: 'Generar alerta de camión cargado (comercial, GO, jefe de logística, distribución, facturación)'",
      "Carga validada completa y correcta con foto.", True),
     ("INC_CARGA", "Incidencia durante la carga (Seguridad)", "Seguridad", "Incidencias", "ALTA",
-     ["COORD_DISTRIBUCION", "JEFE_LOGISTICA"] + _GO, "PROPUESTO", "TO-BE COPROD-ONE: 'Subir foto de la incidencia ocurrida mientras se despachaba'",
+     ["COORD_DISTRIBUCION", "JEFE_LOGISTICA"] + _GO, "PROPUESTO", "Diagrama de procesos COPROD-ONE: 'Subir foto de la incidencia ocurrida mientras se despachaba'",
      "Seguridad registra una incidencia con foto, motivo y hora.", True),
     ("DOCUMENTOS_FALTANTES", "Documentos faltantes para la salida", "Seguridad", "Guías", "ALTA",
      ["COORD_DISTRIBUCION", "FACTURACION", "JEFE_LOGISTICA"] + _CAL + _GO, "DEFINIDO",
-     "TO-BE COPROD-ONE: 'Reportar documentos faltantes (distribución, facturación, calidad, jefe logística, GO)'",
+     "Diagrama de procesos COPROD-ONE: 'Reportar documentos faltantes (distribución, facturación, calidad, jefe logística, GO)'",
      "Seguridad revisa y faltan guía, factura o certificado aprobado.", True),
     ("DIST_LLEGADA", "Llegada al punto de entrega", "Distribución", "Rutas", "BAJA", ["COORD_DISTRIBUCION", "JEFE_LOGISTICA"] + _GO,
-     "DEFINIDO", "TO-BE COPROD-ONE: 'Notificar a coordinador de distribución, jefe de logística, GO que se llegó'", "Llegada registrada.", False),
+     "DEFINIDO", "Diagrama de procesos COPROD-ONE: 'Notificar a coordinador de distribución, jefe de logística, GO que se llegó'", "Llegada registrada.", False),
     ("DIST_ENTREGADO", "Pedido entregado con conformidad", "Distribución", "Rutas", "BAJA",
      ["COORD_DISTRIBUCION", "JEFE_LOGISTICA"] + _GO + _COM, "DEFINIDO",
-     "TO-BE COPROD-ONE: 'Notificar a coordinador de distribución, jefe de logística, GO, comercial que se entregó'", "Entrega con foto y guía firmada.", False),
+     "Diagrama de procesos COPROD-ONE: 'Notificar a coordinador de distribución, jefe de logística, GO, comercial que se entregó'", "Entrega con foto y guía firmada.", False),
     ("DIST_AVANCE_RUTA", "Avance de ruta", "Distribución", "Rutas", "BAJA", _COM + _LOG + ["COORD_DISTRIBUCION"], "DEFINIDO",
      f"{IF} §12.3", "Salida, llegada, entrega.", False),
     ("GUIA_DISCREPANCIA", "Discrepancia entre carga y guía: salida bloqueada", "Seguridad", "Guías", "ALTA",
@@ -454,20 +508,36 @@ ALERT_TYPES = [
      "Jefe o Coordinador de Logística aprueba la salida mientras se resuelve la guía.", True),
     ("INC_RECHAZO_CALIDAD", "Incidencia de calidad (rechazo, infestación, fuera de características)", "Distribución", "Incidencias", "ALTA",
      ["GERENCIA_GENERAL"] + _GO + _LOG + _ALM + _COM + ["COORD_DISTRIBUCION"] + _CAL, "DEFINIDO",
-     f"{IF} §12.3 (tabla de destinatarios); TO-BE (coord. distribución); observaciones al demo v0.5 (tipo Calidad: también a Calidad)",
+     f"{IF} §12.3 (tabla de destinatarios); diagrama de procesos (coord. distribución); observaciones al demo v0.5 (tipo Calidad: también a Calidad)",
      "Incidencia de tipo Calidad.", True),
     ("INC_GENERAL", "Incidencia de distribución (llegada tarde u otra condición)", "Distribución", "Incidencias", "ALTA",
-     _GO + _LOG + _ALM + _COM + ["COORD_DISTRIBUCION"], "DEFINIDO", f"{IF} §12.3 (tabla de destinatarios); TO-BE (coord. distribución)",
+     _GO + _LOG + _ALM + _COM + ["COORD_DISTRIBUCION"], "DEFINIDO", f"{IF} §12.3 (tabla de destinatarios); diagrama de procesos (coord. distribución)",
      "Retraso, rechazo por cita, devolución, parcial, vehículo esperando, etc.", True),
     ("CERTIFICADO_REVISION", "Certificado pre-elaborado pendiente de revisión", "Calidad", "Certificados", "MEDIA", _CAL, "DEFINIDO",
-     f"{IF} §9.3, §9.4; TO-BE: 'Informar a Calidad para la validación del certificado pre-elaborado'",
-     "Se genera el certificado cuando la OV queda completa (TO-BE) o al terminar la preparación.", False),
+     f"{IF} §9.3, §9.4; diagrama de procesos: 'Informar a Calidad para la validación del certificado pre-elaborado'",
+     "Se genera el certificado cuando la OV queda completa (diagrama de procesos) o al terminar la preparación.", False),
     ("CERTIFICADO_LISTO", "Certificado aprobado y cargado", "Calidad", "Certificados", "MEDIA",
      ["COORD_DISTRIBUCION"] + _GO + ["JEFE_LOGISTICA"], "DEFINIDO",
-     "TO-BE COPROD-ONE: 'Notifica a distribución, GO, jefe de logística que el certificado fue cargado'", "Calidad aprueba el certificado.", False),
+     "Diagrama de procesos COPROD-ONE: 'Notifica a distribución, GO, jefe de logística que el certificado fue cargado'", "Calidad aprueba el certificado.", False),
     ("CALIDAD_NO_CONFORME", "Producto/registro no conforme", "Calidad", "Calidad", "ALTA", _CAL + _GO, "PROPUESTO",
      "REG-BPM-CAL-013, REG-HACCP-CAL-002", "Registro de Calidad con resultado No conforme.", True),
 ]
+
+ALERT_TYPES += [
+    ("OV_CONDICION_CLIENTE", "Stock que no cumple la condición del cliente", "Almacén", "Faltantes y cobertura", "ALTA",
+     _ALM + _LOG, "DEFINIDO", f"{O6}: solo se toman productos que cumplan la condición del cliente; si no, se alerta el motivo",
+     "Hay lotes del producto pero no cumplen la vida útil u otra condición del cliente.", True),
+    ("TAREA_ASIGNADA", "Tarea designada a usted o a su cargo", "General", "Tareas", "MEDIA", [], "DEFINIDO",
+     f"{O6}: el designado recibe la tarea en su inicio y una alerta", "Una persona de su área le designó una tarea.", True),
+]
+
+# Naturaleza de cada tipo (observaciones al demo v0.6): solo se vuelven tareas las que requieren aprobación o atención;
+# las informativas se reconocen. Clasificación PROPUESTA, editable en Configuración de alertas.
+ALERT_INFORMATIVAS = {"OV_COMPLETA", "OV_SALDO_REPROGRAMADO", "OV_CANCELADA", "OV_ESTADO", "OV_80_PREPARACION", "OV_PREPARADA",
+                      "VENCIMIENTO_PROXIMO", "FUMIGACION", "COTIZACION_IMPACTO", "COSTO_SOBRE_MERCADO", "PRODUCCION_RESPUESTA",
+                      "REEMPAQUE_DESAPROBADO", "COMPRA_FECHA_CAMBIO", "IMPORT_LLEGADA", "IMPORT_MODIFICACION",
+                      "IMPORT_RECORDATORIO", "DIST_PROGRAMACION", "CAMION_CARGADO", "DIST_LLEGADA", "DIST_ENTREGADO",
+                      "DIST_AVANCE_RUTA", "CERTIFICADO_LISTO"}
 
 # Incidencias (IF §12.3) organizadas por tipo y subtipo (observaciones al demo v0.5, 13-oct).
 # "Llegada tarde" y "rechazo por cita fuera de hora" son la misma incidencia.
@@ -510,12 +580,12 @@ PARAMS = [
      "PENDIENTE", f"{IF} §7, §16, §20"),
     ("periodo_analisis_dias", 15, "int", "Reposición",
      "Período de análisis por defecto para consumo promedio (cada producto puede tener el suyo).",
-     "AS-IS", "Macro VBA 'TraerLotesStock' (PROM_15D) en PCP 2026 - J.xlsm"),
+     "ACTUAL", "Macro VBA 'TraerLotesStock' (PROM_15D) en PCP 2026 - J.xlsm"),
     ("factor_stock_seguridad", 0.30, "float", "Reposición",
      "Stock de seguridad como % del consumo mensual promedio observado en el Excel actual. Solo se aplica si 'usar_stock_seguridad' = sí.",
-     "AS-IS", "Rotacion de inventario - Almacenes.xlsx, hoja Reporte ('30% stk seg')"),
+     "ACTUAL", "Rotacion de inventario - Almacenes.xlsx, hoja Reporte ('30% stk seg')"),
     ("usar_stock_seguridad", False, "bool", "Reposición",
-     "Aplicar el factor de stock de seguridad AS-IS en el análisis de reposición.", "PENDIENTE", f"{IF} §16 (stock mínimo configurable)"),
+     "Aplicar el factor de stock de seguridad proceso actual en el análisis de reposición.", "PENDIENTE", f"{IF} §16 (stock mínimo configurable)"),
     ("umbral_mayor_volumen", None, "float", "Compras",
      "Valor a partir del cual una compra se considera de mayor volumen (en la unidad elegida abajo).", "PENDIENTE", f"{IF} §7, §20; {R14}"),
     ("umbral_mayor_volumen_unidad", "KG", "str", "Compras",
@@ -548,7 +618,7 @@ PARAMS = [
      "Horarios de corte (HH:MM) que organizan la preparación.", "PENDIENTE", f"{IF} §4.9, §16"),
     ("tiempos_preparacion", {"PEQUENO": "20-30 min", "MEDIANO": "1 h - 1 h 30", "GRANDE": "4 h (requiere 2 días de anticipación)"},
      "dict", "Almacén", "Tiempos de preparación iniciales por tamaño de pedido (provisionales; medir y ajustar).",
-     "AS-IS", "Diagrama AS-IS L5 (Revisar el stock físico vs. lo solicitado); IF §20"),
+     "ACTUAL", "Diagrama de proceso actual L5 (Revisar el stock físico vs. lo solicitado); IF §20"),
     ("umbrales_tamano_pedido_kg", None, "dict", "Almacén",
      "Límites en kg para clasificar pedido pequeño/mediano/grande.", "PENDIENTE", "No definido en la documentación"),
     ("umbral_alerta_preparacion_pct", 80, "int", "Almacén", "Avance de preparación que dispara la alerta.", "DEFINIDO", f"{IF} §14"),
@@ -620,7 +690,7 @@ PARAMS = [
     ("zonas_distrito", {}, "dict", "Distribución",
      "Agrupación de distritos en zonas de reparto (si está vacío se agrupa por distrito).", "PENDIENTE", f"{IF} §12.1"),
     ("capacidad_externo_kg", [2000, 25000], "list", "Distribución",
-     "Rango de capacidad de transportes externos (kg).", "AS-IS", "Imagen tabla de transportes (2 TN a 25 TN)"),
+     "Rango de capacidad de transportes externos (kg).", "ACTUAL", "Imagen tabla de transportes (2 TN a 25 TN)"),
     ("otif_definicion", "SALIDA", "str", "Indicadores",
      "OTIF = pedido que sale del almacén completo y a tiempo (la variante ENTREGA queda como referencia).", "DEFINIDO", f"{IF} §17; {R12} Q2"),
     ("etapa_por_incidencia", {"SALIDA_INCOMPLETA": "Abastecimiento (stock, producción, compras)",
@@ -685,13 +755,13 @@ PARAMS = [
      "DEFINIDO", f"{R14}"),
     ("programar_ruta_automatica", True, "bool", "Distribución",
      "Al quedar una OV completa (o con parcial aprobado) el sistema la programa automáticamente en la mejor ruta propuesta.",
-     "DEFINIDO", "TO-BE COPROD-ONE: 'Programar automáticamente la mejor ruta para el despacho'"),
+     "DEFINIDO", "Diagrama de procesos COPROD-ONE: 'Programar automáticamente la mejor ruta para el despacho'"),
     ("certificado_previo_al_picking", True, "bool", "Calidad",
      "Pre-elaborar los certificados al quedar la OV completa (antes del picking) para validación de Calidad.",
-     "DEFINIDO", "TO-BE COPROD-ONE: 'Informar a Calidad para la validación del certificado pre-elaborado'"),
+     "DEFINIDO", "Diagrama de procesos COPROD-ONE: 'Informar a Calidad para la validación del certificado pre-elaborado'"),
     ("documentos_salida", ["GUIA", "FACTURA", "CERTIFICADO"], "list", "Distribución",
      "Documentos que Seguridad verifica por pedido antes de autorizar la salida (certificado = aprobado por Calidad).",
-     "DEFINIDO", "TO-BE COPROD-ONE: Seguridad 'Documentos completos?' / reportar faltantes a distribución, facturación y calidad"),
+     "DEFINIDO", "Diagrama de procesos COPROD-ONE: Seguridad 'Documentos completos?' / reportar faltantes a distribución, facturación y calidad"),
     ("empresa_razon_social", "CORPORACION PRODUCTIVA S.A.C.", "str", "Certificados", "Procesado por (certificados).", "DEFINIDO",
      "Certificados N°CP2026-PT3756 / MP276 / CA0764"),
     ("empresa_ruc", "20517540341", "str", "Certificados", "RUC del emisor (certificados).", "DEFINIDO", "Certificados N°CP2026-*"),
@@ -774,7 +844,7 @@ PARAMS = [
     ("ov_servicios_asistencia", [{"telefono": "+51 959 393 886", "area": "Asistencia Logistica"},
                                  {"telefono": "+51 971 442 700", "area": "Asistencia Calidad"}], "list", "Documentos",
      "Servicios de asistencia impresos en la OV.", "DEFINIDO", "Formato de OV N° 1635389 (foto, 13-oct)"),
-    ("muestreo_tiempo_min_por_lote", 30, "int", "Calidad", "Tiempo orientativo de muestreo por lote en reempaque.", "AS-IS",
+    ("muestreo_tiempo_min_por_lote", 30, "int", "Calidad", "Tiempo orientativo de muestreo por lote en reempaque.", "ACTUAL",
      f"{IF} §9.2 (orientativo)"),
 ]
 

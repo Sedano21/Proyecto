@@ -175,7 +175,7 @@ def test_venta_bajo_costo_detiene_y_alerta_sin_mostrar_costo(s, U, new_order):
     a = alerts_of(s, "OV_PRECIO_BAJO_COSTO", o.id)
     assert a and "costo 50.0000" in a[0].mensaje
     approve_price(o, U("coord.ventas"), "Cliente estratégico")
-    assert not o.retenida_precio and a[0].estado == "CERRADA"
+    assert not o.retenida_precio and a[0].estado == "COMPLETADA"
 
 
 def test_costo_empresa_de_la_lista_de_precios_se_conserva(s):

@@ -123,8 +123,11 @@ def dashboard():
     hasta = request.args.get("hasta")
     k = compute(date.fromisoformat(desde) if desde else None, date.fromisoformat(hasta) if hasta else None) \
         if "dashboard.ver" in g.perms else None
-    mis = alert_svc.visible_alerts(g.user, solo_abiertas=True)[:12]
-    return render_template("dashboard.html", k=k, mis_alertas=mis, desde=desde or "", hasta=hasta or "")
+    tareas = alert_svc.my_tasks(g.user)
+    ids = {a.id for a in tareas}
+    mis = [a for a in alert_svc.inbox(g.user, solo_abiertas=True) if a.id not in ids][:15]
+    return render_template("dashboard.html", k=k, mis_alertas=mis, tareas=tareas, desde=desde or "", hasta=hasta or "",
+                           estado_txt=alert_svc.ESTADO_TXT)
 
 
 @bp.route("/verificaciones", methods=["POST"])
@@ -139,7 +142,11 @@ def run_checks():
 @login_required
 def alerts():
     f = {k: request.args.get(k) or None for k in ("estado", "area", "prioridad", "grupo", "type_code")}
-    rows = alert_svc.visible_alerts(g.user, **f)
+    tipos = alert_svc.visible_types(g.user)
+    codes = {t.code for t in tipos}
+    if f["type_code"] and f["type_code"] not in codes:
+        f["type_code"] = None
+    rows = alert_svc.inbox(g.user, **f)  # solo los tipos de su área o que se comunican con ella
     agrupar = request.args.get("agrupar")
     grupos = {}
     if agrupar:
@@ -147,30 +154,57 @@ def alerts():
             key = (a.area if agrupar == "area" else a.type.grupo if agrupar == "grupo" else a.type.nombre, a.prioridad)
             grupos.setdefault(key, []).append(a)
         grupos = dict(sorted(grupos.items(), key=lambda kv: (alert_svc.PRIORIDAD_ORDEN.get(kv[0][1], 9), kv[0][0])))
-    tipos = list(db().execute(select(AlertType).order_by(AlertType.area, AlertType.nombre)).scalars())
     return render_template("alerts.html", rows=rows, f=f, tipos=tipos, agrupar=agrupar, grupos=grupos,
-                           areas=sorted({t.area for t in tipos}), grupos_tipo=sorted({t.grupo for t in tipos}))
+                           areas=sorted({t.area for t in tipos}), grupos_tipo=sorted({t.grupo for t in tipos}),
+                           estados=alert_svc.ESTADOS, estado_txt=alert_svc.ESTADO_TXT)
 
 
 @bp.route("/alertas/<int:aid>")
 @login_required
 def alert_detail(aid):
+    from ..services import alert_actions
     a = db().get(Alert, aid) or abort(404)
     if not alert_svc.can_see(g.user, a):
         abort(403)
-    users = list(db().execute(select(User).where(User.activo.is_(True)).order_by(User.nombre)).scalars())
-    return render_template("alert_detail.html", a=a, users=users)
+    users, roles = alert_svc.assignable(g.user)
+    todos = list(db().execute(select(User).where(User.activo.is_(True)).order_by(User.nombre)).scalars())
+    return render_template("alert_detail.html", a=a, users=users, roles=roles, todos=todos, svc=alert_svc,
+                           puede_decidir=alert_actions.can_decide(a), motivo_aprobar=alert_actions.motivo_obligatorio(a),
+                           estado_txt=alert_svc.ESTADO_TXT)
 
 
 @bp.route("/alertas/<int:aid>/<accion>", methods=["POST"])
 @login_required
 def alert_action(aid, accion):
+    from flask import current_app
+    from ..models import AlertIncident
+    from ..services import alert_actions
+    from ..services.distribution import save_upload
     a = db().get(Alert, aid) or abort(404)
+    f = request.form
+
+    def _completar():
+        ev = save_upload(request.files.get("evidencia"), current_app.config["UPLOAD_DIR"], f"tarea{a.id}")
+        alert_svc.complete(a, g.user, f.get("motivo", ""), f.get("accion", ""), ev, f.get("proceso_pendiente", ""))
+
+    def _resolver():
+        inc = db().get(AlertIncident, int(f.get("inc_id") or 0))
+        if inc is None or inc.alert_id != a.id:
+            raise BusinessError("Incidencia no encontrada.")
+        alert_svc.resolve_incident(inc, g.user, f.get("resolucion", ""), f.get("acciones", ""))
     fn = {
-        "asignar": lambda: alert_svc.assign(a, g.user, request.form.get("user_id"), request.form.get("comentario", "")),
-        "atender": lambda: alert_svc.attend(a, g.user, request.form.get("comentario", "")),
-        "comentar": lambda: alert_svc.comment(a, g.user, request.form.get("comentario", "")),
-        "cerrar": lambda: alert_svc.close(a, g.user, request.form.get("motivo", ""), request.form.get("accion", "")),
+        "asignar": lambda: alert_svc.assign(a, g.user, f.get("user_id") or None, f.get("comentario", ""), rol=f.get("rol") or None),
+        "tomar": lambda: alert_svc.take(a, g.user),
+        "atender": lambda: alert_svc.attend(a, g.user, f.get("comentario", "")),
+        "comentar": lambda: alert_svc.comment(a, g.user, f.get("comentario", "")),
+        "completar": _completar,
+        "cerrar": lambda: alert_svc.close(a, g.user, f.get("motivo", ""), f.get("accion", "")),
+        "reconocer": lambda: alert_svc.acknowledge(a, g.user, f.get("comentario", "")),
+        "incidencia": lambda: alert_svc.open_incident(a, g.user, f.get("situacion", ""), f.get("acciones", ""),
+                                                      f.get("responsable_id") or None),
+        "resolver": _resolver,
+        "aprobar": lambda: alert_actions.decide(a, g.user, True, f.get("motivo", "")),
+        "desaprobar": lambda: alert_actions.decide(a, g.user, False, f.get("motivo", "")),
     }.get(accion) or abort(404)
     return act(fn, "Alerta actualizada.", url_for("main.alert_detail", aid=aid))
 
@@ -189,6 +223,9 @@ def alert_config():
             t.roles = request.form.getlist("roles")
             t.usuarios = [int(x) for x in request.form.getlist("usuarios")]
             t.prioridad = request.form.get("prioridad", t.prioridad)
+            if request.form.get("naturaleza") in ("TAREA", "INFORMATIVA"):
+                antes["naturaleza"] = t.naturaleza
+                t.naturaleza = request.form["naturaleza"]
             t.enviar_correo = request.form.get("enviar_correo") == "1"
             t.activo = request.form.get("activo") == "1"
             t.origen_destinatarios = "DEFINIDO" if request.form.get("validado") == "1" else t.origen_destinatarios

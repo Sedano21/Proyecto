@@ -206,3 +206,52 @@ def decide(order, user, tipo, entidad_id, aprobar, motivo, resumen=None):
     audit(user, "PRESOLICITUD_" + ("APROBADA" if aprobar else "RECHAZADA"), "SalesOrder", order.numero,
           {"tipo": tipo, "id": int(entidad_id), "motivo": motivo.strip(), "recomendacion": (resumen or {}).get("recomendada")})
     return dec
+
+
+ESTADO_PRESOL_TXT = {"BORRADOR": "por revisar", "PRE_SOLICITUD": "por revisar", "SOLICITADO": "por autorizar",
+                     "PENDIENTE_LOGISTICA": "por aprobar", "ENVIADA": "en validación de Producción",
+                     "VALIDADA": "validada", "PROGRAMADA": "programada", "EN_PROCESO": "en proceso",
+                     "SOLICITADA": "en evaluación", "APROBADA": "aprobada", "AUTORIZADO": "autorizado",
+                     "EN_TRANSITO": "en tránsito", "RECIBIDO": "recibido", "EN_EJECUCION": "en ejecución",
+                     "EJECUTADA": "ejecutada", "FINALIZADA": "finalizada", "ORDEN_GENERADA": "orden de compra emitida"}
+
+
+def progress(order):
+    """Seguimiento para Comercial (observaciones al demo v0.6): cuánto de su pedido está completo, por línea, y cómo se
+    está completando, sin el detalle de la evaluación de opciones."""
+    from .stock import line_reserved
+    lineas = []
+    for line in order.lines:
+        if not line.activa:
+            continue
+        cant = line.cantidad or 0
+        listo = min(cant, line.despachado + line_reserved(line))
+        en_curso = [f"{RUTAS[p['ruta']]}: {ESTADO_PRESOL_TXT.get(p['estado'], p['estado'].lower().replace('_', ' '))}"
+                    for p in presolicitudes(order, line.product_code)
+                    if p["estado"] not in ("RECHAZADA", "RECHAZADO", "DESESTIMADA", "ANULADA", "DESAPROBADA")]
+        lineas.append({"line": line, "cantidad": cant, "listo": listo, "pct": round(100.0 * listo / cant, 1) if cant else 100.0,
+                       "en_curso": en_curso})
+    return {"pct": order.cobertura_unidades, "pct_lineas": order.cobertura_lineas, "lineas": lineas,
+            "completas": sum(1 for x in lineas if x["pct"] >= 100), "total": len(lineas)}
+
+
+REVIEW_TYPES = ("PRESOLICITUD_AUTOMATICA", "OV_FALTANTE", "OV_CONDICION_CLIENTE")
+
+
+def review_task(order):
+    """Tarea abierta de revisión de opciones/pre-solicitudes de la OV (para designarla a otra persona)."""
+    from ..models import Alert
+    from .alerts import CERRADOS
+    q = select(Alert).where(Alert.entidad == "SalesOrder", Alert.entidad_id == str(order.id),
+                            Alert.type_code.in_(REVIEW_TYPES), Alert.estado.notin_(CERRADOS)).order_by(Alert.id)
+    return db().execute(q).scalars().first()
+
+
+def delegate(order, user, user_id, comentario=""):
+    """El coordinador de almacén puede derivar la revisión de las opciones a otra persona de su área."""
+    from . import alerts
+    a = review_task(order)
+    if a is None:
+        raise BusinessError("No hay una tarea de revisión abierta para esta OV.")
+    alerts.assign(a, user, user_id, comentario or f"Revisar opciones y pre-solicitudes de la OV {order.numero}")
+    return a

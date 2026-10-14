@@ -69,7 +69,8 @@ def seed_catalogs():
             s.add(RolePermission(role_code=role, perm_code=perm, origen=origen, fuente=fuente))
     for code, nombre, area, grupo, prio, roles, origen, fuente, cond, correo in C.ALERT_TYPES:
         s.add(AlertType(code=code, nombre=nombre, area=area, grupo=grupo, prioridad=prio, roles=roles,
-                        origen_destinatarios=origen, fuente=fuente, condicion=cond, enviar_correo=correo))
+                        origen_destinatarios=origen, fuente=fuente, condicion=cond, enviar_correo=correo,
+                        naturaleza="INFORMATIVA" if code in C.ALERT_INFORMATIVAS else "TAREA"))
     for key, valor, tipo, grupo, desc, estado, fuente in C.PARAMS:
         s.add(Param(key=key, valor={"v": valor}, tipo=tipo, grupo=grupo, descripcion=desc, estado=estado, fuente=fuente))
     for code, nombre, uso, prio, res, fuente, obs in C.WAREHOUSES:
@@ -85,6 +86,41 @@ def seed_catalogs():
     s.flush()
     return True
 
+
+
+def sync_catalogs():
+    """Agrega a una base existente los roles, permisos, asignaciones, tipos de alerta y parámetros nuevos del catálogo,
+    sin modificar lo que ya fue configurado (no destructivo). Devuelve cuántos registros agregó."""
+    s = db()
+    n = 0
+    for code, nombre, area, fuente, obs in C.ROLES:
+        if s.get(Role, code) is None:
+            s.add(Role(code=code, nombre=nombre, area=area, fuente=fuente, observacion=obs))
+            n += 1
+    for code, nombre, modulo, tipo in C.PERMISSIONS:
+        if s.get(Permission, code) is None:
+            s.add(Permission(code=code, nombre=nombre, modulo=modulo, tipo=tipo))
+            n += 1
+    s.flush()
+    existentes = {(rp.role_code, rp.perm_code) for rp in s.execute(select(RolePermission)).scalars()}
+    for role, perms in C.ROLE_PERMISSIONS.items():
+        for perm, origen, fuente in perms:
+            if (role, perm) not in existentes:
+                s.add(RolePermission(role_code=role, perm_code=perm, origen=origen, fuente=fuente))
+                existentes.add((role, perm))
+                n += 1
+    for code, nombre, area, grupo, prio, roles, origen, fuente, cond, correo in C.ALERT_TYPES:
+        if s.get(AlertType, code) is None:
+            s.add(AlertType(code=code, nombre=nombre, area=area, grupo=grupo, prioridad=prio, roles=roles,
+                            origen_destinatarios=origen, fuente=fuente, condicion=cond, enviar_correo=correo,
+                            naturaleza="INFORMATIVA" if code in C.ALERT_INFORMATIVAS else "TAREA"))
+            n += 1
+    for key, valor, tipo, grupo, desc, estado, fuente in C.PARAMS:
+        if s.get(Param, key) is None:
+            s.add(Param(key=key, valor={"v": valor}, tipo=tipo, grupo=grupo, descripcion=desc, estado=estado, fuente=fuente))
+            n += 1
+    s.flush()
+    return n
 
 def _hash_opts():
     m = os.environ.get("PASSWORD_HASH_METHOD")  # solo para acelerar pruebas automatizadas

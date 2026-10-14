@@ -5,6 +5,7 @@
 {% for t in tipos %}
 <form id="{{ t.code }}" class="card" method="post">{{ csrf() }}<input type="hidden" name="code" value="{{ t.code }}">
 <div class="row"><div style="min-width:320px"><b>{{ t.nombre }}</b><br><span class="mono">{{ t.code }}</span> · {{ t.area }} / {{ t.grupo }} · origen destinatarios {{ b(t.origen_destinatarios) }}<br><span class="small muted">Condición: {{ t.condicion }} · Fuente: {{ t.fuente }}</span></div>
+<div><label>Naturaleza</label><select name="naturaleza"><option value="TAREA" {{ 'selected' if t.naturaleza=='TAREA' }}>Tarea (aprobación/atención)</option><option value="INFORMATIVA" {{ 'selected' if t.naturaleza=='INFORMATIVA' }}>Informativa (se reconoce)</option></select></div>
 <div><label>Prioridad</label><select name="prioridad">{% for p in ['ALTA','MEDIA','BAJA'] %}<option {{ 'selected' if t.prioridad==p }}>{{ p }}</option>{% endfor %}</select></div>
 <div><label>Correo</label><select name="enviar_correo"><option value="1" {{ 'selected' if t.enviar_correo }}>Sí</option><option value="0" {{ 'selected' if not t.enviar_correo }}>No (solo panel)</option></select></div>
 <div><label>Activa</label><select name="activo"><option value="1" {{ 'selected' if t.activo }}>Sí</option><option value="0" {{ 'selected' if not t.activo }}>No</option></select></div>

@@ -32,7 +32,7 @@
 <input name="descripcion" placeholder="descripción" required><input type="number" step="any" name="cantidad" placeholder="cant." style="width:70px"><button class="small" name="accion" value="incidencia">Registrar</button></form></details>{% endif %}</td></tr>{% endfor %}</table>
 
 {% if r.estado in ['CONFIRMADA','EN_RUTA','CERRADA'] %}
-<h2>Despacho (TO-BE): carga, documentos y salida</h2>
+<h2>Despacho: carga, documentos y salida</h2>
 <p><a class="btn sec" href="{{ url_for('dist.folio', rid=r.id, tipo='preguia') }}" target="_blank">Ver / imprimir pre-guía</a>
 <a class="btn sec" href="{{ url_for('dist.folio', rid=r.id) }}" target="_blank">Imprimir folio de documentos</a></p>
 <div class="grid g2">

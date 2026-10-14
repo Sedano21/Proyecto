@@ -9,10 +9,10 @@ bp = Blueprint("rep", __name__, url_prefix="/informes")
 
 # informe -> (título, permisos que lo habilitan)
 INFORMES = {
-    "comercial": ("Comercial", ("ov.ver",)),
-    "reempaque": ("Reempaque", ("reempaque.ver",)),
-    "produccion": ("Producción", ("produccion.ver",)),
-    "distribucion": ("Distribución", ("distribucion.ver",)),
+    "comercial": ("Comercial", ("informes.comercial",)),
+    "reempaque": ("Reempaque", ("informes.reempaque",)),
+    "produccion": ("Producción", ("informes.produccion",)),
+    "distribucion": ("Distribución", ("informes.distribucion",)),
 }
 
 

@@ -62,7 +62,7 @@ def test_q8_discrepancia_bloquea_y_logistica_aprueba(s, U, new_order):
     o = new_order([("PT-905", 40)])
     r = _ready_route(s, U, o, discrepancia=True)
     a = alerts_of(s, "GUIA_DISCREPANCIA")[0]
-    assert {"JEFE_LOGISTICA", "COORD_LOGISTICA"} <= set(a.roles) and a.estado != "CERRADA"
+    assert {"JEFE_LOGISTICA", "COORD_LOGISTICA"} <= set(a.roles) and a.estado not in ("COMPLETADA", "RECONOCIDA")
     with pytest.raises(BusinessError):  # bloquea la salida
         dist.confirm_departure(r, U("lider.almacen"), CHECK)
     for quien in ("lider.almacen", "coord.distribucion", "seguridad"):
@@ -74,10 +74,10 @@ def test_q8_discrepancia_bloquea_y_logistica_aprueba(s, U, new_order):
     assert alerts_of(s, "SALIDA_CON_DISCREPANCIA")
     dist.confirm_departure(r, U("lider.almacen"), CHECK)
     assert r.estado == "EN_RUTA" and r.checklist["salida_aprobada_por_logistica"]
-    assert a.estado != "CERRADA"  # la guía sigue por resolver
+    assert a.estado not in ("COMPLETADA", "RECONOCIDA")  # la guía sigue por resolver
     dsp.resolve_guide_discrepancy(r, U("coord.distribucion"), "Guía rectificada T001-10")
     s.commit()
-    assert a.estado == "CERRADA" and r.aprobacion_discrepancia["resuelta"]
+    assert a.estado == "COMPLETADA" and r.aprobacion_discrepancia["resuelta"]
 
 
 def test_q8_corregir_y_validar_de_nuevo_desbloquea(s, U, new_order):
@@ -86,7 +86,7 @@ def test_q8_corregir_y_validar_de_nuevo_desbloquea(s, U, new_order):
     lines = [{**e, "guia": e["esperado"], "cargado": e["esperado"]} for e in dist.expected_lines(r)]
     assert dist.register_security_check(r, U("seguridad"), "T001-9", lines) == []
     s.commit()
-    assert alerts_of(s, "GUIA_DISCREPANCIA")[0].estado == "CERRADA"
+    assert alerts_of(s, "GUIA_DISCREPANCIA")[0].estado == "COMPLETADA"
     dist.confirm_departure(r, U("lider.almacen"), CHECK)
 
 

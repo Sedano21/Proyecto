@@ -374,9 +374,9 @@ def confirm_departure(route, user, checklist):
     if not route.seguridad:
         raise BusinessError("Falta la validación de Seguridad de carga contra guía.")
     if not route.carga_validada:
-        raise BusinessError("Falta la validación de la carga por el auxiliar (camión cargado, TO-BE).")
+        raise BusinessError("Falta la validación de la carga por el auxiliar (camión cargado).")
     if not route.autorizacion_seguridad:
-        raise BusinessError("Falta la revisión de documentos de Seguridad (documentos completos, TO-BE).")
+        raise BusinessError("Falta la revisión de documentos de Seguridad (documentos completos).")
     from .despacho import VB_LABEL, missing_exit_approvals
     faltan_vb = missing_exit_approvals(route)
     if faltan_vb:

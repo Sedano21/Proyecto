@@ -85,7 +85,7 @@ def validate_load(route, user, lineas, observacion=""):
         raise BusinessError("La validación de la carga la realiza el auxiliar de despacho (y el chofer).")
     _route_ready(route)
     if not (route.fotos or {}).get("vehiculo"):
-        raise BusinessError("Primero suba la foto del vehículo antes de la estiba (TO-BE).")
+        raise BusinessError("Primero suba la foto del vehículo antes de la estiba.")
     incongruencias = []
     detalle = []
     for grupo in preguia(route):
@@ -108,7 +108,7 @@ def validate_load(route, user, lineas, observacion=""):
         audit(user, "CARGA_INCONGRUENCIA", "Route", route.id, route.carga)
         return incongruencias
     if not (route.fotos or {}).get("mercaderia_cargada"):
-        raise BusinessError("Suba la foto de la mercadería cargada para validar la carga completa (TO-BE).")
+        raise BusinessError("Suba la foto de la mercadería cargada para validar la carga completa.")
     route.carga_validada = True
     alerts.emit("CAMION_CARGADO", f"Camión cargado: ruta #{route.id} ({route.vehicle.placa if route.vehicle else '-'})",
                 ", ".join(f"OV {st.order.numero}" for st in route.stops) + ". Facturación: evaluar pedidos y cargar facturas.",
@@ -188,7 +188,7 @@ def review_documents(route, user, impresos=False):
     """Seguridad: revisa en el sistema que todos los documentos estén cargados e impresos (TO-BE).
     La autorización de la salida la da después el Líder Operativo (Q16)."""
     if not has_perm(user, "distribucion.seguridad"):
-        raise BusinessError("La revisión de documentos la hace Seguridad (TO-BE).")
+        raise BusinessError("La revisión de documentos la hace Seguridad.")
     _route_ready(route)
     if not route.carga_validada:
         raise BusinessError("La carga no está validada por el auxiliar.")

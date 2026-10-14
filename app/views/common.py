@@ -138,12 +138,12 @@ def install(app):
     @app.context_processor
     def _ctx():
         from ..services.stock import stock_freshness
-        from ..services.alerts import visible_alerts
+        from ..services.alerts import inbox
         u = g.get("user")
         abiertas = 0
         if u is not None:
             try:
-                abiertas = len([a for a in visible_alerts(u, solo_abiertas=True)])
+                abiertas = len(inbox(u, solo_abiertas=True))
             except Exception:  # noqa: BLE001
                 abiertas = 0
         return {"csrf_token": csrf_token, "user": u, "perms": g.get("perms", set()), "can": lambda p: p in g.get("perms", set()),

@@ -1,35 +1,60 @@
 {% extends "base.html" %}{% from "_m.html" import b, csrf %}
-{% block content %}
-<h1>Alerta #{{ a.id }} {{ b(a.prioridad) }} {{ b(a.estado) }}</h1>
+{% block content %}{% set tarea = svc.is_task(a) %}{% set cerrada = svc.is_closed(a) %}{% set con_resp = a.asignado_a or a.asignado_rol %}
+<p class="small"><a href="{{ url_for('main.alerts') }}">← Alertas</a></p>
+<h1>{{ 'Tarea' if tarea else 'Aviso' }} #{{ a.id }} {{ b(a.prioridad) }} <span class="b {{ a.estado }}">{{ estado_txt.get(a.estado, a.estado) }}</span></h1>
 <div class="card"><table class="kv">
-<tr><td>Título</td><td><b>{{ a.titulo }}</b></td></tr><tr><td>Mensaje</td><td>{{ a.mensaje }}</td></tr>
-<tr><td>Tipo</td><td>{{ a.type.nombre }} <span class="muted small">({{ a.type.code }}; condición: {{ a.type.condicion }}; fuente: {{ a.type.fuente }})</span></td></tr>
+<tr><td>Título</td><td><b>{{ a.titulo }}</b></td></tr><tr><td>Detalle</td><td style="white-space:pre-line">{{ a.mensaje }}</td></tr>
+<tr><td>Tipo</td><td>{{ a.type.nombre }} · <b>{{ 'Tarea (requiere aprobación o atención)' if tarea else 'Informativa (se reconoce)' }}</b> <span class="muted small">(condición: {{ a.type.condicion }})</span></td></tr>
 <tr><td>Área / grupo</td><td>{{ a.area }} / {{ a.type.grupo }}</td></tr>
-<tr><td>Destinatarios</td><td>Roles: {{ a.roles|join(', ') }} {% if a.usuarios %}· Usuarios: {{ a.usuarios|join(', ') }}{% endif %}</td></tr>
+<tr><td>Destinatarios</td><td>{{ a.roles|join(', ') }}</td></tr>
 <tr><td>Entidad</td><td>{{ a.entidad }} {{ a.entidad_id }}
-{% if not a.entidad_id %}{% if a.entidad=='UploadBatch' %} · <a href="{{ url_for('alm.uploads') }}">ver cargas</a>{% elif a.entidad=='ProductionRequest' %} · <a href="{{ url_for('prod.reports') }}">ver partes de producción</a>{% elif a.entidad=='PriceListMeta' %}{% endif %}{% elif a.entidad=='SalesOrder' %} · <a href="{{ url_for('com.order_detail', oid=a.entidad_id) }}">abrir OV</a>{% elif a.entidad=='Route' %} · <a href="{{ url_for('dist.route_detail', rid=a.entidad_id) }}">abrir ruta</a>
+{% if not a.entidad_id %}{% if a.entidad=='UploadBatch' %} · <a href="{{ url_for('alm.uploads') }}">ver cargas</a>{% elif a.entidad=='ProductionRequest' %} · <a href="{{ url_for('prod.reports') }}">ver partes de producción</a>{% elif a.entidad=='PriceListMeta' %}{% endif %}{% elif a.entidad=='SalesOrder' %} · <a href="{{ url_for('com.order_detail', oid=a.entidad_id) }}">abrir OV</a>{% if a.type_code in ['PRESOLICITUD_AUTOMATICA','OV_FALTANTE'] and can('ov.opciones') %} · <a href="{{ url_for('com.order_options', oid=a.entidad_id) }}">ver opciones evaluadas y pre-solicitudes</a>{% endif %}{% elif a.entidad=='Route' %} · <a href="{{ url_for('dist.route_detail', rid=a.entidad_id) }}">abrir ruta</a>
 {% elif a.entidad=='ProductionRequest' %} · <a href="{{ url_for('prod.request_detail', rid=a.entidad_id) }}">abrir solicitud</a>{% elif a.entidad=='PurchaseRequest' %} · <a href="{{ url_for('buy.purchase_detail', pid=a.entidad_id) }}">abrir compra</a>
 {% elif a.entidad=='RepackRequest' %} · <a href="{{ url_for('alm.repack_detail', rid=a.entidad_id) }}">abrir reempaque</a>{% elif a.entidad=='Transfer' %} · <a href="{{ url_for('alm.transfers') }}">ver traslados</a>
 {% elif a.entidad=='ImportShipment' %} · <a href="{{ url_for('buy.import_detail', sid=a.entidad_id) }}">abrir importación</a>{% elif a.entidad=='Certificate' %} · <a href="{{ url_for('cal.certificate_detail', cid=a.entidad_id) }}">abrir certificado</a>
 {% elif a.entidad=='StockLot' %} · <a href="{{ url_for('cal.home') }}">ver liberaciones</a>{% elif a.entidad=='UploadBatch' %} · <a href="{{ url_for('alm.upload_detail', bid=a.entidad_id) }}">abrir carga</a>
-{% elif a.entidad=='PriceListMeta' %} · <a href="{{ url_for('com.prices') }}">ver listas de precios</a>{% elif a.entidad=='Liquidation' %} · <a href="{{ url_for('prod.liquidations') }}">ver liquidaciones</a>{% elif a.entidad=='OVChangeRequest' %} · <a href="{{ url_for('com.orders') }}">ver OV</a>{% elif a.entidad=='PhysicalCount' %} · <a href="{{ url_for('alm.count_detail', cid=a.entidad_id) }}">abrir conteo</a>{% endif %}</td></tr>
-<tr><td>Asignado a</td><td>{{ a.asignado.nombre if a.asignado else '—' }}</td></tr>
+{% elif a.entidad=='PriceListMeta' %} · <a href="{{ url_for('com.prices') }}">ver listas de precios</a>{% elif a.entidad=='Liquidation' %} · <a href="{{ url_for('prod.liquidations') }}">ver liquidaciones</a>{% elif a.entidad=='OVChangeRequest' %} · <a href="{{ url_for('com.orders') }}">ver OV</a>{% elif a.entidad=='Alert' %} · <a href="{{ url_for('main.alert_detail', aid=a.entidad_id) }}">abrir tarea original</a>{% elif a.entidad=='PhysicalCount' %} · <a href="{{ url_for('alm.count_detail', cid=a.entidad_id) }}">abrir conteo</a>{% endif %}</td></tr>
+<tr><td>Responsable</td><td>{% if a.asignado %}{{ a.asignado.nombre }}{% elif a.asignado_rol %}Cargo: {{ a.asignado_rol }}{% else %}<span class="muted">sin designar</span>{% endif %}</td></tr>
 <tr><td>Creada</td><td>{{ a.creado_ts|d }}</td></tr>
-{% if a.estado=='CERRADA' %}<tr><td>Cierre</td><td>{{ a.cerrado_ts|d }} · Motivo: {{ a.motivo_cierre }} · Acción: {{ a.accion_tomada }}</td></tr>{% endif %}
+{% if cerrada %}<tr><td>Resultado</td><td>{{ a.cerrado_ts|d }} · {{ a.resultado }} · {{ a.motivo_cierre }} · {{ a.accion_tomada }}{% if a.evidencia %} · <a href="{{ url_for('main.evidence', name=a.evidencia) }}">evidencia</a>{% endif %}</td></tr>
+{% if a.proceso_pendiente %}<tr><td>Proceso posterior pendiente</td><td><span class="b MEDIA">{{ a.proceso_pendiente }}</span></td></tr>{% endif %}{% endif %}
 </table></div>
-{% if a.estado != 'CERRADA' and can('alertas.gestionar') %}
+{% if not cerrada %}
+{% if not tarea %}<form class="card" method="post" action="{{ url_for('main.alert_action', aid=a.id, accion='reconocer') }}">{{ csrf() }}<h3>Aviso informativo</h3>
+<p class="small muted">No requiere acción: márquelo como leído.</p><input name="comentario" placeholder="Comentario (opcional)" style="width:100%"><p><button>Reconocer</button></p></form>
+{% else %}
+{% if puede_decidir %}<form class="card" method="post">{{ csrf() }}<h3>Decisión</h3>
+<p class="small muted">Se aplica la misma regla de negocio de su pantalla y el sistema deriva el siguiente paso al área que corresponde.{% if motivo_aprobar %} Esta aprobación está fuera del parámetro establecido: el motivo es obligatorio.{% endif %} Para desaprobar el motivo siempre es obligatorio.</p>
+<input name="motivo" placeholder="Motivo" style="width:100%" {{ 'required' if motivo_aprobar }}>
+<p><button formaction="{{ url_for('main.alert_action', aid=a.id, accion='aprobar') }}">Confirmar / aprobar</button>
+<button class="sec" formaction="{{ url_for('main.alert_action', aid=a.id, accion='desaprobar') }}">Desistir / desaprobar</button></p></form>{% endif %}
 <div class="grid g2">
-<form class="card" method="post" action="{{ url_for('main.alert_action', aid=a.id, accion='asignar') }}">{{ csrf() }}<h3>Asignar</h3>
-<select name="user_id">{% for u in users %}<option value="{{ u.id }}">{{ u.nombre }} ({{ u.role_code }})</option>{% endfor %}</select>
-<label>Comentario</label><input name="comentario" style="width:100%"><p><button>Asignar</button></p></form>
-<form class="card" method="post" action="{{ url_for('main.alert_action', aid=a.id, accion='atender') }}">{{ csrf() }}<h3>Marcar en atención</h3>
-<label>Comentario</label><input name="comentario" style="width:100%"><p><button>En atención</button></p></form>
-<form class="card" method="post" action="{{ url_for('main.alert_action', aid=a.id, accion='cerrar') }}">{{ csrf() }}<h3>Cerrar</h3>
-<label>Motivo (obligatorio)</label><input name="motivo" required style="width:100%"><label>Acción tomada (obligatoria)</label><input name="accion" required style="width:100%"><p><button>Cerrar alerta</button></p></form>
-</div>{% endif %}
+{% if can('alertas.gestionar') or svc.is_assignee(user, a) %}
+<form class="card" method="post" action="{{ url_for('main.alert_action', aid=a.id, accion='asignar') }}">{{ csrf() }}<h3>Designar</h3>
+<p class="small muted">Solo a personas o cargos de su área; a otras áreas el sistema deriva según las reglas del proceso.</p>
+<label>Persona</label><select name="user_id"><option value="">—</option>{% for u in users %}<option value="{{ u.id }}">{{ u.nombre }} ({{ u.role.nombre }})</option>{% endfor %}</select>
+<label>o cargo</label><select name="rol"><option value="">—</option>{% for r in roles %}<option value="{{ r.code }}">{{ r.nombre }}</option>{% endfor %}</select>
+<label>Comentario</label><input name="comentario" style="width:100%"><p><button>Designar</button>
+<button class="sec" formaction="{{ url_for('main.alert_action', aid=a.id, accion='tomar') }}">Tomar yo la tarea</button></p></form>{% endif %}
+{% if con_resp and a.estado != 'INCIDENCIA' %}
+{% if svc.is_assignee(user, a) and a.estado != 'EN_EJECUCION' %}<form class="card" method="post" action="{{ url_for('main.alert_action', aid=a.id, accion='atender') }}">{{ csrf() }}<h3>En ejecución</h3>
+<label>Comentario</label><input name="comentario" style="width:100%"><p><button>Comencé a trabajar</button></p></form>{% endif %}
+<form class="card" method="post" enctype="multipart/form-data" action="{{ url_for('main.alert_action', aid=a.id, accion='completar') }}">{{ csrf() }}<h3>Completar</h3>
+<label>Detalle (obligatorio)</label><input name="motivo" required style="width:100%"><label>Acción tomada / evidencia (obligatoria)</label><input name="accion" required style="width:100%">
+<label>Evidencia (foto o PDF)</label><input type="file" name="evidencia" accept="image/*,.pdf">
+<label>Proceso posterior pendiente (opcional: recepción, contabilización…)</label><input name="proceso_pendiente" style="width:100%"><p><button>Completar</button></p></form>
+{% endif %}
+<form class="card" method="post" action="{{ url_for('main.alert_action', aid=a.id, accion='incidencia') }}">{{ csrf() }}<h3>Registrar incidencia</h3>
+<p class="small muted">Discrepancia o impedimento. No cierra ni elimina la tarea.</p>
+<label>Situación</label><textarea name="situacion" required></textarea><label>Acciones tomadas</label><input name="acciones" style="width:100%">
+<label>Responsable</label><select name="responsable_id">{% for u in todos %}<option value="{{ u.id }}" {{ 'selected' if u.id==user.id }}>{{ u.nombre }}</option>{% endfor %}</select><p><button class="sec">Registrar incidencia</button></p></form>
+</div>{% endif %}{% endif %}
+{% if a.incidents %}<div class="card"><h3>Incidencias</h3><table class="small"><tr><th>#</th><th>Fecha</th><th>Situación</th><th>Acciones</th><th>Responsable</th><th>Estado</th><th>Resolución</th></tr>
+{% for i in a.incidents %}<tr><td>{{ i.id }}</td><td>{{ i.ts|d }}</td><td>{{ i.situacion }}</td><td style="white-space:pre-line">{{ i.acciones }}</td><td>{{ i.responsable.nombre if i.responsable }}</td><td>{{ b(i.estado) }}</td>
+<td>{% if i.estado == 'ABIERTA' %}<form method="post" action="{{ url_for('main.alert_action', aid=a.id, accion='resolver') }}">{{ csrf() }}<input type="hidden" name="inc_id" value="{{ i.id }}"><input name="acciones" placeholder="Acciones adicionales"> <input name="resolucion" required placeholder="Resolución"> <button class="small">Resolver</button></form>{% else %}{{ i.resolucion }} ({{ i.resuelto_ts|d }}){% endif %}</td></tr>{% endfor %}</table></div>{% endif %}
 <form class="card" method="post" action="{{ url_for('main.alert_action', aid=a.id, accion='comentar') }}">{{ csrf() }}<h3>Comentar</h3>
 <textarea name="comentario" required></textarea><p><button class="sec">Agregar comentario</button></p></form>
 <h2>Historial</h2>
 <table><tr><th>Fecha</th><th>Usuario</th><th>Acción</th><th>Comentario</th></tr>
-{% for e in a.events %}<tr><td>{{ e.ts|d }}</td><td>{{ e.user.nombre if e.user else 'Sistema' }}</td><td>{{ e.accion }}</td><td>{{ e.comentario }}</td></tr>{% endfor %}</table>
+{% for e in a.events %}<tr><td>{{ e.ts|d }}</td><td>{{ e.user.nombre if e.user else 'Sistema' }}</td><td>{{ estado_txt.get(e.accion, e.accion) }}</td><td>{{ e.comentario }}</td></tr>{% endfor %}</table>
 {% endblock %}

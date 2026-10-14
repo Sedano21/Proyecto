@@ -371,6 +371,8 @@ def evaluate_order(order, user=None, motivo="CREACION", hoy=None):
         order.motivo_detencion = ""
     s.flush()
     _emit_evaluation_alerts(order, resumen, user, motivo, tenia_reservas)
+    from .customer_conditions import check_condition_alerts
+    check_condition_alerts(order, user)
     audit(user, f"OV_EVALUADA_{motivo}", "SalesOrder", order.numero,
           {"cobertura_unidades": order.cobertura_unidades, "cobertura_lineas": order.cobertura_lineas,
            "lineas": resumen})

@@ -2,7 +2,7 @@
 {% block content %}
 <h1>Alertas</h1>
 <form class="row card" method="get">
-  <div><label>Estado</label><select name="estado"><option value="">(todos)</option>{% for e in ['NUEVA','ASIGNADA','EN_ATENCION','CERRADA'] %}<option {{ 'selected' if f.estado==e }}>{{ e }}</option>{% endfor %}</select></div>
+  <div><label>Estado</label><select name="estado"><option value="">(todos)</option>{% for e in estados %}<option value="{{ e }}" {{ 'selected' if f.estado==e }}>{{ estado_txt[e] }}</option>{% endfor %}</select></div>
   <div><label>Área</label><select name="area"><option value="">(todas)</option>{% for a in areas %}<option {{ 'selected' if f.area==a }}>{{ a }}</option>{% endfor %}</select></div>
   <div><label>Urgencia</label><select name="prioridad"><option value="">(todas)</option>{% for p in ['ALTA','MEDIA','BAJA'] %}<option {{ 'selected' if f.prioridad==p }}>{{ p }}</option>{% endfor %}</select></div>
   <div><label>Grupo</label><select name="grupo"><option value="">(todos)</option>{% for gname in grupos_tipo %}<option {{ 'selected' if f.grupo==gname }}>{{ gname }}</option>{% endfor %}</select></div>
@@ -11,7 +11,7 @@
   <div><button>Aplicar</button> {% if can('export.datos') %}<a class="btn sec" href="{{ url_for('main.export', entidad='alertas') }}">Exportar</a>{% endif %}</div>
 </form>
 {% macro tabla(lista) %}<div class="tbl"><table><tr><th>#</th><th>Urgencia</th><th>Título</th><th>Tipo</th><th>Área</th><th>Estado</th><th>Asignado</th><th>Creada</th></tr>
-{% for a in lista %}<tr><td><a href="{{ url_for('main.alert_detail', aid=a.id) }}">{{ a.id }}</a></td><td>{{ b(a.prioridad) }}</td><td>{{ a.titulo }}</td><td class="small">{{ a.type.nombre }}</td><td>{{ a.area }}</td><td>{{ b(a.estado) }}</td><td>{{ a.asignado.nombre if a.asignado else '' }}</td><td class="small">{{ a.creado_ts|d }}</td></tr>
+{% for a in lista %}<tr><td><a href="{{ url_for('main.alert_detail', aid=a.id) }}">{{ a.id }}</a></td><td>{{ b(a.prioridad) }}</td><td>{{ a.titulo }}</td><td class="small">{{ a.type.nombre }}</td><td>{{ a.area }}</td><td><span class="b {{ a.estado }}">{{ estado_txt.get(a.estado, a.estado) }}</span>{% if a.type and a.type.naturaleza == 'INFORMATIVA' %} <span class="muted small">aviso</span>{% endif %}</td><td>{{ a.asignado.nombre if a.asignado else a.asignado_rol }}</td><td class="small">{{ a.creado_ts|d }}</td></tr>
 {% else %}<tr><td colspan="8" class="muted">Sin alertas</td></tr>{% endfor %}</table></div>{% endmacro %}
 {% if agrupar %}{% for key, lista in grupos.items() %}<h3>{{ key[0] }} · {{ b(key[1]) }} <span class="muted">({{ lista|length }})</span></h3>{{ tabla(lista) }}{% else %}<p class="muted">Sin alertas</p>{% endfor %}
 {% else %}{{ tabla(rows) }}{% endif %}
