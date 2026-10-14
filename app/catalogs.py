@@ -537,6 +537,12 @@ ALERT_TYPES += [
      "OV lista para preparar: picking programado con auxiliar propuesto para revisar y asignar.", True),
     ("PICKING_ASIGNADO", "Picking asignado", "Almacén", "Preparación", "MEDIA", [], "DEFINIDO",
      f"{O6}: al auxiliar le llega su programación de picking", "Se le asignó un picking (persona o grupo).", True),
+    ("FLOTA_DOCUMENTO", "Documento del vehículo por vencer o vencido (SOAT, revisión, impuestos)", "Distribución", "Flota",
+     "ALTA", _DIST, "DEFINIDO", f"{O6}: alerta cuando el SOAT, impuestos u otros estén por vencer",
+     "Vencimiento dentro de los días de aviso configurados.", True),
+    ("FLOTA_MANTENIMIENTO", "Mantenimiento de vehículo por kilometraje o fecha", "Distribución", "Flota", "MEDIA", _DIST,
+     "DEFINIDO", f"{O6}: alertas respecto a los kilometrajes y estado de mantenimiento",
+     "El vehículo se acerca al kilometraje o fecha del próximo mantenimiento.", True),
     ("TAREA_ASIGNADA", "Tarea designada a usted o a su cargo", "General", "Tareas", "MEDIA", [], "DEFINIDO",
      f"{O6}: el designado recibe la tarea en su inicio y una alerta", "Una persona de su área le designó una tarea.", True),
 ]
@@ -618,6 +624,27 @@ PARAMS = [
     ("dias_picking_antes_despacho", 1, "int", "Almacén",
      "Días antes de la fecha comprometida en que el sistema preprograma el picking (nunca antes de hoy).",
      "PROPUESTO", "Observaciones al demo v0.6: preprogramación del picking; anticipación por validar"),
+    ("capacidad_lineas", [
+        {"grupo": "IQ+CIMB", "proceso": "SELECCION", "lineas": ["CIMBRIA"], "kg_dia": 25500},
+        {"grupo": "TRUER", "proceso": "SELECCION", "lineas": ["TRUER"], "kg_dia": 12750},
+        {"grupo": "SEL. MANUAL", "proceso": "SELECCION", "lineas": ["SEL_MANUAL"], "kg_dia": 4250},
+        {"grupo": "RAUMAK 1 Y 2", "proceso": "ENVASADO", "lineas": ["R1", "R2"], "kg_dia": 18700},
+        {"grupo": "RAUMAK 3", "proceso": "ENVASADO", "lineas": ["R3"], "kg_dia": 29750},
+        {"grupo": "ENV. MANUAL", "proceso": "ENVASADO", "lineas": ["ENV_MANUAL"], "kg_dia": 2550}], "list", "Producción",
+     "Capacidad por línea (kg/día) por proceso. La relación de cada grupo con las líneas del sistema (IQ+CIMB = Cimbria; "
+     "RAUMAK 1 y 2 = R1 y R2; RAUMAK 3 = R3) es una interpretación por confirmar.",
+     "DEFINIDO", "Tabla de capacidades enviada por el usuario (14-oct-2026); la correspondencia con los códigos de línea es propuesta"),
+    ("dias_no_operativos", [], "list", "Producción",
+     "Días de la semana sin operación (0 = lunes … 6 = domingo) para calcular la capacidad del periodo.",
+     "PENDIENTE", "Observaciones al demo v0.6: capacidad vs producido; calendario de operación por confirmar (hoy se cuentan todos los días)"),
+    ("dias_aviso_documentos_vehiculo", 15, "int", "Distribución",
+     "Días de anticipación para alertar el vencimiento de SOAT, revisión técnica, impuestos y otros documentos del vehículo.",
+     "PROPUESTO", "Observaciones al demo v0.6; anticipación por validar"),
+    ("margen_km_mantenimiento", 500, "float", "Distribución",
+     "Kilómetros antes del próximo mantenimiento en que se alerta.", "PROPUESTO", "Observaciones al demo v0.6; margen por validar"),
+    ("exigir_fotos_vehiculo", True, "bool", "Distribución",
+     "El chofer sube foto del vehículo al salir (antes de autorizar la salida) y al retornar (vehículos propios).",
+     "DEFINIDO", "Observaciones al demo v0.6: antes de cada ruta el chofer sube foto de cómo saca el carro y al retornar"),
     ("plazo_max_reserva_dias", 7, "int", "Almacén",
      "Plazo máximo de reserva por el espacio físico del almacén: el stock de una OV se reserva recién desde esta cantidad de "
      "días antes de la fecha comprometida (antes solo se calcula la cobertura proyectada) y se alerta si una reserva supera el plazo.",
@@ -907,6 +934,7 @@ PRODUCTION_LINES = [
     ("TRUER", "Línea Truer", "LINEA TRUER.pdf"),
     ("CIMBRIA", "Línea Cimbria", "Linea cimbria.pdf"),
     ("SEL_MANUAL", "Selección manual", "SEL-MANUAL.pdf"),
+    ("ENV_MANUAL", "Envasado manual", "Tabla de capacidad por línea (14-oct-2026)"),
 ]
 
 # Límites críticos de humedad PCC1 (REG-HACCP-CAL-002)

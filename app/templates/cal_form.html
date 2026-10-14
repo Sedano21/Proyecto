@@ -6,8 +6,12 @@
 {% if formato=='FUMIGACION' %}<div class="note info small">Si se asocia un lote: con fecha de inicio pasa a "En fumigación"; con fecha de fin (desactivación) pasa a "Pendiente de revisión" para liberación.</div>{% endif %}
 <form method="post" class="card">{{ csrf() }}<div class="row">
 <div><label>Fecha</label><input type="date" name="fecha" value="{{ today.isoformat() }}"></div>
-<div><label>Lote en stock (opcional)</label><select name="lot_id"><option value="">(ninguno)</option>{% for l in lots %}<option value="{{ l.id }}" {{ 'selected' if lot_id==l.id|string }}>{{ l.product_code }} {{ pd(l.product_code) }} · {{ l.lote }} · {{ l.warehouse_code }} · {{ l.estado }}</option>{% endfor %}</select></div>
-<div><label>Producto (si no hay lote)</label><input name="product_code"></div><div><label>Lote (texto)</label><input name="lote"></div></div>
+{% set sel = lots|selectattr('id', 'equalto', lot_id|int)|first if lot_id else None %}
+<div class="grow"><label for="cal_prod">Producto</label><input id="cal_prod" name="product_code" list="cal_prods" value="{{ sel.product_code if sel else '' }}" placeholder="Código o descripción" autocomplete="off">
+<datalist id="cal_prods">{% for c in lots|map(attribute='product_code')|unique %}<option value="{{ c }}">{{ pd(c)|striptags }}</option>{% endfor %}</datalist></div>
+<div><label for="cal_lot">Lote en stock</label><select id="cal_lot" name="lot_id"><option value="">(seleccione el producto o escriba el lote)</option>{% for l in lots %}<option value="{{ l.id }}" data-prod="{{ l.product_code }}" {{ 'selected' if lot_id==l.id|string }}>{{ l.lote }} · {{ l.warehouse_code }} · vence {{ l.fecha_venc|d }} · {{ l.estado }}</option>{% endfor %}</select></div>
+<div><label for="cal_lote_txt">o lote (texto, si no está en stock)</label><input id="cal_lote_txt" name="lote"></div></div>
+<script>(function(){var p=document.getElementById('cal_prod'),s=document.getElementById('cal_lot');function f(){var v=(p.value||'').trim().toUpperCase();for(var i=1;i<s.options.length;i++){var o=s.options[i];o.hidden=!!v&&o.dataset.prod!==v;}if(s.selectedIndex>0&&s.options[s.selectedIndex].hidden)s.selectedIndex=0;}p.addEventListener('input',f);p.addEventListener('change',f);f();})();</script>
 <div class="row">{% for key, label, tipo in fdef[2] %}<div>
 <label>{{ label }}</label>{% if tipo=='textarea' %}<textarea name="{{ key }}" style="min-width:320px"></textarea>{% elif tipo=='bool' %}<select name="{{ key }}"><option value="">-</option><option value="1">Conforme / Sí</option><option value="0">No conforme / No</option></select>
 {% elif tipo=='pcc1' %}<select name="{{ key }}">{% for c, n, l in pcc1 %}<option value="{{ c }}">{{ n }} (≤{{ l }}%)</option>{% endfor %}</select>{% elif tipo=='date' %}<input type="date" name="{{ key }}">{% elif tipo=='number' %}<input type="number" step="any" name="{{ key }}">{% else %}<input name="{{ key }}">{% endif %}</div>{% endfor %}</div>

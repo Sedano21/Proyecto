@@ -144,6 +144,12 @@ def liquidations():
 def plan():
     """Planeamiento diario, semanal y mensual de Producción vs liquidación (tasa de cumplimiento)."""
     from ..catalogs import PRODUCTION_LINES
+    from ..models import ProductionPlan
+    if request.method == "POST" and request.form.get("accion") == "modificar":
+        f = request.form
+        pl = db().get(ProductionPlan, int(f.get("plan_id") or 0)) or abort(404)
+        return act(lambda: psvc.update_plan(g.user, pl, f_float("cantidad", True), f.get("comentario", "")),
+                   "Programación modificada.", url_for("prod.plan", periodo=pl.periodo))
     if request.method == "POST":
         f = request.form
         return act(lambda: psvc.add_plan(g.user, f.get("periodo"), f_date("fecha", True), f.get("product_code", "").strip().upper().split(" ")[0],
@@ -155,7 +161,12 @@ def plan():
     graf = charts.line([("Plan", [(f"{k:%d/%m}", v["plan"]) for k, v in d["serie"]]),
                         ("Real (liquidado)", [(f"{k:%d/%m}", v["real"]) for k, v in d["serie"]])], "und", title="Plan vs real")
     products = list(db().execute(select(Product).where(Product.tipo.in_(["PT", "GR", "MP", "C3"])).order_by(Product.code)).scalars())
-    return render_template("prod_plan.html", d=d, graf=graf, products=products, lineas=PRODUCTION_LINES, hoy=date.today())
+    entradas = list(db().execute(select(ProductionPlan).where(ProductionPlan.periodo == d["periodo"],
+                                                              ProductionPlan.fecha >= psvc._inicio(d["periodo"], d["desde"]),
+                                                              ProductionPlan.fecha <= d["hasta"])
+                                 .order_by(ProductionPlan.fecha.desc(), ProductionPlan.id.desc())).scalars())
+    return render_template("prod_plan.html", d=d, graf=graf, products=products, lineas=PRODUCTION_LINES, hoy=date.today(),
+                           entradas=entradas)
 
 
 @bp.route("/partes", methods=["GET", "POST"])
@@ -184,7 +195,8 @@ def reports():
             f_float("presentacion_kg"), f_float("unidades"), f_float("sobrante_kg") or 0, f.get("of", ""), f.get("op", ""),
             f.get("turno", ""), f.get("hora_inicio", ""), f.get("hora_fin", ""), f_float("horas"), int(ops) if ops else None,
             f.get("cliente", ""), f.get("mp_codigo", "").strip().upper(), f.get("lote", "").strip(), f.get("estado", "EN PROCESO"),
-            f.get("observacion", "")), lambda r: f"Parte registrado: rendimiento {r.rendimiento_pct}%, desmedro {r.desmedro_pct}%.",
+            f.get("observacion", ""), int(f["parada_min"]) if (f.get("parada_min") or "").strip().isdigit() else None,
+            f.get("motivo_parada", "")), lambda r: f"Parte registrado: rendimiento {r.rendimiento_pct}%, desmedro {r.desmedro_pct}%.",
             url_for("prod.reports"))
     rows = list(db().execute(select(ProductionReport).order_by(ProductionReport.fecha.desc(), ProductionReport.id.desc())
                              .limit(300)).scalars())

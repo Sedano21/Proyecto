@@ -65,10 +65,13 @@ PAGES = ["/", "/alertas", "/alertas?agrupar=area", "/alertas?agrupar=grupo&prior
          "/almacen/cargas/nueva?tipo=MERCADO",
          # v0.7: mercado por origen, comportamiento de clientes
          "/ov/mercado/analisis", "/ov/mercado/informe", "/informes/comercial/cliente/1", "/ov/clientes?grupo=X&canal=Y",
-         "/informes/almacen", "/almacen/picking", "/almacen/picking?vista=semana", "/almacen/picking/formato"] + \
+         "/informes/almacen", "/almacen/picking", "/almacen/picking?vista=semana", "/almacen/picking/formato",
+         "/distribucion/flota/seguimiento", "/distribucion/flota/vehiculo/1", "/distribucion/flota/vehiculo/1?fecha=2026-10-14",
+         "/informes/produccion?agrupar=MES", "/informes/produccion?agrupar=N&n=3", "/distribucion/incidencias?fecha=2026-10-14",
+         ] + \
         [f"/calidad/registro/nuevo/{f}" for f in ["MUESTREO", "RECEPCION_MP", "FUMIGACION", "NO_CONFORME", "QUEJA", "NC_ACCION",
                                                   "CONTROL_PESOS", "CONTROL_GRANOS", "RECEPCION_IMPORTADO", "VEHICULO",
-                                                  "DISENO_BOBINA", "PROCESO", "INSPECCION_CARGA"]]
+                                                  "DISENO_BOBINA", "PROCESO", "INSPECCION_CARGA", "ANALISIS_LOTE"]]
 
 
 @pytest.mark.parametrize("username", ["gerente.general", "sistemas", "coord.almacen", "jefe.calidad", "coord.distribucion",

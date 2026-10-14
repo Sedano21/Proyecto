@@ -381,6 +381,9 @@ def confirm_departure(route, user, checklist):
     faltan_vb = missing_exit_approvals(route)
     if faltan_vb:
         raise BusinessError("Falta el visto bueno de: " + ", ".join(VB_LABEL.get(r, r) for r in faltan_vb) + " (Q16).")
+    from .despacho import needs_vehicle_photos
+    if needs_vehicle_photos(route) and not (route.fotos or {}).get("vehiculo_salida"):
+        raise BusinessError("El chofer debe subir la foto de cómo saca el vehículo antes de la salida.")
     if route.seguridad.get("discrepancias"):
         if param("bloquear_salida_con_discrepancia", True) and not route.aprobacion_discrepancia:
             raise BusinessError("Salida bloqueada: discrepancias entre carga y guía. Corrija y vuelva a validar, o el Jefe "
@@ -491,18 +494,48 @@ def _incident(user, tipo, stop=None, descripcion="", order=None, route=None, can
     return inc
 
 
-def register_incident(user, tipo, descripcion, stop=None, order=None, route=None, cantidad=None):
-    """Registro de incidencias por el Auxiliar de Despacho (IF §12.3) y su efecto operativo."""
+def todays_orders(fecha=None):
+    """OV llevadas en rutas del día (para elegirlas en la incidencia)."""
+    fecha = fecha or date.today()
+    out = []
+    for r in db().execute(select(Route).where(Route.fecha == fecha, Route.estado.in_(("EN_RUTA", "CERRADA", "CONFIRMADA")))).scalars():
+        for st in r.stops:
+            out.append(st)
+    return out
+
+
+def register_incident(user, tipo, descripcion, stop=None, order=None, route=None, cantidad=None, entrega="", lineas=None):
+    """Registro de incidencias por el Auxiliar de Despacho (IF §12.3) y su efecto operativo. 'entrega' TOTAL / PARCIAL /
+    NINGUNA y, si es parcial, 'lineas' con lo recibido y lo devuelto por producto y su motivo (obs. demo v0.6)."""
     _req(user, "distribucion.incidencia")
+    entrega = (entrega or "").upper()
+    if entrega and entrega not in ("TOTAL", "PARCIAL", "NINGUNA"):
+        raise BusinessError("Indique si la entrega fue total, parcial o no se entregó.")
+    lineas = [x for x in (lineas or []) if (x.get("devuelto") or 0) > 0]
+    if entrega == "PARCIAL":
+        if not lineas:
+            raise BusinessError("En una entrega parcial seleccione los productos devueltos y su cantidad.")
+        if any(not (x.get("motivo") or "").strip() for x in lineas):
+            raise BusinessError("Indique el motivo de cada producto devuelto.")
     from ..catalogs import INCIDENT_ALIASES, INCIDENT_TYPES
     tipo = INCIDENT_ALIASES.get(tipo, tipo)
     if tipo not in dict(INCIDENT_TYPES):
         raise BusinessError("Subtipo de incidencia no válido.")
     if not descripcion.strip():
         raise BusinessError("Describa la incidencia.")
+    if stop is None and order is not None and entrega:
+        stop = active_stop(order) or db().execute(select(RouteStop).where(RouteStop.order_id == order.id)
+                                                   .order_by(RouteStop.id.desc())).scalars().first()
     inc = _incident(user, tipo, stop, descripcion, order, route, cantidad)
+    inc.entrega = entrega
+    inc.lineas = lineas
     o = inc.order
-    if stop is not None:
+    if entrega == "PARCIAL" and o is not None:
+        _return_lines(o, user, lineas, incident_type_name(tipo))
+        if stop is not None:
+            stop.estado = "ENTREGA_PARCIAL"
+            _maybe_close_route(stop.route)
+    elif stop is not None:
         if tipo in ("RECHAZO_CALIDAD", "RECHAZO_OTRO"):
             stop.estado = "RECHAZADO"
             o.estado = "RECHAZADA"
@@ -525,6 +558,32 @@ def register_incident(user, tipo, descripcion, stop=None, order=None, route=None
         route.advertencias = (route.advertencias or []) + [f"Conductor {route.driver.nombre} no disponible: reasignar."]
     audit(user, "INCIDENCIA", "Incident", inc.id, {"tipo": tipo, "descripcion": descripcion})
     return inc
+
+
+def _return_lines(order, user, lineas, motivo):
+    """Rechazo parcial: lo devuelto de cada línea regresa como 'Pendiente de revisión'; lo recibido queda entregado."""
+    from .stock import add_or_increase_lot
+    por_id = {l.id: l for l in order.lines}
+    for x in lineas:
+        l = por_id.get(int(x["line_id"]))
+        if l is None:
+            raise BusinessError("Producto no pertenece a la OV.")
+        dev = float(x["devuelto"])
+        if dev > l.despachado + 1e-9:
+            raise BusinessError(f"{l.product_code}: lo devuelto supera lo despachado ({l.despachado:g}).")
+        l.entregado = max(l.despachado - dev, 0)
+        x["producto"] = l.product_code
+        x["recibido"] = l.entregado
+        lotes = [r for r in l.reservations if r.estado == "CONSUMIDA"]
+        if lotes:
+            ref = lotes[0].lot
+            add_or_increase_lot(l.product_code, ref.warehouse_code, ref.lote, dev, "PENDIENTE_REVISION", ref.fecha_venc,
+                                ref.fecha_fab, origen=f"RETORNO-{order.numero}")
+    if order.estado not in ("ENTREGADA", "ENTREGA_PARCIAL"):
+        order.estado = "ENTREGA_PARCIAL"
+    alerts.emit("STOCK_PENDIENTE_REVISION", f"Rechazo parcial de OV {order.numero}: {motivo}",
+                "; ".join(f"{x['producto']}: devuelto {float(x['devuelto']):g} ({x['motivo']})" for x in lineas),
+                "SalesOrder", order.id, creado_por=user)
 
 
 def _return_goods(order, user, motivo):

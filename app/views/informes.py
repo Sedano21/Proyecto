@@ -69,6 +69,16 @@ def show(nombre):
         d = rsvc.almacen(desde, hasta, wh or None, propios)
         graf = charts.line([("Stock total (unidades)", d["serie"])], "und", title="Stock en cada carga de SAP")
         return render_template("informe_almacen.html", d=d, graf=graf, propios=propios, items=disponibles(), actual=nombre)
+    if nombre == "produccion":
+        d = rsvc.produccion(desde, hasta)
+        cap = rsvc.produccion_capacidad(desde, hasta, request.args.get("agrupar", "DIA"), request.args.get("n") or 7)
+        etiqueta = (lambda b: f"{b:%m/%Y}") if cap["agrupar"] == "MES" else (lambda b: f"{b:%d/%m}")
+        graf_cap = charts.line([(f["grupo"], [(etiqueta(x["bucket"]), x["uso"] or 0) for x in f["serie"]]) for f in cap["filas"]
+                                if f["capacidad"]], "%", title="Uso de capacidad por línea")
+        graf_prog = charts.bars([(f["grupo"], f["cumplimiento"] or 0) for f in cap["filas"] if f["programado"]], "%",
+                                title="Programado vs ejecutado (cumplimiento)", color=2)
+        return render_template("informe_produccion.html", d=d, cap=cap, graf_cap=graf_cap, graf_prog=graf_prog,
+                               charts=charts, items=disponibles(), actual=nombre)
     fn = getattr(rsvc, nombre)
     d = fn(desde, hasta)
     return render_template(f"informe_{nombre}.html", d=d, charts=charts, items=disponibles(), actual=nombre)

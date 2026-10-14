@@ -53,6 +53,7 @@ def dispatch(s, U, o, today):
     lines = [{**e, "guia": e["esperado"], "cargado": e["esperado"], "presentacion_ok": True} for e in dist.expected_lines(r)]
     assert dist.register_security_check(r, U("seguridad"), "T001-DEMO", lines) == []
     dsp.add_photo(r, U("aux.despacho"), "mercaderia_cargada", "carga.jpg")
+    dsp.add_photo(r, U("conductor1"), "vehiculo_salida", "salida.jpg")  # obs. demo v0.6
     assert dsp.validate_load(r, U("aux.despacho"), {}) == []
     for st in r.stops:
         dsp.set_guide(st, U("coord.distribucion"), "", "SISTEMA")

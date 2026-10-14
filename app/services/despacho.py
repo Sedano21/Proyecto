@@ -20,6 +20,9 @@ ETAPAS_FOTO = {
     "inicio_carga": ("Foto del inicio de la carga (Seguridad)", "distribucion.seguridad"),
     "mercaderia_cargada": ("Foto de la mercadería cargada", "distribucion.carga"),
     "incidencia_carga": ("Foto de incidencia durante la carga (Seguridad)", "distribucion.seguridad"),
+    # observaciones al demo v0.6: el chofer registra cómo saca y cómo devuelve el vehículo
+    "vehiculo_salida": ("Foto del vehículo al salir (chofer)", "distribucion.carga"),
+    "vehiculo_retorno": ("Foto del vehículo al retornar (chofer)", "distribucion.carga"),
 }
 
 
@@ -34,7 +37,11 @@ def add_photo(route, user, etapa, archivo, nota=""):
     nombre, perm = ETAPAS_FOTO[etapa]
     if not has_perm(user, perm):
         raise BusinessError(f"Su rol no registra: {nombre}.")
-    _route_ready(route)
+    if etapa == "vehiculo_retorno":
+        if route.estado not in ("EN_RUTA", "CERRADA"):
+            raise BusinessError("La foto de retorno se registra al volver de la ruta.")
+    else:
+        _route_ready(route)
     if not archivo:
         raise BusinessError("Adjunte la fotografía.")
     fotos = dict(route.fotos or {})
@@ -268,10 +275,22 @@ def resolve_guide_discrepancy(route, user, detalle):
     audit(user, "GUIA_DISCREPANCIA_RESUELTA", "Route", route.id, ap)
 
 
-def register_return(route, user):
+def needs_vehicle_photos(route):
+    return bool(param("exigir_fotos_vehiculo", True)) and route.vehicle is not None and route.vehicle.propio
+
+
+def register_return(route, user, km_retorno=None):
     if not (has_perm(user, "distribucion.entrega") or has_perm(user, "distribucion.carga")):
         raise BusinessError("Sin permiso.")
     if route.estado not in ("EN_RUTA", "CERRADA"):
         raise BusinessError("La ruta no está en curso.")
+    if needs_vehicle_photos(route) and not (route.fotos or {}).get("vehiculo_retorno"):
+        raise BusinessError("El chofer debe subir la foto de cómo devuelve el vehículo.")
+    if km_retorno is not None:
+        if route.km_salida is not None and km_retorno < route.km_salida:
+            raise BusinessError("El kilometraje de retorno no puede ser menor al de salida.")
+        route.km_retorno = km_retorno
+        if route.vehicle and (route.vehicle.km_actual is None or km_retorno > route.vehicle.km_actual):
+            route.vehicle.km_actual = km_retorno
     route.retorno_ts = now()
     audit(user, "RETORNO_BASE", "Route", route.id)

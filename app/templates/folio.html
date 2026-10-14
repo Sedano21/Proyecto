@@ -1,6 +1,6 @@
 {% extends "base.html" %}{% from "_m.html" import b %}{% from "_doc.html" import membrete %}
 {% block content %}
-<p class="noprint"><a class="btn sec" href="javascript:window.print()">Imprimir</a> <a href="{{ url_for('dist.route_detail', rid=r.id) }}">Volver a la ruta</a></p>
+<p class="noprint"><a class="btn sec" href="javascript:window.print()">Imprimir</a> {% if tipo != 'paquete' %}<a class="btn" href="{{ url_for('dist.folio', rid=r.id, tipo='paquete') }}">Folio completo (guía, factura y certificados)</a>{% else %}<a class="btn sec" href="{{ url_for('dist.folio', rid=r.id) }}">Solo guía y folio</a>{% endif %} <a href="{{ url_for('dist.route_detail', rid=r.id) }}">Volver a la ruta</a></p>
 {% for g in preguia %}{% set st = g.stop %}
 <div class="doc">{{ membrete() }}
 <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-top:6px"><div class="small">{{ doc_param('empresa_razon_social_completa', empresa) }} · RUC {{ ruc }}<br>{% for l in doc_param('empresa_direccion', []) %}{{ l }}<br>{% endfor %}</div>
@@ -14,5 +14,14 @@
 {% if tipo != 'preguia' %}<h3>Folio de documentos</h3><ul><li>Guía: {{ st.guia_numero or 'PENDIENTE' }} {{ '(' ~ st.guia_origen ~ ')' if st.guia_origen }}</li>
 <li>Factura: {{ st.factura_numero or 'PENDIENTE' }}{{ ' (con modificaciones)' if st.factura_con_modificaciones }}</li>
 <li>Certificados: {% for c in certs[st.id] %}{{ c.numero }} ({{ c.estado }}) {% else %}PENDIENTE{% endfor %}</li></ul>{% endif %}
+{% macro adjunto(nombre, archivo) %}{% if archivo %}{% set ext = archivo.rsplit('.', 1)[-1]|lower %}<div class="folio-adj"><h3>{{ nombre }}</h3>
+{% if ext in ['jpg','jpeg','png','webp'] %}<img src="{{ url_for('main.evidence', name=archivo) }}" alt="{{ nombre }}" style="max-width:100%">
+{% else %}<object data="{{ url_for('main.evidence', name=archivo) }}" type="application/pdf" style="width:100%;height:260mm"><a href="{{ url_for('main.evidence', name=archivo) }}">Abrir {{ nombre|lower }}</a></object>{% endif %}</div>{% endif %}{% endmacro %}
+{% if tipo == 'paquete' %}
+{{ adjunto('Guía de remisión (archivo cargado)', st.guia_path) }}
+{{ adjunto('Factura (cargada por Facturación)', st.factura_path) }}{% if not st.factura_path %}<p class="small muted">Factura: pendiente de carga por Facturación.</p>{% endif %}
+{% for c in certs[st.id] %}<div class="folio-adj"><h3>Certificado {{ c.numero }} ({{ c.estado|lower }})</h3><iframe src="{{ url_for('cal.certificate_detail', cid=c.id, imprimir=1) }}" title="Certificado {{ c.numero }}" style="width:100%;height:270mm;border:0"></iframe>
+<p class="noprint small"><a href="{{ url_for('cal.certificate_detail', cid=c.id, imprimir=1) }}" target="_blank" rel="noopener">Abrir el certificado para imprimirlo por separado</a></p></div>{% endfor %}
+{% endif %}
 <div style="display:flex;justify-content:space-around;margin-top:16mm" class="small"><span class="ln" style="border-top:1px solid #000;min-width:50mm;text-align:center">Despachado por</span><span style="border-top:1px solid #000;min-width:50mm;text-align:center">Transportista</span><span style="border-top:1px solid #000;min-width:50mm;text-align:center">Recibí conforme</span></div>
 </div>{% endfor %}{% endblock %}

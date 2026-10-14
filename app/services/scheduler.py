@@ -71,6 +71,8 @@ def run_checks(user=None, today=None):
     out["costo_vs_mercado"] = check_market_alerts(user)
     from .customer_behavior import check_purchase_variations
     out["variacion_compra_clientes"] = check_purchase_variations(user, today)
+    from .fleet import check_alerts as fleet_alerts
+    out["flota"] = fleet_alerts(today)
     out["correo"] = flush_outbox()
     return out
 

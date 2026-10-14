@@ -331,8 +331,42 @@ def distribucion(desde=None, hasta=None):
     if incs:
         k, v = por_sub.most_common(1)[0]
         reco.append(f"Incidencia más frecuente: {k} ({v}). Atacar su causa reduce rechazos y reprogramaciones.")
+    # Observaciones al demo v0.6: salidas a tiempo, plan vs ejecutado y costos de transporte externo y estiba
+    from datetime import datetime as _dt
+    salieron = [r for r in rutas if r.salida_ts]
+    a_tiempo = 0
+    desv = []
+    for r in salieron:
+        if r.hora_salida_prog:
+            try:
+                prog = _dt.combine(r.fecha, _dt.strptime(r.hora_salida_prog, "%H:%M").time())
+            except ValueError:
+                prog = None
+        else:
+            prog = None
+        ok = (r.salida_ts <= prog) if prog else (r.salida_ts.date() <= r.fecha)
+        a_tiempo += ok
+        entregadas = sum(1 for st in r.stops if st.estado == "ENTREGADO")
+        real_min = round((r.retorno_ts - r.salida_ts).total_seconds() / 60) if r.retorno_ts else None
+        km_real = (r.km_retorno - r.km_salida) if r.km_retorno is not None and r.km_salida is not None else None
+        desv.append({"route": r, "a_tiempo": ok, "retraso_min": round((r.salida_ts - prog).total_seconds() / 60) if prog else None,
+                     "paradas_plan": len(r.stops), "paradas_ok": entregadas,
+                     "min_plan": r.tiempo_estimado_min, "min_real": real_min,
+                     "desv_min_pct": _pct((real_min or 0) - r.tiempo_estimado_min, r.tiempo_estimado_min) if real_min and r.tiempo_estimado_min else None,
+                     "km_plan": r.distancia_km, "km_real": km_real,
+                     "desv_km_pct": _pct((km_real or 0) - r.distancia_km, r.distancia_km) if km_real and r.distancia_km else None})
+    costo_ext = sum(r.costo_transporte or 0 for r in rutas if r.requiere_externo)
+    costo_est = sum(r.costo_estiba or 0 for r in rutas)
+    kg_ext = tot["EXTERNO"]["kg"]
+    if salieron and a_tiempo / len(salieron) < 0.9:
+        reco.append(f"Solo {_pct(a_tiempo, len(salieron))} % de los transportes salió a tiempo: revisar preparación, carga y documentos.")
+    if any(r.requiere_externo and r.costo_transporte is None for r in rutas):
+        reco.append("Hay rutas con transporte externo sin costo registrado: registrar el costo para medir el gasto.")
     semanas = sorted(sem)
     return {"desde": desde, "hasta": hasta, "rutas": n, "tot": tot, "pct_externo": pct_ext,
+            "salieron": len(salieron), "a_tiempo": a_tiempo, "pct_a_tiempo": _pct(a_tiempo, len(salieron)), "desviacion": desv,
+            "costo_externo": round(costo_ext, 2), "costo_estiba": round(costo_est, 2),
+            "costo_externo_kg": round(costo_ext / kg_ext, 4) if kg_ext and costo_ext else None,
             "serie_propio": [(f"{w:%d/%m}", sem[w]["PROPIO"]) for w in semanas],
             "serie_externo": [(f"{w:%d/%m}", sem[w]["EXTERNO"]) for w in semanas],
             "sin_validar": sin_validar, "externo_no_validado": rechazadas, "incidencias": len(incs),
@@ -422,3 +456,89 @@ def almacen(desde=None, hasta=None, warehouse=None, almacenes=None):
             "bajas": bajas[:20], "traslados_demorados": traslados, "picking_atrasado": picking,
             "prep_prom_h": round(mean(preps), 1) if preps else None, "reserva": reserva, "dif_conteo": dif_conteo,
             "dif_traslado": dif_traslado, "inc_tareas": inc_tareas, "recomendaciones": reco}
+
+
+def _bucket(d, agrupar, n, desde):
+    if agrupar == "MES":
+        return date(d.year, d.month, 1)
+    if agrupar == "N":
+        return desde + timedelta(days=((d - desde).days // n) * n)
+    return d
+
+
+def produccion_capacidad(desde=None, hasta=None, agrupar="DIA", n=7):
+    """Capacidad vs producido y programado vs ejecutado por línea (grupo de capacidad) y por proceso, por día, por cada
+    N días o por mes; evolución, caídas, demoras y tiempo de atención de solicitudes y paradas de línea."""
+    from ..models import ProductionPlan, ProductionReport, ProductionRequest
+    desde, hasta = periodo(desde, hasta, dias=30)
+    agrupar = agrupar if agrupar in ("DIA", "N", "MES") else "DIA"
+    n = max(int(n or 7), 1)
+    s = db()
+    grupos = param("capacidad_lineas", []) or []
+    no_op = set(param("dias_no_operativos", []) or [])
+    linea_grupo = {l: g["grupo"] for g in grupos for l in g.get("lineas", [])}
+    dias = [desde + timedelta(days=i) for i in range((hasta - desde).days + 1)]
+    buckets = sorted({_bucket(d, agrupar, n, desde) for d in dias})
+    cap = defaultdict(float)
+    for d in dias:
+        if d.weekday() in no_op:
+            continue
+        for g in grupos:
+            cap[(g["grupo"], _bucket(d, agrupar, n, desde))] += float(g.get("kg_dia") or 0)
+    hechos = list(s.execute(select(ProductionReport).where(ProductionReport.fecha >= desde, ProductionReport.fecha <= hasta)).scalars())
+    prod, prog_partes, paradas = defaultdict(float), defaultdict(float), []
+    for r in hechos:
+        g = linea_grupo.get(r.linea, r.linea)
+        b = _bucket(r.fecha, agrupar, n, desde)
+        if r.estado == "PROGRAMADO":
+            prog_partes[(g, b)] += r.peso_entrada_kg or 0
+        else:
+            prod[(g, b)] += r.peso_entrada_kg or 0
+        if r.parada_min:
+            paradas.append(r)
+    # programación (plan de producción con línea) en kg
+    plan = defaultdict(float)
+    for pl in s.execute(select(ProductionPlan).where(ProductionPlan.periodo == "DIA", ProductionPlan.fecha >= desde,
+                                                     ProductionPlan.fecha <= hasta)).scalars():
+        p = s.get(Product, pl.product_code)
+        kg = pl.cantidad * ((p.peso_kg if p and p.peso_kg else (1 if p and (p.um or "").upper().startswith("K") else 0)))
+        g = linea_grupo.get(pl.line_code, pl.line_code or "(sin línea)")
+        plan[(g, _bucket(pl.fecha, agrupar, n, desde))] += kg
+    filas = []
+    for g in [x["grupo"] for x in grupos] + sorted({k[0] for k in list(prod) + list(plan)} - {x["grupo"] for x in grupos}):
+        proceso = next((x["proceso"] for x in grupos if x["grupo"] == g), "")
+        serie = []
+        for b in buckets:
+            c, pr = cap.get((g, b), 0.0), prod.get((g, b), 0.0)
+            pl = plan.get((g, b), 0.0) + prog_partes.get((g, b), 0.0)
+            serie.append({"bucket": b, "capacidad": c, "producido": pr, "uso": _pct(pr, c), "programado": pl,
+                          "cumplimiento": _pct(min(pr, pl), pl) if pl else None})
+        caidas = [x for a, x in zip(serie, serie[1:]) if a["producido"] > 0 and x["producido"] < a["producido"] * 0.8]
+        tot_c, tot_p, tot_pl = sum(x["capacidad"] for x in serie), sum(x["producido"] for x in serie), sum(x["programado"] for x in serie)
+        filas.append({"grupo": g, "proceso": proceso, "serie": serie, "capacidad": tot_c, "producido": tot_p,
+                      "uso": _pct(tot_p, tot_c), "programado": tot_pl, "cumplimiento": _pct(min(tot_p, tot_pl), tot_pl) if tot_pl else None,
+                      "caidas": caidas})
+    por_proceso = defaultdict(lambda: {"capacidad": 0.0, "producido": 0.0, "programado": 0.0})
+    for f in filas:
+        x = por_proceso[f["proceso"] or "(sin proceso)"]
+        x["capacidad"] += f["capacidad"]
+        x["producido"] += f["producido"]
+        x["programado"] += f["programado"]
+    # demoras y tiempo de atención de solicitudes
+    reqs = list(s.execute(select(ProductionRequest).where(ProductionRequest.ts >= desde,
+                                                          ProductionRequest.ts < hasta + timedelta(days=1))).scalars())
+    atencion = [((r.inicio_ts or r.fin_ts) - r.ts).total_seconds() / 3600 for r in reqs if (r.inicio_ts or r.fin_ts)]
+    demoradas = [r for r in reqs if r.fecha_requerida and ((r.fin_ts and r.fin_ts.date() > r.fecha_requerida)
+                                                           or (not r.fin_ts and r.fecha_requerida < date.today()
+                                                               and r.estado not in ("RECHAZADA", "CANCELADA")))]
+    reco = []
+    for f in filas:
+        if f["uso"] is not None and f["capacidad"] and f["uso"] < 50:
+            reco.append(f"{f['grupo']}: uso de capacidad {f['uso']} % en el periodo.")
+        if f["caidas"]:
+            reco.append(f"{f['grupo']}: {len(f['caidas'])} caída(s) de producción mayores al 20 %: revisar paradas, materiales y demoras.")
+    if demoradas:
+        reco.append(f"{len(demoradas)} solicitud(es) de producción atendidas después de la fecha requerida o vencidas.")
+    return {"desde": desde, "hasta": hasta, "agrupar": agrupar, "n": n, "buckets": buckets, "filas": filas,
+            "por_proceso": dict(por_proceso), "paradas": paradas, "paradas_min": sum(r.parada_min or 0 for r in paradas),
+            "atencion_h": round(mean(atencion), 1) if atencion else None, "demoradas": demoradas, "recomendaciones": reco}

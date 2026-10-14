@@ -51,6 +51,7 @@
       <a href="{{ url_for('dist.routes') }}">Programación y rutas</a>
       <a href="{{ url_for('dist.incidents') }}">Incidencias</a>
       {% if can('distribucion.flota') %}<a href="{{ url_for('dist.fleet') }}">Flota y conductores</a>{% endif %}
+      {% if can('flota.ver') or can('distribucion.flota') %}<a href="{{ url_for('dist.fleet_tracking') }}">Seguimiento de flota</a>{% endif %}
     {% endif %}
     {% if can('config.ver') or can('auditoria.ver') %}<h4>Administración</h4>
       {% if can('config.ver') %}<a href="{{ url_for('main.config') }}">Configuración</a>{% endif %}

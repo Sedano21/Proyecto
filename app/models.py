@@ -830,6 +830,7 @@ class Vehicle(Base):
     disponible: Mapped[bool] = mapped_column(Boolean, default=True)
     conductor_habitual_id: Mapped[int | None] = mapped_column(ForeignKey("drivers.id"), nullable=True)
     observacion: Mapped[str] = mapped_column(String(250), default="")
+    km_actual: Mapped[float | None] = mapped_column(Float, nullable=True)  # último kilometraje registrado
 
 
 class Driver(Base):
@@ -875,6 +876,12 @@ class Route(Base):
     cierre_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     creado_por: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    # Observaciones al demo v0.6: salida programada, kilometraje y costos de transporte externo y estiba
+    hora_salida_prog: Mapped[str] = mapped_column(String(5), default="")
+    km_salida: Mapped[float | None] = mapped_column(Float, nullable=True)
+    km_retorno: Mapped[float | None] = mapped_column(Float, nullable=True)
+    costo_transporte: Mapped[float | None] = mapped_column(Float, nullable=True)  # S/ transporte externo
+    costo_estiba: Mapped[float | None] = mapped_column(Float, nullable=True)  # S/ estiba
     vehicle = relationship("Vehicle")
     driver = relationship("Driver")
     stops = relationship("RouteStop", back_populates="route", order_by="RouteStop.orden",
@@ -907,6 +914,61 @@ class RouteStop(Base):
     order = relationship("SalesOrder")
 
 
+class VehicleDocument(Base):
+    """Seguimiento de documentos y obligaciones del vehículo: SOAT, revisión técnica, impuesto vehicular, multas, etc."""
+    __tablename__ = "vehicle_documents"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    vehicle_id: Mapped[int] = mapped_column(ForeignKey("vehicles.id"))
+    tipo: Mapped[str] = mapped_column(String(30))  # SOAT / REVISION_TECNICA / IMPUESTO_VEHICULAR / MULTA / OTRO
+    numero: Mapped[str] = mapped_column(String(60), default="")
+    fecha: Mapped[date | None] = mapped_column(Date, nullable=True)  # emisión o fecha del evento (multa)
+    hora: Mapped[str] = mapped_column(String(5), default="")
+    vencimiento: Mapped[date | None] = mapped_column(Date, nullable=True)
+    monto: Mapped[float | None] = mapped_column(Float, nullable=True)
+    estado: Mapped[str] = mapped_column(String(15), default="VIGENTE")  # VIGENTE / PENDIENTE / PAGADO / VENCIDO
+    driver_id: Mapped[int | None] = mapped_column(ForeignKey("drivers.id"), nullable=True)  # quién lo tenía (multa)
+    route_id: Mapped[int | None] = mapped_column(ForeignKey("routes.id"), nullable=True)
+    archivo: Mapped[str] = mapped_column(String(200), default="")
+    observacion: Mapped[str] = mapped_column(Text, default="")
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    vehicle = relationship("Vehicle")
+    driver = relationship("Driver")
+
+
+class FuelLog(Base):
+    """Consumo de combustible por vehículo."""
+    __tablename__ = "fuel_logs"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    vehicle_id: Mapped[int] = mapped_column(ForeignKey("vehicles.id"))
+    fecha: Mapped[date] = mapped_column(Date)
+    km: Mapped[float] = mapped_column(Float)
+    galones: Mapped[float] = mapped_column(Float)
+    monto: Mapped[float | None] = mapped_column(Float, nullable=True)
+    route_id: Mapped[int | None] = mapped_column(ForeignKey("routes.id"), nullable=True)
+    driver_id: Mapped[int | None] = mapped_column(ForeignKey("drivers.id"), nullable=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    vehicle = relationship("Vehicle")
+
+
+class VehicleMaintenance(Base):
+    """Mantenimientos del vehículo y el próximo por kilometraje o fecha."""
+    __tablename__ = "vehicle_maintenances"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    vehicle_id: Mapped[int] = mapped_column(ForeignKey("vehicles.id"))
+    fecha: Mapped[date] = mapped_column(Date)
+    tipo: Mapped[str] = mapped_column(String(15), default="PREVENTIVO")  # PREVENTIVO / CORRECTIVO
+    km: Mapped[float | None] = mapped_column(Float, nullable=True)
+    descripcion: Mapped[str] = mapped_column(Text, default="")
+    costo: Mapped[float | None] = mapped_column(Float, nullable=True)
+    proximo_km: Mapped[float | None] = mapped_column(Float, nullable=True)
+    proxima_fecha: Mapped[date | None] = mapped_column(Date, nullable=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    vehicle = relationship("Vehicle")
+
+
 class Incident(Base):
     """Incidencias de distribución (IF §12.3), clasificadas por tipo y subtipo (observaciones al demo v0.5)."""
     __tablename__ = "incidents"
@@ -922,6 +984,9 @@ class Incident(Base):
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     ts: Mapped[datetime] = mapped_column(DateTime, default=now)
     alert_id: Mapped[int | None] = mapped_column(ForeignKey("alerts.id"), nullable=True)
+    # Observaciones al demo v0.6: entrega total o parcial y, si es parcial, qué productos se devolvieron y por qué
+    entrega: Mapped[str] = mapped_column(String(10), default="")  # TOTAL / PARCIAL / NINGUNA
+    lineas: Mapped[list] = mapped_column(JSON, default=list)  # [{line_id, producto, recibido, devuelto, motivo}]
     order = relationship("SalesOrder")
 
 
@@ -1140,6 +1205,8 @@ class ProductionReport(Base):
     desmedro_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
     diferencia_kg: Mapped[float | None] = mapped_column(Float, nullable=True)
     ratio_kg_hora: Mapped[float | None] = mapped_column(Float, nullable=True)
+    parada_min: Mapped[int | None] = mapped_column(Integer, nullable=True)  # paradas de línea (obs. demo v0.6)
+    motivo_parada: Mapped[str] = mapped_column(String(160), default="")
     estado: Mapped[str] = mapped_column(String(20), default="EN PROCESO")  # PROGRAMADO / EN PROCESO / PENDIENTE / LIQUIDADO
     observacion: Mapped[str] = mapped_column(Text, default="")
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)

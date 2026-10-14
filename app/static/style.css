@@ -115,3 +115,4 @@ input[type=search],.grow input,.grow select{width:100%}
 .pd{color:var(--muted);font-size:12.5px}
 
 .b.INCIDENCIA,.b.DESAPROBADA,.b.ABIERTA{background:var(--errbg,#fde8e8);color:var(--err,#b42318)}
+.folio-adj{page-break-before:always;break-before:page;margin-top:8mm}

@@ -118,7 +118,18 @@ FORMATOS = {
     "INSPECCION_CARGA": ("IF §9.3", "Inspección de la carga en el despacho",
                          [("ruta", "Ruta / despacho", "text"), ("estado_carga", "Carga conforme", "bool"),
                           ("detalle", "Detalle", "textarea")]),
+    # Observaciones al demo v0.6: cualquier persona de Calidad registra el análisis en cada evaluación y el
+    # precertificado lo toma automáticamente (sin código de documento fuente: registro del sistema).
+    "ANALISIS_LOTE": ("Registro del sistema", "Análisis del lote para el certificado (organoléptico, fisicoquímico y sanidad-aspecto)",
+                      [("org_color", "Organoléptico: color", "text"), ("org_olor_sabor", "Organoléptico: olor y sabor", "text"),
+                       ("org_olor", "Organoléptico: olor", "text"), ("org_sabor", "Organoléptico: sabor", "text"),
+                       ("org_aspecto", "Organoléptico: aspecto / apariencia", "text"),
+                       ("humedad", "Fisicoquímico: humedad (%)", "number")]
+                      + [(k, f"Sanidad-aspecto: {l}", "number") for k, l in DEFECTOS_MUESTREO if k != "humedad"]),
 }
+
+ORG_CLAVES = {"COLOR": "org_color", "OLOR Y SABOR": "org_olor_sabor", "ASPECTO": "org_aspecto", "APARIENCIA": "org_aspecto",
+              "OLOR": "org_olor", "SABOR": "org_sabor"}
 
 
 def pcc1_limit(grupo):
@@ -252,6 +263,8 @@ def register(user, formato, datos, product_code=None, lote="", lot_id=None, resu
                     "; ".join(hallazgos) or observaciones, "QualityRecord", rec.id, creado_por=user)
     if formato == "FUMIGACION" and rec.lot_id:
         _apply_fumigation(rec, user)
+    if formato == "ANALISIS_LOTE" and lote:
+        refresh_draft_certificates(lote, user)
     audit(user, "CALIDAD_REGISTRO", "QualityRecord", rec.id, {"formato": formato, "resultado": rec.resultado})
     return rec
 
@@ -342,6 +355,39 @@ def _fmt_fecha(d):
     return d.strftime("%d-%m-%y") if d else ""
 
 
+def _marca_de(p):
+    """Marca tomada de la descripción del artículo ('… - MARCA X') cuando el maestro no la trae."""
+    if p is None or " - " not in (p.descripcion or ""):
+        return ""
+    return p.descripcion.rsplit(" - ", 1)[1].strip()
+
+
+def _org(nombre, analisis, pend):
+    clave = ORG_CLAVES.get(nombre.upper())
+    v = (analisis.datos or {}).get(clave) if analisis and clave else None
+    if v in (None, ""):
+        return {"analisis": nombre, "resultado": pend, "especificacion": "", "conclusion": ""}
+    return {"analisis": nombre, "resultado": str(v), "especificacion": "",
+            "conclusion": "CONFORME" if analisis.resultado in ("CONFORME", "APROBADO") else "REVISAR"}
+
+
+def refresh_draft_certificates(lote, user=None):
+    """Al registrar un análisis, los certificados en borrador del lote toman los nuevos resultados."""
+    n = 0
+    for c in db().execute(select(Certificate).join(StockLot, Certificate.lot_id == StockLot.id)
+                          .where(StockLot.lote == lote, Certificate.estado == "BORRADOR")).scalars():
+        lot = db().get(StockLot, c.lot_id)
+        order = db().get(SalesOrder, c.order_id) if c.order_id else None
+        nuevos = certificate_data(lot, order, (c.datos or {}).get("tipo", c.serie))
+        datos = dict(c.datos or {})
+        for k in ("organoleptico", "humedad", "sanidad", "fecha_analisis", "fuente_calidad", "fecha_produccion",
+                  "fecha_vencimiento", "marca", "pais_origen"):
+            datos[k] = nuevos[k]
+        c.datos = datos
+        n += 1
+    return n
+
+
 def certificate_data(lot, order=None, tipo=None):
     """Arma los datos del certificado desde Producción (lote), Calidad (registros) y el pedido, según el tipo."""
     s = db()
@@ -351,9 +397,10 @@ def certificate_data(lot, order=None, tipo=None):
     liq = s.execute(select(Liquidation).where(Liquidation.product_code == lot.product_code, Liquidation.lote == lot.lote)
                     .order_by(Liquidation.id.desc())).scalars().first()
     recs = list(s.execute(select(QualityRecord).where(QualityRecord.lote == lot.lote,
-                                                      QualityRecord.formato.in_(["MUESTREO", "CONTROL_GRANOS", "RECEPCION_MP",
-                                                                                 "RECEPCION_IMPORTADO"]))
+                                                      QualityRecord.formato.in_(["ANALISIS_LOTE", "MUESTREO", "CONTROL_GRANOS",
+                                                                                 "RECEPCION_MP", "RECEPCION_IMPORTADO"]))
                           .order_by(QualityRecord.id.desc())).scalars())
+    analisis = next((r for r in recs if r.formato == "ANALISIS_LOTE"), None)
     rec = recs[0] if recs else None
     pend = "(pendiente: dato de Calidad)"
     tam = None
@@ -372,6 +419,8 @@ def certificate_data(lot, order=None, tipo=None):
     producto = (p.producto_base or p.descripcion) if p else lot.product_code
     ref = _referencia_ntp(producto) if td["referencias"] else ""
     fp = lot.fecha_fab or (liq.fecha_fab if liq else None)
+    fv = lot.fecha_venc or (liq.fecha_venc if liq else None)
+    marca = (p.marca if p else "") or _marca_de(p)
     if humedad is None:
         hum_concl = ""
     elif hmax is not None:
@@ -392,16 +441,16 @@ def certificate_data(lot, order=None, tipo=None):
         "descripcion_articulo": p.descripcion if p else "",
         "lote": lot.lote,
         "fecha_produccion": _fmt_fecha(fp),
-        "fecha_vencimiento": _fmt_fecha(lot.fecha_venc),
-        "marca": p.marca if p else "", "grado": p.calidad if p else "",
+        "fecha_vencimiento": _fmt_fecha(fv),
+        "marca": marca, "grado": p.calidad if p else "",
         "procesado_por": param("empresa_razon_social", ""), "ruc": param("empresa_ruc", ""),
         "autorizacion_sanitaria": param("autorizacion_sanitaria", ""),
         "registro_sanitario": pend if "registro_sanitario" in td["campos"] else "",
         "presentacion_muestra": p.presentacion if p else "",
-        "pais_origen": rec.datos.get("procedencia", "") if rec else "",
+        "pais_origen": next((r.datos.get("procedencia") for r in recs if (r.datos or {}).get("procedencia")), ""),
         "tamano_lote": tam or pend,
         "fecha_analisis": _fmt_fecha(rec.fecha) if rec else pend,
-        "organoleptico": [{"analisis": a, "resultado": pend, "especificacion": "", "conclusion": ""} for a in td["organoleptico"]],
+        "organoleptico": [_org(a, analisis, pend) for a in td["organoleptico"]],
         "humedad": {"resultado": f"{humedad}%" if humedad is not None else pend,
                     "especificacion": (f"MÁX. {hmax:g} %" if hmax is not None else ""), "conclusion": hum_concl},
         "referencia_organoleptico": f"ANALSIS ORGANOLÉPTICO: {ref}" if ref else "",

@@ -1,5 +1,8 @@
 {% extends "base.html" %}{% from "_informe.html" import cabecera %}
 {% block content %}{{ cabecera('de distribución', d, items, actual) }}
+<div class="kpis"><div class="kpi"><b>{{ d.pct_a_tiempo if d.pct_a_tiempo is not none else '—' }} %</b><span>Transportes que salieron a tiempo</span><small>{{ d.a_tiempo }} de {{ d.salieron }}</small></div>
+<div class="kpi"><b>S/ {{ d.costo_externo|n }}</b><span>Gasto en transporte externo</span><small>{{ ('S/ %.3f por kg'|format(d.costo_externo_kg)) if d.costo_externo_kg else '' }}</small></div>
+<div class="kpi"><b>S/ {{ d.costo_estiba|n }}</b><span>Gasto en estibas</span></div></div>
 <div class="kpis"><div class="kpi"><b>{{ d.rutas }}</b><span>Rutas</span></div>
 <div class="kpi"><b>{{ d.tot.PROPIO.rutas }}</b><span>Transporte propio</span><small>{{ d.tot.PROPIO.pedidos }} pedidos · {{ d.tot.PROPIO.kg|n }} kg</small></div>
 <div class="kpi"><b>{{ d.tot.EXTERNO.rutas }}</b><span>Transporte externo</span><small>{{ d.pct_externo or 0 }} % · {{ d.tot.EXTERNO.pedidos }} pedidos · {{ d.tot.EXTERNO.kg|n }} kg</small></div>
@@ -8,4 +11,11 @@
 <div class="grid g2"><div class="card"><h3>Rutas por semana: propio vs externo</h3>{{ charts.line([('Propio', d.serie_propio), ('Externo', d.serie_externo)], 'rutas') }}</div>
 <div class="card"><h3>Incidencias por tipo</h3>{{ charts.bars(d.por_tipo, '', color=1) }}<h4>Por subtipo</h4>{{ charts.bars(d.por_subtipo, '', color=7) }}</div></div>
 {% if d.sin_validar %}<div class="card"><h3>Rutas con transporte externo por validar</h3><ul>{% for r in d.sin_validar %}<li><a href="{{ url_for('dist.route_detail', rid=r.id) }}">Ruta #{{ r.id }}</a> · {{ r.fecha|d }} · {{ r.zona }} · {{ r.peso_total|n }} kg</li>{% endfor %}</ul></div>{% endif %}
+<div class="card"><h3>Planificado vs ejecutado por ruta</h3><p class="small muted">A tiempo: salida antes de la hora programada (o en la fecha si no hay hora). Tiempo: estimado de la ruta vs salida → retorno a base. Km: distancia estimada vs kilometraje registrado.</p>
+<div class="tw"><table class="small"><tr><th>Ruta</th><th>Fecha</th><th>Vehículo</th><th>Salida</th><th>A tiempo</th><th class="r">Paradas plan / entregadas</th><th class="r">Min plan / real</th><th class="r">Desv. tiempo</th><th class="r">Km plan / real</th><th class="r">Desv. km</th><th class="r">Costo ext. / estiba</th></tr>
+{% for x in d.desviacion %}{% set r = x.route %}<tr><td><a href="{{ url_for('dist.route_detail', rid=r.id) }}">#{{ r.id }}</a></td><td>{{ r.fecha|d }}</td><td>{{ r.vehicle.placa if r.vehicle else '—' }}{{ ' (ext.)' if r.requiere_externo }}</td><td>{{ r.salida_ts|d }}</td>
+<td>{% if x.a_tiempo %}sí{% else %}<span class="b ALTA">no{{ (' +' ~ x.retraso_min ~ ' min') if x.retraso_min }}</span>{% endif %}</td><td class="r">{{ x.paradas_plan }} / {{ x.paradas_ok }}</td><td class="r">{{ x.min_plan|n if x.min_plan else '—' }} / {{ x.min_real if x.min_real is not none else '—' }}</td>
+<td class="r">{{ ('%+.1f %%'|format(x.desv_min_pct)) if x.desv_min_pct is not none else '—' }}</td><td class="r">{{ x.km_plan|n if x.km_plan else '—' }} / {{ x.km_real|n if x.km_real is not none else '—' }}</td><td class="r">{{ ('%+.1f %%'|format(x.desv_km_pct)) if x.desv_km_pct is not none else '—' }}</td>
+<td class="r">{{ r.costo_transporte|n if r.costo_transporte is not none else '—' }} / {{ r.costo_estiba|n if r.costo_estiba is not none else '—' }}</td></tr>
+{% else %}<tr><td colspan="11" class="muted">Sin salidas en el periodo.</td></tr>{% endfor %}</table></div></div>
 {% endblock %}

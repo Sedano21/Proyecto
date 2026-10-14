@@ -75,6 +75,7 @@ def test_carga_incongruente_y_documentos_faltantes(s, U, new_order):
     with pytest.raises(BusinessError):  # sin foto de mercadería cargada
         dsp.validate_load(r, U("aux.despacho"), {line_id: {"cargado": "60"}})
     dsp.add_photo(r, U("aux.despacho"), "mercaderia_cargada", "m.jpg")
+    dsp.add_photo(r, U("conductor1"), "vehiculo_salida", "salida.jpg")  # obs. demo v0.6
     assert dsp.validate_load(r, U("aux.despacho"), {line_id: {"cargado": "60"}}) == []
     assert "FACTURACION" in alerts_of(s, "CAMION_CARGADO")[0].roles
     faltan = dsp.review_documents(r, U("seguridad"), impresos=True)
@@ -112,6 +113,7 @@ def test_factura_con_modificaciones_si_incompleto(s, U, new_order, today):
     r = _prepare_and_confirm(s, U, o)
     dsp.add_photo(r, U("aux.despacho"), "vehiculo", "v.jpg")
     dsp.add_photo(r, U("aux.despacho"), "mercaderia_cargada", "m.jpg")
+    dsp.add_photo(r, U("conductor1"), "vehiculo_salida", "salida.jpg")  # obs. demo v0.6
     dsp.validate_load(r, U("aux.despacho"), {})
     dif = dsp.set_invoice(r.stops[0], U("facturacion"), "F001-2", "f.pdf")
     assert dif and r.stops[0].factura_con_modificaciones

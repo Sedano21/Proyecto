@@ -148,6 +148,7 @@ def test_q16_salida_requiere_tres_vistos_buenos(s, U, new_order):
     with pytest.raises(BusinessError):  # sin carga validada no hay visto bueno del auxiliar
         dsp.give_exit_ok(r, U("aux.despacho"))
     dsp.add_photo(r, U("aux.despacho"), "mercaderia_cargada", "m.jpg")
+    dsp.add_photo(r, U("conductor1"), "vehiculo_salida", "salida.jpg")  # obs. demo v0.6
     dsp.validate_load(r, U("aux.despacho"), {})
     lines = [{**e, "guia": e["esperado"], "cargado": e["esperado"]} for e in dist.expected_lines(r)]
     dist.register_security_check(r, U("seguridad"), "T1", lines)

@@ -432,7 +432,7 @@ def bom_products():
 
 
 # ----------------------------- partes de producción -------------------------
-LINEAS_ENVASADO = ("R1", "R2", "R3")
+LINEAS_ENVASADO = ("R1", "R2", "R3", "ENV_MANUAL")
 
 
 def _perdida_kg(r):
@@ -443,7 +443,8 @@ def _perdida_kg(r):
 
 def register_report(user, linea, fecha, product_code, peso_entrada_kg, granel_kg=0, mp_kg=0, cal3_kg=0, desmedro_kg=0,
                     presentacion_kg=None, unidades=None, sobrante_kg=0, of="", op="", turno="", hora_inicio="", hora_fin="",
-                    horas=None, operarios=None, cliente="", mp_codigo="", lote="", estado="EN PROCESO", observacion=""):
+                    horas=None, operarios=None, cliente="", mp_codigo="", lote="", estado="EN PROCESO", observacion="",
+                    parada_min=None, motivo_parada=""):
     """Registra el parte de producción con las fórmulas de los formatos actuales:
     selección (Truer, Cimbria, selección manual): total = granel + MP + cal3 + desmedro; % rendimiento = granel / peso;
     % desmedro = desmedro / peso. Envasado (R1-R3): unidades teóricas = peso MP / presentación; % rendimiento =
@@ -475,7 +476,8 @@ def register_report(user, linea, fecha, product_code, peso_entrada_kg, granel_kg
                          product_code=product_code, mp_codigo=mp_codigo, lote=lote, peso_entrada_kg=peso_entrada_kg,
                          granel_kg=granel_kg or 0, mp_kg=mp_kg or 0, cal3_kg=cal3_kg or 0, desmedro_kg=desmedro_kg or 0,
                          presentacion_kg=presentacion_kg, unidades=unidades, sobrante_kg=sobrante_kg or 0, estado=estado,
-                         observacion=observacion, user_id=user.id)
+                         observacion=observacion, user_id=user.id, parada_min=parada_min,
+                         motivo_parada=(motivo_parada or "").strip())
     if tipo == "ENVASADO":
         if not presentacion_kg or unidades is None:
             raise BusinessError("En envasado indique la presentación (kg) y las unidades producidas.")
@@ -543,6 +545,25 @@ def add_plan(user, periodo, fecha, product_code, cantidad, line_code=None, comen
     audit(user, "PLAN_PRODUCCION", "ProductionPlan", pl.id, {"periodo": periodo, "fecha": pl.fecha.isoformat(),
                                                              "producto": product_code, "cantidad": cantidad})
     return pl
+
+
+def update_plan(user, pl, cantidad, comentario):
+    """La programación puede variar manualmente por una variable no contemplada (observaciones al demo v0.6)."""
+    from .core import has_perm
+    if not (has_perm(user, "produccion.programar") or has_perm(user, "produccion.liquidar")):
+        raise BusinessError("La programación la modifica Producción.")
+    if not (comentario or "").strip():
+        raise BusinessError("Indique el motivo del cambio de la programación.")
+    antes = pl.cantidad
+    if cantidad is None or cantidad < 0:
+        raise BusinessError("Cantidad inválida.")
+    if cantidad == 0:
+        db().delete(pl)
+    else:
+        pl.cantidad = cantidad
+        pl.comentario = (pl.comentario + "\n" if pl.comentario else "") + f"{user.nombre}: {antes:g} → {cantidad:g} ({comentario.strip()})"
+    audit(user, "PLAN_PRODUCCION_MODIFICADO", "ProductionPlan", pl.id, {"antes": antes, "despues": cantidad,
+                                                                         "motivo": comentario.strip()})
 
 
 def plan_vs_real(periodo="DIA", desde=None, hasta=None):
