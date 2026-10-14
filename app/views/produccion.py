@@ -39,7 +39,10 @@ def requests():
             prog.setdefault((r.line_code, r.fecha_programada), []).append(r)
     carga = {(l.code, d): psvc.line_load_kg(l.code, d) for l in lines for d in dias}
     prods = [p for p, _ in psvc.bom_products()]
-    return render_template("prod_list.html", rows=rows, lines=lines, dias=dias, prog=prog, carga=carga, prods=prods)
+    from ..services.stock import ORDEN_ESTADOS_CERRADOS
+    ovs = list(db().execute(select(SalesOrder).where(SalesOrder.estado.notin_(ORDEN_ESTADOS_CERRADOS))
+                            .order_by(SalesOrder.fecha_compromiso)).scalars())
+    return render_template("prod_list.html", rows=rows, lines=lines, dias=dias, prog=prog, carga=carga, prods=prods, ovs=ovs)
 
 
 @bp.route("/solicitud/<int:rid>", methods=["GET", "POST"])

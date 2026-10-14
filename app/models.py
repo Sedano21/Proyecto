@@ -59,6 +59,8 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(255))
     activo: Mapped[bool] = mapped_column(Boolean, default=True)
     debe_cambiar_clave: Mapped[bool] = mapped_column(Boolean, default=False)
+    # almacén donde trabaja el personal operativo (auxiliares, líderes, montacarguistas) para programar el picking
+    almacen: Mapped[str] = mapped_column(String(20), default="")
     role = relationship("Role")
 
 
@@ -407,6 +409,46 @@ class SalesOrderLine(Base):
     order = relationship("SalesOrder", back_populates="lines")
     product = relationship("Product")
     reservations = relationship("Reservation", back_populates="line")
+
+
+class PickingTask(Base):
+    """Programación del picking de una OV en un almacén (observaciones al demo v0.6): el sistema la preprograma, el
+    Líder Operativo o el Coordinador la asigna a una persona o grupo y la modifica; el auxiliar la ejecuta con fotos."""
+    __tablename__ = "picking_tasks"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    order_id: Mapped[int] = mapped_column(ForeignKey("sales_orders.id"))
+    warehouse_code: Mapped[str] = mapped_column(String(20))
+    fecha: Mapped[date] = mapped_column(Date)
+    asignados: Mapped[list] = mapped_column(JSON, default=list)  # ids de usuario (persona o grupo)
+    asignado_por: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    estado: Mapped[str] = mapped_column(String(15), default="PROGRAMADO")  # PROGRAMADO / EN_PROCESO / LISTO
+    inicio_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    fin_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    foto_inicio: Mapped[str] = mapped_column(String(200), default="")
+    foto_listo: Mapped[str] = mapped_column(String(200), default="")
+    observacion: Mapped[str] = mapped_column(Text, default="")
+    verificador: Mapped[str] = mapped_column(String(120), default="")  # verificador del pedido (formato)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    order = relationship("SalesOrder")
+
+
+class PickingRecord(Base):
+    """Lo que llena a mano el auxiliar en el formato 'Seguimiento de control de despacho de producto terminado':
+    cantidad despachada, lote, fecha de producción y fecha de vencimiento (por línea y lote)."""
+    __tablename__ = "picking_records"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    order_id: Mapped[int] = mapped_column(ForeignKey("sales_orders.id"))
+    line_id: Mapped[int] = mapped_column(ForeignKey("sales_order_lines.id"))
+    task_id: Mapped[int | None] = mapped_column(ForeignKey("picking_tasks.id"), nullable=True)
+    lote: Mapped[str] = mapped_column(String(60))
+    cantidad: Mapped[float] = mapped_column(Float)
+    fecha_produccion: Mapped[date | None] = mapped_column(Date, nullable=True)
+    fecha_venc: Mapped[date | None] = mapped_column(Date, nullable=True)
+    comentario: Mapped[str] = mapped_column(String(250), default="")
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    line = relationship("SalesOrderLine")
+    user = relationship("User")
 
 
 class OVChangeRequest(Base):
@@ -923,6 +965,7 @@ class Alert(Base):
     asignado_por: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     resultado: Mapped[str] = mapped_column(String(20), default="")  # APROBADA / DESAPROBADA / ATENDIDA / SISTEMA
     evidencia: Mapped[str] = mapped_column(String(200), default="")
+    foto_inicio: Mapped[str] = mapped_column(String(200), default="")  # foto al iniciar la tarea (montacarguista)
     proceso_pendiente: Mapped[str] = mapped_column(Text, default="")  # p. ej. recepción o contabilización pendiente
     creado_ts: Mapped[datetime] = mapped_column(DateTime, default=now)
     creado_por: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)

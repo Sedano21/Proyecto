@@ -30,6 +30,15 @@ DEMO_USERS = [
     ("lider.almacen", "Líder Operativo (demo)", "LIDER_ALMACEN"),
     ("aux.almacen", "Auxiliar de Almacén (demo)", "AUX_ALMACEN"),
     ("montacarguista", "Montacarguista (demo)", "MONTACARGUISTA"),
+    # dotación por almacén (observaciones al demo v0.6): 1560 con 4 auxiliares, 2 líderes y 2 montacarguistas;
+    # 1524 con 1 auxiliar y 1 montacarguista. Nombres ficticios.
+    ("lider.almacen2", "Líder Operativo 2 (demo)", "LIDER_ALMACEN"),
+    ("aux.almacen2", "Auxiliar de Almacén 2 (demo)", "AUX_ALMACEN"),
+    ("aux.almacen3", "Auxiliar de Almacén 3 (demo)", "AUX_ALMACEN"),
+    ("aux.almacen4", "Auxiliar de Almacén 4 (demo)", "AUX_ALMACEN"),
+    ("montacarguista2", "Montacarguista 2 (demo)", "MONTACARGUISTA"),
+    ("aux.almacen.mp", "Auxiliar de Almacén 1524 (demo)", "AUX_ALMACEN"),
+    ("montacarguista.mp", "Montacarguista 1524 (demo)", "MONTACARGUISTA"),
     ("coord.distribucion", "Coordinador de Distribución (demo)", "COORD_DISTRIBUCION"),
     ("asist.distribucion", "Asistente de Distribución (demo)", "ASIST_DISTRIBUCION"),
     ("conductor1", "Conductor Demo Uno", "CONDUCTOR"),
@@ -148,6 +157,9 @@ def seed_demo(upload_dir=None, today=None):
     if s.execute(select(User)).first():
         return False
     users = {u: create_user(u, n, r) for u, n, r in DEMO_USERS}
+    for u in users.values():  # almacén del personal operativo (para programar el picking)
+        if u.role_code in ("AUX_ALMACEN", "LIDER_ALMACEN", "MONTACARGUISTA"):
+            u.almacen = "EXT-002" if u.username.endswith(".mp") else "ALM-001"
     admin = users["sistemas"]
     # parámetros de demostración (marcados DEMO; no son valores aprobados)
     for key, val in (("cortes_preparacion", ["09:00", "13:00", "16:00"]), ("dias_vencimiento_proximo", 30)):

@@ -1,0 +1,18 @@
+{% extends "base.html" %}{% from "_m.html" import b %}
+{% block content %}<p class="small"><a href="{{ url_for('alm.transfers') }}">← Traslados</a>{% if t.order %} · <a href="{{ url_for('com.order_options', oid=t.order_id) if can('ov.opciones') else url_for('com.order_detail', oid=t.order_id) }}">OV {{ t.order.numero }}</a>{% endif %}</p>
+<h1>{{ 'Pre-solicitud' if t.estado == 'SOLICITADO' else 'Solicitud' }} de traslado #{{ t.id }} {{ b(t.estado) }}</h1>
+<div class="grid g2"><div class="card"><h3>Mercadería</h3><table class="kv">
+<tr><td>Artículo</td><td><b>{{ t.lot.product_code }}</b> {{ pd(t.lot.product_code) }}</td></tr>
+<tr><td>Lote</td><td>{{ t.lot.lote }} · estado {{ t.lot.estado }}</td></tr>
+<tr><td>Fabricación / vencimiento</td><td>{{ t.lot.fecha_fab|d }} / <b>{{ t.lot.fecha_venc|d }}</b></td></tr>
+<tr><td>Cantidad a trasladar</td><td><b>{{ t.cantidad|n }}</b> <span class="muted small">(libre hoy en el lote: {{ libre|n }})</span></td></tr>
+<tr><td>Origen → destino</td><td>{{ t.lot.warehouse_code }} ({{ t.lot.warehouse.nombre }}) → {{ t.destino_code }}</td></tr></table></div>
+<div class="card"><h3>Motivo y seguimiento</h3><table class="kv">
+<tr><td>Para la OV</td><td>{% if t.order %}{{ t.order.numero }} · {{ t.order.customer.nombre }} · comprometida {{ t.order.fecha_compromiso|d }}{% else %}—{% endif %}</td></tr>
+<tr><td>Solicitado por</td><td>{{ sol.nombre if sol else 'Sistema (pre-solicitud automática)' }} · {{ t.ts|d }}</td></tr>
+<tr><td>Observación</td><td style="white-space:pre-line">{{ t.observacion or '—' }}</td></tr>
+{% if aut %}<tr><td>Autorizado por</td><td>{{ aut.nombre }} · {{ t.autorizado_ts|d }}</td></tr>{% endif %}
+{% if t.llegada_estimada %}<tr><td>Llegada estimada</td><td>{{ t.llegada_estimada.strftime('%d/%m/%Y %H:%M') }}</td></tr>{% endif %}
+{% if t.cantidad_recibida is not none %}<tr><td>Recibido / diferencia</td><td>{{ t.cantidad_recibida|n }} / {{ t.diferencia|n }}</td></tr>{% endif %}</table></div></div>
+{% if t.estado == 'SOLICITADO' %}<p class="note small">Revise el detalle y decida desde la pantalla de opciones de la OV (con el motivo de su elección) o desde el listado de traslados.</p>{% endif %}
+{% endblock %}

@@ -294,6 +294,7 @@ _O6 = {
                                          "GERENCIA_OPERACIONES"], "DEFINIDO", []),
     "clientes.editar": (_COMERCIAL_ROLES, "DEFINIDO", []),
     "produccion.bom_aprobar": (["JEFE_PRODUCCION", "ASIST_PRODUCCION"], "DEFINIDO", []),
+    "produccion.bom_cargar": (["ASIST_PRODUCCION"], "DEFINIDO", []),
     "flota.ver": (["COORD_DISTRIBUCION", "ASIST_DISTRIBUCION"], "DEFINIDO", ["JEFE_LOGISTICA", "GERENCIA_OPERACIONES"]),
     "tareas.ejecutar": (["MONTACARGUISTA", "AUX_ALMACEN"], "DEFINIDO", ["LIDER_ALMACEN"]),
     "picking.asignar": (["LIDER_ALMACEN", "COORD_ALMACEN", "COORD_ALMACEN_MP"], "DEFINIDO", []),
@@ -306,7 +307,8 @@ for _perm, (_def, _o, _prop) in _O6.items():
         ROLE_PERMISSIONS.setdefault(_r, []).append((_perm, "PROPUESTO", f"{O6} – propuesto, por validar"))
 # Retiros (observaciones al demo v0.6): Almacén no accede a los registros de Calidad (formatos); la BOM la aprueba
 # Producción y no Almacén.
-_RETIROS = {"COORD_ALMACEN": {"calidad.ver"}, "COORD_ALMACEN_MP": {"calidad.ver"}}
+_RETIROS = {"COORD_ALMACEN": {"calidad.ver"}, "COORD_ALMACEN_MP": {"calidad.ver"},
+            "MONTACARGUISTA": {"alertas.gestionar"}}  # el montacarguista no asigna tareas; inicia y termina con foto
 for _r, _quitar in _RETIROS.items():
     ROLE_PERMISSIONS[_r] = [x for x in ROLE_PERMISSIONS[_r] if x[0] not in _quitar]
 
@@ -368,8 +370,8 @@ ALERT_TYPES = [
      f"{IF} §21 (caso 'vencimiento'); umbral no definido", "Solo si se configura 'dias_vencimiento_proximo'.", False),
     ("TRASLADO_SOLICITADO", "Traslado pendiente de autorización", "Logística", "Traslados", "MEDIA", _LOG, "DEFINIDO",
      f"{IF} §6.2, §13; {R12} Q13", "Se solicita (o el sistema pre-solicita) un traslado desde almacén alternativo.", True),
-    ("TRASLADO_AUTORIZADO", "Traslado autorizado", "Almacén", "Traslados", "MEDIA", _ALM + ["AUX_ALMACEN"], "PROPUESTO",
-     f"{IF} §13", "Logística autoriza el traslado.", False),
+    ("TRASLADO_AUTORIZADO", "Traslado autorizado", "Almacén", "Traslados", "MEDIA", _ALM + ["AUX_ALMACEN", "MONTACARGUISTA"], "DEFINIDO",
+     f"{IF} §13; {O6}: la planeación del traslado le llega al montacarguista", "Logística autoriza el traslado.", False),
     ("COTIZACION_IMPACTO", "Cotización con impacto en precios", "Comercial", "Indicadores", "ALTA",
      ["JEFE_VENTAS", "GERENTE_COMERCIAL", "COMPRAS", "IMPORTACIONES"] + _GO, "DEFINIDO",
      "Decisión del usuario (14-oct-2026): comparar cotizaciones de importación y compras nacionales y reportes de importación (internet y Estado) con los precios para ver el posible impacto",
@@ -377,7 +379,7 @@ ALERT_TYPES = [
     ("RESERVA_VENCIDA", "Reserva que supera el plazo máximo", "Almacén", "Estados de pedidos", "MEDIA",
      _ALM + _LOG + ["COORD_VENTAS"], "DEFINIDO", "Decisión del usuario (14-oct-2026): plazo máximo de reserva 7 días por el espacio físico del almacén",
      "Stock reservado para una OV hace más días que el plazo máximo (ocupa espacio). Se avisa también al vendedor.", False),
-    ("TRASLADO_LLEGADA", "Llegada programada de traslado", "Almacén", "Traslados", "MEDIA", _ALM + ["AUX_ALMACEN"] + _CAL + ["ASIST_CALIDAD"],
+    ("TRASLADO_LLEGADA", "Llegada programada de traslado", "Almacén", "Traslados", "MEDIA", _ALM + ["AUX_ALMACEN", "MONTACARGUISTA"] + _CAL + ["ASIST_CALIDAD"],
      "DEFINIDO", "Observaciones al demo v0.5 (13-oct): al autorizar se ingresa fecha y hora de llegada para alertar a Calidad (revisión) y Almacén (almacenamiento)",
      "Se registra o cambia la fecha y hora de llegada de un traslado autorizado; se repite el día de la llegada si no se recibió.", False),
     ("COMPRA_SOBRE_COSTO_MAXIMO", "Cotización sobre el costo máximo de compra", "Compras", "Compras", "ALTA",
@@ -530,6 +532,11 @@ ALERT_TYPES += [
     ("CLIENTE_VARIACION_COMPRA", "Cliente pide más o menos de lo habitual", "Comercial", "Comportamiento de clientes", "MEDIA",
      _COM + ["GERENTE_COMERCIAL"], "DEFINIDO", f"{O6}: alertas si el cliente pide menos o más y de qué productos o presentaciones",
      "Variación de la cantidad pedida por producto o presentación sobre el umbral configurado.", False),
+    ("PICKING_PROGRAMADO", "Picking preprogramado por el sistema", "Almacén", "Preparación", "MEDIA",
+     ["LIDER_ALMACEN"] + _ALM, "DEFINIDO", f"{O6}: al líder y al coordinador de almacén les llega la preprogramación del picking",
+     "OV lista para preparar: picking programado con auxiliar propuesto para revisar y asignar.", True),
+    ("PICKING_ASIGNADO", "Picking asignado", "Almacén", "Preparación", "MEDIA", [], "DEFINIDO",
+     f"{O6}: al auxiliar le llega su programación de picking", "Se le asignó un picking (persona o grupo).", True),
     ("TAREA_ASIGNADA", "Tarea designada a usted o a su cargo", "General", "Tareas", "MEDIA", [], "DEFINIDO",
      f"{O6}: el designado recibe la tarea en su inicio y una alerta", "Una persona de su área le designó una tarea.", True),
 ]
@@ -608,13 +615,17 @@ PARAMS = [
      "PROPUESTO", "Observaciones al demo v0.6: alertas si el cliente pide menos o más; umbral por validar"),
     ("variacion_compra_dias", 90, "int", "Comercial", "Periodo (días) para comparar el comportamiento de compra del cliente.",
      "PROPUESTO", "Observaciones al demo v0.6; periodo por validar"),
+    ("dias_picking_antes_despacho", 1, "int", "Almacén",
+     "Días antes de la fecha comprometida en que el sistema preprograma el picking (nunca antes de hoy).",
+     "PROPUESTO", "Observaciones al demo v0.6: preprogramación del picking; anticipación por validar"),
     ("plazo_max_reserva_dias", 7, "int", "Almacén",
      "Plazo máximo de reserva por el espacio físico del almacén: el stock de una OV se reserva recién desde esta cantidad de "
      "días antes de la fecha comprometida (antes solo se calcula la cobertura proyectada) y se alerta si una reserva supera el plazo.",
      "DEFINIDO", "Decisión del usuario (14-oct-2026): 'Plazo máximo de reserva 7 días por el espacio físico de almacén'"),
-    ("tipos_compra_requieren_go", ["MP"], "list", "Compras",
+    ("tipos_compra_requieren_go", ["MP", "GR"], "list", "Compras",
      "Tipos de artículo cuya compra requiere SIEMPRE la aprobación de Gerencia de Operaciones, sin importar el volumen.",
-     "DEFINIDO", "Decisión del usuario (14-oct-2026): 'compras materia prima requiere autorización de Gerencia de Operaciones sí o sí'"),
+     "DEFINIDO", "Decisión del usuario (14-oct-2026): 'compras materia prima requiere autorización de Gerencia de Operaciones sí o sí'; "
+     "observaciones al demo v0.6: también las de granel (GR)"),
     ("mayor_volumen_requiere_go", True, "bool", "Compras",
      "La compra de mayor volumen requiere aprobación de Gerencia de Operaciones (además del Jefe de Logística).",
      "DEFINIDO", f"{IF} §7; {R14}: configuración automática Gerencia de Operaciones"),

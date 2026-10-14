@@ -186,6 +186,17 @@ def transfers():
     return render_template("transfers.html", rows=rows)
 
 
+@bp.route("/traslados/<int:tid>")
+@perm_required("traslados.ver")
+def transfer_detail(tid):
+    """Formato de la (pre)solicitud de traslado para revisarla antes de decidir (observaciones al demo v0.6)."""
+    from ..models import User
+    t = db().get(Transfer, tid) or abort(404)
+    sol = db().get(User, t.solicitado_por) if t.solicitado_por else None
+    aut = db().get(User, t.autorizado_por) if t.autorizado_por else None
+    return render_template("transfer_detail.html", t=t, sol=sol, aut=aut, libre=tsvc.transferable_qty(t.lot))
+
+
 @bp.route("/traslados/<int:tid>/<accion>", methods=["POST"])
 @perm_required("traslados.ver")
 def transfer_action(tid, accion):
@@ -245,3 +256,84 @@ def repack_detail(rid):
             abort(404)
         return act(fns[acc], "Reempaque actualizado.", url_for("alm.repack_detail", rid=rid))
     return render_template("repack_detail.html", r=r, tipos={c: (n, d) for c, n, d in REPACK_TYPES})
+
+
+# ---------------- programación del picking por persona (obs. demo v0.6) ----------------
+def _picking_access():
+    return any(p in g.perms for p in ("preparacion.registrar", "picking.asignar", "tareas.ejecutar"))
+
+
+@bp.route("/picking")
+@perm_required("preparacion.registrar", "picking.asignar", "tareas.ejecutar")
+def picking_schedule():
+    from datetime import date, timedelta
+    from ..services import picking as pk
+    vista = request.args.get("vista", "dia")
+    try:
+        ref = date.fromisoformat(request.args.get("fecha") or date.today().isoformat())
+    except ValueError:
+        ref = date.today()
+    desde = ref if vista == "dia" else ref - timedelta(days=ref.weekday())
+    hasta = ref if vista == "dia" else desde + timedelta(days=6)
+    asigna = "picking.asignar" in g.perms
+    wh = request.args.get("almacen") or ""
+    rows = pk.schedule(g.user, desde, hasta, wh or None, solo_mios=not asigna)
+    personal = {w: pk.staff(w) for w in sorted({t.warehouse_code for t in rows} | ({wh} if wh else set()))}
+    return render_template("picking_schedule.html", rows=rows, vista=vista, ref=ref, desde=desde, hasta=hasta, asigna=asigna,
+                           usuarios=pk.users_by_id(), almacen=wh, personal=personal,
+                           almacenes=list(db().execute(select(Warehouse).order_by(Warehouse.prioridad)).scalars()),
+                           timedelta=timedelta)
+
+
+@bp.route("/picking/<int:tid>", methods=["GET", "POST"])
+@perm_required("preparacion.registrar", "picking.asignar", "tareas.ejecutar")
+def picking_task(tid):
+    from ..models import PickingTask
+    from ..services import picking as pk
+    from ..services.distribution import save_upload
+    t = db().get(PickingTask, tid) or abort(404)
+    if "picking.asignar" not in g.perms and g.user.id not in (t.asignados or []):
+        abort(403)
+    if request.method == "POST":
+        f = request.form
+        acc = f.get("accion")
+        up = current_app.config["UPLOAD_DIR"]
+        fn = {
+            "asignar": lambda: pk.assign(t, g.user, f.getlist("user_id"), f_date("fecha"), f.get("comentario", "")),
+            "iniciar": lambda: pk.start(t, g.user, save_upload(request.files.get("foto"), up, f"picking{t.id}_ini")),
+            "registrar": lambda: pk.record(t, g.user, f.get("line_id"), f_float("cantidad", True), f.get("lote", ""),
+                                           f_date("fecha_produccion"), f_date("fecha_venc"), f.get("comentario", "")),
+            "listo": lambda: pk.finish(t, g.user, save_upload(request.files.get("foto"), up, f"picking{t.id}_fin"),
+                                       f.get("observacion", "")),
+        }.get(acc) or abort(400)
+        return act(fn, "Picking actualizado.", url_for("alm.picking_task", tid=tid))
+    from ..models import PickingRecord
+    from ..services.stock import line_reserved
+    recs = list(db().execute(select(PickingRecord).where(PickingRecord.task_id == t.id).order_by(PickingRecord.id)).scalars())
+    return render_template("picking_task.html", t=t, o=t.order, usuarios=pk.users_by_id(), personal=pk.staff(t.warehouse_code),
+                           recs=recs, line_reserved=line_reserved)
+
+
+@bp.route("/picking/formato")
+@perm_required("preparacion.registrar", "picking.asignar", "tareas.ejecutar")
+def picking_format():
+    """Formato 'Seguimiento de control de despacho de producto terminado' generado por el sistema."""
+    from datetime import date
+    from ..models import PickingTask
+    from ..services import picking as pk
+    tid = request.args.get("tid")
+    if tid:
+        t = db().get(PickingTask, int(tid)) or abort(404)
+        tareas = [t]
+        fecha = t.fecha
+    else:
+        try:
+            fecha = date.fromisoformat(request.args.get("fecha") or date.today().isoformat())
+        except ValueError:
+            fecha = date.today()
+        tareas = pk.schedule(g.user, fecha, fecha, request.args.get("almacen") or None,
+                             solo_mios="picking.asignar" not in g.perms)
+    usuarios = pk.users_by_id()
+    encargados = sorted({usuarios[i].nombre for t in tareas for i in (t.asignados or []) if i in usuarios})
+    return render_template("picking_format.html", filas=pk.format_rows(tareas), fecha=fecha, encargados=encargados,
+                           almacenes=sorted({t.warehouse_code for t in tareas}), generado=datetime.now())

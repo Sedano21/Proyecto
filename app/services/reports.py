@@ -337,3 +337,88 @@ def distribucion(desde=None, hasta=None):
             "serie_externo": [(f"{w:%d/%m}", sem[w]["EXTERNO"]) for w in semanas],
             "sin_validar": sin_validar, "externo_no_validado": rechazadas, "incidencias": len(incs),
             "por_tipo": por_tipo.most_common(), "por_subtipo": por_sub.most_common(12), "recomendaciones": reco}
+
+
+# ------------------------------------------------------------------ almacén (obs. demo v0.6)
+def almacen(desde=None, hasta=None, warehouse=None, almacenes=None):
+    """Movimiento de stock del almacén: evolución del stock en cada carga de SAP (picos y bajas), demoras (traslados,
+    picking), productos que se acercan al stock de reserva considerando el plazo de compra, y detalle de incidencias
+    (diferencias de conteo, de traslado y tareas con incidencia)."""
+    from ..models import (Alert, AlertIncident, PhysicalCount, PickingTask, Product as P, StockLot, Transfer,
+                          UploadBatch, UploadRow)
+    from .purchasing import analyze_product
+    desde, hasta = periodo(desde, hasta, 60)
+    s = db()
+    whs = [warehouse] if warehouse else list(almacenes or [])
+    # 1) evolución del stock por carga confirmada de SAP
+    batches = list(s.execute(select(UploadBatch).where(UploadBatch.tipo == "STOCK", UploadBatch.estado == "CONFIRMADO",
+                                                       UploadBatch.confirmado_ts >= desde,
+                                                       UploadBatch.confirmado_ts < hasta + timedelta(days=1))
+                             .order_by(UploadBatch.confirmado_ts)).scalars())
+    serie, por_prod = [], defaultdict(list)
+    for b in batches:
+        tot = 0.0
+        prods = defaultdict(float)
+        for r in s.execute(select(UploadRow).where(UploadRow.batch_id == b.id, UploadRow.excluida.is_(False))).scalars():
+            d = r.datos or {}
+            if whs and str(d.get("almacen") or "").strip() not in whs:
+                continue
+            try:
+                q = float(d.get("cantidad") or 0)
+            except (TypeError, ValueError):
+                q = 0.0
+            tot += q
+            prods[str(d.get("articulo") or "").strip()] += q
+        serie.append((f"{b.confirmado_ts:%d/%m %H:%M}", round(tot, 2)))
+        for k, v in prods.items():
+            por_prod[k].append(v)
+    pico = max(serie, key=lambda x: x[1]) if serie else None
+    bajas = []
+    for k, vals in por_prod.items():
+        if len(vals) >= 2 and vals[0] > 0:
+            var = (vals[-1] - vals[0]) / vals[0] * 100
+            if var <= -20:
+                bajas.append((k, vals[0], vals[-1], round(var, 1)))
+    bajas.sort(key=lambda x: x[3])
+    # 2) demoras
+    hoy = date.today()
+    traslados = [t for t in s.execute(select(Transfer).where(Transfer.estado.in_(("AUTORIZADO", "EN_TRANSITO")))).scalars()
+                 if t.llegada_estimada and t.llegada_estimada.date() < hoy
+                 and (not whs or t.destino_code in whs or t.lot.warehouse_code in whs)]
+    picking = [t for t in s.execute(select(PickingTask).where(PickingTask.estado != "LISTO", PickingTask.fecha < hoy)).scalars()
+               if not whs or t.warehouse_code in whs]
+    preps = [(o.prep_fin - o.prep_inicio).total_seconds() / 3600 for o in s.execute(
+        select(SalesOrder).where(SalesOrder.prep_fin.is_not(None), SalesOrder.prep_inicio.is_not(None),
+                                 SalesOrder.fecha_compromiso >= desde, SalesOrder.fecha_compromiso <= hasta)).scalars()]
+    # 3) stock de reserva considerando el plazo de compra
+    codes = {l.product_code for l in s.execute(select(StockLot).where(StockLot.cantidad > 0)).scalars()
+             if not whs or l.warehouse_code in whs}
+    reserva = []
+    for p in s.execute(select(P).where(P.code.in_(list(codes) or [""]))).scalars():
+        if not (p.categoria_reposicion or p.stock_minimo):
+            continue
+        a = analyze_product(p)
+        if a["requiere_compra"] or (a.get("dias_cobertura") is not None and a.get("lead_total") and a["dias_cobertura"] <= a["lead_total"]):
+            reserva.append(a)
+    # 4) incidencias con detalle
+    conteos = [c for c in s.execute(select(PhysicalCount).where(PhysicalCount.fecha >= desde)).scalars()
+               if not whs or c.warehouse_code in whs]
+    dif_conteo = [(c, [x for x in c.lines if (x.faltante or 0) > 1e-9 or (x.sobrante or 0) > 1e-9]) for c in conteos]
+    dif_conteo = [(c, xs) for c, xs in dif_conteo if xs]
+    dif_traslado = [t for t in s.execute(select(Transfer).where(Transfer.diferencia != 0, Transfer.ts >= desde)).scalars()
+                    if not whs or t.destino_code in whs]
+    inc_tareas = list(s.execute(select(AlertIncident).join(Alert, AlertIncident.alert_id == Alert.id)
+                                .where(Alert.area == "Almacén", AlertIncident.ts >= desde)).scalars())
+    reco = []
+    if reserva:
+        reco.append(f"{len(reserva)} producto(s) llegan a su stock de reserva antes de que una compra pueda reponerlos: revisar reposición.")
+    if traslados:
+        reco.append(f"{len(traslados)} traslado(s) con llegada vencida sin recibir.")
+    if picking:
+        reco.append(f"{len(picking)} picking(s) programados en días pasados siguen sin terminar.")
+    if bajas:
+        reco.append(f"{len(bajas)} producto(s) con caída de stock mayor al 20 % en el periodo.")
+    return {"desde": desde, "hasta": hasta, "almacen": warehouse, "almacenes": whs, "serie": serie, "pico": pico,
+            "bajas": bajas[:20], "traslados_demorados": traslados, "picking_atrasado": picking,
+            "prep_prom_h": round(mean(preps), 1) if preps else None, "reserva": reserva, "dif_conteo": dif_conteo,
+            "dif_traslado": dif_traslado, "inc_tareas": inc_tareas, "recomendaciones": reco}

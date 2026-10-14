@@ -25,6 +25,7 @@
       <a href="{{ url_for('alm.stock') }}">Stock y reservas</a>
       {% if can('preparacion.registrar') or can('ov.ver') %}<a href="{{ url_for('com.preparation') }}">Preparación (picking)</a>{% endif %}
       {% if can('stock.cargar') %}<a href="{{ url_for('alm.uploads', area='Almacén') }}">Cargas de archivos</a>{% endif %}
+      {% if can('picking.asignar') or can('tareas.ejecutar') or can('preparacion.registrar') %}<a href="{{ url_for('alm.picking_schedule') }}">Programación de picking</a>{% endif %}
       {% if can('stock.conteo') %}<a href="{{ url_for('alm.counts') }}">Conteos físicos</a>{% endif %}
     {% endif %}
     {% if can('traslados.ver') %}<a href="{{ url_for('alm.transfers') }}">Traslados</a>{% endif %}

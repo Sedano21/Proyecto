@@ -392,6 +392,9 @@ def _after_evaluation(order, user):
     if listo and param("certificado_previo_al_picking", True):
         from .quality import autogenerate_for_order
         autogenerate_for_order(order, user)
+    if listo:  # preprogramación del picking por persona (observaciones al demo v0.6)
+        from .picking import preschedule
+        preschedule(order, user)
     sync_order_route(order, user, listo)
 
 

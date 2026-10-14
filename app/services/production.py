@@ -70,6 +70,20 @@ def available_in(product_code, warehouse_codes=None):
     return total
 
 
+def available_by_warehouse(product_code, excluir=None):
+    """Stock libre utilizable del componente en cada almacén (para cubrir faltantes desde almacenes externos)."""
+    from .stock import free_qty, lot_usable
+    out = {}
+    for lot in db().execute(select(StockLot).where(StockLot.product_code == product_code, StockLot.cantidad > 0)).scalars():
+        if excluir and lot.warehouse_code in excluir:
+            continue
+        if lot_usable(lot)[0]:
+            q = free_qty(lot)
+            if q > 1e-9:
+                out[lot.warehouse_code] = out.get(lot.warehouse_code, 0.0) + q
+    return out
+
+
 def material_requirements(product_code, cantidad, version=None):
     """Cálculo proporcional: requerido = cantidad_componente / cantidad_BOM × cantidad_a_producir × (1 + merma).
     La merma solo se aplica si se confirmó que el Excel NO la incluye (evita doble contabilización)."""
@@ -112,13 +126,23 @@ def material_requirements(product_code, cantidad, version=None):
         disp_total = available_in(bl.componente)
         falt = max(requerido - disp_bom, 0)
         comp = db().get(Product, bl.componente)
+        externos = {}
         if falt > 1e-9:
             factible = False
+            # observaciones al demo v0.6: si falta materia prima, revisar si hay en almacenes externos
+            externos = available_by_warehouse(bl.componente, [bl.almacen_comp] if bl.almacen_comp else None)
+            cubre = sum(externos.values())
+            if externos:
+                res["avisos"].append(
+                    f"{bl.componente}: faltan {falt:g} en el almacén de la lista; hay {cubre:g} en otros almacenes ("
+                    + ", ".join(f"{w} {q:g}" for w, q in sorted(externos.items(), key=lambda x: -x[1])) + ")"
+                    + (": se puede cubrir con un traslado." if cubre >= falt - 1e-9 else ": cubre solo una parte."))
         res["materiales"].append({
             "componente": bl.componente, "descripcion": bl.componente_desc, "por_unidad": bl.cantidad / (bl.cantidad_bom or 1),
             "requerido_base": base, "merma_pct": merma, "merma_nivel": nivel, "requerido": requerido,
             "almacen": bl.almacen_comp, "disponible_almacen": disp_bom, "disponible_total": disp_total, "faltante": falt,
             "tipo": comp.tipo if comp else bl.componente[:2], "es_mp_granel": bl.componente[:2] in ("MP", "GR", "C3"),
+            "otros_almacenes": externos, "cubre_con_traslado": bool(externos) and sum(externos.values()) >= falt - 1e-9,
         })
     res["factible"] = factible
     return res
@@ -559,8 +583,8 @@ def plan_vs_real(periodo="DIA", desde=None, hasta=None):
 def review_bom(req, user, conforme, comentario=""):
     """Producción visualiza la lista de materiales asignada a la solicitud y confirma que es la correcta (o la observa)."""
     from .core import has_perm
-    if not (has_perm(user, "produccion.validar") or has_perm(user, "produccion.programar") or has_perm(user, "produccion.liquidar")):
-        raise BusinessError("La lista de materiales la revisa Producción.")
+    if not has_perm(user, "produccion.bom_aprobar"):
+        raise BusinessError("La lista de materiales la revisa y aprueba el Jefe o el Asistente de Producción (no Almacén).")
     if not conforme and not (comentario or "").strip():
         raise BusinessError("Indique qué está mal en la lista de materiales.")
     v = active_bom()

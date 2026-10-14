@@ -153,7 +153,7 @@ def go_reason(r):
     mayor volumen (IF §7)."""
     p = r.product
     if p is not None and (p.tipo or r.product_code[:2]) in (param("tipos_compra_requieren_go", ["MP"]) or []):
-        return "materia prima"
+        return "granel" if (p.tipo or r.product_code[:2]) == "GR" else "materia prima"
     if r.mayor_volumen and bool(param("mayor_volumen_requiere_go", True)):
         return "mayor volumen"
     return ""

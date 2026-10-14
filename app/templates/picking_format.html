@@ -1,0 +1,14 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Seguimiento de control de despacho de producto terminado</title>
+<style>body{font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#111;margin:16px;background:#fff}table{border-collapse:collapse;width:100%}td,th{border:1px solid #444;padding:3px 4px;vertical-align:top}th{background:#eef3ee;font-size:10px}
+.head td{border:1px solid #444}.logo{height:42px}.t{font-size:16px;font-weight:bold;text-align:center}.r{text-align:right}.fill{min-width:70px}@media print{.noprint{display:none}body{margin:0}}</style></head><body>
+<p class="noprint"><button onclick="window.print()">Imprimir</button> <a href="javascript:history.back()">Volver</a></p>
+<table class="head"><tr><td style="width:180px"><img class="logo" src="{{ url_for('static', filename='img/logo_corporacion_productiva.png') }}" alt="Corporación Productiva"></td>
+<td class="t">SEGUIMIENTO DE CONTROL DE DESPACHO DE PRODUCTO TERMINADO</td><td style="width:170px;font-size:9px">Generado por el sistema<br>{{ generado.strftime('%d/%m/%Y %H:%M') }}</td></tr></table>
+<table style="margin-top:6px"><tr><td style="width:180px"><b>ENCARGADO {{ almacenes|join(', ') or 'ALMACÉN' }}:</b></td><td></td><td style="width:160px"><b>FECHA DE PICKING:</b></td><td>{{ fecha.strftime('%d/%m/%Y') }}</td></tr>
+<tr><td><b>ENCARGADO PICKING:</b></td><td colspan="3">{{ encargados|join(', ') }}</td></tr><tr><td><b>VERIFICADOR DE PEDIDO:</b></td><td colspan="3"></td></tr></table>
+<table style="margin-top:6px"><tr><th>FECHA</th><th>N° OV y CÓDIGO</th><th>CLIENTES</th><th>DESCRIPCIÓN DEL PRODUCTO</th><th>SOLICITADO UND</th><th>DESPACHADO UND</th><th>LOTE</th><th>FECHA DE PRODUCCIÓN</th><th>FECHA DE VENCIMIENTO</th><th>COMENTARIOS</th></tr>
+{% for f in filas %}<tr><td>{{ f.fecha.strftime('%d/%m') }}</td><td>{{ f.ov }} {{ f.codigo }}</td><td>{{ f.cliente }}</td><td>{{ f.descripcion }}</td><td class="r">{{ '%g'|format(f.solicitado) }}</td>
+<td class="r fill">{{ '%g'|format(f.despachado) if f.despachado is not none }}</td><td class="fill">{{ f.lote }}</td><td class="fill">{{ f.fecha_produccion.strftime('%d-%m-%y') if f.fecha_produccion }}</td><td class="fill">{{ f.fecha_venc.strftime('%d-%m-%y') if f.fecha_venc }}</td><td>{{ f.comentario }}</td></tr>
+{% else %}<tr><td colspan="10">No hay picking programado para la fecha.</td></tr>{% endfor %}</table>
+<p style="font-size:9px;color:#555">Las columnas despachado, lote, fecha de producción y fecha de vencimiento se llenan con el registro del auxiliar en el sistema (o a mano si se imprime en blanco).</p>
+</body></html>

@@ -3,7 +3,7 @@
 <p class="muted small">El sistema realiza el análisis preliminar (materiales desde la lista Excel, cálculo proporcional y merma); Almacén revisa y envía; Producción valida lista, disponibilidad real, capacidad y plazo (IF §8.2).</p>
 {% if can('produccion.solicitud') %}<form method="post" class="card row">{{ csrf() }}
 <div><label>Producto</label><input name="product_code" list="bomp" required></div><div><label>Cantidad</label><input type="number" step="any" name="cantidad" required></div>
-<div><label>OV relacionada</label><input name="ov"></div><div><label>Fecha requerida</label><input type="date" name="fecha_requerida"></div><div><label>Observación</label><input name="observacion"></div>
+<div><label>OV relacionada (opcional)</label><select name="ov"><option value="">— Sin OV —</option>{% for o in ovs %}<option value="{{ o.numero }}">{{ o.numero }} · {{ o.customer.nombre[:30] }} · {{ o.fecha_compromiso|d }}</option>{% endfor %}</select></div><div><label>Fecha requerida</label><input type="date" name="fecha_requerida"></div><div><label>Observación</label><input name="observacion"></div>
 <div><button>Crear solicitud preliminar</button></div><datalist id="bomp">{% for p in prods %}<option value="{{ p }}">{% endfor %}</datalist></form>{% endif %}
 <div class="tbl"><table><tr><th>#</th><th>Producto</th><th class="r">Cantidad</th><th>OV</th><th>Requerida</th><th>Origen</th><th>Estado</th><th>Materiales</th><th>Línea / fecha</th></tr>
 {% for r in rows %}<tr><td><a href="{{ url_for('prod.request_detail', rid=r.id) }}">{{ r.id }}</a></td><td>{{ r.product_code }} {{ pd(r.product_code) }}</td><td class="r">{{ r.cantidad|n }}</td><td>{{ r.order.numero if r.order }}</td><td>{{ r.fecha_requerida|d }}</td><td>{{ r.origen }}</td><td>{{ b(r.estado) }}</td>

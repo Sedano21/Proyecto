@@ -203,6 +203,12 @@ def alert_action(aid, accion):
         "incidencia": lambda: alert_svc.open_incident(a, g.user, f.get("situacion", ""), f.get("acciones", ""),
                                                       f.get("responsable_id") or None),
         "resolver": _resolver,
+        "iniciar_foto": lambda: alert_svc.start_with_photo(
+            a, g.user, save_upload(request.files.get("foto"), current_app.config["UPLOAD_DIR"], f"tarea{a.id}_ini"),
+            f.get("comentario", "")),
+        "terminar_foto": lambda: alert_svc.finish_with_photo(
+            a, g.user, save_upload(request.files.get("foto"), current_app.config["UPLOAD_DIR"], f"tarea{a.id}_fin"),
+            f.get("observacion", "")),
         "aprobar": lambda: alert_actions.decide(a, g.user, True, f.get("motivo", "")),
         "desaprobar": lambda: alert_actions.decide(a, g.user, False, f.get("motivo", "")),
     }.get(accion) or abort(404)

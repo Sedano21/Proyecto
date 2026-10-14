@@ -306,6 +306,33 @@ def attend(alert, user, comentario=""):
     audit(user, "ALERTA_EN_EJECUCION", "Alert", alert.id)
 
 
+def start_with_photo(alert, user, foto, comentario=""):
+    """Tarea operativa (montacarguista, auxiliar): indica que inició con una foto; no designa a nadie."""
+    if not can_see(user, alert):
+        raise BusinessError("No tiene visibilidad sobre esta alerta.")
+    if not has_perm(user, "tareas.ejecutar"):
+        raise BusinessError("Su rol no ejecuta tareas operativas.")
+    if is_closed(alert) or alert.estado == "INCIDENCIA":
+        raise BusinessError("La tarea no está pendiente.")
+    if alert.asignado_a and alert.asignado_a != user.id:
+        raise BusinessError("La tarea la está ejecutando otra persona.")
+    if not foto:
+        raise BusinessError("Tome la foto al iniciar la tarea.")
+    alert.asignado_a = user.id
+    alert.estado = "EN_EJECUCION"
+    alert.foto_inicio = foto
+    _event(alert, user, "EN_EJECUCION", f"Inició con foto. {comentario}".strip())
+    audit(user, "TAREA_INICIADA_CON_FOTO", "Alert", alert.id, {"foto": foto})
+
+
+def finish_with_photo(alert, user, foto, observacion=""):
+    if not is_assignee(user, alert) or alert.estado != "EN_EJECUCION":
+        raise BusinessError("Primero inicie la tarea con su foto.")
+    if not foto:
+        raise BusinessError("Tome la foto al terminar la tarea.")
+    complete(alert, user, observacion.strip() or "Terminada", "Terminada con foto", evidencia=foto)
+
+
 def comment(alert, user, texto):
     if not can_see(user, alert):
         raise BusinessError("No tiene visibilidad sobre esta alerta.")

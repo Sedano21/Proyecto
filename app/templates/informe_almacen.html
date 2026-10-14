@@ -1,0 +1,24 @@
+{% extends "base.html" %}{% from "_informe.html" import cabecera %}{% from "_m.html" import b %}
+{% block content %}{{ cabecera('Movimiento de stock del almacén', d, items, actual) }}
+{% if propios %}<form class="row card" method="get"><input type="hidden" name="desde" value="{{ d.desde.isoformat() }}"><input type="hidden" name="hasta" value="{{ d.hasta.isoformat() }}"><div><label>Almacén</label><select name="almacen"><option value="">(todos los suyos: {{ propios|join(', ') }})</option>{% for w in propios %}<option {{ 'selected' if d.almacen==w }}>{{ w }}</option>{% endfor %}</select></div><div><button class="sec">Ver</button></div></form>{% endif %}
+<div class="kpis"><div class="kpi"><b>{{ d.pico[1]|n if d.pico else '—' }}</b><span>Pico de stock</span><small>{{ d.pico[0] if d.pico else 'sin cargas en el periodo' }}</small></div>
+<div class="kpi"><b>{{ d.bajas|length }}</b><span>Productos con baja &gt; 20 %</span></div><div class="kpi"><b>{{ d.reserva|length }}</b><span>Llegando al stock de reserva</span><small>con el plazo de compra</small></div>
+<div class="kpi"><b>{{ d.traslados_demorados|length }} / {{ d.picking_atrasado|length }}</b><span>Traslados / picking demorados</span></div>
+<div class="kpi"><b>{{ d.prep_prom_h if d.prep_prom_h is not none else '—' }} h</b><span>Tiempo promedio de preparación</span></div></div>
+<div class="card"><h3>Evolución del stock (cada carga de SAP)</h3>{{ graf }}</div>
+<div class="grid g2"><div class="card"><h3>Llegando al stock de reserva</h3><p class="small muted">Disponible frente a la demanda durante el plazo de compra (plazo + margen) más el stock mínimo y los faltantes de OV.</p>
+<table class="small"><tr><th>Producto</th><th class="r">Disponible</th><th class="r">Días de cobertura</th><th class="r">Plazo de compra</th><th>Pedir antes del</th></tr>
+{% for a in d.reserva %}<tr><td>{{ a.producto }} {{ pd(a.producto) }}</td><td class="r">{{ a.disponible|n }}</td><td class="r">{{ a.dias_cobertura if a.dias_cobertura is not none else '—' }}</td><td class="r">{{ a.lead_total }} d</td><td>{{ a.fecha_limite_pedido|d if a.fecha_limite_pedido else 'ya' }}</td></tr>
+{% else %}<tr><td colspan="5" class="muted">Ningún producto se acerca a su stock de reserva.</td></tr>{% endfor %}</table></div>
+<div class="card"><h3>Bajas de stock en el periodo</h3><table class="small"><tr><th>Producto</th><th class="r">Inicio</th><th class="r">Fin</th><th class="r">Variación</th></tr>
+{% for k, a, z, v in d.bajas %}<tr><td>{{ k }} {{ pd(k) }}</td><td class="r">{{ a|n }}</td><td class="r">{{ z|n }}</td><td class="r">{{ v }} %</td></tr>{% else %}<tr><td colspan="4" class="muted">Sin bajas relevantes (o menos de dos cargas en el periodo).</td></tr>{% endfor %}</table></div></div>
+<div class="grid g2"><div class="card"><h3>Demoras</h3><table class="small"><tr><th>Tipo</th><th>Detalle</th><th>Fecha</th></tr>
+{% for t in d.traslados_demorados %}<tr><td>Traslado</td><td><a href="{{ url_for('alm.transfer_detail', tid=t.id) }}">#{{ t.id }}</a> {{ t.lot.product_code }} → {{ t.destino_code }}</td><td>llegada {{ t.llegada_estimada|d }}</td></tr>{% endfor %}
+{% for t in d.picking_atrasado %}<tr><td>Picking</td><td><a href="{{ url_for('alm.picking_task', tid=t.id) }}">OV {{ t.order.numero }}</a> {{ b(t.estado) }}</td><td>programado {{ t.fecha|d }}</td></tr>{% endfor %}
+{% if not d.traslados_demorados and not d.picking_atrasado %}<tr><td colspan="3" class="muted">Sin demoras.</td></tr>{% endif %}</table></div>
+<div class="card"><h3>Incidencias (detalle)</h3><table class="small"><tr><th>Tipo</th><th>Detalle</th><th>Fecha</th></tr>
+{% for c, xs in d.dif_conteo %}<tr><td>Conteo físico</td><td><a href="{{ url_for('alm.count_detail', cid=c.id) }}">#{{ c.id }} {{ c.warehouse_code }}</a>: {% for x in xs[:4] %}{{ x.product_code }} {{ x.lote }} ({% if x.faltante %}falta {{ x.faltante|n }}{% else %}sobra {{ x.sobrante|n }}{% endif %}){{ '; ' if not loop.last }}{% endfor %}</td><td>{{ c.fecha|d }}</td></tr>{% endfor %}
+{% for t in d.dif_traslado %}<tr><td>Recepción de traslado</td><td><a href="{{ url_for('alm.transfer_detail', tid=t.id) }}">#{{ t.id }}</a> diferencia {{ t.diferencia|n }}</td><td>{{ t.recibido_ts|d }}</td></tr>{% endfor %}
+{% for i in d.inc_tareas %}<tr><td>Incidencia de tarea</td><td><a href="{{ url_for('main.alert_detail', aid=i.alert_id) }}">#{{ i.alert_id }}</a> {{ i.situacion }} {{ b(i.estado) }}</td><td>{{ i.ts|d }}</td></tr>{% endfor %}
+{% if not d.dif_conteo and not d.dif_traslado and not d.inc_tareas %}<tr><td colspan="3" class="muted">Sin incidencias en el periodo.</td></tr>{% endif %}</table></div></div>
+{% endblock %}

@@ -15,7 +15,7 @@
 {% elif a.entidad=='StockLot' %} · <a href="{{ url_for('cal.home') }}">ver liberaciones</a>{% elif a.entidad=='UploadBatch' %} · <a href="{{ url_for('alm.upload_detail', bid=a.entidad_id) }}">abrir carga</a>
 {% elif a.entidad=='PriceListMeta' %} · <a href="{{ url_for('com.prices') }}">ver listas de precios</a>{% elif a.entidad=='Liquidation' %} · <a href="{{ url_for('prod.liquidations') }}">ver liquidaciones</a>{% elif a.entidad=='OVChangeRequest' %} · <a href="{{ url_for('com.orders') }}">ver OV</a>{% elif a.entidad=='Alert' %} · <a href="{{ url_for('main.alert_detail', aid=a.entidad_id) }}">abrir tarea original</a>{% elif a.entidad=='PhysicalCount' %} · <a href="{{ url_for('alm.count_detail', cid=a.entidad_id) }}">abrir conteo</a>{% endif %}</td></tr>
 <tr><td>Responsable</td><td>{% if a.asignado %}{{ a.asignado.nombre }}{% elif a.asignado_rol %}Cargo: {{ a.asignado_rol }}{% else %}<span class="muted">sin designar</span>{% endif %}</td></tr>
-<tr><td>Creada</td><td>{{ a.creado_ts|d }}</td></tr>
+<tr><td>Creada</td><td>{{ a.creado_ts|d }}{% if a.foto_inicio %} · <a href="{{ url_for('main.evidence', name=a.foto_inicio) }}">foto de inicio</a>{% endif %}</td></tr>
 {% if cerrada %}<tr><td>Resultado</td><td>{{ a.cerrado_ts|d }} · {{ a.resultado }} · {{ a.motivo_cierre }} · {{ a.accion_tomada }}{% if a.evidencia %} · <a href="{{ url_for('main.evidence', name=a.evidencia) }}">evidencia</a>{% endif %}</td></tr>
 {% if a.proceso_pendiente %}<tr><td>Proceso posterior pendiente</td><td><span class="b MEDIA">{{ a.proceso_pendiente }}</span></td></tr>{% endif %}{% endif %}
 </table></div>
@@ -29,14 +29,20 @@
 <p><button formaction="{{ url_for('main.alert_action', aid=a.id, accion='aprobar') }}">Confirmar / aprobar</button>
 <button class="sec" formaction="{{ url_for('main.alert_action', aid=a.id, accion='desaprobar') }}">Desistir / desaprobar</button></p></form>{% endif %}
 <div class="grid g2">
-{% if can('alertas.gestionar') or svc.is_assignee(user, a) %}
+{% if can('tareas.ejecutar') and not can('alertas.gestionar') %}
+{% if a.estado == 'PENDIENTE' %}<form class="card" method="post" enctype="multipart/form-data" action="{{ url_for('main.alert_action', aid=a.id, accion='iniciar_foto') }}">{{ csrf() }}<h3>Iniciar tarea</h3>
+<label>Foto al iniciar</label><input type="file" name="foto" accept="image/*" capture="environment" required><label>Comentario</label><input name="comentario" style="width:100%"><p><button>Inicié la tarea</button></p></form>
+{% elif a.estado == 'EN_EJECUCION' and svc.is_assignee(user, a) %}<form class="card" method="post" enctype="multipart/form-data" action="{{ url_for('main.alert_action', aid=a.id, accion='terminar_foto') }}">{{ csrf() }}<h3>Terminar tarea</h3>
+<label>Foto al terminar</label><input type="file" name="foto" accept="image/*" capture="environment" required><label>Observación (si existe)</label><input name="observacion" style="width:100%"><p><button>Terminé la tarea</button></p></form>{% endif %}
+{% endif %}
+{% if can('alertas.gestionar') %}
 <form class="card" method="post" action="{{ url_for('main.alert_action', aid=a.id, accion='asignar') }}">{{ csrf() }}<h3>Designar</h3>
 <p class="small muted">Solo a personas o cargos de su área; a otras áreas el sistema deriva según las reglas del proceso.</p>
 <label>Persona</label><select name="user_id"><option value="">—</option>{% for u in users %}<option value="{{ u.id }}">{{ u.nombre }} ({{ u.role.nombre }})</option>{% endfor %}</select>
 <label>o cargo</label><select name="rol"><option value="">—</option>{% for r in roles %}<option value="{{ r.code }}">{{ r.nombre }}</option>{% endfor %}</select>
 <label>Comentario</label><input name="comentario" style="width:100%"><p><button>Designar</button>
 <button class="sec" formaction="{{ url_for('main.alert_action', aid=a.id, accion='tomar') }}">Tomar yo la tarea</button></p></form>{% endif %}
-{% if con_resp and a.estado != 'INCIDENCIA' %}
+{% if con_resp and a.estado != 'INCIDENCIA' and (can('alertas.gestionar') or not can('tareas.ejecutar')) %}
 {% if svc.is_assignee(user, a) and a.estado != 'EN_EJECUCION' %}<form class="card" method="post" action="{{ url_for('main.alert_action', aid=a.id, accion='atender') }}">{{ csrf() }}<h3>En ejecución</h3>
 <label>Comentario</label><input name="comentario" style="width:100%"><p><button>Comencé a trabajar</button></p></form>{% endif %}
 <form class="card" method="post" enctype="multipart/form-data" action="{{ url_for('main.alert_action', aid=a.id, accion='completar') }}">{{ csrf() }}<h3>Completar</h3>

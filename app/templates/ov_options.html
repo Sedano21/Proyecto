@@ -21,7 +21,7 @@
 <div class="reco"><b>Recomendación del sistema:</b> {{ it.porque }}</div>
 <h4>Pre-solicitudes generadas para este producto</h4>
 <table class="small"><tr><th>Ruta</th><th>Pre-solicitud</th><th class="r">Cantidad</th><th>Estado</th><th>Decisión (motivo obligatorio)</th></tr>
-{% for p in it.presolicitudes %}<tr><td>{{ rutas[p.ruta] }}</td><td>{{ p.tipo|capitalize }} #{{ p.id }}</td><td class="r">{{ p.cantidad|n }}</td><td>{{ b(p.estado) }}</td>
+{% for p in it.presolicitudes %}<tr><td>{{ rutas[p.ruta] }}</td><td>{{ p.tipo|capitalize }} #{{ p.id }} · <a href="{{ {'TRASLADO': url_for('alm.transfer_detail', tid=p.id), 'REEMPAQUE': url_for('alm.repack_detail', rid=p.id), 'PRODUCCION': url_for('prod.request_detail', rid=p.id), 'COMPRA': url_for('buy.purchase_detail', pid=p.id)}[p.tipo] }}">ver formato</a></td><td class="r">{{ p.cantidad|n }}</td><td>{{ b(p.estado) }}</td>
 <td>{% if p.pendiente %}<form method="post" class="row">{{ csrf() }}<input type="hidden" name="tipo" value="{{ p.tipo }}"><input type="hidden" name="id" value="{{ p.id }}"><input type="hidden" name="producto" value="{{ it.line.product_code }}">
 <div class="grow"><input name="motivo" required minlength="5" placeholder="¿Por qué se elige (o rechaza) esta opción?"></div><div><button name="accion" value="aprobar">Verificar y aprobar</button> <button class="sec" name="accion" value="rechazar">Rechazar</button></div></form>{% else %}<span class="muted">—</span>{% endif %}</td></tr>
 {% else %}<tr><td colspan="5" class="muted">Sin pre-solicitudes. Si elige otra ruta, genérela desde la tabla de opciones (traslado) o desde la OV (alternativas ante faltante); la aprueba su responsable.</td></tr>{% endfor %}</table></div>

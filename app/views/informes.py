@@ -13,6 +13,7 @@ INFORMES = {
     "reempaque": ("Reempaque", ("informes.reempaque",)),
     "produccion": ("Producción", ("informes.produccion",)),
     "distribucion": ("Distribución", ("informes.distribucion",)),
+    "almacen": ("Movimiento de stock del almacén", ("informes.almacen",)),
 }
 
 
@@ -56,6 +57,18 @@ def show(nombre):
         graf["cumplimiento"] = charts.bars([(x["customer"].nombre[:22], x["cumplimiento"] or 0) for x in cb["clientes"][:15]], "%",
                                            title="Cumplimiento por cliente (atendidos / pedidos)", color=2)
         return render_template("informe_comercial.html", d=d, cb=cb, graf=graf, items=disponibles(), actual=nombre)
+    if nombre == "almacen":
+        from ..services.core import warehouse_scopes
+        propios = warehouse_scopes().get(g.user.role_code)
+        if propios is None and g.user.almacen:
+            propios = [g.user.almacen]
+        propios = [w for w in (propios or []) if not w.endswith("*")]
+        wh = request.args.get("almacen") or ""
+        if propios and wh and wh not in propios:
+            abort(403)
+        d = rsvc.almacen(desde, hasta, wh or None, propios)
+        graf = charts.line([("Stock total (unidades)", d["serie"])], "und", title="Stock en cada carga de SAP")
+        return render_template("informe_almacen.html", d=d, graf=graf, propios=propios, items=disponibles(), actual=nombre)
     fn = getattr(rsvc, nombre)
     d = fn(desde, hasta)
     return render_template(f"informe_{nombre}.html", d=d, charts=charts, items=disponibles(), actual=nombre)

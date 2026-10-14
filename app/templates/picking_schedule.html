@@ -1,0 +1,15 @@
+{% extends "base.html" %}{% from "_m.html" import b %}
+{% block content %}<h1>Programación de picking</h1>
+<p class="muted small">El sistema preprograma el picking de cada OV lista para preparar y propone el auxiliar con menor carga del día. {% if asigna %}El Líder Operativo y el Coordinador revisan el detalle y asignan a una persona o grupo.{% else %}Aquí ve su programación diaria y semanal.{% endif %}</p>
+<form class="row card" method="get"><div><label>Vista</label><select name="vista"><option value="dia" {{ 'selected' if vista=='dia' }}>Diaria</option><option value="semana" {{ 'selected' if vista=='semana' }}>Semanal</option></select></div>
+<div><label>Fecha</label><input type="date" name="fecha" value="{{ ref.isoformat() }}"></div>
+{% if asigna %}<div><label>Almacén</label><select name="almacen"><option value="">(todos)</option>{% for w in almacenes if w.uso in ['PT','MP_INSUMOS'] %}<option value="{{ w.code }}" {{ 'selected' if almacen==w.code }}>{{ w.code }} {{ w.nombre }}</option>{% endfor %}</select></div>{% endif %}
+<div><button class="sec">Ver</button></div><div><a class="btn sec" href="{{ url_for('alm.picking_format', fecha=ref.isoformat(), almacen=almacen) }}">Formato de control del día</a></div></form>
+<p class="small">Periodo: {{ desde|d }}{% if hasta != desde %} – {{ hasta|d }}{% endif %}</p>
+<div class="tw"><table><tr><th>Fecha</th><th>OV</th><th>Cliente</th><th>Almacén</th><th class="r">Líneas</th><th>Asignado a</th><th>Estado</th><th></th></tr>
+{% for t in rows %}<tr><td>{{ t.fecha|d }}</td><td>{{ t.order.numero }}</td><td>{{ t.order.customer.nombre }}</td><td>{{ t.warehouse_code }}</td><td class="r">{{ t.order.lines|selectattr('activa')|list|length }}</td>
+<td>{% for i in t.asignados %}{{ usuarios[i].nombre if i in usuarios }}{{ ', ' if not loop.last }}{% else %}<span class="b ALTA">sin asignar</span>{% endfor %}</td><td>{{ b(t.estado) }}</td>
+<td><a class="btn small sec" href="{{ url_for('alm.picking_task', tid=t.id) }}">Ver detalle</a></td></tr>
+{% else %}<tr><td colspan="8" class="muted">No hay picking programado en el periodo.</td></tr>{% endfor %}</table></div>
+{% if asigna and personal %}<div class="card"><h3>Personal por almacén</h3>{% for w, lista in personal.items() %}<p><b>{{ w }}</b>: {% for u in lista %}{{ u.nombre }} <span class="muted small">({{ u.role.nombre }})</span>{{ '; ' if not loop.last }}{% else %}<span class="muted">sin personal con este almacén asignado</span>{% endfor %}</p>{% endfor %}</div>{% endif %}
+{% endblock %}

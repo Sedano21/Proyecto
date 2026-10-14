@@ -86,10 +86,18 @@ def evaluate(order, hoy=None):
         req = a["produccion"] or material_requirements(line.product_code, pendiente)
         if req and req.get("bom_encontrada"):
             pp = _plazo("tiempo_produccion_dias", 2)
-            falt = [m["componente"] for m in req["materiales"] if m["faltante"] > 1e-9]
-            ops.append({"ruta": "B", "viable": not falt, "cantidad": pendiente, "plazo": pp,
-                        "fecha": hoy + timedelta(days=pp or 0), "vida": None,
-                        "detalle": "Materiales disponibles" if not falt else "Faltan materiales: " + ", ".join(falt[:5])})
+            falt = [m for m in req["materiales"] if m["faltante"] > 1e-9]
+            sin_cubrir = [m["componente"] for m in falt if not m.get("cubre_con_traslado")]
+            con_traslado = [m["componente"] for m in falt if m.get("cubre_con_traslado")]
+            dias = (pp or 0) + ((_plazo("tiempo_traslado_dias", 2) or 0) if con_traslado else 0)
+            if not falt:
+                det = "Materiales disponibles"
+            elif sin_cubrir:
+                det = "Faltan materiales: " + ", ".join(sin_cubrir[:5])
+            else:
+                det = "Materia prima en almacén externo: trasladar " + ", ".join(con_traslado[:5]) + " antes de producir"
+            ops.append({"ruta": "B", "viable": not sin_cubrir, "cantidad": pendiente, "plazo": dias,
+                        "fecha": hoy + timedelta(days=dias), "vida": None, "detalle": det})
         # D) compra
         if a["compra"] is not None or not (req and req.get("bom_encontrada")):
             lt, _modo = lead_time_for(p) if p else (None, "")
