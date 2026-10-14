@@ -82,3 +82,24 @@ def test_impacto_de_cotizaciones_nacional_e_importacion(s, U):
     assert filas["importacion"]["nuevo_kg"] == 4.5
     assert any("conviene importación" in x for x in filas["importacion"]["recomendaciones"])
     assert alerts_of(s, "COTIZACION_IMPACTO", "MP-901")
+
+
+def test_ov_detenida_por_precio_no_reserva_hasta_aprobar(s, U, new_order):
+    from app.services.prices import approve_price
+    from app.services.stock import line_reserved
+    o = new_order([("PT-905", 10)], precio=0.01)
+    assert o.retenida_precio and o.estado_stock == "POR_APROBAR" and line_reserved(o.lines[0]) == 0
+    assert "No se reserva" in o.motivo_detencion
+    approve_price(o, U("coord.ventas"), "Precio especial aprobado")
+    assert not o.retenida_precio and o.estado_stock == "COMPLETA" and line_reserved(o.lines[0]) == 10
+
+
+def test_presolicitud_de_traslado_no_compromete_stock_hasta_autorizar(s, U):
+    from app.models import StockLot
+    from app.services import transfers as tsvc
+    lot = s.query(StockLot).filter_by(product_code="PT-901", lote="L901C").one()
+    antes = tsvc.transferable_qty(lot)
+    t = tsvc.request_transfer(None, lot.id, "ALM-001", antes, sistema=True)
+    assert tsvc.transferable_qty(lot) == antes  # solicitada pero no autorizada: no aparta stock
+    tsvc.authorize(t, U("jefe.logistica"), True, "Verificado")
+    assert tsvc.transferable_qty(lot) == 0

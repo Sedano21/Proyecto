@@ -11,7 +11,9 @@ from .stock import add_or_increase_lot, free_qty, lot_usable, reevaluate_pending
 
 
 def pending_transfer_qty(lot):
-    q = select(Transfer).where(Transfer.origen_lot_id == lot.id, Transfer.estado.in_(["SOLICITADO", "AUTORIZADO"]))
+    """Cantidad comprometida en el origen por traslados AUTORIZADOS aún no despachados. Una solicitud o pre-solicitud
+    sin autorizar no compromete stock (decisión del 14-oct): la disponibilidad se valida al autorizar."""
+    q = select(Transfer).where(Transfer.origen_lot_id == lot.id, Transfer.estado == "AUTORIZADO")
     return sum(t.cantidad for t in db().execute(q).scalars())
 
 
@@ -60,7 +62,7 @@ def authorize(t, user, aprobar, observacion="", llegada=None):
     if t.solicitado_por is not None and t.solicitado_por == user.id:
         raise BusinessError("No puede aprobar su propia solicitud de traslado: la aprueba el Jefe de Logística (decisión 13-oct).")
     if aprobar:
-        disp = transferable_qty(t.lot) + t.cantidad  # excluye su propia cantidad pendiente
+        disp = transferable_qty(t.lot)  # la solicitud aún no compromete stock: se valida contra lo libre hoy
         if t.cantidad > disp + 1e-9:
             raise BusinessError(f"El lote ya no tiene la cantidad disponible ({disp:g}).")
     t.estado = "AUTORIZADO" if aprobar else "RECHAZADO"

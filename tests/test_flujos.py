@@ -175,8 +175,9 @@ def test_vencimiento_y_vida_util_cliente(s, U, new_order):
 def test_cambio_ov_conserva_reservas_y_alerta(s, U, new_order):
     o = new_order([("PT-905", 100)])
     res0 = o.lines[0].reservations[0]
+    # la línea nueva lleva precio: sin precio la OV quedaría detenida y no reservaría (decisión del 14-oct)
     osvc.modify_order(o, U("coord.ventas"), {"lines": [{"product_code": "PT-905", "cantidad": 150},
-                                                       {"product_code": "PT-902", "cantidad": 5}]})
+                                                       {"product_code": "PT-902", "cantidad": 5, "precio_unitario": 999}]})
     s.commit()
     assert res0.estado == "ACTIVA" and line_reserved(o.lines[0]) == 150
     assert o.version == 2 and o.estado_stock == "COMPLETA"

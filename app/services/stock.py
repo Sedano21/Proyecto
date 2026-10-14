@@ -198,16 +198,19 @@ def is_deferred(order, hoy=None):
     return desde is not None and (hoy or date.today()) < desde and order.estado in ("REGISTRADA", "EVALUADA")
 
 
-def _evaluate_deferred(order, user, motivo):
-    """OV con despacho más allá del plazo máximo de reserva: no aparta stock (libera lo que tuviera) y calcula la
-    cobertura proyectada con el stock libre para anticipar faltantes; se reserva sola al entrar al plazo."""
+def _evaluate_deferred(order, user, motivo, por_aprobar=False):
+    """Evalúa sin apartar stock (libera lo que tuviera) y calcula la cobertura proyectada con el stock libre:
+    - OV con despacho más allá del plazo máximo de reserva: se reserva sola al entrar al plazo (estado DIFERIDA).
+    - OV que espera una aprobación (precio en el límite o bajo el mínimo/costo): no se reserva ni se generan
+      pre-solicitudes hasta que el Coordinador o el Jefe Comercial apruebe (estado POR_APROBAR, decisión del 14-oct)."""
     customer = order.customer
     resumen = []
     total_req = total_proj = 0.0
     for line in order.lines:
         for r in line.reservations:
             if r.estado == "ACTIVA":
-                _release(r, f"Reserva diferida: la OV sale el {order.fecha_compromiso:%d/%m/%Y} (plazo máximo de reserva)")
+                _release(r, "OV pendiente de aprobación comercial (precio): no se reserva hasta aprobar" if por_aprobar else
+                         f"Reserva diferida: la OV sale el {order.fecha_compromiso:%d/%m/%Y} (plazo máximo de reserva)")
         if not line.activa:
             continue
         product = db().get(Product, line.product_code)
@@ -223,24 +226,31 @@ def _evaluate_deferred(order, user, motivo):
     desde = reserve_from(order)
     order.cobertura_unidades = round(100.0 * total_proj / total_req, 2) if total_req else 100.0
     order.cobertura_lineas = round(100.0 * sum(1 for r in resumen if r["faltante"] <= 1e-9) / len(resumen), 2) if resumen else 100.0
-    order.estado_stock = "DIFERIDA"
+    order.estado_stock = "POR_APROBAR" if por_aprobar else "DIFERIDA"
     order.evaluado_ts = now()
     if order.estado == "REGISTRADA":
         order.estado = "EVALUADA"
-    order.motivo_detencion = (f"Reserva diferida: se reserva automáticamente desde el {desde:%d/%m/%Y} (plazo máximo de "
+    if por_aprobar:
+        order.motivo_detencion = ("Detenida por precio: requiere la aprobación del Coordinador o Jefe Comercial. No se reserva "
+                                  "stock ni se generan pre-solicitudes hasta aprobar. Cobertura proyectada con stock libre "
+                                  f"hoy: {order.cobertura_unidades}%.")
+    else:
+        order.motivo_detencion = (f"Reserva diferida: se reserva automáticamente desde el {desde:%d/%m/%Y} (plazo máximo de "
                               f"reserva {param('plazo_max_reserva_dias', 7)} días por espacio de almacén). Cobertura "
                               f"proyectada con stock libre hoy: {order.cobertura_unidades}%.")
     falt = [r for r in resumen if r["faltante"] > 1e-9]
     if falt:
         alerts.emit("OV_FALTANTE", f"Faltante proyectado en OV {order.numero} ({order.customer.nombre})",
                     "Con el stock libre de hoy faltaría: " + "; ".join("%s %g" % (r["producto"], r["faltante"]) for r in falt)
-                    + f". La OV se reserva desde el {desde:%d/%m/%Y}; anticipe reposición o producción.", "SalesOrder",
+                    + (". La OV se reservará cuando se apruebe su precio." if por_aprobar else
+                       f". La OV se reserva desde el {desde:%d/%m/%Y}; anticipe reposición o producción."), "SalesOrder",
                     order.id, dedup_key=f"OV_FALTANTE:{order.id}", creado_por=user)
     else:
         alerts.close_by_system(f"OV_FALTANTE:{order.id}", "Sin faltante proyectado.")
     db().flush()
     audit(user, f"OV_EVALUADA_{motivo}", "SalesOrder", order.numero,
-          {"diferida_hasta": desde.isoformat(), "cobertura_proyectada": order.cobertura_unidades, "lineas": resumen})
+          {"por_aprobar": por_aprobar, "diferida_hasta": desde.isoformat() if desde else None,
+           "cobertura_proyectada": order.cobertura_unidades, "lineas": resumen})
     from .distribution import sync_order_route
     sync_order_route(order, user, False)
     return resumen
@@ -282,6 +292,8 @@ def evaluate_order(order, user=None, motivo="CREACION", hoy=None):
     s = db()
     if order.estado in ORDEN_ESTADOS_CERRADOS:
         raise BusinessError(f"La OV {order.numero} está {order.estado}; no se evalúa.")
+    if order.retenida_precio and order.estado in ("REGISTRADA", "EVALUADA"):
+        return _evaluate_deferred(order, user, motivo, por_aprobar=True)
     if is_deferred(order, hoy):
         return _evaluate_deferred(order, user, motivo)
     tenia_reservas = any(line_reserved(l) > 0 for l in order.lines)

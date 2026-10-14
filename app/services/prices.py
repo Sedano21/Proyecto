@@ -285,8 +285,11 @@ def approve_price(order, user, comentario):
     alerts.close_by_system(f"PRECIO:{order.id}", f"Confirmada por {user.nombre}: {comentario}")
     alerts.close_by_system(f"COSTO:{order.id}", f"Confirmada por {user.nombre}: {comentario}")
     audit(user, "OV_PRECIO_CONFIRMADO", "SalesOrder", order.numero, order.aprobacion_precio)
-    from .stock import _after_evaluation
-    _after_evaluation(order, user)
+    # Con la aprobación recién se reserva el stock (o queda diferida si sale en más de 7 días) y se generan las
+    # pre-solicitudes que correspondan (decisión del 14-oct).
+    from .stock import ORDEN_ESTADOS_CERRADOS, evaluate_order
+    if order.estado not in ORDEN_ESTADOS_CERRADOS:
+        evaluate_order(order, user, "APROBACION_PRECIO")
 
 
 def add_item(user, lista, product_code, descripcion="", canal="", precio=None, precio_kg=None, precio_saco=None,

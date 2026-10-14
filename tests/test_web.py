@@ -86,7 +86,7 @@ def test_flujo_web_ov_y_detalles(app):
     from app.models import Customer
     cid = SessionLocal().query(Customer).first().id
     r = c.post("/ov/nueva", data={"_csrf": tok, "numero": "WEB-1", "customer_id": cid, "fecha_compromiso": fecha,
-                                  "product_code": ["PT-901", "PT-903"], "cantidad": ["50", "10"], "precio_unitario": ["4", ""]},
+                                  "product_code": ["PT-901", "PT-903"], "cantidad": ["50", "10"], "precio_unitario": ["999", "999"]},
                follow_redirects=True)
     html = r.get_data(as_text=True)
     assert r.status_code == 200 and "OV WEB-1" in html and "Alternativas ante faltante" in html
