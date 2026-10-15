@@ -107,11 +107,19 @@ def remove_substitute(user, x):
 def import_substitutes(user, path, nombre):
     """Excel con columnas «Producto base» y «Sustituto» (y opcional «Observación»). Devuelve (agregados, errores)."""
     from openpyxl import load_workbook
-    try:
-        wb = load_workbook(path, read_only=True, data_only=True)
-        filas = list(wb.worksheets[0].iter_rows(values_only=True))
-    except Exception as e:  # archivo dañado o que no es Excel
-        raise BusinessError(f"No se pudo leer el Excel: {e}") from None
+    if str(path).lower().endswith(".pdf"):  # obs. demo v0.7: cargas en Excel y PDF
+        from .uploads import _pdf_tables, norm
+        alias = {norm("Producto base"): "base", norm("Base"): "base", norm("Sustituto"): "sustituto",
+                 norm("Observación"): "obs", norm("Observacion"): "obs"}
+        filas = _pdf_tables(path, alias, ["base", "sustituto"])
+        if not filas:
+            raise BusinessError("El PDF debe tener una tabla con las columnas «Producto base» y «Sustituto».")
+    else:
+        try:
+            wb = load_workbook(path, read_only=True, data_only=True)
+            filas = list(wb.worksheets[0].iter_rows(values_only=True))
+        except Exception as e:  # archivo dañado o que no es Excel
+            raise BusinessError(f"No se pudo leer el Excel: {e}") from None
     if not filas:
         raise BusinessError("El archivo está vacío.")
     cab = [_norm(c) for c in filas[0]]
@@ -266,6 +274,49 @@ def _venta_kg(desde, hasta):
     return acc
 
 
+def _lista_kg():
+    """Precio mínimo de lista general por kg y producto base (promedio de los SKU con peso)."""
+    from ..models import PriceItem
+    acc = defaultdict(list)
+    for it in db().execute(select(PriceItem).where(PriceItem.vigente.is_(True), PriceItem.lista == "GENERAL")).scalars():
+        p = db().get(Product, it.product_code)
+        if p is None:
+            continue
+        kg_u = p.peso_kg or (1.0 if (p.um or "").upper().startswith("K") else None)
+        pkg = it.precio_kg or ((it.precio / kg_u) if it.precio and kg_u else None)
+        if pkg:
+            acc[((p.producto_base or p.descripcion or "").upper().split("*")[0]).strip()].append(pkg)
+    return {k: round(sum(v) / len(v), 4) for k, v in acc.items() if v}
+
+
+def _recomendacion(f):
+    """Recomendación automática con los datos cargados (obs. demo v0.7): p. ej. «Estamos 15 % por encima del sustituto
+    y 10 % por debajo de la competencia». Es una lectura de los datos; la decisión es de Comercial."""
+    partes, accion = [], []
+    if f["nuestro_kg"] is None:
+        return "Sin nuestro precio (no hay ventas en el periodo ni precio de lista): no se puede comparar."
+    for clave, quien in (("dif_sus_pct", "del precio del producto sustituto"), ("dif_pct", "respecto a la competencia")):
+        d = f.get(clave)
+        if d is None:
+            continue
+        if abs(d) < 0.05:
+            partes.append(f"estamos al mismo precio {quien}")
+        else:
+            partes.append(f"estamos {abs(d):.0f} % más {'arriba' if d > 0 else 'abajo'} {quien}")
+    if not partes:
+        return "Cargue precios de competencia o de sustitutos para generar la comparación."
+    if (f.get("dif_pct") or 0) > 0 and (f.get("var_volumen") or 0) < 0:
+        accion.append("precio sobre la competencia y volumen en caída: revisar el precio o reforzar el diferencial")
+    elif (f.get("dif_pct") or 0) > 0:
+        accion.append("precio sobre la competencia: vigilar el volumen")
+    elif (f.get("dif_pct") or 0) < 0:
+        accion.append("precio bajo la competencia: hay espacio para revisar el precio sin perder competitividad")
+    if (f.get("dif_sus_pct") or 0) > 0:
+        accion.append("el sustituto es más barato: riesgo de que el cliente cambie de producto")
+    txt = "; ".join(partes).capitalize() + "."
+    return txt + (" " + "; ".join(accion).capitalize() + "." if accion else "")
+
+
 def analysis(dias=180):
     hasta = date.today()
     desde = hasta - timedelta(days=dias)
@@ -284,10 +335,14 @@ def analysis(dias=180):
             fila["conviene"] = "importar" if fila["importacion"] < fila["nacional"] else "comprar en el país"
         compra.append(fila)
     ventas = _venta_kg(desde, hasta)
+    lista = _lista_kg()
     venta = []
     for prod in sorted(set(ventas) | set(por["COMPETENCIA"]) | set(por["SUSTITUTO"])):
         v = ventas.get(prod)
         nuestro = round(v["soles"] / v["kg"], 4) if v and v["kg"] else None
+        fuente_nuestro = "precio promedio de nuestras OV del periodo"
+        if nuestro is None and lista.get(prod):  # sin ventas en el periodo: precio mínimo de lista por kg
+            nuestro, fuente_nuestro = lista[prod], "precio mínimo de la lista general vigente"
         comp = sorted(por["COMPETENCIA"].get(prod, []), key=lambda m: m.fecha)
         sus = sorted(por["SUSTITUTO"].get(prod, []), key=lambda m: m.fecha)
         ult_comp = {}
@@ -295,13 +350,22 @@ def analysis(dias=180):
             ult_comp[m.competidor or m.fuente or "competencia"] = m
         prom_comp = round(sum(m.precio_kg for m in ult_comp.values()) / len(ult_comp), 4) if ult_comp else None
         vol_var = round((v["kg2"] - v["kg1"]) / v["kg1"] * 100, 1) if v and v["kg1"] else None
-        fila = {"producto": prod, "nuestro_kg": nuestro, "volumen_kg": v["kg"] if v else 0, "var_volumen": vol_var,
+        ult_sus = {}
+        for m in sus:  # último precio de cada sustituto
+            ult_sus[m.competidor or m.variedad or m.fuente or "sustituto"] = m
+        prom_sus = round(sum(m.precio_kg for m in ult_sus.values()) / len(ult_sus), 4) if ult_sus else None
+        fila = {"producto": prod, "nuestro_kg": nuestro, "fuente_nuestro": fuente_nuestro if nuestro else "",
+                "volumen_kg": v["kg"] if v else 0, "var_volumen": vol_var,
                 "competidores": [(k, m.precio_kg, m.fecha) for k, m in ult_comp.items()], "prom_competencia": prom_comp,
-                "sustitutos": [(m.competidor or m.variedad or m.fuente, m.precio_kg, m.fecha) for m in sus[-3:]],
-                "dif_pct": round((nuestro - prom_comp) / prom_comp * 100, 1) if nuestro and prom_comp else None}
+                "sustitutos": [(k, m.precio_kg, m.fecha) for k, m in ult_sus.items()], "prom_sustitutos": prom_sus,
+                "dif_pct": round((nuestro - prom_comp) / prom_comp * 100, 1) if nuestro and prom_comp else None,
+                "dif_sus_pct": round((nuestro - prom_sus) / prom_sus * 100, 1) if nuestro and prom_sus else None}
+        fila["recomendacion"] = _recomendacion(fila)
         lectura = []
         if fila["dif_pct"] is not None:
             lectura.append(f"vendemos {abs(fila['dif_pct']):.1f} % {'más caro' if fila['dif_pct'] > 0 else 'más barato'} que la competencia")
+        if fila["dif_sus_pct"] is not None:
+            lectura.append(f"{abs(fila['dif_sus_pct']):.1f} % {'más caro' if fila['dif_sus_pct'] > 0 else 'más barato'} que el sustituto")
         if vol_var is not None:
             lectura.append(f"nuestro volumen {'crece' if vol_var > 0 else 'cae'} {abs(vol_var):.1f} %")
         if fila["dif_pct"] is not None and vol_var is not None:

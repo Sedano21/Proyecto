@@ -1,0 +1,17 @@
+{% extends "base.html" %}{% from "_m.html" import b, csrf, ic, empty %}
+{% block content %}
+<div class="page-head"><div><h1>Llegadas de compras e importaciones</h1><p class="sub">Seguridad valida lo que va ingresando (cantidad, estado, vehículo) y notifica cualquier incidente con foto. Se muestran las llegadas previstas hasta {{ request.args.get('dias', 7) }} días y las atrasadas.</p></div>
+<form method="get" class="row"><div><label for="ll_d">Días</label><select id="ll_d" name="dias" onchange="this.form.submit()">{% for x in [3,7,15,30] %}<option {{ 'selected' if request.args.get('dias', '7')|int == x }}>{{ x }}</option>{% endfor %}</select></div></form></div>
+{% for a in filas %}<div class="card"><div class="card-head"><h3>{{ a.doc }} · {{ a.product_code }} {{ pd(a.product_code) }}</h3><span>{{ b('ATRASADA' if a.atrasada else 'PREVISTA', 'ALTA' if a.atrasada else 'info') }} {{ a.fecha|d }}</span></div>
+<p class="small">{{ 'Compra nacional' if a.tipo == 'COMPRA' else 'Importación' }} · proveedor {{ a.proveedor or '—' }} · cantidad esperada <b>{{ a.cantidad|n }}</b>{{ ' · almacén ' ~ a.almacen if a.almacen }}</p>
+{% if a.checks %}<table class="small"><tr><th>Hora</th><th>Seguridad</th><th class="r">Ingresa</th><th>Placa / chofer</th><th>Resultado</th><th>Foto</th></tr>
+{% for c in a.checks %}<tr><td>{{ c.ts|d }} {{ c.hora }}</td><td>{{ c.user.nombre if c.user }}</td><td class="r">{{ c.cantidad_ingresa|n if c.cantidad_ingresa is not none else '—' }}</td><td>{{ c.placa }} {{ c.chofer }}</td><td>{% if c.conforme %}{{ b('CONFORME') }}{% else %}{{ b('NO_CONFORME') }} {{ c.motivo }}{% endif %}</td><td>{% if c.foto %}<a href="{{ url_for('main.evidence', name=c.foto) }}">ver</a>{% endif %}</td></tr>{% endfor %}</table>{% endif %}
+{% if can('seguridad.llegadas') %}<details {{ 'open' if not a.checks }}><summary>Validar lo que ingresa</summary>
+<form method="post" enctype="multipart/form-data" data-confirm="¿Registrar la validación de la llegada?">{{ csrf() }}<input type="hidden" name="tipo" value="{{ a.tipo }}"><input type="hidden" name="id" value="{{ a.id }}">
+<div class="row"><div><label>Cantidad que ingresa</label><input type="number" step="any" min="0" name="cantidad" value="{{ a.cantidad }}"></div><div><label>Placa</label><input name="placa" maxlength="12"></div><div class="grow"><label>Chofer</label><input name="chofer"></div><div><label>Hora</label><input type="time" name="hora"></div></div>
+<fieldset class="row"><legend>Resultado</legend><label class="chk"><input type="radio" name="conforme" value="1" checked> Conforme</label><label class="chk"><input type="radio" name="conforme" value="0"> Incidente / no conforme</label></fieldset>
+<label>Incidente o motivo (obligatorio si no es conforme)</label><input name="motivo" style="width:100%">
+<label>Foto</label><input type="file" name="foto" accept="image/*" capture="environment">
+<p><button>Registrar</button></p></form></details>{% endif %}</div>
+{% else %}{{ empty('No hay llegadas previstas en el periodo.', 'truck') }}{% endfor %}
+{% endblock %}

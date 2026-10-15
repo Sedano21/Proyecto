@@ -3,7 +3,7 @@
 {% set ro = c.estado=='APROBADO' or not can('calidad.certificado_revisar') or c.estado=='ANULADO' %}
 {% set tipo = d.tipo or (c.serie if c.serie in tipos else 'PT') %}{% set td = tipos[tipo] %}
 <div class="noprint"><p>{{ b(c.estado) }} <b>Tipo:</b> {{ tipo }} – {{ td.nombre }} <a class="btn sec" href="javascript:window.print()">Imprimir / PDF</a> <span class="small muted">Fuentes: {{ d.fuente_produccion }} · {{ d.fuente_calidad }}</span></p>
-{% if c.estado=='BORRADOR' and can('calidad.certificado_revisar') %}<form method="post" class="row">{{ csrf() }}<label>Cambiar tipo de certificado</label><select name="tipo">{% for k, t in tipos.items() if k != tipo %}<option value="{{ k }}">{{ k }} – {{ t.nombre }}</option>{% endfor %}</select><button class="sec" name="accion" value="regenerar">Anular y regenerar</button></form>{% endif %}</div>
+{% if c.estado=='BORRADOR' and can('calidad.certificado_revisar') %}<form method="post" class="row">{{ csrf() }}<label>Cambiar tipo de certificado</label><select name="tipo">{% for k, t in tipos.items() if k != tipo %}<option value="{{ k }}">{{ k }} – {{ t.nombre }}</option>{% endfor %}</select><button class="sec" name="accion" value="regenerar" data-confirm="¿Anular este borrador y regenerar el certificado con el tipo elegido?">Anular y regenerar</button></form>{% endif %}</div>
 <form method="post">{{ csrf() }}
 <div class="doc">{{ marca_agua() }}{{ membrete() }}<div class="doc-body">
 {% macro f(k, w='100%') %}{% if ro %}{{ d.get(k, '') }}{% else %}<input name="{{ k }}" value="{{ d.get(k, '') }}">{% endif %}{% endmacro %}
@@ -30,7 +30,8 @@
 <div class="firma">{% if c.estado == 'APROBADO' and firma_url %}<img src="{{ firma_url }}" alt="firma"><br>{% else %}<div style="height:16mm"></div>{% endif %}<span class="ln">{{ fm.nombre }}<br>{{ fm.cargo }}</span>
 {% if c.estado != 'APROBADO' %}<div class="small muted noprint">La firma se imprime solo cuando el certificado está aprobado.</div>{% endif %}</div>
 </div>{{ pie() }}</div>
-{% if not ro %}<p class="noprint"><button class="sec" name="accion" value="guardar">Guardar correcciones</button> <button name="accion" value="aprobar">Aprobar certificado</button></p>{% endif %}
+{% if not ro %}<p class="noprint small muted">«Guardar avance» conserva lo modificado como borrador para continuar luego. Al aprobar se guarda primero el avance; si falta algún dato, el certificado queda en borrador con lo escrito y se indica qué falta.</p>
+<p class="noprint"><button class="sec" name="accion" value="guardar" data-confirm="¿Guardar el avance del certificado como borrador?">Guardar avance</button> <button name="accion" value="aprobar" data-confirm="¿Está de acuerdo en confirmar el certificado? Una vez aprobado ya no se puede modificar.">Confirmar y aprobar certificado</button></p>{% endif %}
 </form>
 {% if c.cambios %}<div class="noprint"><h3>Correcciones registradas</h3><table class="small">{% for x in c.cambios %}<tr><td>{{ x.ts }}</td><td>{{ x.user }}</td><td>{{ x.campo }}</td><td>{{ x.antes }} → {{ x.despues }}</td></tr>{% endfor %}</table></div>{% endif %}
 {% endblock %}

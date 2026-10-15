@@ -212,11 +212,101 @@ def _cell(v):
     return v
 
 
+def _pdf_tables(path, alias, req):
+    """Lee las tablas de un PDF con texto (no escaneado) en la vista de diseño: ubica la fila de encabezados (con las
+    columnas requeridas del tipo de carga) y asigna cada valor a la columna con la que se superpone horizontalmente.
+    Devuelve las filas como tuplas, encabezado incluido. Obs. demo v0.7: «cargar archivos en Excel y PDF»."""
+    try:
+        from pypdf import PdfReader
+    except ImportError as e:  # pragma: no cover
+        raise BusinessError("No está instalada la lectura de PDF (pypdf).") from e
+    try:
+        reader = PdfReader(path)
+        lineas = []
+        for page in reader.pages:
+            try:
+                txt = page.extract_text(extraction_mode="layout") or ""
+            except TypeError:  # versiones antiguas de pypdf
+                txt = page.extract_text() or ""
+            lineas += [ln.rstrip() for ln in txt.splitlines() if ln.strip()]
+    except BusinessError:
+        raise
+    except Exception as e:  # noqa: BLE001
+        raise BusinessError(f"No se pudo leer el PDF: {e}") from None
+    if not lineas:
+        raise BusinessError("El PDF no tiene texto legible (¿es una imagen escaneada?). Cárguelo en Excel.")
+    def _partir(ln):  # separa por 2+ espacios conservando posiciones
+        out, pos = [], 0
+        for trozo in re.split(r"( {2,})", ln):
+            if trozo and not trozo.isspace():
+                out.append((pos, pos + len(trozo), trozo.strip()))
+            pos += len(trozo)
+        return out
+    cab, cols = None, None
+    for i, ln in enumerate(lineas):
+        partes = _partir(ln)
+        claves = {alias.get(norm(t)) for _, _, t in partes}
+        if all(r in claves for r in req):
+            cab, cols = i, partes
+            break
+    if cab is None:
+        return []
+    filas = [tuple(t for _, _, t in cols)]
+    for ln in lineas[cab + 1:]:
+        partes = _partir(ln)
+        if not partes:
+            continue
+        if {alias.get(norm(t)) for _, _, t in partes} >= set(req):
+            continue  # encabezado repetido en otra página
+        fila = [None] * len(cols)
+        for a, b, t in partes:
+            mejor, solape = None, 0
+            for j, (ca, cb, _) in enumerate(cols):
+                o = min(b, cb + 2) - max(a, ca - 2)
+                if o > solape:
+                    mejor, solape = j, o
+            if mejor is None:  # sin superposición: la columna más cercana por el centro
+                c = (a + b) / 2
+                mejor = min(range(len(cols)), key=lambda j: abs((cols[j][0] + cols[j][1]) / 2 - c))
+            fila[mejor] = t if fila[mejor] is None else f"{fila[mejor]} {t}"
+        filas.append(tuple(fila))
+    return filas
+
+
+class _Hoja:
+    """Hoja en memoria con la misma interfaz que openpyxl (para leer PDF con el mismo flujo que el Excel)."""
+    def __init__(self, filas):
+        self.filas = filas
+
+    def iter_rows(self, values_only=True):
+        return iter(self.filas)
+
+
+class _LibroPDF:
+    def __init__(self, filas):
+        self.sheetnames = ["PDF"]
+        self._h = _Hoja(filas)
+
+    def __getitem__(self, k):
+        return self._h
+
+    def close(self):
+        pass
+
+
 def read_rows(path, tipo, hoja=None):
     spec = SPECS[tipo]
-    wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
-    candidates = [hoja] if hoja else [h for h in spec["hojas"] if h in wb.sheetnames] + wb.sheetnames
     alias = {norm(a): key for key, names in spec["cols"].items() for a in names}
+    if str(path).lower().endswith(".pdf"):
+        filas = _pdf_tables(path, alias, spec["req"])
+        if not filas:
+            raise BusinessError(f"No se encontró en el PDF una tabla con los encabezados requeridos para '{spec['nombre']}': "
+                                + ", ".join(spec["cols"][r][0] for r in spec["req"]))
+        wb = _LibroPDF(filas)
+        hoja = "PDF"
+    else:
+        wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+    candidates = [hoja] if hoja else [h for h in spec["hojas"] if h in wb.sheetnames] + wb.sheetnames
     for sheet in dict.fromkeys(candidates):
         if sheet not in wb.sheetnames:
             continue

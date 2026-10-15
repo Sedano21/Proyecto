@@ -21,6 +21,21 @@ def _validate_header(customer_id, fecha_compromiso):
         raise BusinessError("La fecha comprometida de despacho es obligatoria.")
 
 
+def check_not_past(fecha, hora_cita="", hoy=None, ahora=None):
+    """Obs. demo v0.7: no se registra ni se reprograma una OV con fecha pasada u hora ya transcurrida (no se puede
+    reservar); esos casos van por la Regularización de OV."""
+    hoy = hoy or date.today()
+    if isinstance(fecha, date) and fecha < hoy:
+        raise BusinessError(f"La fecha comprometida {fecha:%d/%m/%Y} ya pasó: no se puede registrar ni reservar. "
+                            "Si el pedido ya se atendió o debe registrarse con esa fecha, use «Regularización de OV».")
+    h = (hora_cita or "").strip()[:5]
+    if isinstance(fecha, date) and fecha == hoy and HORA_RE.match(h or "x"):
+        ahora = ahora or datetime.now()
+        if h < f"{ahora:%H:%M}":
+            raise BusinessError(f"La hora de cita {h} de hoy ya transcurrió: no se puede registrar ni reservar. "
+                                "Use «Regularización de OV» o indique una fecha u hora vigente.")
+
+
 HORA_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d(-([01]\d|2[0-3]):[0-5]\d)?$")
 
 
@@ -98,14 +113,23 @@ def resolve_delivery(customer, site_id=None, lugar="", direccion="", distrito=""
     return datos
 
 
-def _validate_lines(lines):
+def _validate_lines(lines, exigir_precio=False):
     if not lines:
-        raise BusinessError("La OV debe tener al menos una línea.")
+        raise BusinessError("La OV debe tener al menos una línea con producto, cantidad y precio.")
     seen = set()
-    for ln in lines:
+    for i, ln in enumerate(lines, start=1):
         code = (ln.get("product_code") or "").strip()
-        if not code or db().get(Product, code) is None:
+        if not code:
+            raise BusinessError(f"Línea {i}: falta el producto.")
+        if db().get(Product, code) is None:
             raise BusinessError(f"Producto '{code}' no existe en el catálogo.")
+        if exigir_precio:  # obs. demo v0.7: producto, cantidad y precio son obligatorios en el módulo
+            try:
+                pr = float(ln.get("precio_unitario"))
+            except (TypeError, ValueError):
+                pr = 0.0
+            if pr <= 0:
+                raise BusinessError(f"Línea {i} ({code}): falta el precio unitario.")
         if code in seen:
             raise BusinessError(f"Producto {code} repetido en la OV; consolide la cantidad en una línea.")
         seen.add(code)
@@ -130,8 +154,12 @@ def next_cutoff(ts=None):
 
 def create_order(user, numero, customer_id, fecha_compromiso, lines, urgente=False, comentarios="", hora_cita="",
                  cita_confirmada=False, vendedor_id=None, fecha_emision=None, origen="MODULO", evaluar=True,
-                 tipo_venta="", vendedor_nombre="", entrega=None, canal_precio=""):
-    """entrega: dict de resolve_delivery (lugar, dirección, distrito, provincia). En el módulo es obligatorio."""
+                 tipo_venta="", vendedor_nombre="", entrega=None, canal_precio="", regularizacion=""):
+    """entrega: dict de resolve_delivery (lugar, dirección, distrito, provincia). En el módulo es obligatorio.
+    regularizacion: motivo; registra una OV con fecha pasada u hora transcurrida sin reservar stock (obs. demo v0.7)."""
+    regularizacion = (regularizacion or "").strip()
+    if regularizacion and not has_perm(user, "ov.regularizar"):
+        raise BusinessError("Su rol no registra regularizaciones de OV.")
     if origen == "MODULO" and not has_perm(user, "ov.crear"):
         raise BusinessError("Su rol no puede registrar OV.")
     numero = (numero or "").strip()
@@ -140,8 +168,12 @@ def create_order(user, numero, customer_id, fecha_compromiso, lines, urgente=Fal
     if db().execute(select(SalesOrder).where(SalesOrder.numero == numero)).scalars().first():
         raise BusinessError(f"La OV {numero} ya existe.")
     _validate_header(customer_id, fecha_compromiso)
+    if origen == "MODULO" and not regularizacion:
+        check_not_past(fecha_compromiso, hora_cita)
     lines = [convert_sale_units(ln) for ln in lines]
-    _validate_lines(lines)
+    # precio obligatorio en el módulo (obs. demo v0.7), salvo la muestra comercial (decisión 13-oct: precio 0 y la OV
+    # queda detenida hasta la confirmación del Coordinador o Jefe Comercial)
+    _validate_lines(lines, exigir_precio=origen == "MODULO" and "MUESTRA" not in (tipo_venta or "").upper())
     c = db().get(Customer, int(customer_id))
     if origen == "MODULO":
         hora_cita = normalize_hour(hora_cita)
@@ -161,6 +193,16 @@ def create_order(user, numero, customer_id, fecha_compromiso, lines, urgente=Fal
                                       um_venta=ln.get("um_venta") or "", cantidad_venta=ln.get("cantidad_venta")))
     db().add(o)
     db().flush()
+    if regularizacion:
+        o.estado = "REGULARIZADA"
+        o.estado_stock = ""
+        o.regularizacion = {"motivo": regularizacion, "user": user.nombre, "user_id": user.id, "ts": now().isoformat()}
+        audit(user, "OV_REGULARIZACION", "SalesOrder", o.numero, {"lineas": lines, "fecha_compromiso": fecha_compromiso,
+                                                                   "motivo": regularizacion})
+        alerts.emit("OV_REGULARIZACION", f"OV {o.numero} registrada como regularización",
+                    f"Fecha comprometida {fecha_compromiso:%d/%m/%Y}. Motivo: {regularizacion}. No reserva stock.",
+                    "SalesOrder", o.id, creado_por=user)
+        return o
     from .prices import check_order_prices
     check_order_prices(o, user)  # Q11: la lista es el precio mínimo; alerta si la OV está en el límite o debajo
     audit(user, "OV_CREADA", "SalesOrder", o.numero, {"lineas": lines, "fecha_compromiso": fecha_compromiso,
@@ -179,6 +221,8 @@ def _apply_changes(order, user, changes):
         fc = changes["fecha_compromiso"]
         if isinstance(fc, str):
             fc = date.fromisoformat(fc)
+        if fc != order.fecha_compromiso:
+            check_not_past(fc)
         order.fecha_compromiso = fc
     for k in ("urgente", "cita_confirmada"):
         if k in changes:
@@ -191,6 +235,11 @@ def _apply_changes(order, user, changes):
     if "lines" in changes and changes["lines"] is not None:
         changes["lines"] = [convert_sale_units(ln) for ln in changes["lines"]]
         _validate_lines(changes["lines"])
+        if order.origen == "MODULO":  # las líneas nuevas requieren precio (las existentes conservan el suyo)
+            actuales = {l.product_code for l in order.lines if l.activa}
+            nuevas = [ln for ln in changes["lines"] if ln["product_code"].strip() not in actuales]
+            if nuevas:
+                _validate_lines(nuevas, exigir_precio=True)
         nuevas = {ln["product_code"].strip(): ln for ln in changes["lines"]}
         for line in order.lines:
             if line.product_code in nuevas:
@@ -612,3 +661,39 @@ def order_weight_kg(order, base="reservado"):
 
 def order_amount(order):
     return sum(l.cantidad * (l.precio_unitario or 0) for l in order.lines if l.activa)
+
+
+def regularize_release(order, user, nueva_fecha, comentario=""):
+    """Regularización: la OV pasa al flujo normal con una fecha vigente (se evalúa y reserva stock)."""
+    if not has_perm(user, "ov.regularizar"):
+        raise BusinessError("Su rol no gestiona regularizaciones de OV.")
+    if order.estado != "REGULARIZADA":
+        raise BusinessError("La OV no está en regularización.")
+    check_not_past(nueva_fecha)
+    anterior = order.fecha_compromiso
+    order.fecha_compromiso = nueva_fecha
+    order.estado = "REGISTRADA"
+    reg = dict(order.regularizacion or {})
+    reg.update({"liberada_por": user.nombre, "liberada_ts": now().isoformat(), "fecha_anterior": anterior.isoformat(),
+                "comentario": comentario})
+    order.regularizacion = reg
+    audit(user, "OV_REGULARIZACION_LIBERADA", "SalesOrder", order.numero, {"anterior": anterior, "nueva": nueva_fecha,
+                                                                           "comentario": comentario})
+    from .prices import check_order_prices
+    check_order_prices(order, user)
+    evaluate_order(order, user, "REGULARIZACION")
+
+
+def regularize_close(order, user, comentario):
+    """Regularización: se deja como registro (p. ej. pedido ya atendido fuera del sistema), sin reservar stock."""
+    if not has_perm(user, "ov.regularizar"):
+        raise BusinessError("Su rol no gestiona regularizaciones de OV.")
+    if order.estado != "REGULARIZADA":
+        raise BusinessError("La OV no está en regularización.")
+    if not (comentario or "").strip():
+        raise BusinessError("Indique cómo se regularizó el pedido.")
+    reg = dict(order.regularizacion or {})
+    reg.update({"cerrada_por": user.nombre, "cerrada_ts": now().isoformat(), "cierre": comentario.strip()})
+    order.regularizacion = reg
+    order.estado = "REGULARIZADA_CERRADA"
+    audit(user, "OV_REGULARIZACION_CERRADA", "SalesOrder", order.numero, {"comentario": comentario})

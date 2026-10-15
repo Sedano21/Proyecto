@@ -150,7 +150,7 @@ def alerts():
     rows = alert_svc.inbox(g.user, **f)  # solo los tipos de su área o que se comunican con ella
     naturaleza = request.args.get("naturaleza") or ""
     if naturaleza in ("TAREA", "INFORMATIVA"):
-        rows = [a for a in rows if (a.type.naturaleza if a.type else "TAREA") == naturaleza]
+        rows = [a for a in rows if alert_svc.nature_for(g.user, a) == naturaleza]
     agrupar = request.args.get("agrupar")
     grupos = {}
     if agrupar:
@@ -161,6 +161,39 @@ def alerts():
     return render_template("alerts.html", rows=rows, f=f, tipos=tipos, agrupar=agrupar, grupos=grupos,
                            areas=sorted({t.area for t in tipos}), grupos_tipo=sorted({t.grupo for t in tipos}),
                            estados=alert_svc.ESTADOS, estado_txt=alert_svc.ESTADO_TXT, naturaleza=naturaleza)
+
+
+@bp.route("/alertas/estado.json")
+@login_required
+def alerts_status():
+    """Estado de alertas para el aviso sonoro: tareas abiertas que el usuario puede accionar, importantes (ALTA) y las
+    más recientes visibles. Las importantes suenan distinto y se repiten hasta que se resuelvan (obs. demo v0.7)."""
+    from ..services.core import param
+    rows = alert_svc.inbox(g.user, solo_abiertas=True)
+    tareas = [a for a in rows if alert_svc.can_act(g.user, a)]
+    criticas = [a for a in tareas if a.prioridad == "ALTA"]
+    recientes = sorted(rows, key=lambda a: -a.id)[:5]
+    # versión: último movimiento (creación, designación, avance, cierre, comentario) de una alerta que el usuario ve;
+    # si cambia, las pantallas de alertas abiertas se actualizan solas (obs. demo v0.7: información siempre certera)
+    from ..models import AlertEvent
+    desde = request.args.get("desde", type=int) or 0
+    version, cambios = 0, []
+    for ev in db().execute(select(AlertEvent).order_by(AlertEvent.id.desc()).limit(200)).scalars():
+        if ev.alert is None or not alert_svc.can_see(g.user, ev.alert):
+            continue
+        version = max(version, ev.id)
+        if desde and ev.id > desde and ev.user_id and ev.user_id != g.user.id and len(cambios) < 5:
+            cambios.append({"alerta": ev.alert_id, "titulo": ev.alert.titulo, "accion": alert_svc.ESTADO_TXT.get(ev.accion, ev.accion),
+                            "usuario": ev.user.nombre if ev.user else "Sistema",
+                            "url": url_for("main.alert_detail", aid=ev.alert_id)})
+    return {"abiertas": len(rows), "tareas": len(tareas), "criticas": len(criticas), "version": version, "cambios": cambios,
+            "actualizar_seg": int(param("alerta_actualizacion_seg", 10) or 10),
+            "ultimo_id": max([a.id for a in rows], default=0),
+            "recientes": [{"id": a.id, "titulo": a.titulo, "prioridad": a.prioridad,
+                           "tarea": alert_svc.can_act(g.user, a), "url": url_for("main.alert_detail", aid=a.id)}
+                          for a in recientes],
+            "consulta_seg": int(param("alerta_sonido_consulta_seg", 60) or 60),
+            "repetir_seg": int(param("alerta_sonido_repetir_seg", 120) or 120)}
 
 
 @bp.route("/alertas/<int:aid>")
@@ -180,7 +213,8 @@ def alert_detail(aid):
                    "Customer": "Cliente", "Incident": "Incidencia", "MarketPrice": "Precio de mercado", "Product": "Producto"}
     return render_template("alert_detail.html", a=a, users=users, roles=roles, todos=todos, svc=alert_svc,
                            roles_nombre=roles_nombre, entidad_txt=entidad_txt,
-                           puede_decidir=alert_actions.can_decide(a), motivo_aprobar=alert_actions.motivo_obligatorio(a),
+                           puede_decidir=alert_actions.can_decide(a) and alert_actions.user_can_decide(g.user, a),
+                           motivo_aprobar=alert_actions.motivo_obligatorio(a),
                            estado_txt=alert_svc.ESTADO_TXT)
 
 
@@ -285,6 +319,20 @@ def outbox():
     return render_template("outbox.html", rows=rows, smtp=smtp_configured())
 
 
+# ------------------------------- manual de usuario -------------------------
+@bp.route("/ayuda")
+@login_required
+def help():
+    """Manual de usuario por rol: el del propio rol; Sistemas y Gerencia General pueden consultar el de cualquier rol."""
+    from .. import manual
+    rol = request.args.get("rol") or g.user.role_code
+    if rol != g.user.role_code and g.user.role_code not in ("SISTEMAS", "GERENCIA_GENERAL"):
+        rol = g.user.role_code
+    r = db().get(Role, rol) or abort(404)
+    return render_template("help.html", m=manual.for_role(r), rol=r,
+                           roles=list(db().execute(select(Role).order_by(Role.nombre)).scalars()))
+
+
 # ------------------------------- configuración -----------------------------
 @bp.route("/configuracion")
 @perm_required("config.ver")
@@ -297,6 +345,8 @@ def config():
                            warehouses=list(s.execute(select(Warehouse).order_by(Warehouse.uso, Warehouse.prioridad, Warehouse.code)).scalars()),
                            lead_times=list(s.execute(select(LeadTime).order_by(LeadTime.categoria)).scalars()),
                            lines=list(s.execute(select(ProductionLine)).scalars()),
+                           grupos_cap={lc: gr for gr in (__import__("app.services.core", fromlist=["x"]).param("capacidad_lineas", []) or [])
+                                       for lc in (gr.get("lineas") or [])},
                            phases=list(s.execute(select(ImportPhaseTemplate).order_by(ImportPhaseTemplate.orden)).scalars()),
                            roles=list(s.execute(select(Role).order_by(Role.nombre)).scalars()),
                            var_rules=list(s.execute(select(PurchaseVariationRule).where(PurchaseVariationRule.activo.is_(True))
@@ -391,8 +441,16 @@ def leadtime_edit():
 @perm_required("config.editar", "produccion.programar")
 def line_edit():
     def _do():
+        from ..services.core import param
         ln = db().get(ProductionLine, request.form["code"]) or abort(404)
-        ln.capacidad_kg_dia = f_float("capacidad_kg_dia")
+        cap = f_float("capacidad_kg_dia")
+        grupos = [dict(x) for x in (param("capacidad_lineas", []) or [])]
+        for gr in grupos:  # la capacidad de un grupo de líneas se edita en el grupo (parámetro capacidad_lineas)
+            if ln.code in (gr.get("lineas") or []) and cap is not None and cap != gr.get("kg_dia"):
+                gr["kg_dia"] = cap
+                set_param("capacidad_lineas", grupos, g.user)
+                break
+        ln.capacidad_kg_dia = cap if len(next((gr["lineas"] for gr in grupos if ln.code in (gr.get("lineas") or [])), [ln.code])) == 1 else None
         ln.activa = request.form.get("activa") == "1"
         audit(g.user, "LINEA_EDITADA", "ProductionLine", ln.code, {"capacidad": ln.capacidad_kg_dia, "activa": ln.activa})
     return act(_do, "Línea guardada.", request.referrer or url_for("main.config"))
@@ -495,7 +553,28 @@ def customers():
     from ..services import prices as psvc
     from ..services.core import param
     canales = sorted(set(psvc.canales()) | set(param("lista_granel_canales", []) or []))
-    return render_template("customers.html", rows=rows, canales=canales, canal_de=psvc.channel_of)
+    from ..services.customers import customer_groups
+    return render_template("customers.html", rows=rows, canales=canales, canal_de=psvc.channel_of, grupos=customer_groups())
+
+
+@bp.route("/configuracion/canales", methods=["GET", "POST"])
+@perm_required("canales.gestionar")
+def channels():
+    """Canales de precios y grupos de cliente (obs. demo v0.7): los agregan el Coordinador de Ventas, el Jefe de Ventas
+    y Sistemas cuando es necesario."""
+    from ..services import customers as csvc
+    from ..services import prices as psvc
+    from ..services.core import param
+    if request.method == "POST":
+        f = request.form
+        if f.get("accion") == "grupo":
+            return act(lambda: csvc.add_group(g.user, f.get("nombre", ""), f.get("canal", "")),
+                       lambda n: f"Grupo {n} agregado.", url_for("main.channels"))
+        return act(lambda: csvc.add_channel(g.user, f.get("nombre", "")), lambda n: f"Canal {n} agregado.",
+                   url_for("main.channels"))
+    mapa = param("canal_precio_por_grupo", {}) or {}
+    return render_template("channels.html", canales=psvc.canales(), adicionales=param("canales_adicionales", []) or [],
+                           grupos=csvc.customer_groups(), mapa=mapa)
 
 
 # ------------------------------- usuarios ----------------------------------

@@ -34,9 +34,12 @@ def open_requested(order, product_code):
         total += r.cantidad_destino if r.cantidad_destino else r.cantidad
     total += sum(t.cantidad for t in s.execute(select(Transfer).where(
         Transfer.order_id == order.id, Transfer.estado.in_(OPEN_TRANSFER))).scalars() if t.lot.product_code == product_code)
-    total += sum(r.cantidad for r in s.execute(select(PurchaseRequest).where(
-        PurchaseRequest.order_id == order.id, PurchaseRequest.product_code == product_code,
-        PurchaseRequest.estado.in_(OPEN_STATES))).scalars())
+    for r in s.execute(select(PurchaseRequest).where(PurchaseRequest.product_code == product_code,
+                                                      PurchaseRequest.estado.in_(OPEN_STATES))).scalars():
+        if r.ordenes:  # presolicitud agrupada (obs. demo v0.7): solo cuenta la parte de esta OV
+            total += sum(x.get("cantidad") or 0 for x in r.ordenes if x.get("order_id") == order.id)
+        elif r.order_id == order.id:
+            total += r.cantidad
     return total
 
 

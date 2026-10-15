@@ -3,7 +3,8 @@
 - Canales: panel del módulo y correo (correo real solo si hay SMTP configurado; si no, queda en bandeja
   con estado SIN_SMTP, sin simular el envío). Celular: etapa futura (no implementado).
 - Naturaleza por tipo: TAREA (requiere aprobación o atención) o INFORMATIVA (solo se reconoce). No toda notificación
-  es una tarea.
+  es una tarea. Además, una tarea que el perfil no puede aprobar, desestimar, designar ni ejecutar se le presenta como
+  información (obs. demo v0.7): la atiende quien corresponde.
 - Estados de una tarea: PENDIENTE (requiere atención) -> EN_EJECUCION (un responsable comenzó) -> COMPLETADA (acción
   finalizada con su evidencia) o DESAPROBADA (desistida/desaprobada con motivo). INCIDENCIA: discrepancia o impedimento;
   no cierra ni elimina la tarea: registra situación, acciones, responsable y resolución, y al resolverse la tarea
@@ -210,6 +211,27 @@ def is_task(alert):
     return (alert.type.naturaleza if alert.type else "TAREA") != "INFORMATIVA"
 
 
+def can_act(user, alert):
+    """¿El perfil puede accionar la tarea: aprobarla o desestimarla, designarla o ejecutarla? (obs. demo v0.7: todo lo
+    que el perfil no pueda aprobar, desestimar o asignar se le presenta como información)."""
+    from .alert_actions import HANDLERS, user_can_decide
+    if user is None or not is_task(alert):
+        return False
+    if is_assignee(user, alert):
+        return True
+    if alert.type_code in HANDLERS:
+        if user_can_decide(user, alert):
+            return True
+    if has_perm(user, "alertas.gestionar") and user_area(user) == alert.area:
+        return True  # designa dentro de su área
+    return has_perm(user, "tareas.ejecutar") and user.role_code in (alert.roles or [])
+
+
+def nature_for(user, alert):
+    """Naturaleza con la que el usuario ve la alerta: TAREA solo si puede accionarla; si no, INFORMATIVA."""
+    return "TAREA" if can_act(user, alert) else "INFORMATIVA"
+
+
 def is_closed(alert):
     return alert.estado in CERRADOS
 
@@ -354,7 +376,10 @@ def complete(alert, user, motivo, accion, evidencia="", proceso_pendiente=""):
         raise BusinessError("La tarea tiene una incidencia abierta: resuélvala primero.")
     if not (motivo or "").strip() or not (accion or "").strip():
         raise BusinessError("Para completar se requiere el detalle y la acción tomada (evidencia).")
+    desde = last_id()
     _finish(alert, user, "COMPLETADA", motivo.strip(), accion.strip(), "ATENDIDA")
+    db().flush()
+    mark_derived(alert, desde, user)
     alert.evidencia = evidencia or alert.evidencia
     alert.proceso_pendiente = (proceso_pendiente or "").strip()
     audit(user, "ALERTA_COMPLETADA", "Alert", alert.id, {"motivo": motivo, "accion": accion, "evidencia": evidencia,
@@ -445,3 +470,37 @@ def close_by_system(dedup_key, motivo):
         a.motivo_cierre = motivo
         a.accion_tomada = "Cierre automático por el sistema: la condición ya no se cumple o se resolvió en su pantalla."
         _event(a, None, a.estado, f"Sistema: {motivo}")
+
+
+# ------------------------------ derivación ---------------------------------
+ESTADO_TXT["DERIVADA"] = "Derivada a otra área"
+
+
+def get(aid):
+    return db().get(Alert, aid)
+
+
+def last_id():
+    from sqlalchemy import func
+    return db().execute(select(func.max(Alert.id))).scalar() or 0
+
+
+def mark_derived(alert, desde_id, user=None):
+    """Registra las tareas que el sistema generó para otra área como consecuencia de esta (aprobación o cierre)."""
+    nuevas = [x for x in db().execute(select(Alert).where(Alert.id > desde_id)).scalars()
+              if x.id != alert.id and x.area != alert.area and is_task(x)]
+    if nuevas:
+        alert.derivadas = list(dict.fromkeys((alert.derivadas or []) + [x.id for x in nuevas]))
+        _event(alert, user, "DERIVADA", "Derivada a " + ", ".join(sorted({x.area for x in nuevas}))
+               + " (tareas " + ", ".join(f"#{x.id}" for x in nuevas) + ")")
+    return nuevas
+
+
+def display_state(alert):
+    """(clase, texto) del estado a mostrar: si la tarea se derivó a otra área y allí sigue abierta, se muestra
+    «Derivada · pendiente <área>» para el análisis; cuando el área destino la cierra, el estado propio."""
+    if alert.derivadas:
+        abiertas = [x for x in (db().get(Alert, i) for i in alert.derivadas) if x is not None and x.estado not in CERRADOS]
+        if abiertas:
+            return "DERIVADA", "Derivada · pendiente " + ", ".join(sorted({x.area for x in abiertas}))
+    return alert.estado, ESTADO_TXT.get(alert.estado, alert.estado)

@@ -19,7 +19,16 @@ from ..models import PickingRecord, PickingTask, SalesOrder, User, now
 from . import alerts
 from .core import BusinessError, audit, has_perm, param, wh_in
 
-ROLES_PICKING = ("AUX_ALMACEN", "LIDER_ALMACEN", "MONTACARGUISTA")
+ROLES_PICKING = ("AUX_ALMACEN", "AUX_DESPACHO", "LIDER_ALMACEN", "MONTACARGUISTA")
+# obs. demo v0.7: el prepicking propone al auxiliar de almacén o de despacho del almacén donde está el pedido
+ROLES_PROPUESTA = ("AUX_ALMACEN", "AUX_DESPACHO")
+# motivo del cambio de lote en el picking -> (texto, estado en que queda el lote original o None si sigue disponible)
+MOTIVOS_CAMBIO_LOTE = {
+    "ROTURA": ("Rotura o dañado", "OBSERVADO"),
+    "INFESTACION": ("Infestación", "OBSERVADO"),
+    "CONTAMINACION": ("Contaminación", "OBSERVADO"),
+    "DIFICIL_ACCESO": ("Difícil acceso (lote en buen estado, no se picó)", None),
+}
 
 
 def staff(warehouse_code, roles=ROLES_PICKING):
@@ -58,7 +67,7 @@ def preschedule(order, user=None, hoy=None):
         if wh in existentes:
             continue
         fecha = _fecha_programada(order, hoy)
-        auxs = staff(wh, ("AUX_ALMACEN",))
+        auxs = staff(wh, ROLES_PROPUESTA)
         carga = Counter()
         for t in db().execute(select(PickingTask).where(PickingTask.fecha == fecha)).scalars():
             for uid in t.asignados or []:
@@ -71,6 +80,7 @@ def preschedule(order, user=None, hoy=None):
         alerts.emit("PICKING_PROGRAMADO", f"Picking preprogramado: OV {order.numero} ({wh}) para el {fecha:%d/%m/%Y}",
                     f"Cliente {order.customer.nombre}. Auxiliar propuesto: {propuesto.nombre if propuesto else 'sin auxiliar con almacén asignado'}. "
                     "Revise el detalle y asigne o modifique.", "SalesOrder", order.id, creado_por=user,
+                    extra_users=[u.id for u in staff(wh)],  # el personal del almacén del pedido
                     dedup_key=f"PICKING_PROG:{t.id}")
         if propuesto:
             _avisar(t, [propuesto.id], user)
@@ -158,6 +168,82 @@ def record(t, user, line_id, cantidad, lote, fecha_produccion=None, fecha_venc=N
                     f"Lote {lote}: registrado {fecha_venc:%d/%m/%Y}, sistema {lot.fecha_venc:%d/%m/%Y}.", "SalesOrder",
                     order.id, creado_por=user, dedup_key=f"PICK_VENC:{order.id}:{lote}")
     return avance
+
+
+def lot_options(t, line):
+    """Lotes del mismo producto y almacén que pueden reemplazar al reservado (utilizables para la OV y con saldo libre)."""
+    from .stock import free_qty, lot_usable, lots_of
+    actuales = {r.lot_id for r in line.reservations if r.estado == "ACTIVA"}
+    out = []
+    for lot in lots_of(line.product_code, [t.warehouse_code]):
+        if lot.id in actuales:
+            continue
+        ok, _ = lot_usable(lot, t.order.fecha_compromiso, t.order.customer)
+        if ok and free_qty(lot) > 1e-9:
+            out.append(lot)
+    return sorted(out, key=lambda l: (l.fecha_venc or date.max, l.id))
+
+
+def change_lot(t, user, reservation_id, nuevo_lot_id, cantidad, motivo, observacion):
+    """Cambio de lote durante el picking (obs. demo v0.7): el auxiliar indica el motivo y la observación; se libera la
+    reserva del lote original, se reserva el lote picado y el formato se actualiza con su lote, fecha de producción y
+    vencimiento. Rotura o dañado, infestación y contaminación dejan lo afectado como «Producto observado» y avisan a
+    Calidad; difícil acceso solo libera el lote original (sigue disponible)."""
+    from ..models import Reservation, StockLot
+    from .stock import _release, add_or_increase_lot, free_qty, lot_usable
+    if not _es_asignado(t, user):
+        raise BusinessError("Este picking no le fue asignado.")
+    if t.estado != "EN_PROCESO":
+        raise BusinessError("El lote se cambia durante el picking (iniciado con su foto).")
+    if motivo not in MOTIVOS_CAMBIO_LOTE:
+        raise BusinessError("Elija el motivo del cambio de lote.")
+    if not (observacion or "").strip():
+        raise BusinessError("Indique la observación del cambio de lote.")
+    res = db().get(Reservation, int(reservation_id or 0))
+    if res is None or res.estado != "ACTIVA" or res.line.order_id != t.order_id or res.lot.warehouse_code != t.warehouse_code:
+        raise BusinessError("Reserva no encontrada en este picking.")
+    nuevo = db().get(StockLot, int(nuevo_lot_id or 0))
+    if nuevo is None or nuevo.product_code != res.lot.product_code or nuevo.warehouse_code != t.warehouse_code:
+        raise BusinessError("Elija un lote del mismo producto en el almacén del picking.")
+    ok, porque = lot_usable(nuevo, t.order.fecha_compromiso, t.order.customer)
+    if not ok:
+        raise BusinessError(f"El lote {nuevo.lote} no se puede usar: {porque}.")
+    qty = min(float(cantidad or res.cantidad), res.cantidad)
+    if qty <= 0:
+        raise BusinessError("Cantidad inválida.")
+    if free_qty(nuevo) + 1e-9 < qty:
+        raise BusinessError(f"El lote {nuevo.lote} solo tiene {free_qty(nuevo):g} libre.")
+    texto, estado_dest = MOTIVOS_CAMBIO_LOTE[motivo]
+    viejo = res.lot
+    if qty < res.cantidad - 1e-9:
+        res.cantidad -= qty
+    else:
+        _release(res, f"Cambio de lote en el picking: {texto}")
+    nueva = Reservation(ov_line_id=res.ov_line_id, lot_id=nuevo.id, cantidad=qty, estado="ACTIVA")
+    db().add(nueva)
+    res.line.reservations.append(nueva)
+    nuevo.reservations.append(nueva)
+    if estado_dest:  # lo afectado del lote original queda observado (segmento aparte), el resto sigue como estaba
+        mover = min(qty, viejo.cantidad)
+        viejo.cantidad -= mover
+        if viejo.cantidad_verificada is not None:
+            viejo.cantidad_verificada = max(0.0, viejo.cantidad_verificada - mover)
+        seg = add_or_increase_lot(viejo.product_code, viejo.warehouse_code, viejo.lote, mover, estado_dest,
+                                  viejo.fecha_venc, viejo.fecha_fab, origen=f"Picking OV {t.order.numero}")
+        seg.motivo_estado = f"{texto}: {observacion.strip()}"
+        seg.estado_anterior = viejo.estado
+        alerts.emit("PICKING_LOTE_OBSERVADO", f"Producto observado en el picking: lote {viejo.lote} ({texto.lower()})",
+                    f"{viejo.product_code} en {viejo.warehouse_code}: {mover:g} pasan a «Producto observado». "
+                    f"Observación: {observacion.strip()}. OV {t.order.numero}.", "StockLot", seg.id, creado_por=user)
+    cambio = {"ts": now().isoformat(), "user": user.nombre, "producto": viejo.product_code, "lote_anterior": viejo.lote,
+              "lote_nuevo": nuevo.lote, "cantidad": qty, "motivo": texto, "observacion": observacion.strip(),
+              "estado_lote_anterior": estado_dest or "DISPONIBLE (reserva liberada)"}
+    t.cambios_lote = list(t.cambios_lote or []) + [cambio]
+    t.observacion = (t.observacion + "\n" if t.observacion else "") + (
+        f"{user.nombre}: cambio de lote {viejo.lote} → {nuevo.lote} ({qty:g}) por {texto.lower()}: {observacion.strip()}")
+    audit(user, "PICKING_CAMBIO_LOTE", "SalesOrder", t.order.numero, cambio)
+    db().flush()
+    return cambio
 
 
 def finish(t, user, foto, observacion=""):

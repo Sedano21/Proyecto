@@ -87,8 +87,10 @@ def seed_catalogs():
     for cat, dmin, dmax, md, mh, desc in C.LEAD_TIMES:
         s.add(LeadTime(categoria=cat, dias_min=dmin, dias_max=dmax, mes_desde=md, mes_hasta=mh, descripcion=desc,
                        fuente="Informe Funcional §7"))
+    cap = {g["lineas"][0]: g["kg_dia"] for g in next(v for k, v, *_ in C.PARAMS if k == "capacidad_lineas")
+           if len(g["lineas"]) == 1}  # las líneas de un grupo compartido usan la capacidad del grupo
     for code, nombre, fuente in C.PRODUCTION_LINES:
-        s.add(ProductionLine(code=code, nombre=nombre, fuente=fuente))
+        s.add(ProductionLine(code=code, nombre=nombre, fuente=fuente, capacidad_kg_dia=cap.get(code)))
     for orden, nombre, dias, rec, rol in C.DEMO_IMPORT_PHASES:
         s.add(ImportPhaseTemplate(orden=orden, nombre=nombre, dias_desde_inicio=dias, recordatorio_dias=rec,
                                   responsable_rol=rol, estado_def="DEMO"))
@@ -158,7 +160,7 @@ def seed_demo(upload_dir=None, today=None):
         return False
     users = {u: create_user(u, n, r) for u, n, r in DEMO_USERS}
     for u in users.values():  # almacén del personal operativo (para programar el picking)
-        if u.role_code in ("AUX_ALMACEN", "LIDER_ALMACEN", "MONTACARGUISTA"):
+        if u.role_code in ("AUX_ALMACEN", "AUX_DESPACHO", "LIDER_ALMACEN", "MONTACARGUISTA"):
             u.almacen = "EXT-002" if u.username.endswith(".mp") else "ALM-001"
     admin = users["sistemas"]
     # parámetros de demostración (marcados DEMO; no son valores aprobados)

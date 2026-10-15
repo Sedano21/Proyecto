@@ -147,3 +147,52 @@ def profile(c):
             "ultima": fechas[-1] if fechas else None, "frecuencia_dias": round(mean(gaps), 1) if gaps else None,
             "top": [(k, q, soles_prod[k]) for k, q in prods.most_common(10)], "incompletas": len(incompletas),
             "incidencias": incid[:20]}
+
+
+# ------------------------- canales y grupos (obs. demo v0.7) --------------
+def customer_groups():
+    """Grupos de cliente para la lista desplegable: los de SAP ya usados, los del mapeo grupo → canal y los agregados."""
+    from .core import param
+    vals = {(c or "").strip().upper() for c in db().execute(select(Customer.grupo)).scalars()}
+    vals |= {k.strip().upper() for k in (param("canal_precio_por_grupo", {}) or {})}
+    vals |= {str(x).strip().upper() for x in (param("grupos_cliente_adicionales", []) or [])}
+    return sorted(v for v in vals if v)
+
+
+def add_channel(user, nombre):
+    """Agrega un canal de precios (Coordinador de Ventas, Jefe de Ventas o Sistemas)."""
+    from .core import param, set_param
+    from .prices import canales
+    if not has_perm(user, "canales.gestionar"):
+        raise BusinessError("Agregar canales corresponde al Coordinador de Ventas, al Jefe de Ventas o a Sistemas.")
+    n = " ".join((nombre or "").upper().split())
+    if not n:
+        raise BusinessError("Indique el nombre del canal.")
+    if n in canales():
+        raise BusinessError(f"El canal {n} ya existe.")
+    set_param("canales_adicionales", list(param("canales_adicionales", []) or []) + [n], user)
+    audit(user, "CANAL_AGREGADO", "Param", "canales_adicionales", {"canal": n})
+    return n
+
+
+def add_group(user, nombre, canal=""):
+    """Agrega un grupo de cliente y, si se indica, el canal de precios que le corresponde."""
+    from .core import param, set_param
+    from .prices import canales
+    if not has_perm(user, "canales.gestionar"):
+        raise BusinessError("Agregar grupos corresponde al Coordinador de Ventas, al Jefe de Ventas o a Sistemas.")
+    n = " ".join((nombre or "").upper().split())
+    if not n:
+        raise BusinessError("Indique el nombre del grupo.")
+    if n in customer_groups():
+        raise BusinessError(f"El grupo {n} ya existe.")
+    canal = " ".join((canal or "").upper().split())
+    if canal and canal not in canales():
+        raise BusinessError(f"El canal {canal} no existe: agréguelo primero.")
+    set_param("grupos_cliente_adicionales", list(param("grupos_cliente_adicionales", []) or []) + [n], user)
+    if canal:
+        m = dict(param("canal_precio_por_grupo", {}) or {})
+        m[n] = canal
+        set_param("canal_precio_por_grupo", m, user)
+    audit(user, "GRUPO_CLIENTE_AGREGADO", "Param", "grupos_cliente_adicionales", {"grupo": n, "canal": canal})
+    return n

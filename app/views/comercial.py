@@ -29,6 +29,8 @@ def _lines_from_form():
     for i, code in enumerate(codes):
         code = (code or "").strip().upper().split(" ")[0]  # el combo muestra "CÓDIGO · descripción"
         if not code:
+            if (qtys[i] if i < len(qtys) else "").strip() or (prices[i] if i < len(prices) else "").strip():
+                raise BusinessError(f"Línea {i + 1}: indicó cantidad o precio pero falta el producto.")
             continue
         lines.append({"product_code": code, "cantidad": qtys[i] if i < len(qtys) else "",
                       "precio_unitario": prices[i] if i < len(prices) and prices[i] else 0,
@@ -79,7 +81,8 @@ def order_new():
                                   f_date("fecha_compromiso", True), _lines_from_form(), urgente=f_bool("urgente"),
                                   comentarios=fm.get("comentarios", ""), hora_cita=fm.get("hora_cita", ""),
                                   cita_confirmada=f_bool("cita_confirmada"), vendedor_id=fm.get("vendedor_id") or None,
-                                  entrega=entrega, canal_precio=fm.get("canal_precio", ""))
+                                  entrega=entrega, canal_precio=fm.get("canal_precio", ""),
+                                  tipo_venta="Muestra comercial" if f_bool("muestra") else "")
             holder["o"] = o
             return o
         resp = act(_do, lambda o: f"OV {o.numero} registrada y evaluada: cobertura {o.cobertura_unidades}% unidades / "
@@ -128,7 +131,9 @@ def order_detail(oid):
                for x in db().execute(select(Transfer).where(Transfer.order_id == o.id)).scalars()] +
               [("Compra", x.id, x.product_code, x.cantidad, x.estado, url_for("buy.purchase_detail", pid=x.id))
                for x in db().execute(select(PurchaseRequest).where(PurchaseRequest.order_id == o.id)).scalars()])
-    return render_template("ov_detail.html", o=o, alts=alts, whs=whs, reqs=reqs, decs=decs, hist=hist, certs=certs,
+    from ..models import RouteStop
+    paradas = list(db().execute(select(RouteStop).where(RouteStop.order_id == o.id).order_by(RouteStop.id)).scalars())
+    return render_template("ov_detail.html", o=o, alts=alts, paradas=paradas, whs=whs, reqs=reqs, decs=decs, hist=hist, certs=certs,
                            products=products, line_reserved=line_reserved, monto=osvc.order_amount(o), peso=peso,
                            sin_peso=sin_peso, can_auth=osvc.can_authorize_change(g.user, o), prep=osvc.prep_progress(o),
                            saldos=saldos, aprobadores=osvc.partial_approvers(), pendientes_parcial=osvc.partial_pending_roles(o),
@@ -168,6 +173,53 @@ def order_options(oid):
     return render_template("ov_options.html", o=o, ev=ev, penal=penalty_estimate(o), monto=osvc.order_amount(o),
                            decs=decs, cond=cond_for(o.customer), rutas=options_svc.RUTAS,
                            designables=alert_svc.assignable(g.user)[0], tarea=options_svc.review_task(o))
+
+
+@bp.route("/<int:oid>/expediente")
+@perm_required("ov.ver")
+def order_file(oid):
+    """Expediente de la OV (obs. demo v0.7, Coordinador de Distribución): OV, certificados, guía y factura juntos."""
+    from ..models import RouteStop
+    o = db().get(SalesOrder, oid) or abort(404)
+    paradas = list(db().execute(select(RouteStop).where(RouteStop.order_id == o.id).order_by(RouteStop.id)).scalars())
+    certs = list(db().execute(select(Certificate).where(Certificate.order_id == o.id, Certificate.estado != "ANULADO")).scalars())
+    return render_template("ov_file.html", o=o, paradas=paradas, certs=certs)
+
+
+@bp.route("/regularizacion", methods=["GET", "POST"])
+@perm_required("ov.regularizar")
+def regularization():
+    """Regularización de OV (obs. demo v0.7): OV con fecha pasada u hora transcurrida. No reserva stock; se libera al
+    flujo normal con una fecha vigente o se cierra como registro."""
+    if request.method == "POST":
+        fm = request.form
+        if fm.get("accion") in ("liberar", "cerrar"):
+            o = db().get(SalesOrder, int(fm.get("oid") or 0)) or abort(404)
+            if fm["accion"] == "liberar":
+                return act(lambda: osvc.regularize_release(o, g.user, f_date("nueva_fecha", True), fm.get("comentario", "")),
+                           f"OV {o.numero} liberada al flujo normal y evaluada.", url_for("com.order_detail", oid=o.id))
+            return act(lambda: osvc.regularize_close(o, g.user, fm.get("comentario", "")),
+                       f"OV {o.numero} cerrada como regularización.", url_for("com.regularization"))
+
+        def _crear():
+            c = db().get(Customer, int(fm.get("customer_id") or 0))
+            if c is None:
+                raise BusinessError("Cliente no válido.")
+            if not fm.get("motivo", "").strip():
+                raise BusinessError("Indique el motivo de la regularización.")
+            return osvc.create_order(g.user, fm.get("numero"), c.id, f_date("fecha_compromiso", True), _lines_from_form(),
+                                     comentarios=fm.get("comentarios", ""), hora_cita=fm.get("hora_cita", ""),
+                                     vendedor_id=fm.get("vendedor_id") or None, canal_precio=fm.get("canal_precio", ""),
+                                     regularizacion=fm.get("motivo", ""))
+        return act(_crear, lambda o: f"OV {o.numero} registrada como regularización (sin reserva de stock).",
+                   url_for("com.regularization"))
+    rows = list(db().execute(select(SalesOrder).where(SalesOrder.estado.in_(("REGULARIZADA", "REGULARIZADA_CERRADA")))
+                             .order_by(SalesOrder.id.desc())).scalars())
+    customers = list(db().execute(select(Customer).order_by(Customer.nombre)).scalars())
+    vendedores = list(db().execute(select(User).where(User.role_code == "EJECUTIVO_VENTAS")).scalars())
+    products = list(db().execute(select(Product).where(Product.tipo.in_(["PT", "GR", "MP"])).order_by(Product.code)).scalars())
+    return render_template("ov_regularization.html", rows=rows, customers=customers, vendedores=vendedores,
+                           products=products, horas=osvc.horas_cita())
 
 
 @bp.route("/<int:oid>/imprimir")
@@ -340,7 +392,10 @@ def costs():
     brechas = charts.bars([(r["code"] + " " + (r["base"] or "")[:18], r["brecha_pct"]) for r in
                            sorted(analisis, key=lambda r: r["brecha_pct"] if r["brecha_pct"] is not None else 999)
                            if r["brecha_pct"] is not None], "%", title="Margen del mercado sobre el costo")
-    return render_template("costs.html", analisis=analisis, costos=costos, mercado=mercado, tipo=tipo, productos=productos,
+    from ..services import market as msvc
+    comparacion = [f for f in msvc.analysis(int(request.args.get("dias") or 180))["venta"]
+                   if f["prom_competencia"] or f["prom_sustitutos"]]
+    return render_template("costs.html", analisis=analisis, comparacion=comparacion, costos=costos, mercado=mercado, tipo=tipo, productos=productos,
                            sel=sel, graf=graf, brechas=brechas, serie=serie, impacto=csvc.quote_impact())
 
 
@@ -360,7 +415,7 @@ def customer_list():
     vendedores = list(db().execute(select(User).where(User.role_code.in_(("EJECUTIVO_VENTAS", "COORD_VENTAS", "JEFE_VENTAS")))
                                    .order_by(User.nombre)).scalars())
     return render_template("customer_list.html", rows=rows, f=f, canal_de=psvc.channel_of, vendedores=vendedores,
-                           grupos=sorted({c.grupo for c in todos if c.grupo}),
+                           grupos=sorted({c.grupo for c in todos if c.grupo}), grupos_alta=csv_.customer_groups(),
                            canales=sorted({psvc.channel_of(c) for c in todos if psvc.channel_of(c)}))
 
 
@@ -400,7 +455,7 @@ def customer_card(cid):
             return csv_.save_customer(g.user, c, datos)
         return act(_guardar, "Ficha guardada.", url_for("com.customer_card", cid=cid))
     canales = sorted(set(psvc.canales()) | set(param("lista_granel_canales", []) or []))
-    return render_template("customer_card.html", c=c, p=csv_.profile(c), cond=for_customer(c), canal=psvc.channel_of(c),
+    return render_template("customer_card.html", c=c, p=csv_.profile(c), grupos=csv_.customer_groups(), cond=for_customer(c), canal=psvc.channel_of(c),
                            canales=canales, editable="clientes.editar" in g.perms,
                            tipo_txt=TIPO_TXT, vendedores=list(db().execute(select(User).where(User.role_code.in_(
                                ("EJECUTIVO_VENTAS", "COORD_VENTAS", "JEFE_VENTAS"))).order_by(User.nombre)).scalars()))
@@ -500,7 +555,8 @@ def market_substitutes():
                     raise BusinessError("Seleccione el archivo Excel.")
                 import os
                 import tempfile
-                with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
+                suf = ".pdf" if f.filename.lower().endswith(".pdf") else ".xlsx"
+                with tempfile.NamedTemporaryFile(suffix=suf, delete=False) as tmp:
                     f.save(tmp.name)
                 try:
                     n, errores = market.import_substitutes(g.user, tmp.name, f.filename)

@@ -1,3 +1,3 @@
 {% extends "base.html" %}
 {% block content %}<h1>Informes</h1><p class="muted small">Indicadores con gráficos, tendencias y recomendaciones automáticas por área. Elija un informe:</p>
-<div class="kpis">{% for k, t in items %}<a class="kpi" href="{{ url_for('rep.show', nombre=k) }}"><b>{{ t }}</b><span>Ver informe</span></a>{% endfor %}</div>{% endblock %}
+<div class="kpis">{% for k, t in items %}<a class="kpi" href="{{ url_for('rep.show', nombre=k) }}"><b>{{ t }}</b><span>Ver informe · PDF · Excel</span></a>{% endfor %}<a class="kpi primary" href="{{ url_for('rep.custom') }}"><b>Arme su informe</b><span>Elija datos, columnas y periodo</span></a></div>{% endblock %}

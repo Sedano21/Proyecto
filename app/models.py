@@ -383,6 +383,8 @@ class SalesOrder(Base):
     parent_id: Mapped[int | None] = mapped_column(ForeignKey("sales_orders.id"), nullable=True)
     completa_notificada: Mapped[bool] = mapped_column(Boolean, default=False)
     plan_picking_validado: Mapped[bool] = mapped_column(Boolean, default=False)
+    # obs. demo v0.7: OV registrada con fecha pasada u hora transcurrida (no reserva stock) {motivo, user, ts, ...}
+    regularizacion: Mapped[dict] = mapped_column(JSON, default=dict)
     customer = relationship("Customer")
     # canal / grupo de precios elegido al registrar (el mínimo varía por canal; observaciones al demo v0.6)
     canal_precio: Mapped[str] = mapped_column(String(60), default="")
@@ -430,6 +432,8 @@ class PickingTask(Base):
     foto_listo: Mapped[str] = mapped_column(String(200), default="")
     observacion: Mapped[str] = mapped_column(Text, default="")
     verificador: Mapped[str] = mapped_column(String(120), default="")  # verificador del pedido (formato)
+    # obs. demo v0.7: cambios de lote durante el picking [{ts, user, lote_anterior, lote_nuevo, cantidad, motivo, ...}]
+    cambios_lote: Mapped[list] = mapped_column(JSON, default=list)
     ts: Mapped[datetime] = mapped_column(DateTime, default=now)
     order = relationship("SalesOrder")
 
@@ -734,6 +738,11 @@ class PurchaseRequest(Base):
     autorizacion_observacion_por: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     observaciones_recepcion: Mapped[str] = mapped_column(Text, default="")
     lote_recibido: Mapped[str] = mapped_column(String(60), default="")
+    # obs. demo v0.7: presolicitud agrupada (mismo producto y fecha) con sus OV de origen [{order_id, numero, cantidad}],
+    # motivo detallado (quiebre de stock, pedidos similares) y cotizaciones [{proveedor, precio, plazo, archivo, ...}]
+    ordenes: Mapped[list] = mapped_column(JSON, default=list)
+    motivo: Mapped[str] = mapped_column(Text, default="")
+    cotizaciones: Mapped[list] = mapped_column(JSON, default=list)
     creado_por: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     ts: Mapped[datetime] = mapped_column(DateTime, default=now)
     product = relationship("Product")
@@ -885,6 +894,8 @@ class Route(Base):
     km_retorno: Mapped[float | None] = mapped_column(Float, nullable=True)
     costo_transporte: Mapped[float | None] = mapped_column(Float, nullable=True)  # S/ transporte externo
     costo_estiba: Mapped[float | None] = mapped_column(Float, nullable=True)  # S/ estiba
+    # obs. demo v0.7: horas que registra Seguridad {inicio_despacho|partida|retorno: {hora, user, ts}}
+    horas_seguridad: Mapped[dict] = mapped_column(JSON, default=dict)
     vehicle = relationship("Vehicle")
     driver = relationship("Driver")
     stops = relationship("RouteStop", back_populates="route", order_by="RouteStop.orden",
@@ -912,9 +923,31 @@ class RouteStop(Base):
     factura_path: Mapped[str] = mapped_column(String(250), default="")
     factura_con_modificaciones: Mapped[bool] = mapped_column(Boolean, default=False)
     factura_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # obs. demo v0.7: la guía la aprueba el Coordinador o el Asistente de Distribución {user, rol, ts, comentario}
+    guia_aprobada: Mapped[dict] = mapped_column(JSON, default=dict)
     observacion: Mapped[str] = mapped_column(Text, default="")
     route = relationship("Route", back_populates="stops")
     order = relationship("SalesOrder")
+
+
+class ArrivalCheck(Base):
+    """Validación de Seguridad de lo que ingresa por compras nacionales o importaciones (obs. demo v0.7)."""
+    __tablename__ = "arrival_checks"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    tipo: Mapped[str] = mapped_column(String(12))  # COMPRA / IMPORTACION
+    entidad_id: Mapped[int] = mapped_column(Integer)
+    product_code: Mapped[str] = mapped_column(String(40), default="")
+    cantidad_esperada: Mapped[float | None] = mapped_column(Float, nullable=True)
+    cantidad_ingresa: Mapped[float | None] = mapped_column(Float, nullable=True)
+    placa: Mapped[str] = mapped_column(String(20), default="")
+    chofer: Mapped[str] = mapped_column(String(120), default="")
+    conforme: Mapped[bool] = mapped_column(Boolean, default=True)
+    motivo: Mapped[str] = mapped_column(Text, default="")
+    foto: Mapped[str] = mapped_column(String(250), default="")
+    hora: Mapped[str] = mapped_column(String(5), default="")
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    user = relationship("User")
 
 
 class VehicleDocument(Base):
@@ -1042,6 +1075,8 @@ class Alert(Base):
     motivo_cierre: Mapped[str] = mapped_column(Text, default="")
     accion_tomada: Mapped[str] = mapped_column(Text, default="")
     dedup_key: Mapped[str] = mapped_column(String(160), default="", index=True)
+    # tareas que el sistema derivó a otra área al aprobar o completar esta (obs. demo v0.7: «pendiente Calidad»)
+    derivadas: Mapped[list] = mapped_column(JSON, default=list)
     type = relationship("AlertType")
     asignado = relationship("User", foreign_keys=[asignado_a])
     events = relationship("AlertEvent", back_populates="alert", order_by="AlertEvent.ts",
@@ -1259,6 +1294,8 @@ class ProductionPlan(Base):
     comentario: Mapped[str] = mapped_column(Text, default="")
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    # obs. demo v0.7: MANUAL (lo registra Producción) o SISTEMA (preprogramado con los requerimientos; lo edita el Jefe)
+    origen: Mapped[str] = mapped_column(String(10), default="MANUAL")
     product = relationship("Product")
 
 

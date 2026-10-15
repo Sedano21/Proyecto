@@ -128,6 +128,48 @@ FORMATOS = {
                       + [(k, f"Sanidad-aspecto: {l}", "number") for k, l in DEFECTOS_MUESTREO if k != "humedad"]),
 }
 
+# Obs. demo v0.7 (Asistente de Calidad): registros antes, durante y después del proceso de producción
+FORMATOS.update({
+    "PREVIO_PRODUCCION": ("Registro del sistema (obs. demo v0.7)", "Antes de producir: higiene del personal y de los equipos",
+                          [("linea", "Línea", "text"), ("of", "Orden de fabricación / solicitud", "text"),
+                           ("personal_higiene", "Todo el personal cumplió las normas de higiene", "bool"),
+                           ("equipos_calidad_higiene", "Todos los equipos cumplieron las normas de calidad e higiene", "bool"),
+                           ("detalle", "Detalle / acciones correctivas", "textarea")]),
+    "LOTE_PRODUCIDO": ("Registro del sistema (obs. demo v0.7)", "Durante la producción: ingreso de nuevo lote",
+                       [("linea", "Línea", "text"), ("of", "Orden de fabricación (como en la liquidación)", "text"),
+                        ("hora", "Hora", "text"), ("cantidad", "Cantidad producida del lote (UM del artículo)", "number"),
+                        ("fecha_produccion", "Fecha de producción", "date"), ("fecha_vencimiento", "Fecha de vencimiento", "date"),
+                        ("detalle", "Datos de la ficha / observaciones", "textarea")]),
+    "POST_PRODUCCION": ("Registro del sistema (obs. demo v0.7)", "Después de producir: cierre del proceso",
+                        [("linea", "Línea", "text"), ("of", "Orden de fabricación", "text"),
+                         ("limpieza_equipos", "Limpieza y desinfección de equipos al terminar", "bool"),
+                         ("producto_conforme", "Producto terminado conforme", "bool"),
+                         ("detalle", "Detalle / acciones correctivas", "textarea")]),
+    "VEHICULO_SEGURIDAD": ("REG-BPM-CAL-011 (parte de Seguridad)", "Control de vehículos de transporte de MP y PT (Seguridad)",
+                           [("placa", "Placa (la programada)", "text"), ("chofer", "Chofer (el programado)", "text"),
+                            ("vehiculo_en_orden", "El vehículo está en orden", "bool"),
+                            ("detalle", "Qué debe subsanarse (si no está en orden)", "textarea")]),
+})
+# formatos por etapa del proceso (pantalla de Calidad)
+ETAPAS_PRODUCCION = {
+    "Antes de producir": ["PREVIO_PRODUCCION", "RECEPCION_MP", "RECEPCION_IMPORTADO", "MUESTREO", "DISENO_BOBINA"],
+    "Durante la producción": ["LOTE_PRODUCIDO", "PROCESO", "CONTROL_GRANOS", "CONTROL_PESOS"],
+    "Después de producir": ["POST_PRODUCCION", "ANALISIS_LOTE", "INSPECCION_CARGA", "NO_CONFORME"],
+}
+
+
+def lot_entries_vs_liquidation(liq):
+    """Contraste del lote registrado por Calidad durante la producción con la liquidación (obs. demo v0.7)."""
+    recs = list(db().execute(select(QualityRecord).where(QualityRecord.formato == "LOTE_PRODUCIDO",
+                                                         QualityRecord.lote == liq.lote,
+                                                         QualityRecord.product_code == liq.product_code)).scalars())
+    if not recs:
+        return None
+    reg = sum(float((r.datos or {}).get("cantidad") or 0) for r in recs)
+    return {"registros": recs, "calidad": reg, "liquidado": liq.cantidad_completada,
+            "diferencia": round(liq.cantidad_completada - reg, 4), "coincide": abs(liq.cantidad_completada - reg) < 1e-6}
+
+
 ORG_CLAVES = {"COLOR": "org_color", "OLOR Y SABOR": "org_olor_sabor", "ASPECTO": "org_aspecto", "APARIENCIA": "org_aspecto",
               "OLOR": "org_olor", "SABOR": "org_sabor"}
 
@@ -146,6 +188,19 @@ def peso_criterio(peso_nominal):
         if abs(nominal - peso_nominal) < 1e-6:
             return crit
     return None
+
+
+def _lbl(formato):
+    return {k: l for k, l, _ in FORMATOS[formato][2]}
+
+
+class _Lbl(dict):
+    def __missing__(self, f):
+        self[f] = _lbl(f)
+        return self[f]
+
+
+FORMATO_LBL = _Lbl()
 
 
 def auto_evaluate(formato, datos, product=None):
@@ -215,6 +270,16 @@ def auto_evaluate(formato, datos, product=None):
         res = "NO_CONFORME"
     elif formato == "INSPECCION_CARGA":
         res = "CONFORME" if datos.get("estado_carga") else "NO_CONFORME"
+    elif formato in ("PREVIO_PRODUCCION", "POST_PRODUCCION"):
+        claves = ("personal_higiene", "equipos_calidad_higiene") if formato == "PREVIO_PRODUCCION" else ("limpieza_equipos", "producto_conforme")
+        malos = [FORMATO_LBL[formato].get(k, k) for k in claves if datos.get(k) is False]
+        res = "NO_CONFORME" if malos else ("CONFORME" if all(datos.get(k) for k in claves) else "")
+        if malos:
+            hallazgos.append("No cumple: " + "; ".join(malos))
+    elif formato == "VEHICULO_SEGURIDAD":
+        res = "CONFORME" if datos.get("vehiculo_en_orden") else ("NO_CONFORME" if datos.get("vehiculo_en_orden") is False else "")
+        if res == "NO_CONFORME":
+            hallazgos.append("Vehículo no está en orden: " + (datos.get("detalle") or "debe subsanarse"))
     return res, hallazgos
 
 
@@ -239,9 +304,12 @@ def register(user, formato, datos, product_code=None, lote="", lot_id=None, resu
              referencia_tipo="", referencia_id=None, fecha=None):
     if formato not in FORMATOS:
         raise BusinessError("Formato no válido.")
-    perm = "distribucion.seguridad" if formato == "VEHICULO" and has_perm(user, "distribucion.seguridad") else "calidad.registrar"
+    perm = "distribucion.seguridad" if formato in ("VEHICULO", "VEHICULO_SEGURIDAD") and has_perm(user, "distribucion.seguridad") \
+        else "calidad.registrar"
     if not has_perm(user, perm):
         raise BusinessError("Su rol no registra este formato.")
+    if formato == "VEHICULO_SEGURIDAD" and datos.get("vehiculo_en_orden") is False and not (datos.get("detalle") or "").strip():
+        raise BusinessError("Indique qué debe subsanarse del vehículo.")
     product = db().get(Product, product_code) if product_code else None
     if lot_id:
         lot = db().get(StockLot, int(lot_id))
@@ -261,12 +329,29 @@ def register(user, formato, datos, product_code=None, lote="", lot_id=None, resu
     if rec.resultado in ("NO_CONFORME", "DESAPROBADO") and formato not in ("QUEJA",):
         alerts.emit("CALIDAD_NO_CONFORME", f"{FORMATOS[formato][1]}: no conforme ({product_code or '-'} {lote})",
                     "; ".join(hallazgos) or observaciones, "QualityRecord", rec.id, creado_por=user)
+    if formato == "VEHICULO_SEGURIDAD" and rec.resultado == "NO_CONFORME":
+        alerts.emit("VEHICULO_SUBSANAR", f"Vehículo {datos.get('placa') or ''} no está en orden: subsanar",
+                    f"Chofer {datos.get('chofer') or '-'}. {datos.get('detalle') or ''}", "QualityRecord", rec.id, creado_por=user)
+    if formato == "LOTE_PRODUCIDO" and lote:
+        _contrastar_lote(rec, user)
     if formato == "FUMIGACION" and rec.lot_id:
         _apply_fumigation(rec, user)
     if formato == "ANALISIS_LOTE" and lote:
         refresh_draft_certificates(lote, user)
     audit(user, "CALIDAD_REGISTRO", "QualityRecord", rec.id, {"formato": formato, "resultado": rec.resultado})
     return rec
+
+
+def _contrastar_lote(rec, user):
+    """Si el lote ya fue liquidado, contrasta lo registrado por Calidad con la liquidación y alerta las diferencias."""
+    from ..models import Liquidation
+    for liq in db().execute(select(Liquidation).where(Liquidation.lote == rec.lote,
+                                                      Liquidation.product_code == rec.product_code)).scalars():
+        c = lot_entries_vs_liquidation(liq)
+        if c and not c["coincide"]:
+            alerts.emit("CALIDAD_VS_LIQUIDACION", f"Lote {liq.lote}: Calidad registró {c['calidad']:g} y se liquidó {c['liquidado']:g}",
+                        f"{liq.product_code}, liquidación {liq.numero_documento}. Revisar antes de que Almacén confirme la recepción.",
+                        "Liquidation", liq.id, dedup_key=f"CAL_LIQ:{liq.id}", creado_por=user)
 
 
 def _apply_fumigation(rec, user):

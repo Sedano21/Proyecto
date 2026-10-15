@@ -324,6 +324,11 @@ def register_security_check(route, user, guia_numero, lineas):
     discrepancias = []
     tol = float(param("tolerancia_discrepancia_guia", 0) or 0) + 1e-9
     for ln in lineas:
+        # obs. demo v0.7: Seguridad marca cada ítem conforme o no conforme; si no es conforme, registra el motivo
+        if ln.get("conforme") is False:
+            if not (ln.get("motivo") or "").strip():
+                raise BusinessError(f"{ln['producto']}: indique el motivo de la no conformidad.")
+            discrepancias.append(f"{ln['producto']}: no conforme – {ln['motivo'].strip()}")
         if abs((ln.get("guia") or 0) - (ln.get("cargado") or 0)) > tol:
             discrepancias.append(f"{ln['producto']}: guía {ln.get('guia')} vs cargado {ln.get('cargado')}")
         if abs((ln.get("esperado") or 0) - (ln.get("guia") or 0)) > tol:
@@ -601,3 +606,30 @@ def _return_goods(order, user, motivo):
                             ref.fecha_fab, origen=f"RETORNO-{order.numero}")
     alerts.emit("STOCK_PENDIENTE_REVISION", f"Retorno de OV {order.numero}: {motivo}",
                 "Producto devuelto ingresó como Pendiente de revisión.", "SalesOrder", order.id, creado_por=user)
+
+
+# ------------------- Seguridad: horas del despacho (obs. demo v0.7) -------------------
+HORAS_SEGURIDAD = {"inicio_despacho": "Inicio del despacho", "partida": "Partida del vehículo", "retorno": "Retorno del vehículo"}
+
+
+def register_security_time(route, user, evento, hora=""):
+    """Seguridad registra la hora en que inició el despacho, en que partió el vehículo y en que retornó."""
+    from datetime import datetime as _dt
+    _req(user, "distribucion.seguridad")
+    if evento not in HORAS_SEGURIDAD:
+        raise BusinessError("Evento no válido.")
+    if route.estado not in ("CONFIRMADA", "EN_RUTA", "CERRADA"):
+        raise BusinessError("Las horas se registran sobre rutas confirmadas.")
+    hora = (hora or "").strip() or f"{now():%H:%M}"
+    try:
+        _dt.strptime(hora, "%H:%M")
+    except ValueError:
+        raise BusinessError("Hora inválida (HH:MM, 24 horas).") from None
+    orden = list(HORAS_SEGURIDAD)
+    actuales = dict(route.horas_seguridad or {})
+    for previo in orden[:orden.index(evento)]:
+        if previo not in actuales:
+            raise BusinessError(f"Primero registre: {HORAS_SEGURIDAD[previo].lower()}.")
+    actuales[evento] = {"hora": hora, "user": user.nombre, "ts": now().isoformat()}
+    route.horas_seguridad = actuales
+    audit(user, "SEGURIDAD_HORA", "Route", route.id, {"evento": evento, "hora": hora})

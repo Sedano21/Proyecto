@@ -20,6 +20,7 @@ ETAPAS_FOTO = {
     "inicio_carga": ("Foto del inicio de la carga (Seguridad)", "distribucion.seguridad"),
     "mercaderia_cargada": ("Foto de la mercadería cargada", "distribucion.carga"),
     "incidencia_carga": ("Foto de incidencia durante la carga (Seguridad)", "distribucion.seguridad"),
+    "seguridad_guia": ("Foto de la validación contra la guía (Seguridad)", "distribucion.seguridad"),
     # observaciones al demo v0.6: el chofer registra cómo saca y cómo devuelve el vehículo
     "vehiculo_salida": ("Foto del vehículo al salir (chofer)", "distribucion.carga"),
     "vehiculo_retorno": ("Foto del vehículo al retornar (chofer)", "distribucion.carga"),
@@ -80,7 +81,8 @@ def preguia(route):
                           "cantidad": l.preparado if l.preparado > 0 else sum(r.cantidad for r in res if r.estado == "ACTIVA"),
                           "lotes": [{"lote": r.lot.lote, "fp": r.lot.fecha_fab, "fv": r.lot.fecha_venc, "cantidad": r.cantidad}
                                     for r in res]})
-        out.append({"stop": st, "order": o, "items": items})
+        whs = [r.lot.warehouse_code for l in o.lines if l.activa for r in l.reservations if r.estado in ("ACTIVA", "CONSUMIDA")]
+        out.append({"stop": st, "order": o, "items": items, "almacen": whs[0] if whs else "", "motivo": "Venta"})
     return out
 
 
@@ -88,8 +90,9 @@ def validate_load(route, user, lineas, observacion=""):
     """Auxiliar (y chofer): ¿productos correctos o completos? lineas: {order_line_id: {cargado, correcto}}.
     Si hay incongruencias se avisa al almacenero (validación cruzada); si todo está correcto se exige la foto de la
     mercadería cargada y se emite la alerta de camión cargado."""
-    if not has_perm(user, "distribucion.carga"):
-        raise BusinessError("La validación de la carga la realiza el auxiliar de despacho (y el chofer).")
+    if not has_perm(user, "distribucion.conformidad_producto"):
+        # obs. demo v0.7: el chofer no da conformidad del estado del producto (compete a Calidad, Distribución y Almacén)
+        raise BusinessError("La conformidad del producto la dan Calidad, Distribución o Almacén (no el chofer).")
     _route_ready(route)
     if not (route.fotos or {}).get("vehiculo"):
         raise BusinessError("Primero suba la foto del vehículo antes de la estiba.")
@@ -134,6 +137,8 @@ def set_guide(stop, user, numero, origen, archivo=""):
         raise BusinessError("Para una guía de SAP registre el número y cargue el archivo.")
     if origen == "SISTEMA" and not numero.strip():
         numero = f"GS-{stop.route_id}-{stop.order.numero}"
+    if stop.guia_numero and stop.guia_numero != numero.strip():
+        stop.guia_aprobada = {}  # una guía nueva o corregida vuelve a aprobarse
     stop.guia_numero = numero.strip()
     stop.guia_origen = origen
     if archivo:
@@ -141,6 +146,18 @@ def set_guide(stop, user, numero, origen, archivo=""):
     if not stop.route.guia_numero or stop.route.guia_numero.startswith("PRE-GUIA"):
         stop.route.guia_numero = stop.guia_numero
     audit(user, "GUIA_REGISTRADA", "SalesOrder", stop.order.numero, {"guia": stop.guia_numero, "origen": origen})
+
+
+def approve_guide(stop, user, comentario=""):
+    """Obs. demo v0.7: el Coordinador y el Asistente de Distribución revisan la pre-guía y aprueban la guía."""
+    if not has_perm(user, "distribucion.aprobar_guia"):
+        raise BusinessError("La guía la aprueban el Coordinador o el Asistente de Distribución.")
+    if not stop.guia_numero:
+        raise BusinessError("Primero genere o registre la guía (revise la pre-guía).")
+    if stop.guia_aprobada:
+        raise BusinessError("La guía ya está aprobada.")
+    stop.guia_aprobada = {"user": user.nombre, "rol": user.role_code, "ts": now().isoformat(), "comentario": (comentario or "").strip()}
+    audit(user, "GUIA_APROBADA", "SalesOrder", stop.order.numero, {"guia": stop.guia_numero, **stop.guia_aprobada})
 
 
 def billing_status(stop):

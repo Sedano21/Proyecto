@@ -70,9 +70,12 @@ def new_order(s, U, cust, today):
     def make(lines, ruc="20000000001", dias=3, user="coord.ventas", urgente=False, vendedor="vendedor1", precio=999.0):
         """precio: precio de venta de cada línea (por defecto sobre cualquier mínimo de lista, para no detener la OV)."""
         counter["n"] += 1
-        o = create_order(U(user), f"T-{counter['n']:03d}", cust(ruc).id, today + timedelta(days=dias),
+        # una OV con fecha pasada ya no se registra (obs. demo v0.7): se simula el paso del tiempo sobre una OV de hoy
+        o = create_order(U(user), f"T-{counter['n']:03d}", cust(ruc).id, today + timedelta(days=max(dias, 0)),
                          [{"product_code": c, "cantidad": q, "precio_unitario": precio} for c, q in lines], urgente=urgente,
                          vendedor_id=U(vendedor).id if vendedor else None)
+        if dias < 0:
+            o.fecha_compromiso = today + timedelta(days=dias)
         s.commit()
         return o
     return make

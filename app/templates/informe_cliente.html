@@ -1,7 +1,9 @@
-{% extends "base.html" %}{% from "_m.html" import b %}
-{% block content %}<p class="small"><a href="{{ url_for('rep.show', nombre='comercial', desde=d.desde.isoformat(), hasta=d.hasta.isoformat()) }}">← Informe Comercial</a></p>
-<h1>Comportamiento de {{ cliente.nombre }}</h1>
-<form class="row card" method="get"><div><label>Desde</label><input type="date" name="desde" value="{{ d.desde.isoformat() }}"></div><div><label>Hasta</label><input type="date" name="hasta" value="{{ d.hasta.isoformat() }}"></div><div><button class="sec">Actualizar</button></div></form>
+{% extends "base.html" %}{% from "_m.html" import b, ic %}
+{% block content %}<p class="small noprint"><a href="{{ url_for('rep.show', nombre='comercial', desde=d.desde.isoformat(), hasta=d.hasta.isoformat()) }}">← Informe Comercial</a></p>
+<div class="page-head"><h1>Comportamiento de {{ cliente.nombre }}</h1><div class="row noprint">{% set qs = request.args.to_dict() %}
+<a class="btn" href="{{ request.path }}?{{ qs|urlencode }}{{ '&' if qs }}formato=pdf">{{ ic('download') }}Descargar PDF</a>
+<a class="btn sec" href="{{ request.path }}?{{ qs|urlencode }}{{ '&' if qs }}formato=xlsx">{{ ic('download') }}Excel</a></div></div>
+<form class="row card noprint" method="get"><div><label>Desde</label><input type="date" name="desde" value="{{ d.desde.isoformat() }}"></div><div><label>Hasta</label><input type="date" name="hasta" value="{{ d.hasta.isoformat() }}"></div><div><button class="sec">Actualizar</button></div></form>
 {% if c %}
 <div class="kpis"><div class="kpi"><b>{{ c.cumplimiento }} %</b><span>Cumplimiento</span><small>{{ c.completos }} entregados completos de {{ c.pedidos }} pedidos</small></div>
 <div class="kpi"><b>{{ c.atendidos }}</b><span>Despachados</span></div><div class="kpi"><b>{{ c.retrasos }}</b><span>Retrasos</span></div>

@@ -16,7 +16,7 @@ python -m app.cli demo
 python run.py                                          # http://127.0.0.1:5000  · contraseña demo: Demo2026!
 ```
 
-Pruebas: `pip install -r requirements-dev.txt && python -m pytest tests -v` (186 pruebas; también en PostgreSQL con TEST_DATABASE_URL).
+Pruebas: `pip install -r requirements-dev.txt && python -m pytest tests -v` (210 pruebas; también en PostgreSQL con TEST_DATABASE_URL).
 
 ## Documentación entregada (`docs/`)
 
@@ -28,6 +28,7 @@ Pruebas: `pip install -r requirements-dev.txt && python -m pytest tests -v` (186
 | [04_RESULTADOS_PRUEBAS](docs/04_RESULTADOS_PRUEBAS.md) | 104 pruebas automatizadas (SQLite y PostgreSQL), recorridos en navegador y compatibilidad con los archivos reales |
 | [05_ESTADO_FUNCIONALIDADES](docs/05_ESTADO_FUNCIONALIDADES.md) | Implementado, parcial, pendiente y bloqueado |
 | [17_REDISENO_FRONTEND](docs/17_REDISENO_FRONTEND.md) | v0.8: rediseño integral del frontend con la identidad verde de Corporación Productiva (diagnóstico, sistema visual, navegación, responsive y verificación) |
+| [18_OBSERVACIONES_DEMO_V07](docs/18_OBSERVACIONES_DEMO_V07.md) | v0.9: observaciones al demo v0.7 (formularios que no se borran, alertas con sonido y actualización inmediata, informes PDF y personalizados, regularización de OV, picking con cambio de lote, compras agrupadas con cotizaciones y GO, Calidad antes/durante/después, Seguridad, guía de remisión, manual por rol) |
 | [16_OBSERVACIONES_DEMO_V06](docs/16_OBSERVACIONES_DEMO_V06.md) | v0.7: observaciones al demo v0.6 por rol (alertas como tareas, visibilidad por área, comportamiento del cliente, mercado en dos niveles, picking por persona, flota, capacidad de producción) y preguntas abiertas |
 | [15_DIAGNOSTICO_ESPECIFICACION_MAESTRA](docs/15_DIAGNOSTICO_ESPECIFICACION_MAESTRA.md) | Diagnóstico de la especificación funcional maestra (14-oct): matriz, contradicciones y plan por etapas |
 | [14_DECISIONES_13OCT_PARTE3_Y_OBSERVACIONES_DEMO](docs/14_DECISIONES_13OCT_PARTE3_Y_OBSERVACIONES_DEMO.md) | v0.6: formatos con logos (OV, guía, certificados PT/MP/CA), vida útil, costos y mercado, observaciones al demo v0.5 y preguntas abiertas; §5–6 decisiones del 14-oct (reserva 7 días, compras MP con GO, impacto de cotizaciones, verificado obligatorio y panel de opciones) |

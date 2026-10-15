@@ -294,16 +294,31 @@ def test_produccion_bom_merma_y_liquidacion(s, U):
     prod.send_request(r, U("coord.almacen"))
     s.commit()
     assert alerts_of(s, "PRODUCCION_SOLICITUD")
-    with pytest.raises(BusinessError):
-        prod.validate_request(r, U("jefe.produccion"), True, True, False, True, True)
-    prod.validate_request(r, U("jefe.produccion"), True, True, True, True, True, "ok")
-    from app.models import ProductionLine
-    ln = s.get(ProductionLine, "R1")
-    ln.capacidad_kg_dia = 100
-    with pytest.raises(BusinessError):  # 300 × 0.5 kg = 150 kg > 100
-        prod.schedule(r, U("jefe.produccion"), "R1", date.today())
-    ln.capacidad_kg_dia = 1000
-    prod.schedule(r, U("jefe.produccion"), "R1", date.today())
+    with pytest.raises(BusinessError):  # lista, capacidad y plazo siguen siendo obligatorios
+        prod.validate_request(r, U("jefe.produccion"), True, False, True, True, True)
+    # obs. demo v0.7: se aprueba aunque falten materiales y se piden los faltantes a Compras
+    prod.validate_request(r, U("jefe.produccion"), True, True, False, True, True, "ok")
+    s.flush()
+    from app.models import PurchaseRequest
+    pre = s.query(PurchaseRequest).filter_by(origen="PRODUCCION").all()
+    assert pre and r.validacion["presolicitudes_compra"] and alerts_of(s, "QUIEBRE_STOCK")
+    assert any(x["componente"] == pre[0].product_code for x in prod.missing_materials_tracking(r))
+    from app.services.core import param
+    dia = date.today()
+    while dia.weekday() >= 5:  # día hábil (sábado media jornada, domingo no se opera)
+        dia += timedelta(days=1)
+    grupos = [dict(x) for x in param("capacidad_lineas")]
+    for gr in grupos:
+        if "R1" in gr["lineas"]:
+            gr["kg_dia"] = 100  # capacidad del grupo RAUMAK 1 Y 2 (compartida por R1 y R2)
+    set_param("capacidad_lineas", grupos, U("sistemas"))
+    with pytest.raises(BusinessError, match="RAUMAK"):  # 300 × 0.5 kg = 150 kg > 100
+        prod.schedule(r, U("jefe.produccion"), "R1", dia)
+    for gr in grupos:
+        if "R1" in gr["lineas"]:
+            gr["kg_dia"] = 1000
+    set_param("capacidad_lineas", grupos, U("sistemas"))
+    prod.schedule(r, U("jefe.produccion"), "R1", dia)
     prod.start(r, U("asist.produccion"))
     prod.finish(r, U("asist.produccion"))
     liq = prod.register_liquidation(U("asist.produccion"), "LQ-T1", "PT-903", 300, "L903P", request=r, merma_mp_kg=3)

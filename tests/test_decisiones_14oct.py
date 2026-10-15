@@ -51,13 +51,17 @@ def test_compra_de_materia_prima_requiere_gerencia_de_operaciones(s, U):
     r.estado = "SOLICITADA"
     buy.quote(r, U("compras"), "Proveedor demo", "COT-1", precio=5.0)
     assert buy.needs_go_approval(r) and buy.go_reason(r) == "materia prima"
-    with pytest.raises(BusinessError, match="materia prima"):
+    with pytest.raises(BusinessError, match="Gerencia de Operaciones"):
         buy.generate_order(r, U("compras"), "OC-1", date.today() + timedelta(days=5), "EXT-002")
     buy.request_go_approval(r, U("compras"))
     buy.approve_go(r, U("gerente.operaciones"), True)
     buy.generate_order(r, U("compras"), "OC-1", date.today() + timedelta(days=5), "EXT-002")
     assert r.estado == "ORDEN_GENERADA"
-    r2 = buy.create_request(U("coord.almacen.mp"), "EN-901", 1)  # insumo de bajo volumen: no requiere GO
+    r2 = buy.create_request(U("coord.almacen.mp"), "EN-901", 1)
+    assert buy.go_reason(r2) == ""  # insumo de bajo volumen: sin motivo especial…
+    assert buy.needs_go_approval(r2)  # …pero la ejecución de toda compra la aprueba GO (obs. demo v0.7)
+    from app.services.core import set_param
+    set_param("compra_ejecucion_requiere_go", False, U("sistemas"))
     assert not buy.needs_go_approval(r2)
 
 

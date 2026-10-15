@@ -1,0 +1,22 @@
+{# Guía de remisión según el formato impreso de Corporación Productiva (foto del 15-oct-2026). #}
+{% macro guia_doc(g, r, tipo, ruc, peso_de) %}{% set st = g.stop %}{% set o = g.order %}
+<div class="doc guia">
+<div class="g-top"><div class="g-emisor"><img class="cp" src="{{ url_for('static', filename='img/logo_corporacion_productiva.png') }}" alt="Corporación Productiva SAC">
+<div class="g-dir">{% for l in doc_param('empresa_direccion', []) %}{{ l }}<br>{% endfor %}{% if doc_param('empresa_correo_documentos') %}E-mail: {{ doc_param('empresa_correo_documentos') }}<br>{% endif %}{% if doc_param('empresa_web') %}{{ doc_param('empresa_web') }}{% endif %}</div></div>
+<div class="g-box"><div>R.U.C.: {{ ruc }}</div><div class="g-tit">{{ 'PRE-GUÍA DE REMISIÓN' if tipo == 'preguia' else 'GUÍA ELECTRÓNICA' }}</div><div>{{ '(documento interno, no válido como guía SUNAT)' if tipo == 'preguia' else (st.guia_numero or '(sin número)') }}</div></div></div>
+<div class="g-frame">
+<div class="g-row"><div class="g-c"><table class="g-kv"><tr><td>Señor(es)</td><td>:</td><td>{{ o.customer.nombre }}</td></tr><tr><td>RUC</td><td>:</td><td>{{ o.customer.ruc }}</td></tr></table></div>
+<div class="g-c"><table class="g-kv"><tr><td>Fecha de emisión</td><td>:</td><td>{{ (r.fecha or today)|d }}</td></tr><tr><td>Fecha inicio de traslado</td><td>:</td><td>{{ (r.fecha or today)|d }}</td></tr></table></div></div>
+<div class="g-row g-sep"><div class="g-c"><table class="g-kv"><tr><td>Dirección del punto de partida</td><td>:</td><td>{% set part = (doc_param('direccion_partida_por_almacen', {}) or {}).get(g.almacen or '') %}{% if part %}{{ part }}{% else %}{% for l in doc_param('empresa_direccion', []) %}{{ l }} {% endfor %}{% endif %}</td></tr></table></div>
+<div class="g-c"><table class="g-kv"><tr><td>Dirección del punto de llegada</td><td>:</td><td>{{ o.direccion }}{{ ' ' ~ o.distrito if o.distrito }}{{ ' ' ~ o.provincia if o.provincia }}</td></tr></table></div></div>
+<table class="g-items"><thead><tr><th style="width:6%">IT</th><th style="width:12%">CODIGO</th><th>DESCRIPCIÓN</th><th style="width:12%">CANTIDAD</th><th style="width:11%">Peso</th></tr></thead>
+<tbody>{% for it in g['items'] %}<tr><td class="c">{{ loop.index }}</td><td>{{ it.codigo }}</td><td>{{ it.descripcion }}{% for lt in it.lotes %}<br>LOTE {{ lt.lote }} FP {{ lt.fp|d }} FV {{ lt.fv|d }}{% if it.lotes|length > 1 %} ({{ lt.cantidad|n }}){% endif %}{% endfor %}</td><td class="r">{{ it.cantidad|n }}</td><td class="r">{{ peso_de(it)|n if peso_de(it) is not none else '' }}</td></tr>{% endfor %}
+<tr class="g-fill"><td></td><td></td><td><div class="g-wm"><img src="{{ url_for('static', filename='img/logo_cantaclaro.png') }}" alt=""><img src="{{ url_for('static', filename='img/logo_cosecha_andina.png') }}" alt=""></div></td><td></td><td></td></tr></tbody></table>
+<div class="g-row g-sep"><div class="g-c"><table class="g-kv"><tr><td>Transportista</td><td>:</td><td>{% if r.vehicle and not r.vehicle.propio %}{{ r.vehicle.descripcion or 'Transporte externo' }}{% else %}{{ doc_param('empresa_razon_social_completa') }}{% endif %}</td></tr><tr><td>RUC</td><td>:</td><td>{% if not (r.vehicle and not r.vehicle.propio) %}{{ ruc }}{% endif %}</td></tr></table></div>
+<div class="g-c"><table class="g-kv"><tr><td>Placa del vehículo</td><td>:</td><td>{{ r.vehicle.placa if r.vehicle }}</td></tr><tr><td>Licencia de conductor</td><td>:</td><td>{{ r.driver.licencia if r.driver }}</td></tr></table></div></div>
+<div class="g-motivo">Motivo de Traslado: <span>{{ g.motivo or 'Venta' }}</span></div>
+</div>
+<div class="g-bottom"><div class="g-c"><b>Observaciones:</b><br><br>{{ o.numero }}{{ ' ' ~ o.lugar_entrega if o.lugar_entrega }}</div>
+<div class="g-c small">Representación impresa de la guía electrónica.<br><br>Este documento está a disposición del adquiriente o usuario en el correo electrónico que haya designado previamente.</div></div>
+<div class="g-foot"><div class="g-marcas"><img src="{{ url_for('static', filename='img/logo_cantaclaro.png') }}" alt="Cantaclaro"><img src="{{ url_for('static', filename='img/logo_cosecha_andina.png') }}" alt="Cosecha Andina"></div><div>Página 1 de 1</div></div>
+</div>{% endmacro %}

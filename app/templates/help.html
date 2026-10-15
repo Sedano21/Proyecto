@@ -1,0 +1,20 @@
+{% extends "base.html" %}{% from "_m.html" import ic %}
+{% block title %}Manual de usuario{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Manual de usuario</h1><p class="sub">{{ rol.nombre }} · área {{ rol.area }}</p></div>
+<div class="row noprint">{% if user.role_code in ['SISTEMAS','GERENCIA_GENERAL'] %}<form method="get" class="row"><div><label for="h_rol">Ver el manual de</label><select id="h_rol" name="rol" onchange="this.form.submit()">{% for r in roles %}<option value="{{ r.code }}" {{ 'selected' if r.code == rol.code }}>{{ r.nombre }}</option>{% endfor %}</select></div></form>{% endif %}
+<a class="btn sec" href="javascript:window.print()">{{ ic('download') }}Imprimir / guardar PDF</a></div></div>
+<div class="card help"><h2>Contenido</h2><ol class="help-toc">
+<li><a href="#rol">Su rol en el proceso</a></li>
+{% if m.tareas %}<li><a href="#tareas">Sus tareas paso a paso</a></li>{% endif %}
+<li><a href="#pantallas">Pantallas que tiene autorizadas</a></li>
+{% for s in m.general %}<li><a href="#g{{ loop.index }}">{{ s.titulo }}</a></li>{% endfor %}
+</ol></div>
+<div class="card help" id="rol"><h2>Su rol en el proceso</h2><p>{{ m.resumen }}</p>
+{% if m.no_hace %}<p class="small muted"><b>No le corresponde:</b> {{ m.no_hace }}</p>{% endif %}</div>
+{% if m.tareas %}<div class="card help" id="tareas"><h2>Sus tareas paso a paso</h2>
+{% for t in m.tareas %}<h3>{{ loop.index }}. {{ t.titulo }}</h3>{% if t.donde %}<p class="small muted">Dónde: {{ t.donde }}</p>{% endif %}<ol>{% for p in t.pasos %}<li>{{ p }}</li>{% endfor %}</ol>{% endfor %}</div>{% endif %}
+<div class="card help" id="pantallas"><h2>Pantallas que tiene autorizadas</h2>
+{% for area, items in m.pantallas %}<h3>{{ area }}</h3><ul>{% for it in items %}<li><b>{% if it.url %}<a href="{{ it.url }}">{{ it.titulo }}</a>{% else %}{{ it.titulo }}{% endif %}</b> — {{ it.texto }}</li>{% endfor %}</ul>{% endfor %}</div>
+{% for s in m.general %}<div class="card help" id="g{{ loop.index }}"><h2>{{ s.titulo }}</h2>{% if s.texto %}<p>{{ s.texto }}</p>{% endif %}{% if s.pasos %}<ul>{% for p in s.pasos %}<li>{{ p }}</li>{% endfor %}</ul>{% endif %}</div>{% endfor %}
+{% endblock %}

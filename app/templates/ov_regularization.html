@@ -1,0 +1,25 @@
+{% extends "base.html" %}{% from "_m.html" import b, csrf, ic, empty %}
+{% block content %}
+<div class="page-head"><div><h1>Regularización de OV</h1><p class="sub">Pedidos con fecha pasada u hora ya transcurrida. Se registran <b>sin reservar stock</b>; luego se liberan al flujo normal con una fecha vigente o se cierran como registro.</p></div></div>
+<details class="card" {{ 'open' if not rows }}><summary><b>{{ ic('plus') }} Registrar una OV a regularizar</b></summary>
+<form method="post" id="regform" style="margin-top:10px">{{ csrf() }}
+<div class="row">
+<div><label>N° de OV / documento</label><input name="numero" required></div>
+<div class="grow"><label>Cliente</label><select name="customer_id" required><option value="">Elija el cliente</option>{% for c in customers %}<option value="{{ c.id }}">{{ c.nombre }} · {{ c.ruc }}</option>{% endfor %}</select></div>
+<div><label>Fecha comprometida (pasada)</label><input type="date" name="fecha_compromiso" required></div>
+<div><label>Hora de cita</label><select name="hora_cita"><option value="">—</option>{% for h in horas %}<option>{{ h }}</option>{% endfor %}</select></div>
+<div><label>Vendedor</label><select name="vendedor_id"><option value="">(—)</option>{% for v in vendedores %}<option value="{{ v.id }}" {{ 'selected' if v.id==user.id }}>{{ v.nombre }}</option>{% endfor %}</select></div>
+</div>
+<label>Motivo de la regularización</label><input name="motivo" required style="width:100%" placeholder="p. ej. pedido atendido por teléfono el día anterior">
+<label>Comentarios</label><textarea name="comentarios"></textarea>
+<div class="tw"><table><tr><th>Producto</th><th>Cantidad</th><th>Precio unitario S/</th></tr>
+{% for i in range(5) %}<tr><td><input type="hidden" name="um_venta" value=""><input name="product_code" list="prods" placeholder="código" {{ 'required' if i == 0 }} aria-label="Producto"></td><td><input name="cantidad" type="number" step="any" min="0.0001" {{ 'required' if i == 0 }} aria-label="Cantidad"></td><td><input name="precio_unitario" type="number" step="any" min="0.01" {{ 'required' if i == 0 }} aria-label="Precio"></td></tr>{% endfor %}</table></div>
+<datalist id="prods">{% for p in products %}<option value="{{ p.code }}">{{ p.descripcion }}</option>{% endfor %}</datalist>
+<p><button>Registrar regularización</button></p></form></details>
+<div class="card"><h3>OV en regularización</h3>
+{% if rows %}<div class="tw"><table class="list"><tr><th>OV</th><th>Cliente</th><th>Fecha</th><th>Motivo</th><th>Registró</th><th>Estado</th><th>Acción</th></tr>
+{% for o in rows %}<tr><td><a href="{{ url_for('com.order_detail', oid=o.id) }}">{{ o.numero }}</a></td><td>{{ o.customer.nombre }}</td><td>{{ o.fecha_compromiso|d }} {{ o.hora_cita }}</td><td>{{ o.regularizacion.motivo }}</td><td class="small">{{ o.regularizacion.user }}<br>{{ (o.regularizacion.ts or '')[:16]|replace('T',' ') }}</td><td>{{ b(o.estado) }}{% if o.regularizacion.cierre %}<br><span class="small muted">{{ o.regularizacion.cierre }}</span>{% endif %}</td>
+<td>{% if o.estado == 'REGULARIZADA' %}<form method="post" class="row" data-confirm="¿Liberar la OV {{ o.numero }} al flujo normal? Se evaluará y reservará stock.">{{ csrf() }}<input type="hidden" name="accion" value="liberar"><input type="hidden" name="oid" value="{{ o.id }}"><input type="date" name="nueva_fecha" min="{{ today.isoformat() }}" required aria-label="Nueva fecha"><input name="comentario" placeholder="comentario" aria-label="Comentario"><button class="small">Liberar con fecha vigente</button></form>
+<form method="post" class="row" data-confirm="¿Cerrar la OV {{ o.numero }} como registro, sin reservar stock?">{{ csrf() }}<input type="hidden" name="accion" value="cerrar"><input type="hidden" name="oid" value="{{ o.id }}"><input name="comentario" placeholder="cómo se regularizó" required aria-label="Cómo se regularizó"><button class="sec small">Cerrar como registro</button></form>{% endif %}</td></tr>{% endfor %}</table></div>
+{% else %}{{ empty('No hay OV en regularización.', 'check') }}{% endif %}</div>
+{% endblock %}

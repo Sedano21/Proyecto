@@ -54,8 +54,20 @@ def route_detail(rid):
             for e in dsvc.expected_lines(r):
                 i = e["order_line_id"]
                 lineas.append({**e, "guia": f_float(f"guia_{i}", default=0), "cargado": f_float(f"cargado_{i}", default=0),
-                               "presentacion_ok": f.get(f"pres_{i}", "1") == "1"})
-            fn = lambda: dsvc.register_security_check(r, u, f.get("guia_numero", ""), lineas)  # noqa: E731
+                               "presentacion_ok": f.get(f"pres_{i}", "1") == "1",
+                               "conforme": f.get(f"conf_{i}") == "1", "motivo": f.get(f"motivo_{i}", "")})
+
+            def fn():
+                arch = dsvc.save_upload(request.files.get("foto"), current_app.config["UPLOAD_DIR"], f"ruta{r.id}_seguridad")
+                res = dsvc.register_security_check(r, u, f.get("guia_numero", ""), lineas)
+                if arch:
+                    dsp.add_photo(r, u, "seguridad_guia", arch, "Validación contra la guía")
+                return res
+        elif acc == "hora_seguridad":
+            fn = lambda: dsvc.register_security_time(r, u, f.get("evento", ""), f.get("hora", ""))  # noqa: E731
+        elif acc == "aprobar_guia":
+            stop = db().get(RouteStop, int(f["stop_id"]))
+            fn = lambda: dsp.approve_guide(stop, u, f.get("comentario", ""))  # noqa: E731
         elif acc == "salida":
             def fn():
                 km = f_float("km_salida")
@@ -165,7 +177,8 @@ def route_detail(rid):
                            subtipos=__import__("app.catalogs", fromlist=["x"]).INCIDENT_SUBTYPES,
                            preguia=dsp.preguia(r), etapas=dsp.ETAPAS_FOTO, certs=certs,
                            faltan=dsp.missing_documents(r) if r.estado == "CONFIRMADA" else [],
-                           billing=dsp.billing_status, vb_req=dsp.required_exit_approvals(), vb_label=dsp.VB_LABEL)
+                           billing=dsp.billing_status, vb_req=dsp.required_exit_approvals(), vb_label=dsp.VB_LABEL,
+                           horas_seg=dsvc.HORAS_SEGURIDAD)
 
 
 @bp.route("/ruta/<int:rid>/folio")
@@ -175,9 +188,40 @@ def folio(rid):
     r = db().get(Route, rid) or abort(404)
     certs = {st.id: list(db().execute(select(Certificate).where(Certificate.order_id == st.order_id,
                                                                   Certificate.estado != "ANULADO")).scalars()) for st in r.stops}
+    from ..models import Product
     from ..services.core import param
-    return render_template("folio.html", r=r, preguia=dsp.preguia(r), certs=certs, empresa=param("empresa_razon_social", ""),
-                           ruc=param("empresa_ruc", ""), tipo=request.args.get("tipo", "folio"))
+    pg = dsp.preguia(r)
+    ov = request.args.get("ov", type=int)
+    if ov:  # una sola OV (expediente de la OV)
+        pg = [x for x in pg if x["order"].id == ov]
+
+    def peso_de(it):
+        p = db().get(Product, it["codigo"])
+        if p is None:
+            return None
+        if (p.um or "").upper().startswith("K"):
+            return it["cantidad"]
+        return it["cantidad"] * p.peso_kg if p.peso_kg else None
+    return render_template("folio.html", r=r, preguia=pg, certs=certs, empresa=param("empresa_razon_social", ""),
+                           ruc=param("empresa_ruc", ""), tipo=request.args.get("tipo", "folio"), peso_de=peso_de)
+
+
+@bp.route("/seguridad/llegadas", methods=["GET", "POST"])
+@perm_required("seguridad.llegadas")
+def arrivals():
+    """Seguridad: cuadro de llegadas de compras nacionales e importaciones (obs. demo v0.7)."""
+    from ..services import security as ssvc
+    if request.method == "POST":
+        f = request.form
+
+        def _do():
+            foto = dsvc.save_upload(request.files.get("foto"), current_app.config["UPLOAD_DIR"], f"llegada_{f.get('tipo')}_{f.get('id')}")
+            return ssvc.register_arrival_check(g.user, f.get("tipo"), int(f.get("id") or 0), f_float("cantidad"),
+                                               f.get("conforme") == "1", f.get("motivo", ""), foto, f.get("placa", ""),
+                                               f.get("chofer", ""), f.get("hora", ""))
+        return act(_do, lambda c: "Llegada conforme registrada." if c.conforme else "Incidente registrado y notificado.",
+                   url_for("dist.arrivals"))
+    return render_template("arrivals.html", filas=ssvc.arrivals(int(request.args.get("dias") or 7)))
 
 
 @bp.route("/incidencias", methods=["GET", "POST"])

@@ -10,10 +10,10 @@
 {% else %}<tr><td colspan="6" class="muted">Sin precios de compra nacional ni de importación en el periodo.</td></tr>{% endfor %}</table></div>
 <div class="grid g2">{% for k, svg in graf.items() %}<div>{{ svg }}</div>{% endfor %}</div></div>
 <div class="card"><h2>Nivel 2 · ¿A cuánto vendemos frente a la competencia?</h2><p class="small muted">Nuestro precio de venta promedio por kg y nuestro volumen (OV del periodo) frente al último precio de cada competidor directo y de los sustitutos. No se tiene el volumen de la competencia: «ganar mercado» se lee con nuestro volumen y la diferencia de precio.</p>
-<div class="tw"><table class="small"><tr><th>Producto</th><th class="r">Nuestro S/ kg</th><th class="r">Volumen kg</th><th class="r">Var. volumen</th><th>Competencia directa</th><th class="r">Dif. vs promedio</th><th>Sustitutos</th><th>Lectura</th></tr>
+<div class="tw"><table class="small"><tr><th>Producto</th><th class="r">Nuestro S/ kg</th><th class="r">Volumen kg</th><th class="r">Var. volumen</th><th>Competencia directa</th><th class="r">Dif. vs promedio</th><th>Sustitutos</th><th>Recomendación automática</th></tr>
 {% for f in d.venta %}<tr><td>{{ f.producto }}</td><td class="r">{{ f.nuestro_kg|n if f.nuestro_kg else '—' }}</td><td class="r">{{ f.volumen_kg|n }}</td><td class="r">{{ ('%+.1f %%'|format(f.var_volumen)) if f.var_volumen is not none else '—' }}</td>
 <td>{% for c, p, fe in f.competidores %}{{ c }}: {{ p|n }} ({{ fe|d }})<br>{% else %}—{% endfor %}</td><td class="r">{{ ('%+.1f %%'|format(f.dif_pct)) if f.dif_pct is not none else '—' }}</td>
-<td>{% for c, p, fe in f.sustitutos %}{{ c }}: {{ p|n }}<br>{% else %}—{% endfor %}</td><td>{{ f.lectura }}</td></tr>
+<td>{% for c, p, fe in f.sustitutos %}{{ c }}: {{ p|n }}<br>{% else %}—{% endfor %}</td><td>{{ f.recomendacion }}<br><span class="muted">{{ f.lectura }}</span></td></tr>
 {% else %}<tr><td colspan="8" class="muted">Sin ventas ni precios de competencia en el periodo.</td></tr>{% endfor %}</table></div></div>
 <div class="note small">Costo de reposición: pendiente (se indicará su definición más adelante).</div>
 {{ market_form(categorias, volver=url_for('com.market_analysis')) }}

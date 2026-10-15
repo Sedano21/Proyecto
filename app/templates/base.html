@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="es">
+<html lang="es"{% if request.args.get("embebido") == "1" or request.args.get("imprimir") == "1" %} class="bare{{ " emb" if request.args.get("embebido") == "1" }}"{% endif %}>
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#ffffff">
@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 <script>try{if(localStorage.getItem('cp-nav')==='min')document.documentElement.classList.add('nav-min')}catch(e){}</script>
 </head>
-<body>
+<body{% if user %} data-alertas="{{ url_for('main.alerts_status') }}"{% endif %}>
 {% include "_icons.html" %}
 {% from "_m.html" import ic %}
 {% macro nl(href, icono, texto, extra='') %}<a href="{{ href }}" title="{{ texto }}">{{ ic(icono) }}<span class="lbl">{{ texto }}</span>{{ extra }}</a>{% endmacro %}
@@ -22,61 +22,64 @@
     <div class="grp" data-grupo="Panel">
       {{ nl(url_for('main.dashboard'), 'home', 'Inicio') }}
       {{ nl(url_for('main.alerts'), 'bell', 'Alertas y tareas', ('<span class="count" aria-label="' ~ alertas_abiertas ~ ' abiertas">' ~ alertas_abiertas ~ '</span>')|safe if alertas_abiertas else '') }}
-      {% if can('informes.comercial') or can('informes.reempaque') or can('informes.produccion') or can('informes.distribucion') or can('informes.almacen') %}{{ nl(url_for('rep.home'), 'chart', 'Informes') }}{% endif %}
+      {% if ve('alertas.ver') or ve('informes.comercial') or ve('informes.reempaque') or ve('informes.produccion') or ve('informes.distribucion') or ve('informes.almacen') %}{{ nl(url_for('rep.home'), 'chart', 'Informes') }}{% endif %}
     </div>
-    {% if can('ov.ver') %}<div class="grp" data-grupo="Comercial"><h4><span class="lbl">Comercial</span></h4>
+    {% if ve('ov.ver') %}<div class="grp" data-grupo="Comercial"><h4><span class="lbl">Comercial</span></h4>
       {{ nl(url_for('com.orders'), 'cart', 'Órdenes de venta') }}
-      {% if can('ov.crear') %}{{ nl(url_for('com.order_new'), 'plus', 'Registrar OV') }}{% endif %}
-      {% if can('clientes.ver') %}{{ nl(url_for('com.customer_list'), 'users', 'Clientes') }}{% endif %}
-      {% if can('precios.ver') %}{{ nl(url_for('com.prices'), 'tag', 'Listas de precios') }}{% endif %}
-      {% if can('costos.ver') %}{{ nl(url_for('com.costs'), 'scale', 'Costos vs mercado') }}{% endif %}
-      {% if can('ov.importar') or can('precios.editar') or can('costos.cargar') or can('clientes.canal') %}{{ nl(url_for('alm.uploads', area='Comercial'), 'upload', 'Cargas de archivos') }}{% endif %}
+      {% if ve('ov.crear') %}{{ nl(url_for('com.order_new'), 'plus', 'Registrar OV') }}{% endif %}
+      {% if ve('ov.regularizar') %}{{ nl(url_for('com.regularization'), 'history', 'Regularización de OV') }}{% endif %}
+      {% if ve('clientes.ver') %}{{ nl(url_for('com.customer_list'), 'users', 'Clientes') }}{% endif %}
+      {% if ve('precios.ver') %}{{ nl(url_for('com.prices'), 'tag', 'Listas de precios') }}{% endif %}
+      {% if ve('costos.ver') %}{{ nl(url_for('com.costs'), 'scale', 'Costos vs mercado') }}{% endif %}
+      {% if ve('ov.importar') or ve('precios.editar') or ve('costos.cargar') or ve('clientes.canal') %}{{ nl(url_for('alm.uploads', area='Comercial'), 'upload', 'Cargas de archivos') }}{% endif %}
     </div>{% endif %}
-    {% if can('stock.ver') or can('traslados.ver') or can('reempaque.ver') or can('tareas.ejecutar') %}<div class="grp" data-grupo="Almacén"><h4><span class="lbl">Almacén</span></h4>
-      {% if can('stock.ver') %}{{ nl(url_for('alm.stock'), 'box', 'Stock y reservas') }}{% endif %}
-      {% if can('preparacion.registrar') or can('ov.ver') %}{{ nl(url_for('com.preparation'), 'clipboard', 'Preparación (picking)') }}{% endif %}
-      {% if can('picking.asignar') or can('tareas.ejecutar') or can('preparacion.registrar') %}{{ nl(url_for('alm.picking_schedule'), 'calendar', 'Programación de picking') }}{% endif %}
-      {% if can('traslados.ver') %}{{ nl(url_for('alm.transfers'), 'swap', 'Traslados') }}{% endif %}
-      {% if can('reempaque.ver') %}{{ nl(url_for('alm.repacks'), 'refresh', 'Reempaque') }}{% endif %}
-      {% if can('stock.conteo') %}{{ nl(url_for('alm.counts'), 'count', 'Conteos físicos') }}{% endif %}
-      {% if can('stock.cargar') %}{{ nl(url_for('alm.uploads', area='Almacén'), 'upload', 'Cargas de archivos') }}{% endif %}
+    {% if ve('stock.ver') or ve('traslados.ver') or ve('reempaque.ver') or ve('tareas.ejecutar') %}<div class="grp" data-grupo="Almacén"><h4><span class="lbl">Almacén</span></h4>
+      {% if ve('stock.ver') %}{{ nl(url_for('alm.stock'), 'box', 'Stock y reservas') }}{% endif %}
+      {% if ve('preparacion.registrar') or ve('ov.ver') %}{{ nl(url_for('com.preparation'), 'clipboard', 'Preparación (picking)') }}{% endif %}
+      {% if ve('picking.asignar') or ve('tareas.ejecutar') or ve('preparacion.registrar') %}{{ nl(url_for('alm.picking_schedule'), 'calendar', 'Programación de picking') }}{% endif %}
+      {% if ve('traslados.ver') %}{{ nl(url_for('alm.transfers'), 'swap', 'Traslados') }}{% endif %}
+      {% if ve('reempaque.ver') %}{{ nl(url_for('alm.repacks'), 'refresh', 'Reempaque') }}{% endif %}
+      {% if ve('stock.conteo') %}{{ nl(url_for('alm.counts'), 'count', 'Conteos físicos') }}{% endif %}
+      {% if ve('stock.cargar') %}{{ nl(url_for('alm.uploads', area='Almacén'), 'upload', 'Cargas de archivos') }}{% endif %}
     </div>{% endif %}
-    {% if can('produccion.ver') %}<div class="grp" data-grupo="Producción"><h4><span class="lbl">Producción</span></h4>
+    {% if ve('produccion.ver') %}<div class="grp" data-grupo="Producción"><h4><span class="lbl">Producción</span></h4>
       {{ nl(url_for('prod.requests'), 'factory', 'Solicitudes y programa') }}
       {{ nl(url_for('prod.plan'), 'calendar', 'Planeamiento') }}
       {{ nl(url_for('prod.bom'), 'layers', 'Lista de materiales') }}
       {{ nl(url_for('prod.liquidations'), 'file', 'Liquidaciones') }}
       {{ nl(url_for('prod.reports'), 'gauge', 'Partes de producción') }}
-      {% if can('produccion.bom_cargar') or can('produccion.liquidar') %}{{ nl(url_for('alm.uploads', area='Producción'), 'upload', 'Cargas de archivos') }}{% endif %}
+      {% if ve('produccion.bom_cargar') or ve('produccion.liquidar') %}{{ nl(url_for('alm.uploads', area='Producción'), 'upload', 'Cargas de archivos') }}{% endif %}
     </div>{% endif %}
-    {% if can('calidad.ver') or can('distribucion.seguridad') %}<div class="grp" data-grupo="Calidad"><h4><span class="lbl">Calidad</span></h4>
-      {% if can('calidad.ver') %}{{ nl(url_for('cal.home'), 'shield', 'Liberación y registros') }}
+    {% if ve('calidad.ver') or ve('distribucion.seguridad') %}<div class="grp" data-grupo="Calidad"><h4><span class="lbl">{{ 'Calidad' if can('calidad.ver') else 'Seguridad' }}</span></h4>
+      {% if ve('calidad.ver') %}{{ nl(url_for('cal.home'), 'shield', 'Liberación y registros') }}
       {{ nl(url_for('cal.certificates'), 'award', 'Certificados') }}{% endif %}
-      {% if can('distribucion.seguridad') and not can('calidad.ver') %}{{ nl(url_for('cal.new_record', formato='VEHICULO'), 'shield', 'Control de vehículos') }}{% endif %}
+      {% if can('distribucion.seguridad') and not can('calidad.ver') %}{{ nl(url_for('cal.new_record', formato='VEHICULO_SEGURIDAD'), 'shield', 'Control de vehículos') }}{% endif %}
+      {% if ve('seguridad.llegadas') %}{{ nl(url_for('dist.arrivals'), 'truck', 'Llegadas de compras e importaciones') }}{% endif %}
     </div>{% endif %}
-    {% if can('compras.ver') or can('importaciones.ver') %}<div class="grp" data-grupo="Abastecimiento"><h4><span class="lbl">Abastecimiento</span></h4>
-      {% if can('compras.ver') %}{{ nl(url_for('buy.purchases'), 'bag', 'Compras nacionales') }}
+    {% if ve('compras.ver') or ve('importaciones.ver') %}<div class="grp" data-grupo="Abastecimiento"><h4><span class="lbl">Abastecimiento</span></h4>
+      {% if ve('compras.ver') %}{{ nl(url_for('buy.purchases'), 'bag', 'Compras nacionales') }}
       {{ nl(url_for('buy.replenishment'), 'trend', 'Análisis de reposición') }}{% endif %}
-      {% if can('importaciones.ver') %}{{ nl(url_for('buy.imports'), 'ship', 'Importaciones') }}{% endif %}
+      {% if ve('importaciones.ver') %}{{ nl(url_for('buy.imports'), 'ship', 'Importaciones') }}{% endif %}
     </div>{% endif %}
-    {% if can('distribucion.ver') %}<div class="grp" data-grupo="Distribución"><h4><span class="lbl">Distribución</span></h4>
+    {% if ve('distribucion.ver') %}<div class="grp" data-grupo="Distribución"><h4><span class="lbl">Distribución</span></h4>
       {{ nl(url_for('dist.routes'), 'route', 'Programación y rutas') }}
       {{ nl(url_for('dist.incidents'), 'alert', 'Incidencias') }}
-      {% if can('distribucion.flota') %}{{ nl(url_for('dist.fleet'), 'truck', 'Flota y conductores') }}{% endif %}
-      {% if can('flota.ver') or can('distribucion.flota') %}{{ nl(url_for('dist.fleet_tracking'), 'wrench', 'Seguimiento de flota') }}{% endif %}
+      {% if ve('distribucion.flota') %}{{ nl(url_for('dist.fleet'), 'truck', 'Flota y conductores') }}{% endif %}
+      {% if ve('flota.ver') or ve('distribucion.flota') %}{{ nl(url_for('dist.fleet_tracking'), 'wrench', 'Seguimiento de flota') }}{% endif %}
     </div>{% endif %}
-    {% if can('config.ver') or can('auditoria.ver') or can('usuarios.administrar') or can('alertas.configurar') %}<div class="grp" data-grupo="Administración"><h4><span class="lbl">Administración</span></h4>
-      {% if can('config.ver') %}{{ nl(url_for('main.config'), 'settings', 'Configuración') }}{% endif %}
-      {% if can('config.editar') %}{{ nl(url_for('alm.uploads', area='Configuración'), 'database', 'Cargas de configuración') }}{% endif %}
-      {% if can('usuarios.administrar') %}{{ nl(url_for('main.users'), 'user', 'Usuarios') }}
+    {% if ve('config.ver') or ve('auditoria.ver') or ve('usuarios.administrar') or ve('alertas.configurar') or can('canales.gestionar') %}<div class="grp" data-grupo="Administración"><h4><span class="lbl">Administración</span></h4>
+      {% if ve('config.ver') %}{{ nl(url_for('main.config'), 'settings', 'Configuración') }}{% endif %}
+      {% if can('canales.gestionar') %}{{ nl(url_for('main.channels'), 'tag', 'Canales y grupos') }}{% endif %}
+      {% if ve('config.editar') %}{{ nl(url_for('alm.uploads', area='Configuración'), 'database', 'Cargas de configuración') }}{% endif %}
+      {% if ve('usuarios.administrar') %}{{ nl(url_for('main.users'), 'user', 'Usuarios') }}
       {{ nl(url_for('main.permissions'), 'key', 'Permisos por rol') }}{% endif %}
-      {% if can('alertas.configurar') %}{{ nl(url_for('main.alert_config'), 'bell', 'Configurar alertas') }}
+      {% if ve('alertas.configurar') %}{{ nl(url_for('main.alert_config'), 'bell', 'Configurar alertas') }}
       {{ nl(url_for('main.outbox'), 'mail', 'Bandeja de correo') }}{% endif %}
-      {% if can('auditoria.ver') %}{{ nl(url_for('main.audit'), 'history', 'Auditoría') }}{% endif %}
+      {% if ve('auditoria.ver') %}{{ nl(url_for('main.audit'), 'history', 'Auditoría') }}{% endif %}
     </div>{% endif %}
     {% if user.role_code == 'GERENCIA_GENERAL' %}<div class="grp" data-grupo="Preferencias">{{ nl(url_for('main.gg_prefs'), 'mail', 'Mis alertas directas') }}</div>{% endif %}
     </div>
-    <div class="side-foot lbl">Prototipo v0.8</div>
+    <div class="side-foot lbl"><a href="{{ url_for('main.help') }}">Manual de usuario</a> · Prototipo v0.9</div>
   </nav>
   <div class="main">
     <header class="top">
@@ -85,9 +88,11 @@
       <nav class="crumbs" aria-label="Ubicación"><a href="{{ url_for('main.dashboard') }}">Inicio</a><span class="crumb-rest"></span></nav>
       <div class="top-right noprint">
         <span class="stock-chip" title="{% if stock_info %}Última carga de stock de SAP: {{ stock_info.ts|d }} ({{ stock_info.archivo }}, por {{ stock_info.usuario }}). No es tiempo real.{% else %}Sin carga de stock de SAP registrada.{% endif %}">{{ ic('database') }}<span>{% if stock_info %}Stock SAP <b>{{ stock_info.ts|d }}</b><em class="hide-sm"> · no es tiempo real</em>{% else %}Sin carga SAP{% endif %}</span></span>
+        <button type="button" class="icon-btn snd-btn" aria-label="Sonido de alertas activado (pulse para silenciar)" title="Sonido de alertas">{{ ic('volume') }}</button>
         <a class="icon-btn bell" href="{{ url_for('main.alerts') }}" aria-label="Alertas: {{ alertas_abiertas }} abiertas">{{ ic('bell') }}{% if alertas_abiertas %}<span class="dot">{{ alertas_abiertas if alertas_abiertas < 100 else '99+' }}</span>{% endif %}</a>
         <details class="usermenu"><summary aria-label="Menú de usuario"><span class="avatar" aria-hidden="true">{{ user.nombre[:1] }}</span><span class="who hide-sm"><b>{{ user.nombre }}</b><small>{{ user.role.nombre }}</small></span></summary>
           <div class="menu-pop"><div class="menu-head"><b>{{ user.nombre }}</b><small>{{ user.role.nombre }}</small></div>
+            <a href="{{ url_for('main.help') }}">{{ ic('help') }} Manual de usuario</a>
             <a href="{{ url_for('main.change_password') }}">{{ ic('key') }} Cambiar contraseña</a>
             <a href="{{ url_for('main.logout') }}">{{ ic('logout') }} Salir</a></div></details>
       </div>
@@ -158,5 +163,6 @@
     var b = e.submitter; if (b) setTimeout(function(){ b.disabled = true; b.classList.add('busy'); setTimeout(function(){ b.disabled = false; b.classList.remove('busy'); }, 8000); }, 0); }); });
 })();
 </script>
+<script src="{{ url_for('static', filename='app.js') }}?v=0.9"></script>
 </body>
 </html>

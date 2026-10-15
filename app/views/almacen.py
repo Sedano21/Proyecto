@@ -81,8 +81,8 @@ def upload_new():
         if not f or not f.filename:
             return fail("Seleccione un archivo.", url_for("alm.upload_new", tipo=tipo))
         ext = os.path.splitext(f.filename)[1].lower()
-        if ext not in (".xlsx", ".xlsm"):
-            return fail("Solo se aceptan archivos .xlsx o .xlsm.", url_for("alm.upload_new", tipo=tipo))
+        if ext not in (".xlsx", ".xlsm", ".pdf"):
+            return fail("Se aceptan archivos Excel (.xlsx, .xlsm) o PDF.", url_for("alm.upload_new", tipo=tipo))
         path = os.path.join(current_app.config["UPLOAD_DIR"], f"carga_{uuid.uuid4().hex[:10]}{ext}")
         f.save(path)
         holder = {}
@@ -299,20 +299,30 @@ def picking_task(tid):
         acc = f.get("accion")
         up = current_app.config["UPLOAD_DIR"]
         fn = {
-            "asignar": lambda: pk.assign(t, g.user, f.getlist("user_id"), f_date("fecha"), f.get("comentario", "")),
+            "asignar": lambda: pk.assign(t, g.user, ([f.get("persona")] if f.get("modo") == "persona" else f.getlist("grupo"))
+                                         if f.get("modo") else f.getlist("user_id"), f_date("fecha"), f.get("comentario", "")),
             "iniciar": lambda: pk.start(t, g.user, save_upload(request.files.get("foto"), up, f"picking{t.id}_ini")),
-            "registrar": lambda: pk.record(t, g.user, f.get("line_id"), f_float("cantidad", True), f.get("lote", ""),
-                                           f_date("fecha_produccion"), f_date("fecha_venc"), f.get("comentario", ""),
-                                           f_float("bultos")),
+            # obs. demo v0.7: el auxiliar solo llena «Despachado und»; lote, fechas y bultos salen del stock reservado
+            "registrar": lambda: pk.record(t, g.user, f.get("line_id"), f_float("cantidad", True), f.get("lote", "")),
+            "cambiar_lote": lambda: pk.change_lot(t, g.user, f.get("reservation_id"), f.get("lot_id"), f_float("cantidad"),
+                                                  f.get("motivo", ""), f.get("observacion", "")),
             "listo": lambda: pk.finish(t, g.user, save_upload(request.files.get("foto"), up, f"picking{t.id}_fin"),
                                        f.get("observacion", "")),
         }.get(acc) or abort(400)
-        return act(fn, "Picking actualizado.", url_for("alm.picking_task", tid=tid))
+        destino = url_for("alm.picking_task", tid=tid) + ("#formato" if acc in ("iniciar", "registrar", "cambiar_lote") else "")
+        msg = {"iniciar": "Picking iniciado: complete el formato de control de despacho.", "cambiar_lote": "Lote cambiado: formato y stock actualizados.",
+               "asignar": "Asignación guardada."}.get(acc, "Picking actualizado.")
+        return act(fn, msg, destino)
     from ..models import PickingRecord
     from ..services.stock import line_reserved
     recs = list(db().execute(select(PickingRecord).where(PickingRecord.task_id == t.id).order_by(PickingRecord.id)).scalars())
+    from collections import Counter
+    from ..services.stock import free_qty
+    plan = pk.schedule(g.user, t.fecha, t.fecha, t.warehouse_code) if "picking.asignar" in g.perms else []
+    carga = Counter(i for x in plan for i in (x.asignados or []))
     return render_template("picking_task.html", t=t, o=t.order, usuarios=pk.users_by_id(), personal=pk.staff(t.warehouse_code),
-                           recs=recs, line_reserved=line_reserved)
+                           recs=recs, line_reserved=line_reserved, plan=plan, carga=carga, motivos=pk.MOTIVOS_CAMBIO_LOTE,
+                           opciones_lote=lambda l: pk.lot_options(t, l), free=free_qty)
 
 
 @bp.route("/picking/formato")
@@ -336,5 +346,5 @@ def picking_format():
                              solo_mios="picking.asignar" not in g.perms)
     usuarios = pk.users_by_id()
     encargados = sorted({usuarios[i].nombre for t in tareas for i in (t.asignados or []) if i in usuarios})
-    return render_template("picking_format.html", filas=pk.format_rows(tareas), fecha=fecha, encargados=encargados,
+    return render_template("picking_format.html", filas=pk.format_rows(tareas), fecha=fecha, encargados=encargados, tareas=tareas,
                            almacenes=sorted({t.warehouse_code for t in tareas}), generado=datetime.now())

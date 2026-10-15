@@ -34,7 +34,11 @@ def test_ov_completa_avisa_certifica_y_programa_ruta(s, U, new_order):
     o = new_order([("PT-905", 100)])
     a = alerts_of(s, "OV_COMPLETA", o.id)[0]
     assert set(a.roles) == {"JEFE_LOGISTICA", "JEFE_VENTAS", "COORD_ALMACEN"}
-    c = s.query(Certificate).filter_by(order_id=o.id).one()  # certificado pre-elaborado antes del picking
+    # obs. demo v0.7: el precertificado solo se emite después del picking
+    assert s.query(Certificate).filter_by(order_id=o.id).count() == 0
+    osvc.finish_preparation(o, U("lider.almacen"))
+    s.commit()
+    c = s.query(Certificate).filter_by(order_id=o.id).one()
     assert c.estado == "BORRADOR" and alerts_of(s, "CERTIFICADO_REVISION")
     assert dist.active_stop(o).route.estado == "PROPUESTA"
     approve_certs(s, U, o)
@@ -53,8 +57,10 @@ def test_modificar_plan_de_picking_cambia_lote(s, U, new_order):
     s.commit()
     assert [r.lot.lote for r in o.lines[0].reservations if r.estado == "ACTIVA"] == ["L901A"]
     assert line_reserved(o.lines[0]) == 50
-    certs = {c.estado for c in s.query(Certificate).filter_by(order_id=o.id)}
-    assert certs == {"ANULADO", "BORRADOR"}  # el certificado del lote anterior se anula
+    assert s.query(Certificate).filter_by(order_id=o.id).count() == 0  # el precertificado se emite tras el picking
+    osvc.finish_preparation(o, U("lider.almacen"))
+    s.commit()
+    assert [s.get(StockLot, c.lot_id).lote for c in s.query(Certificate).filter_by(order_id=o.id)] == ["L901A"]  # con el lote picado
 
 
 def test_carga_incongruente_y_documentos_faltantes(s, U, new_order):

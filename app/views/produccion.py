@@ -82,7 +82,8 @@ def request_detail(rid):
         return act(fn, msg, url_for("prod.request_detail", rid=rid))
     lines = list(db().execute(select(ProductionLine).where(ProductionLine.activa.is_(True))).scalars())
     liqs = list(db().execute(select(Liquidation).where(Liquidation.request_id == r.id)).scalars())
-    return render_template("prod_detail.html", r=r, a=r.analisis or {}, lines=lines, liqs=liqs)
+    seguimiento = psvc.missing_materials_tracking(r) if r.estado in psvc.OPEN_REQ + ("EN_PROCESO",) else []
+    return render_template("prod_detail.html", r=r, a=r.analisis or {}, lines=lines, liqs=liqs, seguimiento=seguimiento)
 
 
 def _insumos():
@@ -136,7 +137,8 @@ def liquidations():
                    "Liquidación registrada.", url_for("prod.liquidations"))
     rows = list(db().execute(select(Liquidation).order_by(Liquidation.id.desc())).scalars())
     whs = list(db().execute(select(Warehouse).where(Warehouse.uso == "PT")).scalars())
-    return render_template("liquidations.html", rows=rows, whs=whs, merma=psvc.merma_real_pct)
+    from ..services.quality import lot_entries_vs_liquidation
+    return render_template("liquidations.html", rows=rows, whs=whs, merma=psvc.merma_real_pct, vs_calidad=lot_entries_vs_liquidation)
 
 
 @bp.route("/plan", methods=["GET", "POST"])
@@ -145,6 +147,10 @@ def plan():
     """Planeamiento diario, semanal y mensual de Producción vs liquidación (tasa de cumplimiento)."""
     from ..catalogs import PRODUCTION_LINES
     from ..models import ProductionPlan
+    if request.method == "POST" and request.form.get("accion") == "preprogramar":
+        per = request.form.get("periodo") or "SEMANA"
+        return act(lambda: psvc.preschedule_plan(g.user, per), lambda n: f"Planeamiento preprogramado: {len(n)} entrada(s) nuevas.",
+                   url_for("prod.plan", periodo=per))
     if request.method == "POST" and request.form.get("accion") == "modificar":
         f = request.form
         pl = db().get(ProductionPlan, int(f.get("plan_id") or 0)) or abort(404)
@@ -165,8 +171,12 @@ def plan():
                                                               ProductionPlan.fecha >= psvc._inicio(d["periodo"], d["desde"]),
                                                               ProductionPlan.fecha <= d["hasta"])
                                  .order_by(ProductionPlan.fecha.desc(), ProductionPlan.id.desc())).scalars())
+    req = psvc.requirements(d["periodo"] if d["periodo"] != "DIA" else "DIA")
+    faltan = [(r, psvc.missing_materials_tracking(r)) for r in db().execute(
+        select(ProductionRequest).where(ProductionRequest.estado.in_(psvc.OPEN_REQ)).order_by(ProductionRequest.id)).scalars()]
+    faltan = [(r, m) for r, m in faltan if m]
     return render_template("prod_plan.html", d=d, graf=graf, products=products, lineas=PRODUCTION_LINES, hoy=date.today(),
-                           entradas=entradas)
+                           entradas=entradas, req=req, faltan=faltan)
 
 
 @bp.route("/partes", methods=["GET", "POST"])

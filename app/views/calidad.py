@@ -29,7 +29,8 @@ def home():
     lotes = list(db().execute(select(StockLot).where(StockLot.cantidad > 0).order_by(StockLot.product_code, StockLot.lote)).scalars())
     fum = qsvc.fumigation_plan()
     return render_template("cal_home.html", pend=pend, recs=recs, formatos=qsvc.FORMATOS, formato=formato, muestras=muestras,
-                           lotes=lotes, tipos=qsvc.CERT_TIPOS, fum=fum)
+                           lotes=lotes, tipos=qsvc.CERT_TIPOS, fum=fum, etapas=qsvc.ETAPAS_PRODUCCION,
+                           etapas_todos={k for v in qsvc.ETAPAS_PRODUCCION.values() for k in v})
 
 
 @bp.route("/lote/<int:lid>/fumigacion", methods=["POST"])
@@ -125,8 +126,20 @@ def certificate_detail(cid):
                        lambda n: f"Certificado regenerado como {n.numero}.", url_for("cal.certificate_detail", cid=cid),
                        redirect_fn=lambda n: url_for("cal.certificate_detail", cid=n.id))
         cambios = {k: v for k, v in request.form.items() if k not in ("_csrf", "accion")}
-        return act(lambda: qsvc.review_certificate(c, g.user, cambios, request.form.get("accion") == "aprobar"),
-                   "Certificado actualizado.", url_for("cal.certificate_detail", cid=cid))
+        # obs. demo v0.7: el avance se guarda siempre; si la aprobación falla (datos pendientes) no se pierde lo escrito
+        resp = act(lambda: qsvc.review_certificate(c, g.user, cambios, False),
+                   "Avance del certificado guardado (borrador)." if request.form.get("accion") != "aprobar" else None,
+                   url_for("cal.certificate_detail", cid=cid))
+        if request.form.get("accion") == "aprobar" and c.estado != "APROBADO":
+            from ..services.core import BusinessError
+            try:
+                qsvc.review_certificate(c, g.user, {}, True)
+                db().commit()
+                flash("Certificado aprobado.", "ok")
+            except BusinessError as e:
+                db().rollback()
+                flash(f"Se guardó el avance, pero aún no se puede aprobar: {e}", "error")
+        return resp
     return render_template("certificate.html", c=c, d=c.datos, editable=qsvc.EDITABLE_CERT_FIELDS,
                            print_mode=request.args.get("imprimir") == "1", tipos=qsvc.CERT_TIPOS, etiquetas=qsvc.CERT_ETIQUETAS,
                            firma_url=url_for("cal.firma") if os.path.exists(_firma_path()) else None)

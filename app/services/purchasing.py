@@ -35,25 +35,96 @@ def is_mayor_volumen(cantidad, product=None, precio=None):
     return v is not None and v >= float(umbral)
 
 
+AGRUPABLES = ("BORRADOR", "PENDIENTE_LOGISTICA")  # presolicitudes que aún no pasan a Compras
+
+
+def shortage_reason(product_code, cantidad, order=None, origen=""):
+    """Motivo detallado de la presolicitud (obs. demo v0.7): quiebre de stock (libre vs requerido), plazo de reposición
+    y pedidos similares abiertos del mismo producto."""
+    from .stock import principal_warehouses
+    p = db().get(Product, product_code)
+    whs = [w.code for w in principal_warehouses(p)] if p else None
+    libre = sum(free_qty(l) for l in lots_of(product_code, whs or None) if lot_usable(l)[0])
+    partes = [f"Quiebre de stock de {product_code}{' ' + p.descripcion if p else ''}: libre {libre:g}, se requieren {cantidad:g} "
+              f"(faltan {max(cantidad - libre, 0):g})."]
+    if origen:
+        partes.append(f"Origen: {origen.lower()}" + (f" de la OV {order.numero}" if order is not None else "") + ".")
+    lt, modo = lead_time_for(p) if p else (None, None)
+    if lt is not None:
+        partes.append(f"Plazo de reposición {lt.dias_min}–{lt.dias_max} días ({modo}): llegada estimada "
+                      f"{date.today() + timedelta(days=lt.dias_max):%d/%m/%Y} si se compra hoy.")
+    similares = []
+    for o in db().execute(select(SalesOrder).where(SalesOrder.estado.notin_(ORDEN_ESTADOS_CERRADOS),
+                                                   SalesOrder.estado_stock.in_(("INCOMPLETA", "SIN_STOCK")))).scalars():
+        if order is not None and o.id == order.id:
+            continue
+        for l in o.lines:
+            if l.activa and l.product_code == product_code and l.cantidad - l.despachado - line_reserved(l) > 1e-9:
+                similares.append(f"{o.numero} ({l.cantidad - l.despachado - line_reserved(l):g}, {o.fecha_compromiso:%d/%m})")
+    partes.append(f"Pedidos similares con faltante del mismo producto: {', '.join(similares[:10])}"
+                  + (f" y {len(similares) - 10} más" if len(similares) > 10 else "") + "." if similares
+                  else "No hay otros pedidos con faltante del mismo producto.")
+    return " ".join(partes)
+
+
+def _orden_txt(order, cantidad):
+    return {"order_id": order.id, "numero": order.numero, "cantidad": cantidad} if order is not None else None
+
+
 def create_request(user, product_code, cantidad, fecha_necesidad=None, origen="ALMACEN", order=None, analisis=None,
                    enviar=True, sistema=False):
-    """sistema=True: pre-solicitud automática por faltante (Q15); pasa a aprobación del Jefe de Logística (Q14)."""
+    """sistema=True: pre-solicitud automática por faltante (Q15); pasa a aprobación de Logística (Q14, obs. v0.7).
+    Obs. demo v0.7: si ya hay una presolicitud abierta (aún no enviada a Compras) del mismo producto y la misma fecha de
+    entrega, se agrupa en ella (suma la cantidad y registra la OV de origen) para que Compras vea una sola."""
     if origen != "REPOSICION" and not sistema and not has_perm(user, "compras.solicitar"):
         raise BusinessError("En la primera etapa las solicitudes de compra nacen en Almacén (IF §7, §10.1).")
     if db().get(Product, product_code) is None:
         raise BusinessError("Producto no existe.")
     if cantidad is None or cantidad <= 0:
         raise BusinessError("Cantidad inválida.")
+    if param("agrupar_presolicitudes_compra", True):
+        g = db().execute(select(PurchaseRequest).where(PurchaseRequest.product_code == product_code,
+                                                       PurchaseRequest.fecha_necesidad == fecha_necesidad,
+                                                       PurchaseRequest.estado.in_(AGRUPABLES))
+                         .order_by(PurchaseRequest.id)).scalars().first()
+        if g is not None:
+            g.cantidad += cantidad
+            ords = list(g.ordenes or [])
+            if order is not None:
+                ords.append(_orden_txt(order, cantidad))
+            g.ordenes = ords
+            g.mayor_volumen = is_mayor_volumen(g.cantidad, g.product)
+            g.motivo = shortage_reason(product_code, g.cantidad, order, origen) + (
+                f" Agrupa {len(ords)} pedido(s): " + ", ".join(f"{x['numero']} ({x['cantidad']:g})" for x in ords) + "." if ords else "")
+            audit(user, "COMPRA_AGRUPADA", "PurchaseRequest", g.id, {"producto": product_code, "cantidad": cantidad,
+                                                                    "ov": order.numero if order else None, "total": g.cantidad})
+            alerts.close_by_system(f"COMPRA_LOG:{g.id}", "Presolicitud actualizada al agrupar otro pedido")
+            if g.estado == "PENDIENTE_LOGISTICA":
+                _alerta_logistica(g, user)
+            return g
     r = PurchaseRequest(product_code=product_code, cantidad=cantidad, fecha_necesidad=fecha_necesidad, origen=origen,
                         order_id=order.id if order else None, analisis=analisis or {},
+                        ordenes=[_orden_txt(order, cantidad)] if order is not None else [],
+                        motivo=shortage_reason(product_code, cantidad, order, origen),
                         mayor_volumen=is_mayor_volumen(cantidad, db().get(Product, product_code)),
                         creado_por=user.id if user else None)
     db().add(r)
     db().flush()
     audit(user, "COMPRA_CREADA", "PurchaseRequest", r.id, {"producto": product_code, "cantidad": cantidad, "origen": origen})
+    if sistema or origen in ("OV", "PRODUCCION", "REPOSICION"):
+        alerts.emit("QUIEBRE_STOCK", f"Quiebre de stock: {product_code} (presolicitud de compra #{r.id})", r.motivo,
+                    "PurchaseRequest", r.id, dedup_key=f"QUIEBRE:{product_code}:{fecha_necesidad}", creado_por=user)
     if enviar:
         send(r, user)
     return r
+
+
+def _alerta_logistica(r, user):
+    ovs = ", ".join(x["numero"] for x in (r.ordenes or [])) or (r.order.numero if r.order_id and r.order else "")
+    alerts.emit("COMPRA_APROBACION_LOGISTICA", f"Aprobar presolicitud de compra #{r.id}: {r.product_code} × {r.cantidad:g}",
+                f"Necesidad: {r.fecha_necesidad or '-'}. Origen: {r.origen}." + (f" OV de origen: {ovs}." if ovs else "") +
+                (" Compra de mayor volumen." if r.mayor_volumen else "") + (f" {r.motivo}" if r.motivo else ""),
+                "PurchaseRequest", r.id, dedup_key=f"COMPRA_LOG:{r.id}", creado_por=user)
 
 
 def send(r, user):
@@ -63,18 +134,15 @@ def send(r, user):
     if user is not None and not has_perm(user, "compras.solicitar"):
         raise BusinessError("Almacén revisa y envía la solicitud.")
     r.estado = "PENDIENTE_LOGISTICA"
-    alerts.emit("COMPRA_APROBACION_LOGISTICA", f"Aprobar solicitud de compra #{r.id}: {r.product_code} × {r.cantidad:g}",
-                f"Necesidad: {r.fecha_necesidad or '-'}. Origen: {r.origen}." +
-                (f" OV {r.order.numero}." if r.order_id and r.order else "") +
-                (" Compra de mayor volumen." if r.mayor_volumen else ""), "PurchaseRequest", r.id,
-                dedup_key=f"COMPRA_LOG:{r.id}", creado_por=user)
+    _alerta_logistica(r, user)
     audit(user, "COMPRA_ENVIADA", "PurchaseRequest", r.id)
 
 
 def approve_logistics(r, user, aprobar, comentario=""):
-    """Q14 (12-oct-2026): el Jefe de Logística aprueba la solicitud antes de que pase a Compras."""
+    """Q14 (12-oct-2026) y obs. demo v0.7: la presolicitud la autoriza el Jefe o el Coordinador de Logística o el
+    Coordinador de Almacén antes de que pase a Compras."""
     if not has_perm(user, "compras.aprobar_solicitud"):
-        raise BusinessError("La solicitud de compra la aprueba el Jefe de Logística (Q14).")
+        raise BusinessError("La presolicitud de compra la autorizan el Jefe o Coordinador de Logística o el Coordinador de Almacén.")
     if r.estado != "PENDIENTE_LOGISTICA":
         raise BusinessError("La solicitud no está pendiente de aprobación de Logística.")
     if not aprobar and not comentario.strip():
@@ -95,7 +163,7 @@ def _require_compras(user):
         raise BusinessError("Gestiona el Coordinador de Compras (IF §10).")
 
 
-def quote(r, user, proveedor, cotizacion, precio=None, requiere_muestra=False):
+def quote(r, user, proveedor, cotizacion, precio=None, requiere_muestra=False, archivo="", plazo=""):
     _require_compras(user)
     if r.estado not in ("SOLICITADA", "EN_COTIZACION", "MUESTRA_RECHAZADA"):
         raise BusinessError("La solicitud no está en etapa de cotización.")
@@ -104,6 +172,11 @@ def quote(r, user, proveedor, cotizacion, precio=None, requiere_muestra=False):
     r.proveedor = proveedor.strip()
     r.cotizacion = cotizacion
     r.precio = precio
+    # obs. demo v0.7: Compras reúne las cotizaciones; la última registrada queda como elegida (se puede cambiar)
+    cots = [dict(c, elegida=False) for c in (r.cotizaciones or [])]
+    cots.append({"proveedor": proveedor.strip(), "precio": precio, "detalle": cotizacion or "", "archivo": archivo or "",
+                 "plazo": plazo or "", "ts": now().isoformat(), "user": user.nombre, "elegida": True})
+    r.cotizaciones = cots
     r.requiere_muestra = bool(requiere_muestra)
     r.mayor_volumen = is_mayor_volumen(r.cantidad, r.product, precio)
     check_max_cost(r, user)
@@ -160,18 +233,46 @@ def go_reason(r):
 
 
 def needs_go_approval(r):
-    return bool(go_reason(r)) and not r.aprobado_gerencia_por
+    """Obs. demo v0.7: la ejecución de toda compra la aprueba Gerencia de Operaciones (parámetro
+    'compra_ejecucion_requiere_go'); antes solo materia prima o mayor volumen."""
+    if r.aprobado_gerencia_por:
+        return False
+    return bool(param("compra_ejecucion_requiere_go", True)) or bool(go_reason(r))
+
+
+def choose_quote(r, user, idx):
+    """Compras elige la cotización con la que se pide la aprobación de Gerencia de Operaciones."""
+    _require_compras(user)
+    cots = [dict(c) for c in (r.cotizaciones or [])]
+    if not 0 <= int(idx) < len(cots):
+        raise BusinessError("Cotización no encontrada.")
+    if r.estado not in ("SOLICITADA", "EN_COTIZACION", "MUESTRA_RECHAZADA"):
+        raise BusinessError("La cotización ya no se puede cambiar.")
+    for i, c in enumerate(cots):
+        c["elegida"] = i == int(idx)
+    r.cotizaciones = cots
+    c = cots[int(idx)]
+    r.proveedor, r.precio, r.cotizacion = c["proveedor"], c.get("precio"), c.get("detalle", "")
+    r.mayor_volumen = is_mayor_volumen(r.cantidad, r.product, r.precio)
+    audit(user, "COMPRA_COTIZACION_ELEGIDA", "PurchaseRequest", r.id, {"proveedor": r.proveedor, "precio": r.precio})
 
 
 def request_go_approval(r, user):
     _require_compras(user)
     if not needs_go_approval(r):
         raise BusinessError("La compra no requiere aprobación de Gerencia de Operaciones.")
+    if r.estado != "EN_COTIZACION":
+        raise BusinessError("Primero registre las cotizaciones (y la muestra aprobada por Calidad si aplica).")
+    minimo = int(param("cotizaciones_minimas_compra", 1) or 1)
+    if len(r.cotizaciones or []) < minimo:
+        raise BusinessError(f"Para pedir la aprobación de ejecución se requieren al menos {minimo} cotización(es).")
     r.estado = "PENDIENTE_APROBACION"
-    motivo = go_reason(r)
-    alerts.emit("COMPRA_APROBACION_GERENCIA", f"Aprobar compra de {motivo} #{r.id}",
+    motivo = go_reason(r) or "ejecución"
+    resumen = "; ".join(f"{c['proveedor']}: {c.get('precio') if c.get('precio') is not None else '-'}" + (" (elegida)" if c.get("elegida") else "")
+                        for c in (r.cotizaciones or []))
+    alerts.emit("COMPRA_APROBACION_GERENCIA", f"Aprobar {'compra de ' + motivo if motivo != 'ejecución' else 'ejecución de la compra'} #{r.id}",
                 f"{r.product_code} × {r.cantidad:g}" + (f" (umbral {param('umbral_mayor_volumen')})" if motivo == "mayor volumen" else "")
-                + f". Proveedor {r.proveedor}. Precio {r.precio if r.precio is not None else '-'}.",
+                + f". Cotizaciones: {resumen or '-'}." + (f" {r.motivo}" if r.motivo else ""),
                 "PurchaseRequest", r.id, dedup_key=f"COMPRA_GO:{r.id}", creado_por=user)
 
 
@@ -196,7 +297,8 @@ def generate_order(r, user, numero_oc, fecha_prevista, warehouse_code):
     if r.requiere_muestra and r.resultado_muestra != "APROBADA":
         raise BusinessError("La muestra debe estar aprobada por Calidad.")
     if needs_go_approval(r):
-        raise BusinessError(f"Compra de {go_reason(r)}: requiere aprobación de Gerencia de Operaciones.")
+        raise BusinessError("La ejecución de la compra requiere la aprobación de Gerencia de Operaciones "
+                            "(pídala con las cotizaciones registradas).")
     if not numero_oc.strip() or not fecha_prevista:
         raise BusinessError("Indique número de orden y fecha prevista de recepción.")
     r.numero_oc = numero_oc.strip()

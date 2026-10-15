@@ -21,9 +21,11 @@ from .core import BusinessError, audit, param
 ESTADOS_LABEL = {
     "DISPONIBLE": "Disponible", "RESERVADO": "Reservado", "NO_UTILIZABLE": "No utilizable", "DANADO": "Dañado",
     "EN_FUMIGACION": "En fumigación", "PENDIENTE_REVISION": "Pendiente de revisión",
+    "OBSERVADO": "Producto observado",  # obs. demo v0.7: rotura, infestación o contaminación detectada en el picking
 }
-ESTADOS_FISICOS = ["DISPONIBLE", "NO_UTILIZABLE", "DANADO", "EN_FUMIGACION", "PENDIENTE_REVISION"]
-ORDEN_ESTADOS_CERRADOS = ("CANCELADA", "DESPACHADA", "ENTREGADA", "ENTREGA_PARCIAL", "RECHAZADA", "DEVUELTA", "CERRADA")
+ESTADOS_FISICOS = ["DISPONIBLE", "NO_UTILIZABLE", "DANADO", "EN_FUMIGACION", "PENDIENTE_REVISION", "OBSERVADO"]
+ORDEN_ESTADOS_CERRADOS = ("CANCELADA", "DESPACHADA", "ENTREGADA", "ENTREGA_PARCIAL", "RECHAZADA", "DEVUELTA", "CERRADA",
+                          "REGULARIZADA_CERRADA")
 PREFIJO_TIPO = {"PT": "PT", "MQ": "PT", "AB": "PT", "GR": "GR", "MP": "MP", "C3": "MP", "EN": "INSUMO", "SU": "INSUMO"}
 
 
@@ -510,7 +512,7 @@ def alternatives_for_order(order):
 # ------------------------------ estados de lote ----------------------------
 def change_lot_state(lot, nuevo, user, motivo):
     if nuevo not in ESTADOS_FISICOS:
-        raise BusinessError("Estado no válido. 'Reservado' se deriva de las reservas y 'Observado' no se usa (IF §6.1).")
+        raise BusinessError("Estado no válido. 'Reservado' se deriva de las reservas.")
     if not motivo.strip():
         raise BusinessError("Indique el motivo del cambio de estado.")
     from .core import check_warehouse_scope

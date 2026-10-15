@@ -1,0 +1,21 @@
+{% extends "base.html" %}{% from "_m.html" import ic, empty %}
+{% block content %}
+<div class="page-head"><div><h1>Arme su informe</h1><p class="sub">Elija la fuente de datos, las columnas, el periodo y, si desea, una columna para agrupar. Véalo en pantalla o descárguelo en PDF o Excel.</p></div>
+{% if items %}<a class="btn sec" href="{{ url_for('rep.home') }}">{{ ic('chart') }}Informes del área</a>{% endif %}</div>
+<form class="card noprint" method="get" id="crform">
+<div class="row"><div class="grow"><label for="cr_f">Fuente de datos</label><select id="cr_f" name="fuente" onchange="location.href='{{ url_for('rep.custom') }}?fuente='+this.value">{% for k, t in fuentes.items() %}<option value="{{ k }}" {{ 'selected' if k == fuente }}>{{ t }}</option>{% endfor %}</select></div>
+<div><label for="cr_d">Desde</label><input id="cr_d" type="date" name="desde" value="{{ r.desde.isoformat() if r else request.args.get('desde', '') }}"></div>
+<div><label for="cr_h">Hasta</label><input id="cr_h" type="date" name="hasta" value="{{ r.hasta.isoformat() if r else request.args.get('hasta', '') }}"></div>
+<div class="grow"><label for="cr_q">Buscar texto</label><input id="cr_q" name="q" value="{{ request.args.get('q', '') }}" placeholder="cliente, producto, estado…"></div>
+<div><label for="cr_a">Agrupar por</label><select id="cr_a" name="agrupar"><option value="">(sin agrupar)</option>{% for c, t, num in columnas if not num %}<option value="{{ c }}" {{ 'selected' if request.args.get('agrupar') == c }}>{{ t }}</option>{% endfor %}</select></div></div>
+<fieldset><legend>Columnas</legend><div class="row">{% for c, t, num in columnas %}<label class="chk"><input type="checkbox" name="col" value="{{ c }}" {{ 'checked' if not sel or c in sel }}> {{ t }}</label>{% endfor %}</div></fieldset>
+<p class="small muted">Si no indica periodo se toman los últimos 90 días. Al agrupar se cuentan los registros y se suman las columnas numéricas elegidas.</p>
+<p><button name="ver" value="1">{{ ic('eye') }}Ver informe</button> <button class="sec" name="formato" value="pdf">{{ ic('download') }}Descargar PDF</button> <button class="sec" name="formato" value="xlsx">{{ ic('download') }}Excel</button></p>
+</form>
+{% if r %}<div class="card"><div class="card-head"><h3>{{ r.titulo }}</h3><span class="muted small">{{ r.total }} fila(s)</span></div>
+{% for n in r.notas %}<p class="small muted">{{ n }}</p>{% endfor %}
+{% if r.filas %}<div class="tw"><table class="small"><tr>{% for c in r.columnas %}<th>{{ c }}</th>{% endfor %}</tr>
+{% for f in r.filas[:1000] %}<tr>{% for v in f %}<td{% if v is number %} class="r"{% endif %}>{{ v if v is not none else '' }}</td>{% endfor %}</tr>{% endfor %}</table></div>
+{% if r.total > 1000 %}<p class="small muted">Se muestran 1000 filas; el PDF y el Excel incluyen todas.</p>{% endif %}
+{% else %}{{ empty('No hay registros con estos filtros.') }}{% endif %}</div>{% endif %}
+{% endblock %}

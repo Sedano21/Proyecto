@@ -75,6 +75,38 @@ HANDLERS = {
 }
 
 
+# tipo -> permiso con el que se aprueba o desaprueba (o función que lo decide con el documento)
+def _puede_modif(user, alert):
+    from . import orders
+    try:
+        req = _get(OVChangeRequest, alert)
+    except BusinessError:
+        return False
+    return orders.can_authorize_change(user, req.order)
+
+
+DECIDE_PERM = {
+    "OV_PRECIO_BAJO_MINIMO": "ov.aprobar_precio",
+    "OV_PRECIO_BAJO_COSTO": "ov.aprobar_precio",
+    "TRASLADO_SOLICITADO": "traslado.autorizar",
+    "REEMPAQUE_PRESOLICITUD": "reempaque.solicitar",
+    "REEMPAQUE_SOLICITUD": "reempaque.evaluar",
+    "COMPRA_APROBACION_LOGISTICA": "compras.aprobar_solicitud",
+    "COMPRA_APROBACION_GERENCIA": "compras.aprobar_mayor_volumen",
+    "OV_MODIF_SOLICITUD": _puede_modif,
+    "RUTA_EXTERNO_VALIDAR": "distribucion.validar_externo",
+}
+
+
+def user_can_decide(user, alert):
+    """¿El perfil puede aprobar o desaprobar esta alerta? (misma regla que su pantalla)."""
+    from .core import has_perm
+    regla = DECIDE_PERM.get(alert.type_code)
+    if regla is None:
+        return False
+    return regla(user, alert) if callable(regla) else has_perm(user, regla)
+
+
 def can_decide(alert):
     return alert.type_code in HANDLERS and alert.estado not in ("COMPLETADA", "DESAPROBADA", "RECONOCIDA")
 
@@ -97,8 +129,10 @@ def decide(alert, user, aprobar, motivo=""):
         raise BusinessError("Indique el motivo: " + ("se desaprueba o desiste." if not aprobar else
                                                      "se aprueba algo por debajo o fuera del parámetro establecido."))
     fn, _ = HANDLERS[alert.type_code]
+    desde = alerts.last_id()
     fn(alert, user, aprobar, motivo)
     db().flush()
+    alerts.mark_derived(alert, desde, user)
     if alert.estado not in alerts.CERRADOS:  # si la regla no la cerró, se cierra con el resultado
         alerts._finish(alert, user, "COMPLETADA" if aprobar else "DESAPROBADA", motivo or "Aprobada",
                        "Aprobada desde la alerta" if aprobar else "Desaprobada desde la alerta",

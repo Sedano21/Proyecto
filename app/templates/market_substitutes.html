@@ -1,21 +1,21 @@
 {% extends "base.html" %}{% from "_m.html" import csrf, empty %}
 {% block content %}<p class="small"><a href="{{ url_for('com.market_analysis') }}">← Análisis de precios de mercado</a></p>
 <h1>Productos sustitutos</h1>
-<p class="muted">Relación de productos que compiten como sustitutos de lo que ofrecemos. Se usa al leer informes de precios: las filas cuyo texto contiene un sustituto activo se proponen como «Producto sustituto» del producto base. Comercial la registra de manera individual o por Excel.</p>
+<p class="muted">Relación de productos que compiten como sustitutos de lo que ofrecemos. Se usa al leer informes de precios: las filas cuyo texto contiene un sustituto activo se proponen como «Producto sustituto» del producto base. Comercial la registra de manera individual o por Excel o PDF.</p>
 {% if editable %}<div class="grid g2">
 <form class="card" method="post">{{ csrf() }}<h3>Registrar un sustituto</h3>
 <label class="req">Producto base que ofrecemos</label><select name="producto_base" required><option value="">—</option>{% for b in bases %}<option>{{ b }}</option>{% endfor %}</select>
 <label class="req">Sustituto (texto como aparece en los informes)</label><input name="sustituto" maxlength="120" required>
 <label>Observación</label><input name="observacion" maxlength="250">
 <p><button>Registrar</button></p></form>
-<form class="card" method="post" enctype="multipart/form-data">{{ csrf() }}<input type="hidden" name="accion" value="excel"><h3>Cargar desde Excel</h3>
+<form class="card" method="post" enctype="multipart/form-data">{{ csrf() }}<input type="hidden" name="accion" value="excel"><h3>Cargar desde Excel o PDF</h3>
 <p class="small muted">Primera hoja, con encabezados <b>Producto base</b> y <b>Sustituto</b> (opcional <b>Observación</b>). Las filas ya registradas se reactivan; las que tengan error se informan y no detienen la carga.</p>
-<label class="req">Archivo (.xlsx)</label><input type="file" name="archivo" accept=".xlsx,.xlsm" required>
+<label class="req">Archivo (.xlsx o .pdf)</label><input type="file" name="archivo" accept=".xlsx,.xlsm,.pdf" required>
 <p><button>Cargar archivo</button></p></form></div>{% endif %}
 <div class="card"><h2>Registrados</h2>
 {% if filas %}<div class="tw"><table class="list"><tr><th>Producto base</th><th>Sustituto</th><th>Observación</th><th>Origen</th><th>Estado</th>{% if editable %}<th></th>{% endif %}</tr>
 {% for x in filas %}<tr><td data-label="Producto base">{{ x.producto_base }}</td><td data-label="Sustituto">{{ x.sustituto }}</td><td data-label="Observación">{{ x.observacion or '—' }}</td><td data-label="Origen">{{ x.origen }}<br><span class="muted small">{{ x.ts|d if x.ts }}</span></td>
 <td data-label="Estado"><span class="b {{ 'ok' if x.activo else 'muted' }}">{{ 'Activo' if x.activo else 'Inactivo' }}</span></td>
 {% if editable %}<td>{% if x.activo %}<form method="post">{{ csrf() }}<input type="hidden" name="accion" value="desactivar"><input type="hidden" name="sid" value="{{ x.id }}"><button class="sec sm">Desactivar</button></form>{% endif %}</td>{% endif %}</tr>{% endfor %}</table></div>
-{% else %}{{ empty('Aún no hay productos sustitutos registrados. Se remitirán más adelante: puede cargarlos aquí uno a uno o en Excel.') }}{% endif %}</div>
+{% else %}{{ empty('Aún no hay productos sustitutos registrados. Se remitirán más adelante: puede cargarlos aquí uno a uno o en Excel o PDF.') }}{% endif %}</div>
 {% endblock %}

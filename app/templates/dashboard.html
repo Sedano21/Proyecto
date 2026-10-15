@@ -10,14 +10,14 @@
 {# 1. Lo que requiere atención: tareas designadas y alertas abiertas, las de prioridad alta primero #}
 {% set criticas = mis_alertas|selectattr('prioridad', 'equalto', 'ALTA')|list %}
 {% set otras = mis_alertas|rejectattr('prioridad', 'equalto', 'ALTA')|list %}
-<div class="grid g2">
+<div class="grid g2" id="live-dash" data-live>
 <section class="card" aria-labelledby="t-tareas"><div class="card-head"><h3 id="t-tareas">Mis tareas</h3><span class="muted small">designadas a usted o a su cargo</span></div>
 {% if tareas %}<ul class="list-tasks">{% for a in tareas %}<li><span class="prio {{ a.prioridad }}" aria-hidden="true"></span><div class="t"><a href="{{ url_for('main.alert_detail', aid=a.id) }}">{{ a.titulo }}</a>
-<div class="meta">#{{ a.id }} · {{ a.area }} · {{ a.creado_ts|d }}</div></div><span class="b {{ a.estado }}">{{ estado_txt.get(a.estado, a.estado) }}</span></li>{% endfor %}</ul>
+<div class="meta">#{{ a.id }} · {{ a.area }} · {{ a.creado_ts|d }}</div></div>{% set ea = estado_alerta(a) %}<span class="b {{ ea[0] }}">{{ ea[1] }}</span></li>{% endfor %}</ul>
 {% else %}{{ empty('No tiene tareas designadas.', 'check') }}{% endif %}</section>
 <section class="card" aria-labelledby="t-alertas"><div class="card-head"><h3 id="t-alertas">Alertas abiertas de su área</h3><a class="small" href="{{ url_for('main.alerts') }}">Ver todas</a></div>
 {% if mis_alertas %}<ul class="list-tasks">{% for a in (criticas + otras)[:8] %}<li><span class="prio {{ a.prioridad }}" aria-hidden="true"></span><div class="t"><a href="{{ url_for('main.alert_detail', aid=a.id) }}">{{ a.titulo }}</a>
-<div class="meta">{{ b(a.prioridad) }} {{ a.area }} · {{ a.creado_ts|d }}{% if a.type and a.type.naturaleza == 'INFORMATIVA' %} · aviso{% endif %}</div></div><span class="b {{ a.estado }}">{{ estado_txt.get(a.estado, a.estado) }}</span></li>{% endfor %}</ul>
+<div class="meta">{{ b(a.prioridad) }} {{ a.area }} · {{ a.creado_ts|d }}{% if not es_tarea(a) %} · información{% endif %}</div></div>{% set ea = estado_alerta(a) %}<span class="b {{ ea[0] }}">{{ ea[1] }}</span></li>{% endfor %}</ul>
 {% else %}{{ empty('Sin alertas abiertas.', 'bell') }}{% endif %}</section>
 </div>
 

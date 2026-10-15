@@ -1,0 +1,21 @@
+{% extends "base.html" %}{% from "_m.html" import b, ic %}
+{% block content %}
+<p class="noprint"><a href="{{ url_for('com.order_detail', oid=o.id) }}#expediente">← OV {{ o.numero }}</a> · <a class="btn sec" href="javascript:window.print()">{{ ic('download') }}Imprimir / guardar PDF</a></p>
+<h1 class="noprint">Expediente de la OV {{ o.numero }}</h1>
+<p class="sub noprint">{{ o.customer.nombre }} · {{ b(o.estado) }} · consolidado de la OV, certificados, guía de remisión y factura.</p>
+<div class="card noprint"><table class="small"><tr><th>Documento</th><th>Número</th><th>Estado</th></tr>
+<tr><td>Orden de venta</td><td>{{ o.numero }}</td><td>{{ b(o.estado) }}</td></tr>
+{% for c in certs %}<tr><td>Certificado</td><td>{{ c.numero }}</td><td>{{ b(c.estado) }}</td></tr>{% else %}<tr><td>Certificado</td><td colspan="2" class="muted">Pendiente</td></tr>{% endfor %}
+{% for st in paradas %}<tr><td>Guía de remisión</td><td>{{ st.guia_numero or '—' }}</td><td>{{ b('APROBADA' if st.guia_aprobada else ('EMITIDA' if st.guia_numero else 'PENDIENTE')) }}</td></tr>
+<tr><td>Factura</td><td>{{ st.factura_numero or '—' }}</td><td>{{ b('CARGADA' if st.factura_path else 'PENDIENTE') }}</td></tr>{% else %}<tr><td>Guía y factura</td><td colspan="2" class="muted">Pendientes: se generan con la ruta de despacho.</td></tr>{% endfor %}</table></div>
+{% macro adjunto(nombre, archivo) %}{% if archivo %}{% set ext = archivo.rsplit('.', 1)[-1]|lower %}<div class="folio-adj"><h3>{{ nombre }}</h3>
+{% if ext in ['jpg','jpeg','png','webp'] %}<img src="{{ url_for('main.evidence', name=archivo) }}" alt="{{ nombre }}" style="max-width:100%">
+{% else %}<object data="{{ url_for('main.evidence', name=archivo) }}" type="application/pdf" style="width:100%;height:260mm"><a href="{{ url_for('main.evidence', name=archivo) }}">Abrir {{ nombre|lower }}</a></object>{% endif %}</div>{% endif %}{% endmacro %}
+<div class="folio-adj"><h3 class="noprint">Orden de venta</h3><iframe src="{{ url_for('com.order_print', oid=o.id, embebido=1) }}" title="OV {{ o.numero }}" style="width:100%;height:270mm;border:0"></iframe></div>
+{% for c in certs %}<div class="folio-adj"><h3 class="noprint">Certificado {{ c.numero }}</h3><iframe src="{{ url_for('cal.certificate_detail', cid=c.id, imprimir=1, embebido=1) }}" title="Certificado {{ c.numero }}" style="width:100%;height:270mm;border:0"></iframe></div>{% endfor %}
+{% for st in paradas %}
+{% if can('distribucion.ver') %}<div class="folio-adj"><h3 class="noprint">Guía de remisión (ruta #{{ st.route_id }})</h3><iframe src="{{ url_for('dist.folio', rid=st.route_id, tipo='guia', ov=o.id, embebido=1) }}" title="Guía" style="width:100%;height:270mm;border:0"></iframe></div>{% endif %}
+{{ adjunto('Guía de remisión (archivo cargado)', st.guia_path) }}
+{{ adjunto('Factura', st.factura_path) }}{% if not st.factura_path %}<p class="small muted">Factura: pendiente de carga por Facturación.</p>{% endif %}
+{% endfor %}
+{% endblock %}

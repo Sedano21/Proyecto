@@ -37,7 +37,9 @@ def perm_required(*perms):
             if g.user is None:
                 return redirect(url_for("main.login", next=request.path))
             if not any(p in g.perms for p in perms):
-                abort(403)
+                # obs. demo v0.7: Gerencia General y de Operaciones visualizan todas las pantallas (solo consulta)
+                if not ("vista.total" in g.perms and request.method in ("GET", "HEAD")):
+                    abort(403)
             return fn(*a, **kw)
         return wrapper
     return deco
@@ -157,11 +159,29 @@ def install(app):
             except Exception:  # noqa: BLE001
                 abiertas = 0
         return {"csrf_token": csrf_token, "user": u, "perms": g.get("perms", set()), "can": lambda p: p in g.get("perms", set()),
+                "ve": lambda p: p in g.get("perms", set()) or "vista.total" in g.get("perms", set()),
                 "logo_url": _logo_url(),
                 "fmt_date": fmt_date, "fmt_num": fmt_num, "stock_info": stock_freshness() if u else None,
                 "alertas_abiertas": abiertas, "today": date.today(), "demo_mode": app.config.get("DEMO_MODE")}
 
     app.jinja_env.globals["csrf_token"] = csrf_token
+
+    def es_tarea(a):
+        """La alerta es tarea para el usuario actual solo si puede accionarla (si no, se le muestra como información)."""
+        from ..services.alerts import can_act
+        return can_act(g.get("user"), a)
+    app.jinja_env.globals["es_tarea"] = es_tarea
+
+    def productos_base():
+        """Productos base que ofrecemos (lista desplegable para precios de competencia, sustitutos, mercado)."""
+        from ..services.market import bases
+        return sorted(bases())
+    app.jinja_env.globals["productos_base"] = productos_base
+
+    def estado_alerta(a):
+        from ..services.alerts import display_state
+        return display_state(a)
+    app.jinja_env.globals["estado_alerta"] = estado_alerta
 
     def cond_cliente(customer):
         from ..services.customer_conditions import summary

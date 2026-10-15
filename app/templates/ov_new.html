@@ -1,13 +1,14 @@
 {% extends "base.html" %}{% from "_m.html" import csrf %}
 {% block content %}
 <h1>Registrar orden de venta</h1>
+{% if can('ov.regularizar') %}<div class="note small">¿Fecha pasada u hora ya transcurrida? No se puede registrar ni reservar aquí: use <a href="{{ url_for('com.regularization') }}">Regularización de OV</a>.</div>{% endif %}
 <div class="note info small">Al guardar, el sistema valida los datos y evalúa stock, reservas, lotes, vencimientos y condiciones del cliente; reserva solo stock físico verificado y utilizable (IF §4.2–4.3). Precio y costo se validan contra la lista de precios mínimos y el costo vigente.</div>
 <form method="post" class="card" id="ovform">{{ csrf() }}
 <div class="row">
 <div><label>N° de OV / documento</label><input name="numero" required></div>
 <div class="grow"><label>Cliente</label><input name="cliente_txt" id="cliente_txt" list="clientes" required placeholder="Escriba nombre o RUC" autocomplete="off"><input type="hidden" name="customer_id" id="customer_id">
 <datalist id="clientes">{% for c in customers %}<option value="{{ c.nombre }} · {{ c.ruc }}" data-id="{{ c.id }}"></option>{% endfor %}</datalist></div>
-<div><label>Fecha comprometida de despacho</label><input type="date" name="fecha_compromiso" required></div>
+<div><label>Fecha comprometida de despacho</label><input type="date" name="fecha_compromiso" id="fecha_compromiso" min="{{ today.isoformat() }}" required></div>
 <div><label>Canal / grupo de precios</label><select name="canal_precio" id="canal_precio"><option value="">(según ficha del cliente)</option>{% for x in canales %}<option>{{ x }}</option>{% endfor %}</select><small class="muted" id="canal_cli"></small></div>
 <div><label>Vendedor responsable</label><select name="vendedor_id"><option value="">(—)</option>{% for v in vendedores %}<option value="{{ v.id }}" {{ 'selected' if v.id==user.id }}>{{ v.nombre }}</option>{% endfor %}</select></div>
 </div>
@@ -15,7 +16,7 @@
 <div class="row">
 <div class="grow"><label>Lugar de entrega del cliente</label><select name="site_id" id="site_id"><option value="FISCAL">Dirección del cliente</option><option value="OTRO">Otro (detallar)…</option></select></div>
 <div><label>Hora de cita (24 h)</label><select name="hora_cita" id="hora_cita"><option value="">Sin cita / horario del cliente</option>{% for h in horas %}<option>{{ h }}</option>{% endfor %}</select></div>
-<div><label><input type="checkbox" name="cita_confirmada" value="1"> Cita confirmada</label><label><input type="checkbox" name="urgente" value="1"> Urgente</label></div>
+<div><label><input type="checkbox" name="cita_confirmada" value="1"> Cita confirmada</label><label><input type="checkbox" name="urgente" value="1"> Urgente</label><label title="Sin precio: la OV queda detenida hasta la confirmación del Coordinador o Jefe Comercial"><input type="checkbox" name="muestra" id="muestra" value="1"> Muestra comercial (sin precio)</label></div>
 </div>
 <div id="otro" class="row" style="display:none"><div class="grow"><label>Nombre del lugar (almacén, tienda, sede)</label><input name="lugar_otro" id="lugar_otro"></div>
 <div><label><input type="checkbox" name="guardar_lugar" value="1" checked> Guardar en la ficha del cliente</label></div></div>
@@ -27,7 +28,8 @@
 <div class="tw"><table><tr><th>Producto (código, nombre y presentación)</th><th>Unidad</th><th>Cantidad</th><th>Precio unitario S/ (por la unidad elegida)</th></tr>
 {% for i in range(8) %}<tr><td><input name="product_code" list="prods" class="prod" style="min-width:280px;width:100%" autocomplete="off" placeholder="Escriba o elija"></td>
 <td><select name="um_venta" class="um"><option value="">UND / KG del artículo</option><option value="KG">Kilo</option><option value="SACO">Saco (granel)</option></select></td>
-<td><input name="cantidad" type="number" step="any" min="0" inputmode="decimal"></td><td><input name="precio_unitario" type="number" step="any" min="0" inputmode="decimal"></td></tr>{% endfor %}</table></div>
+<td><input name="cantidad" type="number" step="any" min="0.0001" inputmode="decimal" aria-label="Cantidad"></td><td><input name="precio_unitario" type="number" step="any" min="0.01" inputmode="decimal" aria-label="Precio unitario"></td></tr>{% endfor %}</table></div>
+<p class="small muted">En cada línea con producto, la <b>cantidad</b> y el <b>precio</b> son obligatorios. La primera línea es obligatoria.</p>
 <datalist id="prods">{% for p in products %}<option value="{{ p.code }} · {{ p.descripcion }}{{ ' · ' ~ p.presentacion if p.presentacion }}">{{ p.um }}{{ ' · se vende por kg o por saco' if p.code in granel }}</option>{% endfor %}</datalist>
 <p class="small muted">Granel: elija «Saco» para vender por saco (se convierte a kg con los kg por saco de la lista mayorista granel) o «Kilo».</p>
 <p><button>Registrar y evaluar</button></p>
@@ -56,7 +58,26 @@
     if (v === 'FISCAL') fill(c.fiscal); else if (v === 'OTRO') fill({}); else c.sitios.forEach(function(x){ if (String(x.id) === v) fill(x); });
   }
   cli.addEventListener('change', onCli); cli.addEventListener('input', onCli); sel.addEventListener('change', onSite);
-  document.getElementById('ovform').addEventListener('submit', function(e){ if (!cid.value) { e.preventDefault(); alert('Elija un cliente de la lista.'); } });
+  // obs. demo v0.7: producto, cantidad y precio obligatorios por línea (se resalta lo que falta y no se borra nada)
+  var form = document.getElementById('ovform');
+  function reglasLinea(){
+    form.querySelectorAll('tr').forEach(function(tr, i){
+      var p = tr.querySelector('.prod'); if (!p) return;
+      var q = tr.querySelector('[name=cantidad]'), pr = tr.querySelector('[name=precio_unitario]');
+      var usada = !!(p.value.trim() || q.value || pr.value) || tr === form.querySelector('.prod').closest('tr');
+      p.required = q.required = usada; pr.required = usada && !document.getElementById('muestra').checked;
+    });
+  }
+  form.addEventListener('input', reglasLinea); form.addEventListener('change', reglasLinea); reglasLinea();
+  function horaPasada(){
+    var fc = document.getElementById('fecha_compromiso'), hc = document.getElementById('hora_cita');
+    var hoy = new Date(); var iso = hoy.getFullYear() + '-' + String(hoy.getMonth()+1).padStart(2,'0') + '-' + String(hoy.getDate()).padStart(2,'0');
+    var ahora = String(hoy.getHours()).padStart(2,'0') + ':' + String(hoy.getMinutes()).padStart(2,'0');
+    hc.setCustomValidity(fc.value === iso && hc.value && hc.value < ahora ? 'La hora de cita de hoy ya transcurrió: indique una hora vigente o use Regularización de OV.' : '');
+  }
+  ['change','input'].forEach(function(e){ document.getElementById('hora_cita').addEventListener(e, horaPasada); document.getElementById('fecha_compromiso').addEventListener(e, horaPasada); });
+  form.addEventListener('submit', function(e){ reglasLinea(); horaPasada();
+    if (!cid.value) { e.preventDefault(); cli.setCustomValidity('Elija un cliente de la lista.'); cli.reportValidity(); cli.setCustomValidity(''); } }, true);
 })();
 </script><script>(function(){var cc={{ canal_cliente|tojson }};var s=document.querySelector('[name=customer_id]');function u(){var v=cc[s.value]||'';document.getElementById('canal_cli').textContent=v?('Canal de la ficha: '+v):'El cliente no tiene canal asignado';var c=document.getElementById('canal_precio');if(v&&!c.dataset.touched)c.value=v;}var ct=document.getElementById('cliente_txt');if(ct){['change','input'].forEach(function(e){ct.addEventListener(e,function(){setTimeout(u,0);});});u();}document.getElementById('canal_precio').addEventListener('change',function(){this.dataset.touched=1;});})();</script>
 {% endblock %}

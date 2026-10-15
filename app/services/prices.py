@@ -41,8 +41,11 @@ def vigentes(lista=None, texto="", canal=""):
 
 
 def canales():
-    return sorted({c for c in db().execute(select(PriceItem.canal).where(PriceItem.vigente.is_(True),
-                                                                         PriceItem.lista == "GENERAL")).scalars() if c})
+    """Canales de precios: los de la lista general vigente más los agregados en Configuración (obs. demo v0.7)."""
+    base = {c for c in db().execute(select(PriceItem.canal).where(PriceItem.vigente.is_(True),
+                                                                  PriceItem.lista == "GENERAL")).scalars() if c}
+    base |= {str(x).strip().upper() for x in (param("canales_adicionales", []) or []) if str(x).strip()}
+    return sorted(base)
 
 
 def replace_list(lista, items, user, origen):

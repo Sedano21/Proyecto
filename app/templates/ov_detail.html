@@ -1,10 +1,33 @@
-{% extends "base.html" %}{% from "_m.html" import b, bar, csrf, post %}
+{% extends "base.html" %}{% from "_m.html" import b, bar, csrf, post, ic %}
 {% block content %}
-<h1>OV {{ o.numero }} {{ b(o.estado) }} {{ b(o.estado_stock) }} {% if o.urgente %}<span class="b ALTA">URGENTE</span>{% endif %} <a class="btn sec" href="{{ url_for('com.order_print', oid=o.id) }}">Imprimir OV</a></h1>
+{% set editable = o.estado in ['REGISTRADA','EVALUADA','EN_PREPARACION','PREPARADA'] %}
+{% set puede_editar = editable and (can('ov.modificar') or can('ov.solicitar_modificacion')) %}
+{% set gestionable = o.estado not in ['CANCELADA','DESPACHADA','ENTREGADA','ENTREGA_PARCIAL','RECHAZADA','DEVUELTA','EN_RUTA'] %}
+{% set puede_gestionar = gestionable and (can('ov.renegociar') or can('ov.cancelar')) %}
+<p class="small"><a href="{{ url_for('com.orders') }}">← Órdenes de venta</a></p>
+<div class="page-head"><div><h1>OV {{ o.numero }}</h1>
+<p class="sub">{{ o.customer.nombre }} · comprometida <b>{{ o.fecha_compromiso|d }}</b> · {{ b(o.estado) }} {{ b(o.estado_stock) }} {% if o.urgente %}<span class="b ALTA">URGENTE</span>{% endif %}{% if o.regularizacion %} <span class="b MEDIA">REGULARIZACIÓN</span>{% endif %}</p></div>
+<div class="row">{% if puede_editar %}<a class="btn" href="#editar">{{ ic('edit') }}{{ 'Editar' if can('ov.modificar') else 'Solicitar modificación' }}</a>{% endif %}
+<a class="btn sec" href="{{ url_for('com.order_print', oid=o.id) }}">{{ ic('file') }}Imprimir OV</a>
+<a class="btn sec" href="#expediente">{{ ic('folder') }}Expediente</a></div></div>
+{% set pasos = ['REGISTRADA','EVALUADA','EN_PREPARACION','PREPARADA','PROGRAMADA','EN_RUTA','ENTREGADA'] %}
+{% if o.estado in pasos %}{% set idx = pasos.index(o.estado) %}<ol class="steps" aria-label="Avance de la OV">{% for p in pasos %}<li class="{{ 'done' if loop.index0 < idx else ('now' if loop.index0 == idx else '') }}">{{ p|replace('_',' ')|capitalize }}</li>{% endfor %}</ol>{% endif %}
+
+<nav class="tabs" aria-label="Secciones de la OV">
+  <a href="#resumen">Resumen</a>
+  {% if can('ov.reservas_ver') %}<a href="#productos">Productos y reservas</a>{% endif %}
+  <a href="#condicion">Condición y opciones</a>
+  {% if puede_editar %}<a href="#editar">{{ 'Editar' if can('ov.modificar') else 'Solicitar modificación' }}</a>{% endif %}
+  {% if puede_gestionar %}<a href="#gestionar">Gestionar</a>{% endif %}
+  <a href="#expediente">Expediente</a>
+  {% if reqs or decs or hist %}<a href="#historial">Solicitudes e historial</a>{% endif %}
+</nav>
+
+<section class="tabpane" id="resumen" aria-label="Resumen">
 <div class="grid g2">
 <div class="card"><table class="kv">
 <tr><td>Cliente</td><td>{{ o.customer.nombre }} ({{ o.customer.ruc }}) · {{ o.customer.grupo }}</td></tr>
-<tr><td>Lugar de entrega</td><td>{{ o.lugar_entrega or "-" }} · {{ o.direccion }} · {{ o.distrito }}{{ " · " ~ o.provincia if o.provincia }} · <a href="{{ url_for("com.customer_card", cid=o.customer_id) }}">ficha del cliente</a></td></tr>
+<tr><td>Lugar de entrega</td><td>{{ o.lugar_entrega or "-" }} · {{ o.direccion }} · {{ o.distrito }}{{ " · " ~ o.provincia if o.provincia }}{% if can('clientes.ver') %} · <a href="{{ url_for("com.customer_card", cid=o.customer_id) }}">ficha del cliente</a>{% endif %}</td></tr>
 <tr><td>Horario / cita</td><td>{{ o.customer.horario_recepcion }} · cita {{ o.hora_cita or '-' }} {{ '(confirmada)' if o.cita_confirmada else ('(requiere confirmación)' if o.customer.requiere_cita else '') }}</td></tr>
 <tr><td>Condición del cliente</td><td>{% if o.customer.vida_util_min_dias %}Vida útil mínima {{ o.customer.vida_util_min_dias }} días. {% endif %}{% set cc = cond_cliente(o.customer) %}{% if cc %}<b>{{ cc }}</b>{% elif not o.customer.vida_util_min_dias %}Sin condiciones registradas{% endif %}</td></tr>
 {% if penal %}<tr><td>Penalidad estimada</td><td>{% for x in penal %}<div class="small">{{ x.texto|capitalize }}: {% if x.monto is not none %}<b class="{{ 'err' if x.riesgo }}">S/ {{ '{:,.2f}'.format(x.monto) }}</b>{% else %}<span class="muted">monto no definido</span>{% endif %}{% if x.riesgo %} <span class="b ALTA">en riesgo</span>{% endif %} <span class="muted">— {{ x.base }}</span></div>{% endfor %}</td></tr>{% endif %}
@@ -13,115 +36,137 @@
 <tr><td>Canal de precios</td><td>{{ o.canal_precio or 'según ficha del cliente' }}</td></tr>
 <tr><td>Monto / volumen</td><td>S/ {{ monto|n }} · {{ peso|n }} kg {% if sin_peso %}<span class="small muted">(sin peso: {{ sin_peso|join(', ') }})</span>{% endif %}</td></tr>
 <tr><td>Versión / origen</td><td>v{{ o.version }} · {{ o.origen }}</td></tr>
+{% if o.regularizacion %}<tr><td>Regularización</td><td>{{ o.regularizacion.motivo }} <span class="muted small">— {{ o.regularizacion.user }}, {{ o.regularizacion.ts[:16]|replace('T',' ') }}. No reserva stock.</span></td></tr>{% endif %}
 <tr><td>Comentarios</td><td>{{ o.comentarios }}</td></tr>
 </table></div>
-<div class="card"><h3>Cobertura</h3>
+<div class="card"><h3>Cobertura y estado</h3>
 <p>Unidades: <b>{{ o.cobertura_unidades }}%</b> {{ bar(o.cobertura_unidades) }} Líneas totalmente cubiertas: <b>{{ o.cobertura_lineas }}%</b> {{ bar(o.cobertura_lineas) }}</p>
-{% if o.retenida_precio %}<div class="card" style="border-left:4px solid var(--err)"><b>OV detenida por precio</b> (en el límite o por debajo de la lista de precios mínimos). No se prepara ni se despacha hasta la confirmación del Coordinador Comercial o del Jefe Comercial.
-{% if can('ov.aprobar_precio') %}<form method="post" action="{{ url_for('com.order_action', oid=o.id, accion='confirmar_precio') }}" class="row">{{ csrf() }}<input name="comentario" placeholder="motivo de la confirmación (obligatorio)" required style="width:60%"><button>Confirmar precio y liberar</button></form>{% endif %}</div>
-{% elif o.aprobacion_precio %}<p class="small">Precio confirmado por {{ o.aprobacion_precio.user }} ({{ o.aprobacion_precio.ts[:16]|replace('T',' ') }}): {{ o.aprobacion_precio.comentario }}</p>{% endif %}
+{% if o.retenida_precio %}<div class="card" style="border-left:4px solid var(--err)"><b>OV detenida por precio</b> (en el límite o por debajo de la lista de precios mínimos o del costo). No se prepara ni se despacha hasta la confirmación del Coordinador Comercial o del Jefe Comercial.
+{% if can('ov.aprobar_precio') %}<form method="post" action="{{ url_for('com.order_action', oid=o.id, accion='confirmar_precio') }}" class="row" data-confirm="Usted queda registrado como quien aprueba este precio fuera del rango. ¿Continuar?">{{ csrf() }}<input name="comentario" placeholder="motivo de la confirmación (obligatorio)" required style="width:60%"><button>Confirmar precio y liberar</button></form>{% endif %}</div>
+{% elif o.aprobacion_precio %}<div class="note small"><b>Precio fuera del rango aprobado por {{ o.aprobacion_precio.user }}</b>{% if o.aprobacion_precio.rol %} ({{ o.aprobacion_precio.rol|replace('_',' ')|lower }}){% endif %} el {{ o.aprobacion_precio.ts[:16]|replace('T',' ') }}. Motivo: {{ o.aprobacion_precio.comentario }}</div>{% endif %}
 {% set obs = [] %}{% for l in o.lines if l.activa and l.precio_origen and not l.precio_origen.startswith('Sobre') %}{% set _ = obs.append(l) %}{% endfor %}{% if obs %}<div class="note small"><b>Precio vs lista de precios mínimos:</b> {% for l in obs %}{{ l.product_code }} {{ pd(l.product_code) }}: {{ l.precio_origen }}{{ '; ' if not loop.last }}{% endfor %}.</div>{% endif %}
 <p>Evaluada: {{ o.evaluado_ts|d }} · Preparación: {{ prep }}%</p>
 {% if o.motivo_detencion %}<div class="note">{{ o.motivo_detencion }}</div>{% endif %}
 {% if o.decision_parcial %}<p>Despacho parcial: {{ b(o.decision_parcial) }}{% if o.fecha_saldo %} · saldo reprogramado al <b>{{ o.fecha_saldo|d }}</b>{% endif %}</p>
 <table class="small">{% for r in aprobadores %}<tr><td>{{ r|replace('_',' ') }}</td><td>{% if r in (o.parcial_aprobaciones or {}) %}{% set ap = o.parcial_aprobaciones[r] %}✔ {{ ap.user }}{% if ap.rol_usuario != r %} (en nombre, {{ ap.rol_usuario|replace('_',' ') }}){% endif %} · {{ ap.ts[:16]|replace('T',' ') }}{% elif o.decision_parcial == 'APROBADA' %}—{% else %}pendiente{% endif %}</td></tr>{% endfor %}</table>{% endif %}
 {% if can('ov.aprobar_parcial') and o.estado_stock in ['INCOMPLETA'] and o.decision_parcial in ['PENDIENTE','RECHAZADA',''] and (user.role_code in pendientes_parcial or user.role_code == 'GERENCIA_GENERAL') %}
-<form method="post" action="{{ url_for('com.order_action', oid=o.id, accion='parcial_si') }}" class="card">{{ csrf() }}<b>Aprobar despacho parcial</b> <span class="small muted">(aprueba {{ aprobadores|join(' y ' if parcial_modo == 'TODOS' else ' o ')|replace('_',' ') }}{{ '; usted aprueba en nombre de ellos' if user.role_code=='GERENCIA_GENERAL' }})</span>
+<form method="post" action="{{ url_for('com.order_action', oid=o.id, accion='parcial_si') }}" class="card" data-confirm="¿Aprobar el despacho parcial de la OV {{ o.numero }}?">{{ csrf() }}<b>Aprobar despacho parcial</b> <span class="small muted">(aprueba {{ aprobadores|join(' y ' if parcial_modo == 'TODOS' else ' o ')|replace('_',' ') }}{{ '; usted aprueba en nombre de ellos' if user.role_code=='GERENCIA_GENERAL' }})</span>
 <label>Fecha a la que se reprograma el saldo no despachado</label><input type="date" name="fecha_saldo" value="{{ o.fecha_saldo.isoformat() if o.fecha_saldo }}" {{ 'required' if not o.fecha_saldo }}>
 <label>Comentario</label><input name="comentario" style="width:100%"><p><button>Aprobar</button></p></form>
-<form method="post" action="{{ url_for('com.order_action', oid=o.id, accion='parcial_no') }}">{{ csrf() }}<input name="comentario" placeholder="motivo del rechazo" required> <button class="sec">Rechazar parcial</button></form>{% endif %}
+<form method="post" action="{{ url_for('com.order_action', oid=o.id, accion='parcial_no') }}" data-confirm="¿Rechazar el despacho parcial?">{{ csrf() }}<input name="comentario" placeholder="motivo del rechazo" required> <button class="sec">Rechazar parcial</button></form>{% endif %}
 {% if o.parent %}<p>Saldo de la OV <a href="{{ url_for('com.order_detail', oid=o.parent_id) }}">{{ o.parent.numero }}</a></p>{% endif %}
 {% if saldos %}<p>Saldos reprogramados: {% for x in saldos %}<a href="{{ url_for('com.order_detail', oid=x.id) }}">{{ x.numero }}</a> ({{ x.fecha_compromiso|d }}, {{ x.estado }}) {% endfor %}</p>{% endif %}
-{% if o.estado not in ['CANCELADA','DESPACHADA','ENTREGADA','ENTREGA_PARCIAL','RECHAZADA','DEVUELTA','EN_RUTA'] %}{{ post(url_for('com.order_action', oid=o.id, accion='reevaluar'), 'Reevaluar stock', 'sec') }}{% endif %}
-{% if certs %}<p>Certificados: {% for c in certs %}<a href="{{ url_for('cal.certificate_detail', cid=c.id) }}">{{ c.numero }}</a> {{ b(c.estado) }} {% endfor %}</p>{% endif %}
+{% if gestionable and not o.regularizacion %}{{ post(url_for('com.order_action', oid=o.id, accion='reevaluar'), 'Reevaluar stock', 'sec') }}{% endif %}
 </div></div>
-
-<h2>Líneas, reservas y lotes</h2>
-<table class="list"><tr><th>Producto</th><th class="r">Solicitado</th><th class="r">Reservado</th><th class="r">Faltante</th><th class="r">Preparado</th><th class="r">Despachado</th><th class="r">Entregado</th><th>Lotes reservados (almacén · vence)</th></tr>
-{% for l in o.lines if l.activa %}{% set r = line_reserved(l) %}<tr><td>{{ l.product_code }}<br><span class="small muted">{{ l.product.descripcion }}</span></td>
-<td class="r">{{ l.cantidad|n }}<br><span class="small {{ 'err' if l.precio_origen and (l.precio_origen.startswith('POR DEBAJO') or l.precio_origen.startswith('EN EL LÍMITE')) else 'muted' }}" title="{{ l.precio_origen }}">{% if l.precio_unitario %}S/ {{ '%.2f'|format(l.precio_unitario) }}{% else %}sin precio{% endif %}{% if l.precio_minimo %} · mín. {{ '%.2f'|format(l.precio_minimo) }}{% endif %}</span></td><td class="r">{{ r|n }}</td><td class="r">{% set f = l.cantidad - l.despachado - r %}{% if f > 0.0001 %}<b style="color:#b3261e">{{ f|n }}</b>{% else %}0{% endif %}</td>
-<td class="r">{{ l.preparado|n }}</td><td class="r">{{ l.despachado|n }}</td><td class="r">{{ l.entregado|n }}</td>
-<td class="small">{% for rs in l.reservations if rs.estado in ['ACTIVA','CONSUMIDA'] %}{% set vu = vida(rs.lot) %}{{ rs.lot.lote }} ({{ rs.lot.warehouse_code }} · {{ rs.lot.fecha_venc|d }}) × {{ rs.cantidad|n }} {{ b(rs.estado) }}{% if vu.meses is not none %} · <span class="{{ 'err' if vu.cumple is sameas false else '' }}">vida útil restante {{ vu.meses }} meses al despacho{{ ' (cliente exige ' ~ vu.exige ~ ')' if vu.exige }}</span>{% endif %}<br>{% endfor %}</td></tr>{% endfor %}</table>
-
-<div class="grid g2"><div class="card"><h3>Seguimiento del pedido</h3>
+<div class="card"><h3>Seguimiento del pedido</h3>
 <p>Completado: <b>{{ seguimiento.pct }}%</b> de las unidades {{ bar(seguimiento.pct) }} · líneas completas <b>{{ seguimiento.completas }} de {{ seguimiento.total }}</b></p>
 <table class="small"><tr><th>Producto</th><th class="r">Pedido</th><th class="r">Listo</th><th class="r">%</th><th>Cómo se completa</th></tr>
 {% for x in seguimiento.lineas %}<tr><td>{{ x.line.product_code }} {{ pd(x.line.product_code) }}</td><td class="r">{{ x.cantidad|n }}</td><td class="r">{{ x.listo|n }}</td><td class="r">{{ x.pct }}%</td>
 <td>{% if x.pct >= 100 %}Completo{% elif x.en_curso %}{{ x.en_curso|join('; ') }}{% else %}<span class="muted">En evaluación por Almacén y Logística</span>{% endif %}</td></tr>{% endfor %}</table></div>
+</section>
+
+{% if can('ov.reservas_ver') %}
+<section class="tabpane" id="productos" aria-label="Productos y reservas">
+<div class="card"><h3>Líneas, reservas y lotes</h3>
+<table class="list"><tr><th>Producto</th><th class="r">Solicitado</th><th class="r">Reservado</th><th class="r">Faltante</th><th class="r">Preparado</th><th class="r">Despachado</th><th class="r">Entregado</th><th>Lotes reservados (almacén · vence)</th></tr>
+{% for l in o.lines if l.activa %}{% set r = line_reserved(l) %}<tr><td>{{ l.product_code }}<br><span class="small muted">{{ l.product.descripcion }}</span></td>
+<td class="r">{{ l.cantidad|n }}<br><span class="small {{ 'err' if l.precio_origen and (l.precio_origen.startswith('POR DEBAJO') or l.precio_origen.startswith('EN EL LÍMITE')) else 'muted' }}" title="{{ l.precio_origen }}">{% if l.precio_unitario %}S/ {{ '%.2f'|format(l.precio_unitario) }}{% else %}sin precio{% endif %}{% if l.precio_minimo %} · mín. {{ '%.2f'|format(l.precio_minimo) }}{% endif %}</span></td><td class="r">{{ r|n }}</td><td class="r">{% set f = l.cantidad - l.despachado - r %}{% if f > 0.0001 %}<b style="color:#b3261e">{{ f|n }}</b>{% else %}0{% endif %}</td>
+<td class="r">{{ l.preparado|n }}</td><td class="r">{{ l.despachado|n }}</td><td class="r">{{ l.entregado|n }}</td>
+<td class="small">{% for rs in l.reservations if rs.estado in ['ACTIVA','CONSUMIDA'] %}{% set vu = vida(rs.lot) %}{{ rs.lot.lote }} ({{ rs.lot.warehouse_code }} · {{ rs.lot.fecha_venc|d }}) × {{ rs.cantidad|n }} {{ b(rs.estado) }}{% if vu.meses is not none %} · <span class="{{ 'err' if vu.cumple is sameas false else '' }}">vida útil restante {{ vu.meses }} meses al despacho{{ ' (cliente exige ' ~ vu.exige ~ ')' if vu.exige }}</span>{% endif %}<br>{% endfor %}</td></tr>{% endfor %}</table></div>
+</section>{% endif %}
+
+<section class="tabpane" id="condicion" aria-label="Condición y opciones">
 <div class="card"><h3>Condición del cliente por producto</h3>
 <table class="small"><tr><th>Producto</th><th>Condición aplicable</th><th>Lotes que cumplen</th><th>Observación</th></tr>
 {% for x in cond_prod %}<tr><td>{{ x.line.product_code }} {{ pd(x.line.product_code) }}</td><td>{{ x.condicion }}</td><td>{{ x.cumplen }}{% if x.no_cumplen %} <span class="muted">({{ x.no_cumplen }} no cumplen)</span>{% endif %}</td>
-<td>{% if x.accion %}<span class="b ALTA">No cumple</span> {{ x.motivo }}{% if ve_opciones %}<br><b>Acción sugerida:</b> {{ x.accion }}{% endif %}{% else %}—{% endif %}</td></tr>
+<td>{% if x.accion %}<span class="b ALTA">No cumple</span> {{ x.motivo }}{% if ve_opciones %}<br><b>Opciones:</b> {{ x.accion }}{% endif %}{% else %}—{% endif %}</td></tr>
 {% else %}<tr><td colspan="4" class="muted">Sin líneas</td></tr>{% endfor %}</table>
-<p class="small muted">Solo se reservan productos que cumplen la condición del cliente.</p></div></div>
+<p class="small muted">Solo se reservan productos que cumplen la condición del cliente.</p></div>
 {% if ve_opciones %}
 {% if hay_pendiente %}<div class="card" style="border-left:4px solid var(--info)"><b>Opciones para atender lo pendiente</b> — el sistema evaluó todas las rutas y recomienda una; quien aprueba revisa la OV y las opciones y registra por qué elige. <a class="btn" href="{{ url_for('com.order_options', oid=o.id) }}">Evaluar opciones y pre-solicitudes</a></div>{% endif %}
+{% if presol %}<div class="card"><h3>Solicitudes y pre-solicitudes para esta OV</h3>
+<p class="small muted">Ante un faltante el sistema genera la pre-solicitud de la primera opción viable (producir → reempaque → traslado → compra); cada una la aprueba su responsable.</p>
+<table class="small"><tr><th>Tipo</th><th>#</th><th>Producto</th><th class="r">Cantidad</th><th>Estado</th></tr>{% for t, i, p, q, e, u in presol %}<tr><td>{{ t }}</td><td><a href="{{ u }}">#{{ i }}</a></td><td>{{ p }}</td><td class="r">{{ q|n }}</td><td>{{ b(e) }}</td></tr>{% endfor %}</table></div>{% endif %}
 {% if alts %}
-{% if presol %}<h2>Solicitudes y pre-solicitudes para esta OV</h2>
-<p class="small muted">Ante un faltante el sistema genera la pre-solicitud de la primera opción viable (producir → reempaque → traslado → compra, Q15); cada una la aprueba su responsable.</p>
-<table class="small"><tr><th>Tipo</th><th>#</th><th>Producto</th><th class="r">Cantidad</th><th>Estado</th></tr>{% for t, i, p, q, e, u in presol %}<tr><td>{{ t }}</td><td><a href="{{ u }}">#{{ i }}</a></td><td>{{ p }}</td><td class="r">{{ q|n }}</td><td>{{ b(e) }}</td></tr>{% endfor %}</table>{% endif %}
 <h2>Alternativas ante faltante</h2>
 <div class="note">Se presentan opciones; ninguna se ejecuta automáticamente. Logística decide el uso de otros almacenes y la Jefatura autoriza el traslado; Comercial y Gerencia de Operaciones participan en renegociaciones (IF §4.5, §6.2).</div>
 {% for a in alts %}<div class="card"><h3>{{ a.line.product_code }} {{ pd(a.line.product_code) }} — faltante {{ a.faltante|n }}</h3>
-<b>1. Otros almacenes</b>
-<table class="small"><tr><th>Almacén</th><th>Lote</th><th>Vence</th><th class="r">Libre</th><th>Apto</th><th></th></tr>
-{% for x in a.otros_almacenes %}<tr><td>{{ x.lot.warehouse_code }} ({{ x.lot.warehouse.nombre }})</td><td>{{ x.lot.lote }}</td><td>{{ x.lot.fecha_venc|d }}</td><td class="r">{{ x.libre|n }}</td><td>{{ 'Sí' if x.apto else x.motivo }}</td>
-<td>{% if x.apto and x.libre > 0 and (can('traslado.solicitar') or can('ov.decidir_alternativa')) %}<form class="inline" method="post" action="{{ url_for('com.order_action', oid=o.id, accion='traslado') }}">{{ csrf() }}<input type="hidden" name="lot_id" value="{{ x.lot.id }}">
-<input type="number" step="any" name="cantidad" value="{{ [x.libre, a.faltante]|min }}" style="width:90px"> a <select name="destino">{% for w in whs if w.uso in ['PT','MP_INSUMOS'] %}<option value="{{ w.code }}">{{ w.code }} ({{ w.nombre }})</option>{% endfor %}</select>
-<input type="hidden" name="observacion" value="Para OV {{ o.numero }}"><button class="small">Usar: solicitar traslado</button></form>{% endif %}</td></tr>
-{% else %}<tr><td colspan="6" class="muted">Sin stock en almacenes alternativos</td></tr>{% endfor %}</table>
+<b>1. Producción</b>
+{% if a.produccion %}<p class="small">Lista de materiales v{{ a.produccion.version }}: {{ 'materiales suficientes' if a.produccion.factible else 'faltan materiales' }}. {% for av in a.produccion.avisos %}<i>{{ av }}</i> {% endfor %}</p>
+<table class="small"><tr><th>Componente</th><th class="r">Requerido</th><th class="r">Disponible (alm. BOM)</th><th class="r">Faltante</th></tr>{% for m in a.produccion.materiales %}<tr><td>{{ m.componente }} {{ m.descripcion }}</td><td class="r">{{ m.requerido|n(4) }}</td><td class="r">{{ m.disponible_almacen|n }}</td><td class="r">{{ m.faltante|n(4) }}</td></tr>{% endfor %}</table>
+{% if can('produccion.solicitud') %}<form method="post" action="{{ url_for('com.order_action', oid=o.id, accion='produccion') }}" data-confirm="¿Crear la solicitud preliminar de producción?">{{ csrf() }}<input type="hidden" name="product_code" value="{{ a.line.product_code }}"><input type="number" step="any" name="cantidad" value="{{ a.faltante }}" style="width:90px" required> <button class="small">Crear solicitud preliminar de producción</button></form>{% endif %}
+{% else %}<p class="small muted">Sin lista de materiales para este artículo.</p>{% endif %}
 <b>2. Reempaque</b>
 <table class="small"><tr><th>Tipo</th><th>Lote / producto</th><th class="r">Cantidad</th><th>Detalle</th><th></th></tr>
 {% for x in a.reempaque %}<tr><td>{{ x.tipo|replace('_',' ') }}</td><td>{{ x.lot.lote }} · {{ x.lot.product_code }} {{ pd(x.lot.product_code) }} · {{ x.lot.warehouse_code }}</td><td class="r">{{ x.cantidad|n }}</td><td>{{ x.motivo }}</td>
 <td>{% if can('reempaque.solicitar') and x.cantidad > 0 %}<form class="inline" method="post" action="{{ url_for('com.order_action', oid=o.id, accion='reempaque') }}">{{ csrf() }}<input type="hidden" name="lot_id" value="{{ x.lot.id }}"><input type="hidden" name="tipo" value="{{ x.tipo }}"><input type="hidden" name="producto_destino" value="{{ a.line.product_code }}">
-<input type="number" step="any" name="cantidad" value="{{ [x.cantidad, a.faltante]|min }}" style="width:90px"><input type="hidden" name="motivo" value="Faltante en OV {{ o.numero }}"><button class="small">Solicitar reempaque</button></form>{% endif %}</td></tr>
+<input type="number" step="any" name="cantidad" value="{{ [x.cantidad, a.faltante]|min }}" style="width:90px" required><input type="hidden" name="motivo" value="Faltante en OV {{ o.numero }}"><button class="small">Solicitar reempaque</button></form>{% endif %}</td></tr>
 {% else %}<tr><td colspan="5" class="muted">Sin candidatos</td></tr>{% endfor %}</table>
-<b>3. Producción</b>
-{% if a.produccion %}<p class="small">Lista de materiales v{{ a.produccion.version }}: {{ 'materiales suficientes' if a.produccion.factible else 'faltan materiales' }}. {% for av in a.produccion.avisos %}<i>{{ av }}</i> {% endfor %}</p>
-<table class="small"><tr><th>Componente</th><th class="r">Requerido</th><th class="r">Disponible (alm. BOM)</th><th class="r">Faltante</th></tr>{% for m in a.produccion.materiales %}<tr><td>{{ m.componente }} {{ m.descripcion }}</td><td class="r">{{ m.requerido|n(4) }}</td><td class="r">{{ m.disponible_almacen|n }}</td><td class="r">{{ m.faltante|n(4) }}</td></tr>{% endfor %}</table>
-{% if can('produccion.solicitud') %}<form method="post" action="{{ url_for('com.order_action', oid=o.id, accion='produccion') }}">{{ csrf() }}<input type="hidden" name="product_code" value="{{ a.line.product_code }}"><input type="number" step="any" name="cantidad" value="{{ a.faltante }}" style="width:90px"> <button class="small">Crear solicitud preliminar de producción</button></form>{% endif %}
-{% else %}<p class="small muted">Sin lista de materiales para este artículo.</p>{% endif %}
+<b>3. Traslado desde otros almacenes</b>
+<table class="small"><tr><th>Almacén</th><th>Lote</th><th>Vence</th><th class="r">Libre</th><th>Apto</th><th></th></tr>
+{% for x in a.otros_almacenes %}<tr><td>{{ x.lot.warehouse_code }} ({{ x.lot.warehouse.nombre }})</td><td>{{ x.lot.lote }}</td><td>{{ x.lot.fecha_venc|d }}</td><td class="r">{{ x.libre|n }}</td><td>{{ 'Sí' if x.apto else x.motivo }}</td>
+<td>{% if x.apto and x.libre > 0 and (can('traslado.solicitar') or can('ov.decidir_alternativa')) %}<form class="inline" method="post" action="{{ url_for('com.order_action', oid=o.id, accion='traslado') }}">{{ csrf() }}<input type="hidden" name="lot_id" value="{{ x.lot.id }}">
+<input type="number" step="any" name="cantidad" value="{{ [x.libre, a.faltante]|min }}" style="width:90px" required> a <select name="destino">{% for w in whs if w.uso in ['PT','MP_INSUMOS'] %}<option value="{{ w.code }}">{{ w.code }} ({{ w.nombre }})</option>{% endfor %}</select>
+<input type="hidden" name="observacion" value="Para OV {{ o.numero }}"><button class="small">Usar: solicitar traslado</button></form>{% endif %}</td></tr>
+{% else %}<tr><td colspan="6" class="muted">Sin stock en almacenes alternativos</td></tr>{% endfor %}</table>
 <b>4. Compra</b>
-{% if a.compra %}{% if can('compras.solicitar') %}<form method="post" action="{{ url_for('com.order_action', oid=o.id, accion='compra') }}">{{ csrf() }}<input type="hidden" name="product_code" value="{{ a.line.product_code }}"><input type="number" step="any" name="cantidad" value="{{ a.faltante }}" style="width:90px"> <button class="small">Solicitar compra</button></form>{% else %}<p class="small muted">Almacén origina la solicitud de compra.</p>{% endif %}{% else %}<p class="small muted">El artículo se produce (ver opción 3).</p>{% endif %}
+{% if a.compra %}{% if can('compras.solicitar') %}<form method="post" action="{{ url_for('com.order_action', oid=o.id, accion='compra') }}">{{ csrf() }}<input type="hidden" name="product_code" value="{{ a.line.product_code }}"><input type="number" step="any" name="cantidad" value="{{ a.faltante }}" style="width:90px" required> <button class="small">Solicitar compra</button></form>{% else %}<p class="small muted">Almacén origina la solicitud de compra.</p>{% endif %}{% else %}<p class="small muted">El artículo se produce (ver opción 1).</p>{% endif %}
 </div>{% endfor %}
 {% endif %}
-
 {% endif %}
-{% if can('ov.renegociar') and o.estado not in ['CANCELADA','DESPACHADA','ENTREGADA','EN_RUTA'] %}
-<div class="grid g2">
-<form class="card" method="post" action="{{ url_for('com.order_action', oid=o.id, accion='renegociar') }}">{{ csrf() }}<h3>Renegociar fecha</h3>
-<label>Nueva fecha comprometida</label><input type="date" name="nueva_fecha" required><label>Comentario</label><input name="comentario" style="width:100%"><p><button class="sec">Registrar renegociación</button></p></form>
-<form class="card" method="post" action="{{ url_for('com.order_action', oid=o.id, accion='cambiar_producto') }}">{{ csrf() }}<h3>Proponer producto disponible</h3>
-<select name="line_id">{% for l in o.lines if l.activa %}<option value="{{ l.id }}">{{ l.product_code }} {{ pd(l.product_code) }}</option>{% endfor %}</select> →
-<input name="nuevo_codigo" list="prods" placeholder="nuevo código"> cant. <input type="number" step="any" name="cantidad" style="width:90px" required>
-<label>Comentario</label><input name="comentario" style="width:100%"><p><button class="sec">Cambiar producto</button></p></form></div>{% endif %}
-<datalist id="prods">{% for p in products %}<option value="{{ p.code }}">{{ p.descripcion }}</option>{% endfor %}</datalist>
+</section>
 
-{# Observaciones al demo v0.5: la modificación de OV solo se muestra al Ejecutivo de cuenta, Coordinador y Jefe Comercial #}
-{% if o.estado in ['REGISTRADA','EVALUADA','EN_PREPARACION','PREPARADA'] and can('ov.modificar') %}
-<details class="card"><summary><b>{{ 'Modificar OV' if can('ov.modificar') else 'Solicitar modificación (requiere autorización)' }}</b></summary>
-<form method="post" action="{{ url_for('com.order_action', oid=o.id, accion='modificar' if can('ov.modificar') else 'solicitar') }}">{{ csrf() }}
-<div class="row"><div><label>Fecha comprometida</label><input type="date" name="fecha_compromiso" value="{{ o.fecha_compromiso.isoformat() }}"></div>
+{% if puede_editar %}
+<section class="tabpane" id="editar" aria-label="Editar OV">
+<form class="card" method="post" action="{{ url_for('com.order_action', oid=o.id, accion='modificar' if can('ov.modificar') else 'solicitar') }}" data-confirm="{{ '¿Guardar los cambios? La OV se reevalúa con el stock actual.' if can('ov.modificar') else '¿Enviar la solicitud de modificación para su autorización?' }}">{{ csrf() }}
+<h3>{{ 'Editar OV' if can('ov.modificar') else 'Solicitar modificación (requiere autorización)' }}</h3>
+<div class="row"><div><label>Fecha comprometida</label><input type="date" name="fecha_compromiso" value="{{ o.fecha_compromiso.isoformat() }}" min="{{ today.isoformat() }}"></div>
 <div><label><input type="checkbox" name="urgente" value="1" {{ 'checked' if o.urgente }}> Urgente</label></div>
 <div><label>Hora cita (24 h)</label><select name="hora_cita"><option value="">Sin cita</option>{% for h in horas %}<option {{ 'selected' if o.hora_cita == h }}>{{ h }}</option>{% endfor %}{% if o.hora_cita and o.hora_cita not in horas %}<option selected>{{ o.hora_cita }}</option>{% endif %}</select></div><div><label><input type="checkbox" name="cita_confirmada" value="1" {{ 'checked' if o.cita_confirmada }}> Cita confirmada</label></div></div>
 <label>Comentarios</label><textarea name="comentarios">{{ o.comentarios }}</textarea>
-<table><tr><th>Producto (dejar vacío para eliminar la línea)</th><th>Cantidad</th><th>Precio</th></tr>
-{% for l in o.lines if l.activa %}<tr><td><input type="hidden" name="um_venta" value="{{ 'KG' if l.um_venta == 'SACO' else l.um_venta }}"><input name="product_code" value="{{ l.product_code }}" list="prods">{% if l.um_venta == 'SACO' %}<span class="small muted"> ({{ l.cantidad_venta|n }} sacos; cantidad y precio en kg)</span>{% endif %}</td><td><input name="cantidad" type="number" step="any" value="{{ l.cantidad }}"></td><td><input name="precio_unitario" type="number" step="any" value="{{ l.precio_unitario }}"></td></tr>{% endfor %}
-{% for i in range(3) %}<tr><td><input type="hidden" name="um_venta" value=""><input name="product_code" list="prods"></td><td><input name="cantidad" type="number" step="any"></td><td><input name="precio_unitario" type="number" step="any"></td></tr>{% endfor %}</table>
+<p class="small muted">Para quitar una línea deje el producto vacío. Cada línea con producto requiere cantidad y precio.</p>
+<div class="tw"><table><tr><th>Producto</th><th>Cantidad</th><th>Precio</th></tr>
+{% for l in o.lines if l.activa %}<tr><td><input type="hidden" name="um_venta" value="{{ 'KG' if l.um_venta == 'SACO' else l.um_venta }}"><input name="product_code" value="{{ l.product_code }}" list="prods" aria-label="Producto">{% if l.um_venta == 'SACO' %}<span class="small muted"> ({{ l.cantidad_venta|n }} sacos; cantidad y precio en kg)</span>{% endif %}</td><td><input name="cantidad" type="number" step="any" min="0.0001" value="{{ l.cantidad }}" aria-label="Cantidad"></td><td><input name="precio_unitario" type="number" step="any" min="0" value="{{ l.precio_unitario }}" aria-label="Precio"></td></tr>{% endfor %}
+{% for i in range(3) %}<tr><td><input type="hidden" name="um_venta" value=""><input name="product_code" list="prods" aria-label="Producto nuevo"></td><td><input name="cantidad" type="number" step="any" min="0.0001" aria-label="Cantidad"></td><td><input name="precio_unitario" type="number" step="any" min="0" aria-label="Precio"></td></tr>{% endfor %}</table></div>
 {% if not can('ov.modificar') %}<label>Motivo</label><input name="motivo" style="width:100%" required>{% endif %}
-<p><button>{{ 'Guardar y reevaluar' if can('ov.modificar') else 'Enviar solicitud' }}</button></p></form></details>{% endif %}
+<p><button>{{ 'Guardar y reevaluar' if can('ov.modificar') else 'Enviar solicitud' }}</button></p></form>
+</section>{% endif %}
 
-{% if reqs %}<h2>Solicitudes de modificación</h2><table><tr><th>#</th><th>Fecha</th><th>Cambios</th><th>Motivo</th><th>Estado</th><th></th></tr>
-{% for r in reqs %}<tr><td>{{ r.id }}</td><td>{{ r.ts|d }}</td><td>{{ r.payload|dictfmt }}</td><td>{{ r.motivo }}</td><td>{{ b(r.estado) }}</td>
-<td>{% if r.estado=='PENDIENTE' and can_auth %}{{ post(url_for('com.change_request', rid=r.id, decision='aprobar'), 'Autorizar') }} {{ post(url_for('com.change_request', rid=r.id, decision='rechazar'), 'Rechazar', 'sec') }}{% endif %}</td></tr>{% endfor %}</table>{% endif %}
-
-{% if can('ov.cancelar') and o.estado not in ['CANCELADA','DESPACHADA','ENTREGADA','ENTREGA_PARCIAL','RECHAZADA','DEVUELTA','EN_RUTA'] %}
-<form class="card" method="post" action="{{ url_for('com.order_action', oid=o.id, accion='cancelar') }}" onsubmit="return confirm('¿Cancelar la OV? Se liberan reservas y ruta.')">{{ csrf() }}<h3>Cancelar OV</h3>
+{% if puede_gestionar %}
+<section class="tabpane" id="gestionar" aria-label="Gestionar OV">
+{% if can('ov.renegociar') %}<div class="grid g2">
+<form class="card" id="renegociar" method="post" action="{{ url_for('com.order_action', oid=o.id, accion='renegociar') }}" data-confirm="¿Registrar la nueva fecha comprometida? La OV se reevalúa.">{{ csrf() }}<h3>Renegociar fecha</h3>
+<label>Nueva fecha comprometida</label><input type="date" name="nueva_fecha" min="{{ today.isoformat() }}" required><label>Comentario</label><input name="comentario" style="width:100%"><p><button class="sec">Registrar renegociación</button></p></form>
+<form class="card" id="proponer" method="post" action="{{ url_for('com.order_action', oid=o.id, accion='cambiar_producto') }}" data-confirm="¿Cambiar el producto de la línea? La OV se reevalúa.">{{ csrf() }}<h3>Proponer producto disponible</h3>
+<label>Línea</label><select name="line_id" required>{% for l in o.lines if l.activa %}<option value="{{ l.id }}">{{ l.product_code }} {{ pd(l.product_code) }}</option>{% endfor %}</select>
+<label>Nuevo producto</label><input name="nuevo_codigo" list="prods" placeholder="código" required><label>Cantidad</label><input type="number" step="any" min="0.0001" name="cantidad" style="width:120px" required>
+<label>Comentario</label><input name="comentario" style="width:100%"><p><button class="sec">Cambiar producto</button></p></form></div>{% endif %}
+{% if can('ov.cancelar') %}<form class="card" id="cancelar" method="post" action="{{ url_for('com.order_action', oid=o.id, accion='cancelar') }}" data-confirm="¿Cancelar la OV {{ o.numero }}? Se liberan reservas y ruta.">{{ csrf() }}<h3>Cancelar OV</h3>
 <input name="motivo" placeholder="motivo (obligatorio)" required style="width:60%"> <button class="danger">Cancelar OV</button></form>{% endif %}
+</section>{% endif %}
 
-{% if decs %}<h2>Decisiones registradas</h2><table><tr><th>Fecha</th><th>Tipo</th><th>Estado</th><th>Detalle</th><th>Comentario</th><th>Usuario</th></tr>
-{% for d in decs %}<tr><td>{{ d.ts|d }}</td><td>{{ d.tipo }}</td><td>{{ b(d.estado) }}</td><td>{{ d.detalle|dictfmt }}</td><td>{{ d.comentario }}</td><td>{{ d.user.nombre if d.user else '' }}</td></tr>{% endfor %}</table>{% endif %}
-{% if hist %}<h2>Historial (auditoría)</h2>
+<section class="tabpane" id="expediente" aria-label="Expediente de la OV">
+<div class="card"><div class="card-head"><h3>Expediente de la OV</h3><a class="btn" href="{{ url_for('com.order_file', oid=o.id) }}">{{ ic('folder') }}Ver expediente completo</a></div>
+<p class="small muted">Consolida la OV, los certificados, la guía de remisión y la factura del pedido.</p>
+<table class="small"><tr><th>Documento</th><th>Número</th><th>Estado</th><th></th></tr>
+<tr><td>Orden de venta</td><td>{{ o.numero }}</td><td>{{ b(o.estado) }}</td><td><a href="{{ url_for('com.order_print', oid=o.id) }}">ver</a></td></tr>
+{% for c in certs %}<tr><td>Certificado</td><td>{{ c.numero }}</td><td>{{ b(c.estado) }}</td><td>{% if can('calidad.ver') or can('distribucion.ver') %}<a href="{{ url_for('cal.certificate_detail', cid=c.id, imprimir=1) }}">ver</a>{% endif %}</td></tr>{% else %}<tr><td>Certificado</td><td colspan="3" class="muted">Pendiente</td></tr>{% endfor %}
+{% for st in paradas %}<tr><td>Guía de remisión</td><td>{{ st.guia_numero or '—' }}</td><td>{% if st.guia_numero %}{{ b('APROBADA' if st.guia_aprobada else 'EMITIDA') }}{% else %}{{ b('PENDIENTE') }}{% endif %}</td><td>{% if can('distribucion.ver') %}<a href="{{ url_for('dist.folio', rid=st.route_id, tipo='guia') }}">ver</a>{% endif %}{% if st.guia_path %} · <a href="{{ url_for('main.evidence', name=st.guia_path) }}">archivo</a>{% endif %}</td></tr>
+<tr><td>Factura</td><td>{{ st.factura_numero or '—' }}</td><td>{{ b('CARGADA' if st.factura_path else 'PENDIENTE') }}</td><td>{% if st.factura_path %}<a href="{{ url_for('main.evidence', name=st.factura_path) }}">archivo</a>{% endif %}</td></tr>
+{% else %}<tr><td>Guía y factura</td><td colspan="3" class="muted">Se generan al programar la ruta de despacho.</td></tr>{% endfor %}
+</table></div>
+</section>
+
+{% if reqs or decs or hist %}
+<section class="tabpane" id="historial" aria-label="Solicitudes e historial">
+{% if reqs %}<div class="card"><h3>Solicitudes de modificación</h3><table><tr><th>#</th><th>Fecha</th><th>Cambios</th><th>Motivo</th><th>Estado</th><th></th></tr>
+{% for r in reqs %}<tr><td>{{ r.id }}</td><td>{{ r.ts|d }}</td><td>{{ r.payload|dictfmt }}</td><td>{{ r.motivo }}</td><td>{{ b(r.estado) }}</td>
+<td>{% if r.estado=='PENDIENTE' and can_auth %}{{ post(url_for('com.change_request', rid=r.id, decision='aprobar'), 'Autorizar', '', '¿Autorizar la modificación?') }} {{ post(url_for('com.change_request', rid=r.id, decision='rechazar'), 'Rechazar', 'sec', '¿Rechazar la modificación?') }}{% endif %}</td></tr>{% endfor %}</table></div>{% endif %}
+{% if decs %}<div class="card"><h3>Decisiones registradas</h3><table><tr><th>Fecha</th><th>Tipo</th><th>Estado</th><th>Detalle</th><th>Comentario</th><th>Usuario</th></tr>
+{% for d in decs %}<tr><td>{{ d.ts|d }}</td><td>{{ d.tipo }}</td><td>{{ b(d.estado) }}</td><td>{{ d.detalle|dictfmt }}</td><td>{{ d.comentario }}</td><td>{{ d.user.nombre if d.user else '' }}</td></tr>{% endfor %}</table></div>{% endif %}
+{% if hist %}<div class="card"><h3>Historial (auditoría)</h3>
 <div class="tbl" style="max-height:320px"><table class="small"><tr><th>Fecha</th><th>Usuario</th><th>Acción</th><th>Detalle</th></tr>
-{% for h in hist %}<tr><td>{{ h.ts|d }}</td><td>{{ h.user.nombre if h.user else 'Sistema' }}</td><td>{{ h.accion }}</td><td class="mono">{{ h.detalle|tojson|truncate(300) }}</td></tr>{% endfor %}</table></div>{% endif %}
+{% for h in hist %}<tr><td>{{ h.ts|d }}</td><td>{{ h.user.nombre if h.user else 'Sistema' }}</td><td>{{ h.accion }}</td><td class="mono">{{ h.detalle|tojson|truncate(300) }}</td></tr>{% endfor %}</table></div></div>{% endif %}
+</section>{% endif %}
+<datalist id="prods">{% for p in products %}<option value="{{ p.code }}">{{ p.descripcion }}</option>{% endfor %}</datalist>
 {% endblock %}

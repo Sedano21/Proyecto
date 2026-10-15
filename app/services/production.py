@@ -6,7 +6,7 @@ from sqlalchemy import func, select
 
 from ..db import db
 from ..models import (BOMLine, BOMVersion, Liquidation, Product, ProductionLine, ProductionRequest, SalesHistory,
-                      StockLot, Warehouse, now)
+                      SalesOrder, StockLot, Warehouse, now)
 from . import alerts
 from .core import BusinessError, audit, param
 
@@ -191,20 +191,84 @@ def send_request(req, user):
 
 
 def validate_request(req, user, aprobar, lista_ok, disponibilidad_ok, capacidad_ok, plazo_ok, comentario=""):
+    """Obs. demo v0.7: se puede aprobar la producción aunque no alcancen los materiales; en ese caso el sistema genera
+    las presolicitudes de compra de lo que falta, alerta el quiebre de stock y el plazo de reposición."""
     if req.estado != "ENVIADA":
         raise BusinessError("Solo se validan solicitudes enviadas.")
-    if aprobar and not (lista_ok and disponibilidad_ok and capacidad_ok and plazo_ok):
-        raise BusinessError("Para validar deben confirmarse lista de insumos, disponibilidad real, capacidad y plazo (IF §8.2).")
+    if aprobar and not (lista_ok and capacidad_ok and plazo_ok):
+        raise BusinessError("Para validar deben confirmarse lista de insumos, capacidad y plazo (IF §8.2).")
     if not aprobar and not comentario.strip():
         raise BusinessError("Indique el motivo del rechazo.")
     req.validacion = {"lista_ok": lista_ok, "disponibilidad_ok": disponibilidad_ok, "capacidad_ok": capacidad_ok,
                       "plazo_ok": plazo_ok, "comentario": comentario, "ts": now().isoformat(), "user": user.nombre}
     req.validado_por = user.id
     req.estado = "VALIDADA" if aprobar else "RECHAZADA"
+    compras = purchase_missing_materials(req, user) if aprobar else []
+    if compras:
+        req.validacion = dict(req.validacion, presolicitudes_compra=[r.id for r in compras])
     alerts.emit("PRODUCCION_RESPUESTA", f"Solicitud de producción #{req.id} {req.estado.lower()}",
-                comentario, "ProductionRequest", req.id,
+                comentario + (f" Materiales faltantes: presolicitudes de compra {', '.join('#' + str(r.id) for r in compras)}."
+                              if compras else ""), "ProductionRequest", req.id,
                 extra_users=[req.order.vendedor_id] if req.order and req.order.vendedor_id else None, creado_por=user)
     audit(user, f"PRODUCCION_{req.estado}", "ProductionRequest", req.id, req.validacion)
+
+
+def purchase_missing_materials(req, user=None):
+    """Presolicitudes de compra de los materiales que faltan para producir (obs. demo v0.7). Se descuenta lo que ya
+    está pedido en compras abiertas del mismo material; la presolicitud lleva la OV de origen y el motivo."""
+    from .purchasing import OPEN_STATES, create_request
+    from ..models import PurchaseRequest
+    req_mat = material_requirements(req.product_code, req.cantidad)
+    if not req_mat.get("bom_encontrada"):
+        return []
+    out = []
+    for m in req_mat["materiales"]:
+        falt = float(m.get("faltante") or 0)
+        if falt <= 1e-9:
+            continue
+        pedido = sum(r.cantidad for r in db().execute(select(PurchaseRequest).where(
+            PurchaseRequest.product_code == m["componente"], PurchaseRequest.estado.in_(OPEN_STATES))).scalars())
+        q = falt - pedido
+        if q <= 1e-9 or db().get(Product, m["componente"]) is None:
+            continue
+        fecha = req.fecha_requerida or (req.order.fecha_compromiso if req.order else None)
+        r = create_request(None, m["componente"], round(q, 4), fecha, origen="PRODUCCION", order=req.order, sistema=True)
+        extra = f" Para producir {req.product_code} × {req.cantidad:g} (solicitud de producción #{req.id})."
+        if extra not in (r.motivo or ""):
+            r.motivo = (r.motivo or "") + extra
+        out.append(r)
+    return out
+
+
+def missing_materials_tracking(req):
+    """Seguimiento de lo que falta para producir (obs. demo v0.7, Asistente de Producción): por material, faltante, compras
+    abiertas y fecha estimada de llegada (OC prevista o plazo de reposición)."""
+    from .purchasing import OPEN_STATES, lead_time_for
+    from ..models import ImportShipment, PurchaseRequest
+    from datetime import timedelta
+    req_mat = material_requirements(req.product_code, req.cantidad)
+    out = []
+    for m in req_mat.get("materiales", []):
+        falt = float(m.get("faltante") or 0)
+        if falt <= 1e-9:
+            continue
+        compras = list(db().execute(select(PurchaseRequest).where(PurchaseRequest.product_code == m["componente"],
+                                                                   PurchaseRequest.estado.in_(OPEN_STATES))
+                                    .order_by(PurchaseRequest.id)).scalars())
+        imps = [x for x in db().execute(select(ImportShipment).where(ImportShipment.product_code == m["componente"])).scalars()
+                if x.estado not in ("RECIBIDA", "RECIBIDA_CON_DIFERENCIAS", "CERRADA", "ANULADA")]
+        llegadas = [(c.fecha_prevista, f"OC {c.numero_oc} (compra #{c.id})") for c in compras if c.fecha_prevista]
+        llegadas += [(x.fecha_llegada_estimada, f"importación {x.referencia}") for x in imps if x.fecha_llegada_estimada]
+        estimada, fuente = (min(llegadas) if llegadas else (None, ""))
+        if estimada is None and compras:
+            p = db().get(Product, m["componente"])
+            lt, _ = lead_time_for(p) if p else (None, None)
+            if lt is not None:
+                estimada, fuente = (compras[0].ts.date() if compras[0].ts else date.today()) + timedelta(days=lt.dias_max), \
+                    "estimada con el plazo de reposición"
+        out.append({"componente": m["componente"], "descripcion": m.get("descripcion"), "faltante": falt,
+                    "compras": compras, "importaciones": imps, "llegada": estimada, "fuente": fuente})
+    return out
 
 
 def line_load_kg(line_code, fecha, exclude_id=None):
@@ -218,6 +282,22 @@ def line_load_kg(line_code, fecha, exclude_id=None):
     return total
 
 
+def capacity_group(line_code):
+    """Grupo de capacidad (parámetro capacidad_lineas) al que pertenece la línea, o None."""
+    for g in param("capacidad_lineas", []) or []:
+        if line_code in (g.get("lineas") or []):
+            return g
+    return None
+
+
+def day_factor(d):
+    """Jornada del día: 1 completa, 0,5 sábado (hasta mediodía), 0 domingo o feriado (decisión del 15-oct)."""
+    if d.isoformat() in {str(x) for x in (param("feriados", []) or [])}:
+        return 0.0
+    jornada = {int(k): float(v) for k, v in (param("dias_operacion", {}) or {}).items()}
+    return jornada.get(d.weekday(), 1.0)
+
+
 def schedule(req, user, line_code, fecha):
     if req.estado not in ("VALIDADA", "PROGRAMADA"):
         raise BusinessError("Solo se programan solicitudes validadas.")
@@ -226,11 +306,22 @@ def schedule(req, user, line_code, fecha):
         raise BusinessError("Línea de producción no válida.")
     avisos = []
     kg = req.cantidad * (req.product.peso_kg or 0)
-    if line.capacidad_kg_dia:
+    grupo = capacity_group(line_code)
+    factor = day_factor(fecha)
+    if factor <= 0:
+        raise BusinessError(f"El {fecha:%d/%m/%Y} no se opera (domingo o feriado): elija otra fecha.")
+    if grupo:  # capacidad por grupo de líneas (tabla de capacidades del 14/15-oct), ajustada a la jornada del día
+        cap = float(grupo["kg_dia"]) * factor
+        carga = sum(line_load_kg(lc, fecha, req.id) for lc in grupo["lineas"]) + kg
+        if carga > cap + 1e-9:
+            raise BusinessError(f"Capacidad excedida en {grupo['grupo']} el {fecha:%d/%m/%Y}: {carga:,.0f} kg > "
+                                f"{cap:,.0f} kg ({grupo['kg_dia']:,.0f} kg/día{' × media jornada' if factor < 1 else ''}).")
+    elif line.capacidad_kg_dia:
+        cap = line.capacidad_kg_dia * factor
         carga = line_load_kg(line_code, fecha, req.id) + kg
-        if carga > line.capacidad_kg_dia + 1e-9:
+        if carga > cap + 1e-9:
             raise BusinessError(f"Capacidad excedida en {line.nombre} el {fecha:%d/%m/%Y}: {carga:,.0f} kg > "
-                                f"{line.capacidad_kg_dia:,.0f} kg/día.")
+                                f"{cap:,.0f} kg.")
     else:
         avisos.append(f"Capacidad de {line.nombre} no configurada: no se verifica (dato informado por Producción, IF §8.2).")
     if req.fecha_requerida and fecha > req.fecha_requerida:
@@ -303,6 +394,12 @@ def register_liquidation(user, numero_documento, product_code, cantidad_completa
                 + (f" en tránsito {transito}" if transito else "") + ". Trasladar producto terminado a almacén para su validación.",
                 "Liquidation", liq.id, creado_por=user)
     _check_merma(liq, user)
+    from .quality import lot_entries_vs_liquidation  # obs. demo v0.7: contraste con el lote registrado por Calidad
+    c = lot_entries_vs_liquidation(liq)
+    if c and not c["coincide"]:
+        alerts.emit("CALIDAD_VS_LIQUIDACION", f"Lote {lote}: Calidad registró {c['calidad']:g} y se liquidó {c['liquidado']:g}",
+                    f"{product_code}, liquidación {liq.numero_documento}. Revisar antes de que Almacén confirme la recepción.",
+                    "Liquidation", liq.id, dedup_key=f"CAL_LIQ:{liq.id}", creado_por=user)
     audit(user, "LIQUIDACION_REGISTRADA", "Liquidation", liq.numero_documento,
           {"producto": product_code, "cantidad": cantidad_completada, "lote": lote, "origen": origen})
     return liq
@@ -548,10 +645,13 @@ def add_plan(user, periodo, fecha, product_code, cantidad, line_code=None, comen
 
 
 def update_plan(user, pl, cantidad, comentario):
-    """La programación puede variar manualmente por una variable no contemplada (observaciones al demo v0.6)."""
+    """La programación puede variar manualmente por una variable no contemplada (observaciones al demo v0.6). La
+    preprogramada por el sistema la edita el Jefe de Producción (obs. demo v0.7)."""
     from .core import has_perm
     if not (has_perm(user, "produccion.programar") or has_perm(user, "produccion.liquidar")):
         raise BusinessError("La programación la modifica Producción.")
+    if pl.origen == "SISTEMA" and not has_perm(user, "produccion.programar"):
+        raise BusinessError("El planeamiento preprogramado por el sistema lo edita el Jefe de Producción.")
     if not (comentario or "").strip():
         raise BusinessError("Indique el motivo del cambio de la programación.")
     antes = pl.cantidad
@@ -639,3 +739,76 @@ def complete_report(r, user, **valores):
     db().flush()
     audit(user, "PARTE_PROGRAMADO_COMPLETADO", "ProductionReport", nuevo.id, {"programado": r.id})
     return nuevo
+
+
+# --------------- requerimientos consolidados y preprogramación (obs. demo v0.7) ---------------
+OPEN_REQ = ("BORRADOR", "ENVIADA", "VALIDADA", "PROGRAMADA")
+
+
+def requirements(periodo="SEMANA", desde=None, hasta=None):
+    """Consolidado de lo que Producción debe tener por producto y periodo: solicitudes de producción abiertas (por OV o
+    manuales) y faltantes de OV de productos con lista de materiales que aún no tienen solicitud."""
+    from .stock import ORDEN_ESTADOS_CERRADOS, line_reserved
+    periodo = (periodo or "SEMANA").upper()
+    desde = desde or date.today()
+    hasta = hasta or desde + timedelta(days={"DIA": 7, "SEMANA": 35, "MES": 92}.get(periodo, 35))
+    s = db()
+    acc = {}
+
+    def sumar(prod, fecha, cant, fuente, ref):
+        if fecha is None or not (desde <= fecha <= hasta) or cant <= 1e-9:
+            return
+        k = (_inicio(periodo, fecha), prod)
+        a = acc.setdefault(k, {"inicio": k[0], "fin": _fin(periodo, k[0]), "producto": prod, "cantidad": 0.0,
+                               "primera_fecha": fecha, "fuentes": []})
+        a["cantidad"] += cant
+        a["primera_fecha"] = min(a["primera_fecha"], fecha)
+        a["fuentes"].append(f"{fuente} {ref}")
+    con_solicitud = set()
+    for r in s.execute(select(ProductionRequest).where(ProductionRequest.estado.in_(OPEN_REQ))).scalars():
+        f = r.fecha_programada or r.fecha_requerida or (r.order.fecha_compromiso if r.order else None)
+        sumar(r.product_code, f, r.cantidad, "Solicitud", f"#{r.id}" + (f" (OV {r.order.numero})" if r.order else ""))
+        if r.order_id:
+            con_solicitud.add((r.order_id, r.product_code))
+    con_bom = {p for p, _ in bom_products()}
+    for o in s.execute(select(SalesOrder).where(SalesOrder.estado.notin_(ORDEN_ESTADOS_CERRADOS),
+                                                SalesOrder.estado_stock.in_(("INCOMPLETA", "SIN_STOCK")))).scalars():
+        for l in o.lines:
+            if not l.activa or l.product_code not in con_bom or (o.id, l.product_code) in con_solicitud:
+                continue
+            falt = l.cantidad - l.despachado - line_reserved(l)
+            sumar(l.product_code, o.fecha_compromiso, falt, "Faltante OV", o.numero)
+    planificado = {}
+    from ..models import ProductionPlan
+    for pl in s.execute(select(ProductionPlan).where(ProductionPlan.periodo == periodo, ProductionPlan.fecha >= _inicio(periodo, desde),
+                                                     ProductionPlan.fecha <= hasta)).scalars():
+        planificado[(pl.fecha, pl.product_code)] = planificado.get((pl.fecha, pl.product_code), 0) + pl.cantidad
+    filas = sorted(acc.values(), key=lambda a: (a["inicio"], a["producto"]))
+    for a in filas:
+        a["planificado"] = planificado.get((a["inicio"], a["producto"]), 0)
+        a["por_planificar"] = max(a["cantidad"] - a["planificado"], 0)
+    return {"periodo": periodo, "desde": desde, "hasta": hasta, "filas": filas}
+
+
+def preschedule_plan(user, periodo="SEMANA", desde=None, hasta=None):
+    """El sistema preprograma el planeamiento con los requerimientos consolidados (lo que falta planificar); el Jefe de
+    Producción lo revisa y edita. Devuelve las entradas creadas."""
+    from ..models import ProductionPlan
+    from .core import has_perm
+    if user is not None and not (has_perm(user, "produccion.programar") or has_perm(user, "produccion.liquidar")):
+        raise BusinessError("El planeamiento lo actualiza Producción.")
+    d = requirements(periodo, desde, hasta)
+    nuevas = []
+    for a in d["filas"]:
+        if a["por_planificar"] <= 1e-9:
+            continue
+        pl = ProductionPlan(periodo=d["periodo"], fecha=a["inicio"], product_code=a["producto"], cantidad=round(a["por_planificar"], 4),
+                            comentario="Preprogramado por el sistema: " + "; ".join(a["fuentes"][:6]), origen="SISTEMA",
+                            user_id=user.id if user else None)
+        db().add(pl)
+        nuevas.append(pl)
+    db().flush()
+    if nuevas:
+        audit(user, "PLAN_PREPROGRAMADO", "ProductionPlan", ",".join(str(p.id) for p in nuevas),
+              {"periodo": d["periodo"], "entradas": len(nuevas)})
+    return nuevas

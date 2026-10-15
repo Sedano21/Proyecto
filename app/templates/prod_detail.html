@@ -18,8 +18,14 @@
 {% if a.recursos %}<p class="small muted">Recursos/costos (no inventariables, no se verifican contra stock): {% for x in a.recursos %}{{ x.componente }} {{ x.descripcion }} = {{ x.requerido|n(4) }}; {% endfor %}</p>{% endif %}
 <form method="post" class="inline">{{ csrf() }}{% if r.estado in ['BORRADOR','RECHAZADA','ENVIADA'] and can('produccion.solicitud') %}<button class="sec" name="accion" value="recalcular">Recalcular con stock actual</button>{% endif %}
 {% if r.estado in ['BORRADOR','RECHAZADA'] and can('produccion.solicitud') %}<button name="accion" value="enviar">Enviar a Producción</button>{% endif %}</form>
+{% if seguimiento %}<div class="card"><h3>Materiales faltantes: seguimiento y llegada estimada</h3>
+<div class="tw"><table class="small"><tr><th>Material</th><th class="r">Faltante</th><th>Compras / importaciones</th><th>Llegada estimada</th></tr>
+{% for m in seguimiento %}<tr><td>{{ m.componente }} {{ m.descripcion }}</td><td class="r">{{ m.faltante|n }}</td>
+<td>{% for c in m.compras %}<a href="{{ url_for('buy.purchase_detail', pid=c.id) }}">#{{ c.id }}</a> {{ b(c.estado) }}{{ ', ' if not loop.last }}{% else %}{% if not m.importaciones %}<span class="b ALTA">sin compra</span>{% endif %}{% endfor %}{% for x in m.importaciones %} · importación {{ x.referencia }} {{ b(x.estado) }}{% endfor %}</td>
+<td>{% if m.llegada %}<b>{{ m.llegada|d }}</b> <span class="muted">({{ m.fuente }})</span>{% else %}<span class="muted">sin fecha</span>{% endif %}</td></tr>{% endfor %}</table></div></div>{% endif %}
 {% if r.estado=='ENVIADA' and can('produccion.validar') %}<form method="post" class="card">{{ csrf() }}<h3>Validación de Producción</h3>
-<label><input type="checkbox" name="lista_ok" value="1"> Lista de insumos validada</label><label><input type="checkbox" name="disponibilidad_ok" value="1"> Disponibilidad real confirmada</label>
+<p class="small muted">Si faltan materiales puede aprobar igual: el sistema genera las presolicitudes de compra de lo que falta (con esta OV de origen), alerta el quiebre de stock y el plazo de reposición.</p>
+<label><input type="checkbox" name="lista_ok" value="1"> Lista de insumos validada</label><label><input type="checkbox" name="disponibilidad_ok" value="1"> Disponibilidad real confirmada (si no, se piden los faltantes)</label>
 <label><input type="checkbox" name="capacidad_ok" value="1"> Capacidad confirmada</label><label><input type="checkbox" name="plazo_ok" value="1"> Plazo confirmado</label>
 <label>Comentario</label><input name="comentario" style="width:100%"><p><button name="accion" value="validar">Validar</button> <button class="sec" name="accion" value="rechazar">Rechazar</button></p></form>{% endif %}
 {% if r.estado in ['VALIDADA','PROGRAMADA'] and can('produccion.programar') %}<form method="post" class="card row">{{ csrf() }}<div><label>Línea</label><select name="line_code">{% for l in lines %}<option value="{{ l.code }}" {{ 'selected' if l.code==r.line_code }}>{{ l.nombre }}{{ ' (' ~ (l.capacidad_kg_dia|n) ~ ' kg/día)' if l.capacidad_kg_dia }}</option>{% endfor %}</select></div>

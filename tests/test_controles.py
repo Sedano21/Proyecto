@@ -126,7 +126,7 @@ def test_estados_stock_y_reservas(s, U, new_order):
     o = new_order([("PT-904", 40)])
     l = o.lines[0].reservations[0].lot
     with pytest.raises(BusinessError):
-        change_lot_state(l, "OBSERVADO", U("coord.almacen"), "x")
+        change_lot_state(l, "RESERVADO", U("coord.almacen"), "x")  # «Reservado» se deriva de las reservas
     change_lot_state(l, "DANADO", U("coord.almacen"), "Sacos rotos")
     s.commit()
     assert line_reserved(o.lines[0]) == 0 and o.estado_stock == "SIN_STOCK"
@@ -265,9 +265,9 @@ def test_reposicion_calculo(s, U, today):
     assert creadas and creadas[0].estado == "BORRADOR" and alerts_of(s, "REPOSICION_SUGERIDA")
     buy.send(creadas[0], U("coord.almacen"))
     assert creadas[0].estado == "PENDIENTE_LOGISTICA" and alerts_of(s, "COMPRA_APROBACION_LOGISTICA")  # Q14
-    with pytest.raises(BusinessError):
-        buy.approve_logistics(creadas[0], U("coord.logistica"), True)
-    buy.approve_logistics(creadas[0], U("jefe.logistica"), True)
+    with pytest.raises(BusinessError):  # Comercial no autoriza presolicitudes de compra
+        buy.approve_logistics(creadas[0], U("coord.ventas"), True)
+    buy.approve_logistics(creadas[0], U("coord.logistica"), True)  # obs. demo v0.7: también el Coordinador de Logística
     assert creadas[0].estado == "SOLICITADA"
 
 
@@ -291,7 +291,9 @@ def test_matriz_permisos_reglas_documentadas(s):
     assert roles_con("ov.cancelar") == {"COORD_VENTAS", "JEFE_VENTAS", "GERENCIA_GENERAL"}
     # Q13: Jefe o Coordinador de Logística; Q14: Jefe de Logística aprueba compras; Q16: Líder Operativo autoriza salida
     assert roles_con("traslado.autorizar") == {"JEFE_LOGISTICA", "COORD_LOGISTICA", "GERENCIA_GENERAL"}
-    assert roles_con("compras.aprobar_solicitud") == {"JEFE_LOGISTICA", "GERENCIA_GENERAL"}
+    # obs. demo v0.7: la presolicitud la autorizan Jefe o Coordinador de Logística o el Coordinador de Almacén
+    assert roles_con("compras.aprobar_solicitud") == {"JEFE_LOGISTICA", "COORD_LOGISTICA", "COORD_ALMACEN", "COORD_ALMACEN_MP",
+                                                      "GERENCIA_GENERAL"}
     assert roles_con("distribucion.aprobar_salida_discrepancia") == {"JEFE_LOGISTICA", "COORD_LOGISTICA", "GERENCIA_GENERAL"}
     assert roles_con("reempaque.solicitar") == {"COORD_ALMACEN", "COORD_ALMACEN_MP", "SUPERV_ALMACEN", "GERENCIA_GENERAL"}
     assert roles_con("calidad.certificado_revisar") == {"JEFE_CALIDAD", "SUPERV_CALIDAD", "GERENCIA_GENERAL"}

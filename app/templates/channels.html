@@ -1,0 +1,17 @@
+{% extends "base.html" %}{% from "_m.html" import csrf, ic %}
+{% block content %}
+<div class="page-head"><div><h1>Canales y grupos de cliente</h1><p class="sub">Agregue canales de precios y grupos de cliente cuando sea necesario. Esta opción la tienen el Coordinador de Ventas, el Jefe de Ventas y Sistemas. Cada alta queda auditada.</p></div></div>
+<div class="grid g2">
+<form class="card" method="post" data-confirm="¿Agregar el canal de precios?">{{ csrf() }}<h3>Agregar canal de precios</h3>
+<label>Nombre del canal</label><input name="nombre" required maxlength="60" placeholder="p. ej. FARMACIAS">
+<p class="small muted">El canal queda disponible en la OV, en la ficha del cliente y en la lista de precios (los precios mínimos del canal se cargan en «Listas de precios»).</p>
+<p><button>Agregar canal</button></p></form>
+<form class="card" method="post" data-confirm="¿Agregar el grupo de cliente?">{{ csrf() }}<input type="hidden" name="accion" value="grupo"><h3>Agregar grupo de cliente</h3>
+<label>Nombre del grupo</label><input name="nombre" required maxlength="60">
+<label>Canal de precios del grupo (opcional)</label><select name="canal"><option value="">(sin canal)</option>{% for c in canales %}<option>{{ c }}</option>{% endfor %}</select>
+<p><button>Agregar grupo</button></p></form></div>
+<div class="grid g2"><div class="card"><h3>Canales de precios</h3><table class="small"><tr><th>Canal</th><th>Origen</th></tr>
+{% for c in canales %}<tr><td>{{ c }}</td><td>{{ 'Agregado en Configuración' if c in adicionales else 'Lista de precios vigente' }}</td></tr>{% endfor %}</table></div>
+<div class="card"><h3>Grupos de cliente</h3><table class="small"><tr><th>Grupo</th><th>Canal de precios</th></tr>
+{% for x in grupos %}<tr><td>{{ x }}</td><td>{{ mapa.get(x) or '—' }}</td></tr>{% endfor %}</table></div></div>
+{% endblock %}

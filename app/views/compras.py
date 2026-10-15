@@ -37,7 +37,9 @@ def purchase_detail(pid):
         f = request.form
         fns = {
             "enviar": lambda: psvc.send(r, u),
-            "cotizar": lambda: psvc.quote(r, u, f.get("proveedor", ""), f.get("cotizacion", ""), f_float("precio"), f_bool("requiere_muestra")),
+            "cotizar": lambda: psvc.quote(r, u, f.get("proveedor", ""), f.get("cotizacion", ""), f_float("precio"), f_bool("requiere_muestra"),
+                                          _archivo(), f.get("plazo", "")),
+            "elegir": lambda: psvc.choose_quote(r, u, f.get("idx") or 0),
             "aprobar_log": lambda: psvc.approve_logistics(r, u, True, f.get("comentario", "")),
             "rechazar_log": lambda: psvc.approve_logistics(r, u, False, f.get("comentario", "")),
             "pedir_go": lambda: psvc.request_go_approval(r, u),
@@ -50,6 +52,11 @@ def purchase_detail(pid):
             "subsanar": lambda: psvc.register_rectification(r, u, f.get("detalle", "")),
             "cerrar": lambda: psvc.close(r, u),
         }
+        def _archivo():
+            from flask import current_app
+            from ..services.distribution import save_upload
+            fa = request.files.get("archivo")
+            return save_upload(fa, current_app.config["UPLOAD_DIR"], f"cotizacion{r.id}") if fa and fa.filename else ""
         if acc not in fns:
             abort(404)
         return act(fns[acc], "Compra actualizada.", url_for("buy.purchase_detail", pid=pid))

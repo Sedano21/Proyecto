@@ -1,5 +1,5 @@
 """Informes por área con gráficos, tendencias y recomendaciones (observaciones al demo v0.5, 13-oct)."""
-from flask import Blueprint, abort, g, render_template, request
+from flask import Blueprint, abort, g, render_template, request, send_file
 
 from ..services import charts
 from ..services import reports as rsvc
@@ -18,7 +18,7 @@ INFORMES = {
 
 
 def disponibles():
-    return [(k, t) for k, (t, perms) in INFORMES.items() if any(p in g.perms for p in perms)]
+    return [(k, t) for k, (t, perms) in INFORMES.items() if any(p in g.perms for p in perms) or "vista.total" in g.perms]
 
 
 def _periodo():
@@ -28,13 +28,76 @@ def _periodo():
         return None, None
 
 
+@bp.route("/personalizado")
+@login_required
+def custom():
+    """Arme su informe (obs. demo v0.7): fuente, columnas, periodo, filtro y agrupación; pantalla, PDF o Excel."""
+    import io
+    from ..services import custom_report as cr
+    from ..services import pdfreport
+    fuentes = cr.sources_for(g.user)
+    if not fuentes:
+        abort(403)
+    fuente = request.args.get("fuente") or next(iter(fuentes))
+    if fuente not in fuentes:
+        abort(403)
+    desde, hasta = _periodo()
+    r = None
+    if request.args.get("ver") or request.args.get("formato"):
+        r = cr.run(g.user, fuente, request.args.getlist("col"), desde, hasta, request.args.get("q", ""),
+                   request.args.get("agrupar", ""))
+        nombre = f"informe_{fuente}_{r['hasta']:%Y%m%d}"
+        if request.args.get("formato") == "pdf":
+            return send_file(io.BytesIO(pdfreport.table_pdf(r["titulo"], r["columnas"], r["filas"], r["notas"])),
+                             mimetype="application/pdf", as_attachment=True, download_name=nombre + ".pdf")
+        if request.args.get("formato") == "xlsx":
+            from openpyxl import Workbook
+            from openpyxl.styles import Font
+            wb = Workbook()
+            ws = wb.active
+            ws.title = r["titulo"][:30]
+            ws.append([r["titulo"]])
+            ws["A1"].font = Font(bold=True, size=12)
+            for n in r["notas"]:
+                ws.append([n])
+            ws.append(r["columnas"])
+            for c in ws[ws.max_row]:
+                c.font = Font(bold=True)
+            for f in r["filas"]:
+                ws.append(list(f))
+            out = io.BytesIO()
+            wb.save(out)
+            return send_file(io.BytesIO(out.getvalue()), as_attachment=True, download_name=nombre + ".xlsx",
+                             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    return render_template("informe_personalizado.html", fuentes=fuentes, fuente=fuente, columnas=cr.columns(fuente),
+                           r=r, sel=request.args.getlist("col"), items=disponibles())
+
+
 @bp.route("/")
 @login_required
 def home():
+    from ..services.custom_report import sources_for
     items = disponibles()
-    if not items:
+    if not items and not sources_for(g.user):
         abort(403)
     return render_template("informes_home.html", items=items)
+
+
+def _descarga(html, titulo):
+    """Obs. demo v0.7: cada informe se descarga en PDF (y sus tablas en Excel) tal como se ve en pantalla."""
+    import io
+    from datetime import date
+    from ..services import pdfreport
+    formato = request.args.get("formato")
+    nombre = "informe_" + "".join(ch if ch.isalnum() else "_" for ch in titulo.lower()).strip("_") + f"_{date.today():%Y%m%d}"
+    if formato == "pdf":
+        return send_file(io.BytesIO(pdfreport.html_to_pdf(html, f"Informe {titulo}")), mimetype="application/pdf",
+                         as_attachment=True, download_name=nombre + ".pdf")
+    if formato == "xlsx":
+        return send_file(io.BytesIO(pdfreport.html_to_xlsx(html, f"Informe {titulo}")), as_attachment=True,
+                         download_name=nombre + ".xlsx",
+                         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    return html
 
 
 @bp.route("/<nombre>")
@@ -42,6 +105,10 @@ def home():
 def show(nombre):
     if nombre not in INFORMES or nombre not in dict(disponibles()):
         abort(403)
+    return _descarga(_show(nombre), INFORMES[nombre][0])
+
+
+def _show(nombre):
     desde, hasta = _periodo()
     if nombre == "comercial":
         d = rsvc.comercial(desde, hasta, ver_costos="costos.ver" in g.perms)
@@ -88,9 +155,13 @@ def show(nombre):
 @login_required
 def customer_behavior(cid):
     """Detalle del comportamiento de un cliente: cada OV con su atención, retraso, rechazos, modificaciones y penalidad."""
-    from ..services.customer_behavior import behavior
-    if "informes.comercial" not in g.perms:
+    if "informes.comercial" not in g.perms and "vista.total" not in g.perms:
         abort(403)
+    return _descarga(_customer_behavior(cid), "Comportamiento del cliente")
+
+
+def _customer_behavior(cid):
+    from ..services.customer_behavior import behavior
     desde, hasta = _periodo()
     d = behavior(desde, hasta, cid)
     if not d["clientes"]:

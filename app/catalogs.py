@@ -447,8 +447,10 @@ ALERT_TYPES = [
      f"{IF} §9.1 (notifica a Almacén y envía a Producción)", "Calidad aprueba.", True),
     ("REEMPAQUE_DESAPROBADO", "Reempaque desaprobado", "Almacén", "Solicitudes", "MEDIA", _ALM, "PROPUESTO", f"{IF} §9.1",
      "Calidad desaprueba.", True),
-    ("COMPRA_APROBACION_LOGISTICA", "Solicitud de compra por aprobar (Jefe de Logística)", "Logística", "Solicitudes", "ALTA",
-     ["JEFE_LOGISTICA"], "DEFINIDO", f"{TOBE}; {R12} Q14", "Almacén envía la solicitud o el sistema genera la pre-solicitud.", True),
+    ("COMPRA_APROBACION_LOGISTICA", "Presolicitud de compra por autorizar (Logística o Coordinador de Almacén)", "Logística",
+     "Solicitudes", "ALTA", ["JEFE_LOGISTICA", "COORD_LOGISTICA"] + _ALM, "DEFINIDO",
+     f"{TOBE}; {R12} Q14; obs. demo v0.7: la autorizan Jefe o Coordinador de Logística o el Coordinador de Almacén",
+     "Almacén envía la solicitud o el sistema genera la pre-solicitud.", True),
     ("COMPRA_SOLICITUD", "Solicitud de compra aprobada por Logística", "Compras", "Solicitudes", "MEDIA", ["COMPRAS"], "DEFINIDO",
      f"{IF} §10.1, §14; {R12} Q14", "El Jefe de Logística aprueba la solicitud.", True),
     ("COMPRA_MUESTRA", "Muestra de compra para evaluación", "Calidad", "Solicitudes", "MEDIA", _CAL, "DEFINIDO", f"{IF} §10.2-10.3",
@@ -533,7 +535,10 @@ ALERT_TYPES += [
      _COM + ["GERENTE_COMERCIAL"], "DEFINIDO", f"{O6}: alertas si el cliente pide menos o más y de qué productos o presentaciones",
      "Variación de la cantidad pedida por producto o presentación sobre el umbral configurado.", False),
     ("PICKING_PROGRAMADO", "Picking preprogramado por el sistema", "Almacén", "Preparación", "MEDIA",
-     ["LIDER_ALMACEN"] + _ALM, "DEFINIDO", f"{O6}: al líder y al coordinador de almacén les llega la preprogramación del picking",
+     ["LIDER_ALMACEN"] + _ALM + _LOG + _GO, "DEFINIDO",
+     f"{O6}: al líder y al coordinador de almacén les llega la preprogramación del picking; "
+     "obs. demo v0.7 (15-oct): también al personal del almacén, Coordinador y Jefe de Logística y Gerencia de Operaciones "
+     "(informativo para quien no acciona)",
      "OV lista para preparar: picking programado con auxiliar propuesto para revisar y asignar.", True),
     ("PICKING_ASIGNADO", "Picking asignado", "Almacén", "Preparación", "MEDIA", [], "DEFINIDO",
      f"{O6}: al auxiliar le llega su programación de picking", "Se le asignó un picking (persona o grupo).", True),
@@ -634,9 +639,10 @@ PARAMS = [
         {"grupo": "RAUMAK 1 Y 2", "proceso": "ENVASADO", "lineas": ["R1", "R2"], "kg_dia": 18700},
         {"grupo": "RAUMAK 3", "proceso": "ENVASADO", "lineas": ["R3"], "kg_dia": 29750},
         {"grupo": "ENV. MANUAL", "proceso": "ENVASADO", "lineas": ["ENV_MANUAL"], "kg_dia": 2550}], "list", "Producción",
-     "Capacidad por línea (kg/día) por proceso. La relación de cada grupo con las líneas del sistema (IQ+CIMB = Cimbria; "
-     "RAUMAK 1 y 2 = R1 y R2; RAUMAK 3 = R3) es una interpretación por confirmar.",
-     "DEFINIDO", "Tabla de capacidades enviada por el usuario (14-oct-2026); la correspondencia con los códigos de línea es propuesta"),
+     "Capacidad por línea (kg/día) por proceso. RAUMAK 1 y 2 comparten la capacidad del grupo. La programación de "
+     "producción verifica la carga del grupo contra esta capacidad ajustada a la jornada del día.",
+     "DEFINIDO", "Tabla de capacidades enviada por el usuario (14-oct y reenviada el 15-oct-2026 para configurarla; "
+     "correspondencia IQ+CIMB = Cimbria, RAUMAK 1 y 2 = R1 y R2, RAUMAK 3 = R3)"),
     ("dias_operacion", {"0": 1, "1": 1, "2": 1, "3": 1, "4": 1, "5": 0.5, "6": 0}, "dict", "Producción",
      "Fracción de jornada operativa por día de la semana (0 = lunes … 6 = domingo) para calcular la capacidad del periodo.",
      "DEFINIDO", "Decisión del usuario (15-oct-2026): sábados hasta mediodía; domingos no se opera"),
@@ -803,9 +809,10 @@ PARAMS = [
     ("programar_ruta_automatica", True, "bool", "Distribución",
      "Al quedar una OV completa (o con parcial aprobado) el sistema la programa automáticamente en la mejor ruta propuesta.",
      "DEFINIDO", "Diagrama de procesos COPROD-ONE: 'Programar automáticamente la mejor ruta para el despacho'"),
-    ("certificado_previo_al_picking", True, "bool", "Calidad",
-     "Pre-elaborar los certificados al quedar la OV completa (antes del picking) para validación de Calidad.",
-     "DEFINIDO", "Diagrama de procesos COPROD-ONE: 'Informar a Calidad para la validación del certificado pre-elaborado'"),
+    ("certificado_previo_al_picking", False, "bool", "Calidad",
+     "Pre-elaborar los certificados al quedar la OV completa (antes del picking). Desactivado: el precertificado se emite "
+     "después del picking, con los lotes realmente picados.",
+     "DEFINIDO", "Diagrama de procesos COPROD-ONE; obs. demo v0.7 (15-oct-2026): 'el precertificado solo se emite después del picking'"),
     ("documentos_salida", ["GUIA", "FACTURA", "CERTIFICADO"], "list", "Distribución",
      "Documentos que Seguridad verifica por pedido antes de autorizar la salida (certificado = aprobado por Calidad).",
      "DEFINIDO", "Diagrama de procesos COPROD-ONE: Seguridad 'Documentos completos?' / reportar faltantes a distribución, facturación y calidad"),
@@ -926,13 +933,13 @@ WAREHOUSES = [
 
 # Líneas de producción (PDF de formatos de producción). Capacidad no documentada.
 PRODUCTION_LINES = [
-    ("R1", "Envasado automático R1", "ENVASADOS R1 R2 Y R3.pdf"),
-    ("R2", "Envasado automático R2", "ENVASADOS R1 R2 Y R3.pdf"),
-    ("R3", "Envasado automático R3", "ENVASADOS R1 R2 Y R3.pdf"),
-    ("TRUER", "Línea Truer", "LINEA TRUER.pdf"),
-    ("CIMBRIA", "Línea Cimbria", "Linea cimbria.pdf"),
-    ("SEL_MANUAL", "Selección manual", "SEL-MANUAL.pdf"),
-    ("ENV_MANUAL", "Envasado manual", "Tabla de capacidad por línea (14-oct-2026)"),
+    ("R1", "RAUMAK 1 (envasado automático R1)", "ENVASADOS R1 R2 Y R3.pdf; tabla de capacidades (15-oct-2026)"),
+    ("R2", "RAUMAK 2 (envasado automático R2)", "ENVASADOS R1 R2 Y R3.pdf; tabla de capacidades (15-oct-2026)"),
+    ("R3", "RAUMAK 3 (envasado automático R3)", "ENVASADOS R1 R2 Y R3.pdf; tabla de capacidades (15-oct-2026)"),
+    ("TRUER", "TRUER (selección)", "LINEA TRUER.pdf; tabla de capacidades (15-oct-2026)"),
+    ("CIMBRIA", "IQ+CIMB (selección Cimbria)", "Linea cimbria.pdf; tabla de capacidades (15-oct-2026)"),
+    ("SEL_MANUAL", "SEL. MANUAL (selección manual)", "SEL-MANUAL.pdf; tabla de capacidades (15-oct-2026)"),
+    ("ENV_MANUAL", "ENV. MANUAL (envasado manual)", "Tabla de capacidades (14 y 15-oct-2026)"),
 ]
 
 # Límites críticos de humedad PCC1 (REG-HACCP-CAL-002)
@@ -974,3 +981,129 @@ REPACK_TYPES = [
     ("CONVERSION_CALIDAD", "Conversión de calidad",
      "No hay material de la misma calidad; se revisan conversión, SKU, lote, fecha de producción y disposición. Criterios pendientes de Calidad."),
 ]
+
+# ---------------------------------------------------------------------------
+# Observaciones al demo v0.7 (15-oct-2026)
+# ---------------------------------------------------------------------------
+O7 = "Observaciones al demo v0.7 (15-oct-2026)"
+PARAMS += [
+    ("canales_adicionales", [], "list", "Comercial", "Canales de precios agregados por Comercial cuando es necesario.",
+     "DEFINIDO", f"{O7}: añadir canales (Coordinador de Ventas, Jefe de Ventas y Sistemas)"),
+    ("grupos_cliente_adicionales", [], "list", "Comercial", "Grupos de cliente agregados (lista desplegable al registrar clientes).",
+     "DEFINIDO", f"{O7}: el grupo del cliente nuevo es una lista desplegable"),
+    ("empresa_correo_documentos", "", "str", "Documentos", "Correo que figura en la guía de remisión (formato impreso).",
+     "PENDIENTE", f"{O7}: formato de guía de remisión (foto del 15-oct); dato por cargar en Configuración"),
+    ("empresa_web", "", "str", "Documentos", "Sitio web que figura en la guía de remisión.", "PENDIENTE",
+     f"{O7}: formato de guía de remisión; dato por cargar en Configuración"),
+    ("direccion_partida_por_almacen", {}, "dict", "Documentos",
+     "Dirección del punto de partida de la guía por almacén ({código: dirección}); si falta se usa la dirección de la empresa.",
+     "PENDIENTE", f"{O7}: en la guía el punto de partida es la dirección del almacén que despacha"),
+    ("agrupar_presolicitudes_compra", True, "bool", "Compras",
+     "Agrupar en una sola presolicitud las del mismo producto y la misma fecha de entrega (con todas sus OV de origen).",
+     "DEFINIDO", f"{O7}: el sistema agrupa las solicitudes del mismo producto, misma fecha de entrega"),
+    ("compra_ejecucion_requiere_go", True, "bool", "Compras",
+     "La ejecución de toda compra (generar la orden) requiere la aprobación de Gerencia de Operaciones, con las cotizaciones.",
+     "DEFINIDO", f"{O7}: la ejecución de la compra requiere la aprobación netamente de Gerencia de Operaciones"),
+    ("cotizaciones_minimas_compra", 1, "int", "Compras",
+     "Cotizaciones mínimas registradas para pedir a Gerencia de Operaciones la aprobación de la ejecución.",
+     "PROPUESTO", f"{O7}: 'debe tener las cotizaciones'; cantidad mínima por validar"),
+    ("alerta_sonido_consulta_seg", 60, "int", "Sistemas",
+     "Cada cuántos segundos la pantalla consulta si hay alertas nuevas para sonar.", "PROPUESTO",
+     f"{O7}: alertas con sonido; frecuencia propuesta"),
+    ("alerta_actualizacion_seg", 10, "int", "Sistemas",
+     "Cada cuántos segundos se actualizan las pantallas de alertas y tareas abiertas con lo que hicieron los demás.",
+     "PROPUESTO", f"{O7}: actualizar inmediatamente para el resto que recibió la misma alerta; frecuencia propuesta"),
+    ("alerta_sonido_repetir_seg", 120, "int", "Sistemas",
+     "Cada cuántos segundos se repite el sonido mientras haya alertas importantes (urgencia ALTA) sin resolver.",
+     "PROPUESTO", f"{O7}: 'notificar seguidamente hasta que se resuelva'; intervalo propuesto"),
+]
+
+# Permisos nuevos (obs. demo v0.7). GG y Sistemas los reciben según la regla general (GG todo salvo exclusivos;
+# Sistemas todo salvo aprobaciones y exclusivos), porque esa regla se calculó antes de agregarlos.
+_O7_PERMS = [
+    # code, nombre, módulo, tipo, roles DEFINIDOS
+    ("ov.regularizar", "Regularización de OV con fecha pasada u hora transcurrida (sin reserva de stock)", "Comercial", "edicion",
+     ["ASIST_VENTAS", "EJECUTIVO_VENTAS", "COORD_VENTAS", "JEFE_VENTAS"]),
+    ("ov.reservas_ver", "Ver líneas, reservas y lotes de la OV", "Comercial", "consulta", None),  # None: quienes ven OV salvo Distribución
+    ("canales.gestionar", "Agregar canales de precios cuando sea necesario", "Comercial", "exclusivo",
+     ["COORD_VENTAS", "JEFE_VENTAS", "SISTEMAS"]),
+    ("vista.total", "Visualizar todas las funciones, informes y movimientos de todas las áreas (solo consulta)", "Gerencial",
+     "exclusivo", ["GERENCIA_GENERAL", "GERENCIA_OPERACIONES"]),
+    ("seguridad.llegadas", "Cuadro de llegadas de compras e importaciones: validar lo que ingresa y notificar incidentes",
+     "Seguridad", "edicion", ["SEGURIDAD"]),
+    ("distribucion.conformidad_producto", "Dar conformidad del estado del producto en la carga (no el chofer)", "Distribución",
+     "edicion", ["AUX_DESPACHO", "COORD_DISTRIBUCION", "ASIST_DISTRIBUCION", "LIDER_ALMACEN", "COORD_ALMACEN",
+                 "COORD_ALMACEN_MP", "JEFE_CALIDAD", "SUPERV_CALIDAD"]),
+    ("distribucion.aprobar_guia", "Aprobar la guía de remisión (pre-guía revisada)", "Distribución", "aprobacion",
+     ["COORD_DISTRIBUCION", "ASIST_DISTRIBUCION"]),
+]
+_SIN_RESERVAS = {"COORD_DISTRIBUCION", "ASIST_DISTRIBUCION"}  # obs. demo v0.7: no ven líneas, reservas ni lotes
+
+
+def _aplicar_o7():
+    for code, nombre, modulo, tipo, roles in _O7_PERMS:
+        if not any(p[0] == code for p in PERMISSIONS):
+            PERMISSIONS.append((code, nombre, modulo, tipo))
+        if roles is None:
+            roles = [r for r, ps in ROLE_PERMISSIONS.items() if any(p[0] == "ov.ver" for p in ps) and r not in _SIN_RESERVAS]
+        for r in roles:
+            ROLE_PERMISSIONS.setdefault(r, []).append((code, "DEFINIDO", O7))
+        if tipo != "exclusivo" and "GERENCIA_GENERAL" not in roles:
+            ROLE_PERMISSIONS["GERENCIA_GENERAL"].append((code, "DEFINIDO", f"{O7}; regla general de Gerencia General"))
+        if tipo not in ("aprobacion", "exclusivo") and "SISTEMAS" not in roles:
+            ROLE_PERMISSIONS["SISTEMAS"].append((code, "DEFINIDO", f"{O7}; regla general de Sistemas"))
+
+
+_aplicar_o7()
+# Permisos existentes que se extienden a otros roles (obs. demo v0.7)
+_O7_EXTENSIONES = {
+    # la presolicitud de compra la autorizan el Jefe o el Coordinador de Logística o el Coordinador de Almacén
+    "compras.aprobar_solicitud": ["COORD_LOGISTICA", "COORD_ALMACEN", "COORD_ALMACEN_MP"],
+    # el prepicking considera al auxiliar de despacho o de almacén del almacén donde está el pedido
+    "preparacion.registrar": ["AUX_DESPACHO"],
+}
+for _perm, _roles in _O7_EXTENSIONES.items():
+    for _r in _roles:
+        if not any(p[0] == _perm for p in ROLE_PERMISSIONS.get(_r, [])):
+            ROLE_PERMISSIONS.setdefault(_r, []).append((_perm, "DEFINIDO", O7))
+# Obs. demo v0.7: Gerencia de Operaciones y Gerencia General visualizan todas las funciones, reportes y movimientos de
+# todas las áreas: reciben todos los permisos de consulta (incluidos los informes y la auditoría de movimientos).
+for _r in ("GERENCIA_GENERAL", "GERENCIA_OPERACIONES"):
+    _tiene = {p[0] for p in ROLE_PERMISSIONS[_r]}
+    for _code, _n, _m, _t in PERMISSIONS:
+        if (_t == "consulta" or _code.startswith("informes.") or _code.startswith("dashboard.") or _code == "auditoria.ver") \
+                and _code not in _tiene:
+            ROLE_PERMISSIONS[_r].append((_code, "DEFINIDO", f"{O7}: Gerencias visualizan todas las áreas"))
+
+ALERT_TYPES += [
+    ("OV_REGULARIZACION", "OV registrada como regularización", "Comercial", "Órdenes de venta", "MEDIA",
+     _COM, "DEFINIDO", f"{O7}: apartado de regularización visible para Comercial",
+     "Se registra una OV con fecha pasada u hora transcurrida (no reserva stock).", False),
+]
+ALERT_TYPES += [
+    ("PICKING_LOTE_OBSERVADO", "Producto observado en el picking (rotura, infestación o contaminación)", "Calidad", "Calidad",
+     "ALTA", _CAL + _ALM + ["LIDER_ALMACEN"], "DEFINIDO",
+     f"{O7}: al cambiar de lote por rotura, infestación o contaminación el stock queda como producto observado",
+     "El auxiliar cambia de lote en el picking por rotura o daño, infestación o contaminación.", True),
+]
+ALERT_TYPES += [
+    ("QUIEBRE_STOCK", "Quiebre de stock: presolicitud de compra generada", "Logística", "Abastecimiento", "ALTA",
+     _LOG + _ALM + ["COMPRAS"] + _GO + _PROD, "DEFINIDO",
+     f"{O7}: alertar del quiebre de stock y de los tiempos de reposición al generar la presolicitud de compra",
+     "Falta stock (OV o materiales para producir): se generó la presolicitud de compra con el plazo de reposición.", True),
+]
+ALERT_TYPES += [
+    ("CALIDAD_VS_LIQUIDACION", "Lote registrado por Calidad distinto a la liquidación", "Producción", "Liquidaciones", "ALTA",
+     _PROD + _CAL + _ALM, "DEFINIDO", f"{O7}: el nuevo lote registrado por Calidad se contrasta con la liquidación",
+     "La cantidad del lote registrada por Calidad durante la producción no coincide con la liquidada.", True),
+    ("VEHICULO_SUBSANAR", "Vehículo no está en orden: subsanar", "Distribución", "Flota", "ALTA", _DIST + ["JEFE_LOGISTICA"],
+     "DEFINIDO", f"{O7}: Seguridad valida placa, chofer y que el vehículo esté en orden; si no, levanta una alerta para subsanar",
+     "Seguridad registra que el vehículo no está en orden.", True),
+]
+ALERT_TYPES += [
+    ("LLEGADA_INCIDENTE", "Incidente en la llegada de una compra o importación (Seguridad)", "Almacén", "Recepción", "ALTA",
+     _ALM + ["COMPRAS", "IMPORTACIONES"] + _LOG, "DEFINIDO",
+     f"{O7}: Seguridad valida lo que va ingresando y notifica ante cualquier incidente",
+     "Seguridad registra una llegada no conforme (cantidad, estado, documentos, vehículo).", True),
+]
+ALERT_INFORMATIVAS = set(ALERT_INFORMATIVAS) | {"OV_REGULARIZACION", "QUIEBRE_STOCK"}
