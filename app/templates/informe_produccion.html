@@ -4,7 +4,7 @@
 <div><label>Agrupar</label><select name="agrupar"><option value="DIA" {{ 'selected' if cap.agrupar=='DIA' }}>Diario</option><option value="N" {{ 'selected' if cap.agrupar=='N' }}>Cada N días</option><option value="MES" {{ 'selected' if cap.agrupar=='MES' }}>Mensual</option></select></div>
 <div><label>N días</label><input type="number" name="n" min="1" value="{{ cap.n }}" style="width:80px"></div><div><button class="sec">Aplicar</button></div></form>
 <div class="card"><h3>1. Capacidad de producción vs producido (kg procesados)</h3>
-<p class="small muted">Capacidad = kg/día de la tabla de capacidades × días del periodo{% if not cap.buckets %}{% endif %}. Producido = kg de entrada de los partes completados. La correspondencia de grupos con las líneas del sistema está por confirmar.</p>
+<p class="small muted">Capacidad = kg/día de la tabla de capacidades × días operativos del periodo (sábado medio día; domingos y feriados no se opera). Producido = kg de entrada de los partes completados. La correspondencia de grupos con las líneas del sistema está por confirmar.</p>
 {{ graf_cap }}
 <div class="tw"><table class="small"><tr><th>Proceso</th><th>Línea</th><th class="r">Capacidad kg</th><th class="r">Producido kg</th><th class="r">Uso</th><th class="r">Programado kg</th><th class="r">Programado vs ejecutado</th><th>Caídas</th></tr>
 {% for f in cap.filas %}<tr><td>{{ f.proceso|capitalize }}</td><td>{{ f.grupo }}</td><td class="r">{{ f.capacidad|n }}</td><td class="r">{{ f.producido|n }}</td><td class="r">{{ f.uso if f.uso is not none else '—' }} %</td><td class="r">{{ f.programado|n }}</td><td class="r">{{ f.cumplimiento if f.cumplimiento is not none else '—' }} %</td>

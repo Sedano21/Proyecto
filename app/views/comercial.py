@@ -475,6 +475,51 @@ def market_report():
                            hoy=date.today())
 
 
+@bp.route("/mercado/sustitutos", methods=["GET", "POST"])
+@perm_required("costos.ver")
+def market_substitutes():
+    """Productos sustitutos: alta individual o por Excel (decisión del usuario, 15-oct-2026)."""
+    from ..models import ProductSubstitute
+    from ..services import market
+    if request.method == "POST":
+        if "costos.cargar" not in g.perms:
+            abort(403)
+        acc = request.form.get("accion")
+        volver = url_for("com.market_substitutes")
+        if acc == "desactivar":
+            def _des():
+                x = db().get(ProductSubstitute, int(request.form.get("sid") or 0))
+                if x is None:
+                    raise BusinessError("Sustituto no encontrado.")
+                market.remove_substitute(g.user, x)
+            return act(_des, "Sustituto desactivado.", volver)
+        if acc == "excel":
+            def _imp():
+                f = request.files.get("archivo")
+                if f is None or not f.filename:
+                    raise BusinessError("Seleccione el archivo Excel.")
+                import os
+                import tempfile
+                with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
+                    f.save(tmp.name)
+                try:
+                    n, errores = market.import_substitutes(g.user, tmp.name, f.filename)
+                finally:
+                    os.unlink(tmp.name)
+                for e in errores[:20]:
+                    flash(e, "error")
+                return n
+            return act(_imp, lambda n: f"{n} sustituto(s) nuevos registrados desde el archivo.", volver)
+        return act(lambda: market.add_substitute(g.user, request.form.get("producto_base", ""),
+                                                 request.form.get("sustituto", ""), request.form.get("observacion", "")),
+                   "Sustituto registrado.", volver)
+    filas = list(db().execute(select(ProductSubstitute).order_by(ProductSubstitute.activo.desc(),
+                                                                 ProductSubstitute.producto_base,
+                                                                 ProductSubstitute.sustituto)).scalars())
+    return render_template("market_substitutes.html", filas=filas, bases=sorted(market.bases()),
+                           editable="costos.cargar" in g.perms)
+
+
 @bp.route("/mercado/analisis")
 @perm_required("costos.ver")
 def market_analysis():

@@ -3,14 +3,14 @@
 <h1>Comportamiento de {{ cliente.nombre }}</h1>
 <form class="row card" method="get"><div><label>Desde</label><input type="date" name="desde" value="{{ d.desde.isoformat() }}"></div><div><label>Hasta</label><input type="date" name="hasta" value="{{ d.hasta.isoformat() }}"></div><div><button class="sec">Actualizar</button></div></form>
 {% if c %}
-<div class="kpis"><div class="kpi"><b>{{ c.cumplimiento }} %</b><span>Cumplimiento</span><small>{{ c.atendidos }} atendidos de {{ c.pedidos }} pedidos</small></div>
-<div class="kpi"><b>{{ c.completos }}</b><span>Atendidos completos</span></div><div class="kpi"><b>{{ c.retrasos }}</b><span>Retrasos</span></div>
+<div class="kpis"><div class="kpi"><b>{{ c.cumplimiento }} %</b><span>Cumplimiento</span><small>{{ c.completos }} entregados completos de {{ c.pedidos }} pedidos</small></div>
+<div class="kpi"><b>{{ c.atendidos }}</b><span>Despachados</span></div><div class="kpi"><b>{{ c.retrasos }}</b><span>Retrasos</span></div>
 <div class="kpi"><b>{{ c.rechazos }}</b><span>Pedidos con rechazo</span></div><div class="kpi"><b>{{ c.modificaciones }}</b><span>Modificaciones</span></div>
 <div class="kpi"><b>S/ {{ '{:,.2f}'.format(c.penalidad) }}</b><span>Penalidad estimada</span></div></div>
-<div class="card"><h3>Pide más o menos de lo habitual</h3><table class="small"><tr><th>Tipo</th><th>Producto / presentación</th><th class="r">1.ª mitad</th><th class="r">2.ª mitad</th><th class="r">Variación</th></tr>
+<div class="card"><h3>Pide más o menos de lo habitual</h3><p class="small muted">Umbral {{ c.regla.umbral|n }} % ({{ c.regla.origen }}){% if not c.regla.alerta %}; alerta desactivada para este cliente o su canal{% endif %}.</p><table class="small"><tr><th>Tipo</th><th>Producto / presentación</th><th class="r">1.ª mitad</th><th class="r">2.ª mitad</th><th class="r">Variación</th></tr>
 {% for v in c.variaciones %}<tr><td>{{ v.tipo }}</td><td>{{ v.clave }} {% if v.tipo == 'producto' %}{{ pd(v.clave) }}{% endif %}</td><td class="r">{{ v.antes|n }}</td><td class="r">{{ v.ahora|n }}</td><td class="r"><span class="b {{ 'ok' if v.var > 0 else 'ALTA' }}">{{ v.texto }} {{ '%+.0f'|format(v.var) }} %</span></td></tr>
 {% else %}<tr><td colspan="5" class="muted">Sin variaciones sobre el umbral</td></tr>{% endfor %}</table></div>
-<div class="card"><h3>Detalle por pedido</h3><div class="tw"><table class="small"><tr><th>OV</th><th>Emisión</th><th>Comprometida</th><th>Estado</th><th class="r">S/</th><th>Atendido</th><th>Completo</th><th>Retraso</th><th class="r">Modif.</th><th>Rechazos</th><th class="r">Penalidad S/</th></tr>
+<div class="card"><h3>Detalle por pedido</h3><div class="tw"><table class="small"><tr><th>OV</th><th>Emisión</th><th>Comprometida</th><th>Estado</th><th class="r">S/</th><th>Despachado</th><th>Entregado completo</th><th>Retraso</th><th class="r">Modif.</th><th>Rechazos</th><th class="r">Penalidad S/</th></tr>
 {% for f in c.detalle %}<tr><td><a href="{{ url_for('com.order_detail', oid=f.o.id) }}">{{ f.o.numero }}</a></td><td>{{ f.o.fecha_emision|d }}</td><td>{{ f.o.fecha_compromiso|d }}</td><td>{{ b(f.o.estado) }}</td><td class="r">{{ f.monto|n }}</td>
 <td>{{ 'sí' if f.atendido else 'no' }}</td><td>{{ 'sí' if f.completo else 'no' }}</td><td>{% if f.retraso %}<span class="b ALTA">sí</span>{% else %}no{% endif %}</td><td class="r">{{ f.modificaciones }}</td>
 <td>{{ f.rechazos|join(', ') or '—' }}</td><td class="r">{{ '{:,.2f}'.format(f.penalidad) }}{% if f.penalidad_riesgo %} <span class="small muted">({{ f.penalidad_riesgo|join(', ') }})</span>{% endif %}</td></tr>{% endfor %}</table></div></div>

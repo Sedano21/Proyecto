@@ -55,7 +55,7 @@ def show(nombre):
         from ..services.customer_behavior import behavior
         cb = behavior(d["desde"], d["hasta"])
         graf["cumplimiento"] = charts.bars([(x["customer"].nombre[:22], x["cumplimiento"] or 0) for x in cb["clientes"][:15]], "%",
-                                           title="Cumplimiento por cliente (atendidos / pedidos)", color=2)
+                                           title="Cumplimiento por cliente (entregados completos / pedidos)", color=2)
         return render_template("informe_comercial.html", d=d, cb=cb, graf=graf, items=disponibles(), actual=nombre)
     if nombre == "almacen":
         from ..services.core import warehouse_scopes

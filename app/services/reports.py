@@ -475,16 +475,18 @@ def produccion_capacidad(desde=None, hasta=None, agrupar="DIA", n=7):
     n = max(int(n or 7), 1)
     s = db()
     grupos = param("capacidad_lineas", []) or []
-    no_op = set(param("dias_no_operativos", []) or [])
+    jornada = {int(k): float(v) for k, v in (param("dias_operacion", {}) or {}).items()}
+    feriados = {str(x) for x in (param("feriados", []) or [])}
     linea_grupo = {l: g["grupo"] for g in grupos for l in g.get("lineas", [])}
     dias = [desde + timedelta(days=i) for i in range((hasta - desde).days + 1)]
     buckets = sorted({_bucket(d, agrupar, n, desde) for d in dias})
     cap = defaultdict(float)
     for d in dias:
-        if d.weekday() in no_op:
+        f = 0.0 if d.isoformat() in feriados else jornada.get(d.weekday(), 1.0)
+        if f <= 0:
             continue
         for g in grupos:
-            cap[(g["grupo"], _bucket(d, agrupar, n, desde))] += float(g.get("kg_dia") or 0)
+            cap[(g["grupo"], _bucket(d, agrupar, n, desde))] += float(g.get("kg_dia") or 0) * f
     hechos = list(s.execute(select(ProductionReport).where(ProductionReport.fecha >= desde, ProductionReport.fecha <= hasta)).scalars())
     prod, prog_partes, paradas = defaultdict(float), defaultdict(float), []
     for r in hechos:

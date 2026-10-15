@@ -2,7 +2,7 @@
 {% block content %}
 <h1>Configuración</h1>
 <p class="muted">Sistemas y Gerencia General administran la configuración (IF §16). Cada cambio crea una nueva versión y queda auditado. Estados: {{ b('DEFINIDO') }} regla expresa · {{ b('PROPUESTO') }} requiere validación · {{ b('PENDIENTE') }} decisión pendiente · {{ b('ACTUAL') }} observado en archivos actuales · {{ b('DEMO') }} solo demostración.</p>
-<p><a href="{{ url_for('main.products') }}">Catálogo de artículos</a> · <a href="{{ url_for('main.customers') }}">Clientes</a> · <a href="#almacenes">Almacenes</a> · <a href="#plazos">Plazos de compra</a> · <a href="#lineas">Líneas de producción</a> · <a href="#fases">Fases de importación</a></p>
+<p><a href="{{ url_for('main.products') }}">Catálogo de artículos</a> · <a href="{{ url_for('main.customers') }}">Clientes</a> · <a href="#almacenes">Almacenes</a> · <a href="#plazos">Plazos de compra</a> · <a href="#lineas">Líneas de producción</a> · <a href="#fases">Fases de importación</a> · <a href="#variacion">Alerta de variación de compra</a></p>
 <h2 id="params">Parámetros</h2>
 <div class="tbl"><table><tr><th>Grupo</th><th>Parámetro</th><th>Valor</th><th>Estado</th><th>Descripción / fuente</th></tr>
 {% for p in params %}<tr><td>{{ p.grupo }}</td><td class="mono">{{ p.key }}<br><a class="small" href="{{ url_for('main.param_history', key=p.key) }}">v{{ p.version }} · historial</a></td>
@@ -36,6 +36,23 @@
 <div class="ftable"><div class="frow fh"><div class="fcell">Código</div><div class="fcell">Nombre</div><div class="fcell">Capacidad kg/día</div><div class="fcell">Activa</div><div class="fcell">Fuente</div><div class="fcell"></div></div>
 {% for l in lines %}<form class="frow" method="post" action="{{ url_for('main.line_edit') }}">{{ csrf() }}<input type="hidden" name="code" value="{{ l.code }}"><div class="fcell">{{ l.code }}</div><div class="fcell">{{ l.nombre }}</div>
 <div class="fcell"><input name="capacidad_kg_dia" value="{{ l.capacidad_kg_dia or '' }}" style="width:100px"></div><div class="fcell"><select name="activa"><option value="1" {{ 'selected' if l.activa }}>Sí</option><option value="0" {{ 'selected' if not l.activa }}>No</option></select></div><div class="fcell small">{{ l.fuente }}</div><div class="fcell"><button class="small">Guardar</button></div></form>{% endfor %}</div>
+
+<h2 id="variacion">Alerta de variación de compra por canal o cliente</h2>
+<p class="small muted">Alerta a Comercial cuando un cliente pide más o menos de lo habitual de un producto o presentación (segunda mitad del periodo frente a la primera). Por defecto se usan los parámetros generales <span class="mono">variacion_compra_alerta_pct</span> ({{ doc_param('variacion_compra_alerta_pct') }} %) y <span class="mono">variacion_compra_dias</span> ({{ doc_param('variacion_compra_dias') }} días). Aquí se configura un umbral, un periodo o la desactivación para un <b>canal</b> o un <b>cliente específico</b>. Precedencia: cliente &gt; canal &gt; general; un campo vacío hereda el valor del nivel siguiente.</p>
+<div class="tw"><table class="list"><tr><th>Aplica a</th><th class="r">Umbral %</th><th class="r">Periodo (días)</th><th>Alerta</th><th></th></tr>
+{% for r in var_rules %}<tr><td data-label="Aplica a">{{ 'Canal ' ~ r.canal if r.alcance == 'CANAL' else 'Cliente ' ~ (r.customer.nombre if r.customer else r.customer_id) }}</td>
+<td class="r" data-label="Umbral %">{{ r.umbral_pct|n if r.umbral_pct is not none else 'hereda' }}</td><td class="r" data-label="Periodo">{{ r.dias or 'hereda' }}</td>
+<td data-label="Alerta">{{ 'Sí' if r.alerta else 'No (desactivada)' }}</td>
+<td>{% if can('config.editar') %}<form method="post" action="{{ url_for('main.variation_rule_edit') }}">{{ csrf() }}<input type="hidden" name="accion" value="baja"><input type="hidden" name="id" value="{{ r.id }}"><button class="sec small">Quitar</button></form>{% endif %}</td></tr>
+{% else %}<tr><td colspan="5" class="muted">Sin reglas específicas: se aplican los parámetros generales a todos los clientes.</td></tr>{% endfor %}</table></div>
+{% if can('config.editar') %}<form class="card row" method="post" action="{{ url_for('main.variation_rule_edit') }}">{{ csrf() }}
+<div><label class="req">Aplica a</label><select name="alcance" required><option value="CANAL">Canal</option><option value="CLIENTE">Cliente específico</option></select></div>
+<div><label>Canal</label><select name="canal"><option value="">—</option>{% for c in canales %}<option>{{ c }}</option>{% endfor %}</select></div>
+<div class="grow"><label>Cliente</label><select name="customer_id"><option value="">—</option>{% for c in clientes %}<option value="{{ c.id }}">{{ c.nombre }}</option>{% endfor %}</select></div>
+<div><label>Umbral %</label><input type="number" name="umbral_pct" min="1" step="0.1" style="width:90px" placeholder="hereda"></div>
+<div><label>Periodo (días)</label><input type="number" name="dias" min="7" style="width:90px" placeholder="hereda"></div>
+<div><label>Alerta</label><select name="alerta"><option value="1">Sí</option><option value="0">No</option></select></div>
+<div><button>Guardar regla</button></div></form>{% endif %}
 
 <h2 id="fases">Plantilla de fases de importación</h2>
 <div class="note">Las fases y responsables por hito están pendientes de precisar (IF §20). Las cargadas son de <b>demostración</b>.</div>

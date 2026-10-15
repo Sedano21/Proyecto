@@ -235,9 +235,8 @@ def set_penalty_amounts(cond, user, valores):
 def by_product(order):
     """Condición del cliente aplicada a cada producto de la OV (observaciones al demo v0.6): vida útil restante mínima
     al despacho para ESE producto (con la excepción por familia, p. ej. harinas), lotes por SKU, cuántos lotes cumplen y,
-    si no alcanza, por qué y qué corresponde: reempaque cuando lo único que no cumple es la fecha de vencimiento, o
-    producir (o ampliar la producción en curso) cuando no hay producto que pueda adecuarse. La regla de acción es la
-    descrita por el usuario y queda por confirmar ("hay que definir eso")."""
+    si no alcanza, por qué y las opciones aplicables en el orden decidido por el usuario (15-oct-2026):
+    1. producción, 2. reempaque, 3. traslado externo, 4. compra (ver action_options)."""
     from .stock import line_reserved, lot_usable, lots_of, principal_warehouses
     c = for_customer(order.customer)
     out = []
@@ -263,18 +262,43 @@ def by_product(order):
                 cumplen.append(lot)
             elif "Vida útil" in why or "Vencido" in why:
                 por_fecha.append((lot, why))
-        accion, motivo = "", ""
-        if faltante > 1e-9 and por_fecha:
-            cant = sum(l.cantidad for l, _ in por_fecha)
-            motivo = "; ".join(f"lote {l.lote}: {w}" for l, w in por_fecha[:3])
-            accion = ("Reempaque por actualización de fecha (lo único que no cumple es el vencimiento)" if cant >= faltante - 1e-9
-                      else "Reempaque por actualización de fecha de lo disponible y producir el saldo")
-        elif faltante > 1e-9:
-            motivo = "No hay stock que cumpla la condición del cliente"
-            accion = "Producir (o ampliar la producción en curso)"
+        accion, motivo, opciones = "", "", []
+        if faltante > 1e-9:
+            motivo = ("; ".join(f"lote {l.lote}: {w}" for l, w in por_fecha[:3]) if por_fecha
+                      else "No hay stock que cumpla la condición del cliente")
+            opciones = action_options(order, line, faltante, por_fecha)
+            accion = " → ".join(f"{i}. {o}" for i, o in enumerate(opciones, 1)) if opciones else "Sin opciones disponibles"
         out.append({"line": line, "condicion": "; ".join(texto) or "Sin condición específica para este producto",
                     "meses": meses, "cumplen": len(cumplen), "no_cumplen": len(por_fecha), "faltante": faltante,
-                    "motivo": motivo, "accion": accion})
+                    "motivo": motivo, "accion": accion, "opciones": opciones})
+    return out
+
+
+def action_options(order, line, faltante, por_fecha):
+    """Opciones cuando el stock no cumple la condición del cliente, en el orden decidido el 15-oct-2026 (el mismo de las
+    pre-solicitudes, Q15): 1) producción, 2) reempaque (si lo único que falla es el vencimiento), 3) traslado desde un
+    almacén externo con lote que cumpla, 4) compra. Solo se listan las aplicables."""
+    from .production import material_requirements
+    from .stock import alternative_warehouses, free_qty, lot_usable, lots_of
+    nombres = {"PRODUCCION": "Producir", "REEMPAQUE": "Reempaque por actualización de fecha",
+               "TRASLADO": "Traslado desde almacén externo", "COMPRA": "Compra"}
+    orden = [x for x in (param("orden_presolicitudes", []) or []) if x in nombres] or list(nombres)
+    out = []
+    for o in orden:
+        if o == "PRODUCCION":
+            req = material_requirements(line.product_code, faltante)
+            if req.get("bom_encontrada"):
+                out.append(nombres[o] + ("" if req.get("factible") else " (revisar materiales)"))
+        elif o == "REEMPAQUE" and por_fecha:
+            cant = sum(l.cantidad for l, _ in por_fecha)
+            out.append(nombres[o] + ("" if cant >= faltante - 1e-9 else f" (cubre {cant:g} de {faltante:g})"))
+        elif o == "TRASLADO":
+            externos = [l for l in lots_of(line.product_code, [w.code for w in alternative_warehouses()])
+                        if lot_usable(l, order.fecha_compromiso, order.customer)[0] and free_qty(l) > 1e-9]
+            if externos:
+                out.append(nombres[o] + " (" + ", ".join(sorted({l.warehouse_code for l in externos})) + ")")
+        elif o == "COMPRA":
+            out.append(nombres[o])
     return out
 
 

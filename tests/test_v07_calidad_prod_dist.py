@@ -42,7 +42,9 @@ def test_capacidad_vs_producido_y_programado(s, U):
                          cal3_kg=10, parada_min=30, motivo_parada="Mantenimiento")
     d = produccion_capacidad(hoy - timedelta(days=2), hoy, "DIA")
     truer = next(f for f in d["filas"] if f["grupo"] == "TRUER")
-    assert truer["capacidad"] == 12750 * 3 and truer["producido"] == 1000 and truer["proceso"] == "SELECCION"
+    jornada = {0: 1, 1: 1, 2: 1, 3: 1, 4: 1, 5: 0.5, 6: 0}  # sábado medio día, domingo no se opera (15-oct)
+    esperado = 12750 * sum(jornada[(hoy - timedelta(days=i)).weekday()] for i in range(3))
+    assert truer["capacidad"] == esperado and truer["producido"] == 1000 and truer["proceso"] == "SELECCION"
     assert d["paradas_min"] >= 30
     m = produccion_capacidad(hoy - timedelta(days=40), hoy, "MES")
     assert m["agrupar"] == "MES" and len(m["buckets"]) >= 2
@@ -97,3 +99,13 @@ def test_detalle_de_traslado(app, s, U):
     login(c, "coord.almacen")
     html = c.get(f"/almacen/traslados/{t.id}").get_data(as_text=True)
     assert "Pre-solicitud de traslado" in html and lot.lote in html
+
+
+def test_capacidad_sin_feriados_ni_domingos(s, U):
+    from app.services.core import set_param
+    from app.services.reports import produccion_capacidad
+    lunes = date(2026, 10, 12)
+    set_param("feriados", [lunes.isoformat()], U("sistemas"))
+    d = produccion_capacidad(lunes, lunes + timedelta(days=6), "N", 7)  # semana lunes a domingo
+    truer = next(f for f in d["filas"] if f["grupo"] == "TRUER")
+    assert truer["capacidad"] == 12750 * (4 + 0.5)  # martes-viernes + sábado medio día; lunes feriado, domingo no

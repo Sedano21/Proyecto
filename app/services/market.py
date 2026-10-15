@@ -3,8 +3,8 @@
 - Registro desde tres lugares: Importaciones (precios de importación), Compras (compras nacionales) y Comercial
   (competencia directa, productos sustitutos y referencias de mercado). Cada origen lo registra el área responsable.
 - Importación de informes en Excel o PDF: el sistema extrae las filas cuyo producto es compatible con lo que ofrecemos
-  (competencia directa = mismo producto base; sustituto = producto definido como sustituto en el parámetro
-  'productos_sustitutos') y las muestra para revisión; nada se registra sin confirmación.
+  (competencia directa = mismo producto base; sustituto = producto registrado por Comercial en «Productos sustitutos»,
+  uno a uno o por Excel) y las muestra para revisión; nada se registra sin confirmación.
 - Análisis: nivel 1 «a cuánto compramos» (compras nacionales e importación: evolución y variación) y nivel 2 «a cuánto
   vendemos» (nuestro precio por kg y nuestro volumen frente a competencia y sustitutos).
 - El costo de reposición queda pendiente: el usuario indicará su definición.
@@ -19,7 +19,7 @@ from datetime import date, timedelta
 from sqlalchemy import select
 
 from ..db import db
-from ..models import MarketPrice, Product, SalesOrder
+from ..models import MarketPrice, Product, ProductSubstitute, SalesOrder
 from .core import BusinessError, audit, has_perm, param
 
 CATEGORIAS = {
@@ -62,12 +62,75 @@ def classify(texto):
     if directos:
         b = max(directos, key=len)
         return "COMPETENCIA", b, bs[b][0]
-    sust = param("productos_sustitutos", {}) or {}
-    for nuestro, otros in sust.items():
-        for o in otros or []:
-            if o and o.upper() in t:
-                return "SUSTITUTO", nuestro.upper(), (bs.get(nuestro.upper()) or [""])[0]
+    for s in db().execute(select(ProductSubstitute).where(ProductSubstitute.activo.is_(True))).scalars():
+        if s.sustituto and s.sustituto.upper() in t:
+            return "SUSTITUTO", s.producto_base.upper(), (bs.get(s.producto_base.upper()) or [""])[0]
     return None, None, None
+
+
+def _norm(x):
+    return " ".join(str(x or "").upper().split())
+
+
+def add_substitute(user, producto_base, sustituto, observacion="", origen="Alta manual"):
+    """Registra un sustituto (Comercial). El producto base debe ser uno que ofrecemos."""
+    if not has_perm(user, "costos.cargar"):
+        raise BusinessError("Los productos sustitutos los registra Comercial.")
+    base, sus = _norm(producto_base), _norm(sustituto)
+    if not base or not sus:
+        raise BusinessError("Indique el producto base y el sustituto.")
+    if base not in bases():
+        raise BusinessError(f"'{base}' no es un producto base que ofrezcamos (revise el producto base en el maestro).")
+    if base == sus:
+        raise BusinessError("El sustituto no puede ser el mismo producto base.")
+    s = db()
+    ex = s.execute(select(ProductSubstitute).where(ProductSubstitute.producto_base == base,
+                                                   ProductSubstitute.sustituto == sus)).scalars().first()
+    if ex is not None:
+        ex.activo, ex.observacion = True, (observacion or ex.observacion).strip()
+        return ex, False
+    x = ProductSubstitute(producto_base=base, sustituto=sus, observacion=(observacion or "").strip(), origen=origen,
+                          user_id=user.id)
+    s.add(x)
+    s.flush()
+    audit(user, "SUSTITUTO_REGISTRADO", "ProductSubstitute", x.id, {"base": base, "sustituto": sus, "origen": origen})
+    return x, True
+
+
+def remove_substitute(user, x):
+    if not has_perm(user, "costos.cargar"):
+        raise BusinessError("Los productos sustitutos los registra Comercial.")
+    x.activo = False
+    audit(user, "SUSTITUTO_DESACTIVADO", "ProductSubstitute", x.id, {"base": x.producto_base, "sustituto": x.sustituto})
+
+
+def import_substitutes(user, path, nombre):
+    """Excel con columnas «Producto base» y «Sustituto» (y opcional «Observación»). Devuelve (agregados, errores)."""
+    from openpyxl import load_workbook
+    try:
+        wb = load_workbook(path, read_only=True, data_only=True)
+        filas = list(wb.worksheets[0].iter_rows(values_only=True))
+    except Exception as e:  # archivo dañado o que no es Excel
+        raise BusinessError(f"No se pudo leer el Excel: {e}") from None
+    if not filas:
+        raise BusinessError("El archivo está vacío.")
+    cab = [_norm(c) for c in filas[0]]
+    try:
+        ib = next(i for i, c in enumerate(cab) if "BASE" in c)
+        isus = next(i for i, c in enumerate(cab) if "SUSTITUTO" in c)
+    except StopIteration:
+        raise BusinessError("El archivo debe tener las columnas «Producto base» y «Sustituto».") from None
+    iob = next((i for i, c in enumerate(cab) if "OBSERV" in c), None)
+    n, errores = 0, []
+    for k, r in enumerate(filas[1:], start=2):
+        if not r or all(c in (None, "") for c in r):
+            continue
+        try:
+            _, nuevo = add_substitute(user, r[ib], r[isus], r[iob] if iob is not None and iob < len(r) else "", f"Archivo {nombre}")
+            n += nuevo
+        except BusinessError as e:
+            errores.append(f"Fila {k}: {e}")
+    return n, errores
 
 
 _NUM = re.compile(r"(?:S/\.?\s*)?(\d{1,6}(?:[.,]\d{1,4})?)")

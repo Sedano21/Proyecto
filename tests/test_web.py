@@ -64,7 +64,7 @@ PAGES = ["/", "/alertas", "/alertas?agrupar=area", "/alertas?agrupar=grupo&prior
          "/almacen/cargas?area=Producción", "/almacen/cargas/nueva?tipo=CLIENTES", "/almacen/cargas/nueva?tipo=COSTOS",
          "/almacen/cargas/nueva?tipo=MERCADO",
          # v0.7: mercado por origen, comportamiento de clientes
-         "/ov/mercado/analisis", "/ov/mercado/informe", "/informes/comercial/cliente/1", "/ov/clientes?grupo=X&canal=Y",
+         "/ov/mercado/analisis", "/ov/mercado/sustitutos", "/ov/mercado/informe", "/informes/comercial/cliente/1", "/ov/clientes?grupo=X&canal=Y",
          "/informes/almacen", "/almacen/picking", "/almacen/picking?vista=semana", "/almacen/picking/formato",
          "/distribucion/flota/seguimiento", "/distribucion/flota/vehiculo/1", "/distribucion/flota/vehiculo/1?fecha=2026-10-14",
          "/informes/produccion?agrupar=MES", "/informes/produccion?agrupar=N&n=3", "/distribucion/incidencias?fecha=2026-10-14",
@@ -173,3 +173,21 @@ def test_detalle_de_todas_las_alertas_incluidas_las_sin_documento(app):
     login(c, "gerente.general")
     for a in s.query(Alert):
         assert c.get(f"/alertas/{a.id}").status_code == 200, (a.type_code, a.entidad, a.entidad_id)
+
+
+def test_pantallas_sustitutos_y_reglas_de_variacion(app, s):
+    from app.models import ProductSubstitute, PurchaseVariationRule, Product
+    p = s.get(Product, "PT-905")
+    base = ((p.producto_base or p.descripcion).upper().split("*")[0]).strip()
+    c = app.test_client()
+    tok, _ = login(c, "jefe.ventas")
+    assert c.post("/ov/mercado/sustitutos", data={"producto_base": base, "sustituto": "PALLAR", "_csrf": tok}).status_code == 302
+    assert s.query(ProductSubstitute).filter_by(sustituto="PALLAR").count() == 1
+    assert "PALLAR" in c.get("/ov/mercado/sustitutos").get_data(as_text=True)
+    assert c.post("/configuracion/variacion-compra", data={"alcance": "CANAL", "canal": "X", "_csrf": tok}).status_code == 403
+    c2 = app.test_client()
+    tok2, _ = login(c2, "sistemas")
+    assert c2.post("/configuracion/variacion-compra", data={"alcance": "CANAL", "canal": "MAYORISTA",
+                                                            "umbral_pct": "15", "_csrf": tok2}).status_code == 302
+    assert s.query(PurchaseVariationRule).filter_by(canal="MAYORISTA").one().umbral_pct == 15
+    assert "Canal MAYORISTA" in c2.get("/configuracion").get_data(as_text=True)

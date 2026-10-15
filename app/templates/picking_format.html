@@ -6,9 +6,9 @@
 <td class="t">SEGUIMIENTO DE CONTROL DE DESPACHO DE PRODUCTO TERMINADO</td><td style="width:170px;font-size:9px">Generado por el sistema<br>{{ generado.strftime('%d/%m/%Y %H:%M') }}</td></tr></table>
 <table style="margin-top:6px"><tr><td style="width:180px"><b>ENCARGADO {{ almacenes|join(', ') or 'ALMACÉN' }}:</b></td><td></td><td style="width:160px"><b>FECHA DE PICKING:</b></td><td>{{ fecha.strftime('%d/%m/%Y') }}</td></tr>
 <tr><td><b>ENCARGADO PICKING:</b></td><td colspan="3">{{ encargados|join(', ') }}</td></tr><tr><td><b>VERIFICADOR DE PEDIDO:</b></td><td colspan="3"></td></tr></table>
-<div style="overflow-x:auto"><table style="margin-top:6px;min-width:900px"><tr><th>FECHA</th><th>N° OV y CÓDIGO</th><th>CLIENTES</th><th>DESCRIPCIÓN DEL PRODUCTO</th><th>SOLICITADO UND</th><th>DESPACHADO UND</th><th>LOTE</th><th>FECHA DE PRODUCCIÓN</th><th>FECHA DE VENCIMIENTO</th><th>COMENTARIOS</th></tr>
-{% for f in filas %}<tr><td>{{ f.fecha.strftime('%d/%m') }}</td><td>{{ f.ov }} {{ f.codigo }}</td><td>{{ f.cliente }}</td><td>{{ f.descripcion }}</td><td class="r">{{ '%g'|format(f.solicitado) }}</td>
+<div style="overflow-x:auto"><table style="margin-top:6px;min-width:900px"><tr><th>FECHA</th><th>N° OV y CÓDIGO</th><th>CLIENTES</th><th>DESCRIPCIÓN DEL PRODUCTO</th><th>BULTOS</th><th>SOLICITADO UND</th><th>DESPACHADO UND</th><th>LOTE</th><th>FECHA DE PRODUCCIÓN</th><th>FECHA DE VENCIMIENTO</th><th>COMENTARIOS</th></tr>
+{% for f in filas %}<tr><td>{{ f.fecha.strftime('%d/%m') }}</td><td>{{ f.ov }} {{ f.codigo }}</td><td>{{ f.cliente }}</td><td>{{ f.descripcion }}</td><td class="r fill">{{ '%g'|format(f.bultos) if f.bultos is not none }}</td><td class="r">{{ '%g'|format(f.solicitado) }}</td>
 <td class="r fill">{{ '%g'|format(f.despachado) if f.despachado is not none }}</td><td class="fill">{{ f.lote }}</td><td class="fill">{{ f.fecha_produccion.strftime('%d-%m-%y') if f.fecha_produccion }}</td><td class="fill">{{ f.fecha_venc.strftime('%d-%m-%y') if f.fecha_venc }}</td><td>{{ f.comentario }}</td></tr>
-{% else %}<tr><td colspan="10">No hay picking programado para la fecha.</td></tr>{% endfor %}</table></div>
+{% else %}<tr><td colspan="11">No hay picking programado para la fecha.</td></tr>{% endfor %}</table></div>
 <p style="font-size:9px;color:#555">Las columnas despachado, lote, fecha de producción y fecha de vencimiento se llenan con el registro del auxiliar en el sistema (o a mano si se imprime en blanco).</p>
 </body></html>

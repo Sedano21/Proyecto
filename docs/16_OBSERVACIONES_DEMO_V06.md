@@ -126,3 +126,31 @@ Estados: ✅ implementado · ◐ implementado con supuesto por confirmar · ⏳ 
 7. **Anticipaciones propuestas:** picking 1 día antes de la fecha comprometida; aviso de documentos del vehículo
    15 días antes; aviso de mantenimiento 500 km antes; variación de compra del cliente ≥ 30 % en 90 días.
 8. **Costo de reposición:** queda a la espera de su definición.
+
+## 10. Respuestas del 15-oct-2026 aplicadas
+
+| # | Respuesta del usuario | Aplicación |
+|---|---|---|
+| 1 | «Debe ser entregado completo» | Cumplimiento = OV **entregadas completas** (estado ENTREGADA y cada línea recibida por completo) ÷ pedidos × 100. Los informes muestran por separado *Despachados* (salieron del almacén) y *Entregados completos*. |
+| 2 | Producción 1, reempaque 2, traslado externo 3, compra 4 | En la condición por producto de la OV, la acción ya no es una sola: se listan las **opciones aplicables en ese orden** (el del parámetro `orden_presolicitudes`). Producir si hay lista de materiales («revisar materiales» si no es factible); reempaque si lo único que falla es el vencimiento; traslado si un almacén externo tiene lotes que cumplen y están libres; compra siempre. |
+| 3 | Sábados hasta mediodía; domingos y feriados no se opera | Parámetros `dias_operacion` (lunes a viernes 1, sábado 0,5, domingo 0) y `feriados` (lista de fechas, vacía). La capacidad del periodo se calcula con ese factor por día. |
+| 4 | Los números a mano son la información para seguimiento del stock y la emisión de certificados | Se dedujo que son **bultos (cajas)**: coinciden con lo solicitado ÷ 12 (228 → 19, 696 → 58). Se agregó *unidades por bulto* al artículo (catálogo) y la columna **BULTOS** al registro y al formato de picking (se calcula si el artículo tiene unidades por bulto; el auxiliar puede corregirla). **Por confirmar** (ver §11). |
+| 5 | Los sustitutos se remitirán; debe haber un apartado para subirlos en Excel o de manera individual | Nueva pantalla **Comercial → Análisis de precios de mercado → Productos sustitutos** (`/ov/mercado/sustitutos`): alta individual, carga por Excel (columnas *Producto base*, *Sustituto*, opcional *Observación*), listado y desactivación. Registra Comercial (`costos.cargar`); consultan quienes ven costos. Reemplaza al parámetro `productos_sustitutos`, que se retiró del catálogo. |
+| 6 | Alerta de variación de compra configurable por canal o cliente en el panel de configuración | Nueva sección **Configuración → Alerta de variación de compra** (Sistemas, `config.editar`): reglas por canal o por cliente con umbral %, periodo en días y si genera alerta. Precedencia: cliente > canal > parámetros generales; un campo vacío hereda. El informe del cliente muestra el umbral aplicado y su origen. Además quedan **DEFINIDOS** los valores confirmados: picking 1 día antes, aviso de documentos del vehículo 15 días, aviso de mantenimiento 500 km. |
+| 7 | «De acuerdo» con la clasificación de las alertas | La naturaleza (tarea o informativa) propuesta se mantiene; puede ajustarse en *Configurar alertas*. |
+
+Cambios técnicos: migración `0010` (columnas `products.unidades_por_bulto` y `picking_records.bultos`; tablas
+`product_substitutes` y `purchase_variation_rules`; marca DEFINIDO de `dias_picking_antes_despacho`). Los parámetros
+retirados del catálogo (`dias_no_operativos`, `productos_sustitutos`) no se borran de una base existente: dejan de
+mostrarse en Configuración y ya no se usan. Pruebas nuevas en `tests/test_respuestas_15oct.py` y en `tests/test_web.py`.
+
+## 11. Preguntas que siguen abiertas
+
+1. **Capacidad por línea:** confirme la correspondencia IQ+CIMB = Cimbria, RAUMAK 1 y 2 = R1 y R2, RAUMAK 3 = R3.
+2. **Bultos del picking:** ¿los números escritos a mano son cajas o bultos (lo solicitado ÷ unidades por caja, p. ej.
+   12)? Indique las unidades por bulto de cada artículo o envíe la relación para cargarla. ¿Deben figurar en el
+   certificado? Si es así, ¿en qué campo?
+3. **Feriados:** envíe la lista de feriados del año para cargarla en el parámetro `feriados`.
+4. **Productos sustitutos:** pendiente de envío (la pantalla de carga ya está disponible).
+5. **Umbral de variación de compra:** el general sigue en 30 % y 90 días (PROPUESTO) hasta su validación.
+6. **Costo de reposición:** queda a la espera de su definición.

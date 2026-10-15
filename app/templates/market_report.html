@@ -1,7 +1,7 @@
 {% extends "base.html" %}{% from "_m.html" import csrf %}
 {% block content %}<p class="small"><a href="{{ url_for('com.market_analysis') }}">← Análisis de precios de mercado</a></p>
 <h1>Importar informe de precios</h1>
-<p class="muted">Cargue un informe en Excel o PDF (reportes del Estado, de mercado o de la competencia). El sistema extrae solo las filas de productos compatibles con lo que ofrecemos: <b>competencia directa</b> (mismo producto base) y <b>sustitutos</b> (según el parámetro <i>productos_sustitutos</i>). Nada se registra hasta que usted lo revise y confirme.</p>
+<p class="muted">Cargue un informe en Excel o PDF (reportes del Estado, de mercado o de la competencia). El sistema extrae solo las filas de productos compatibles con lo que ofrecemos: <b>competencia directa</b> (mismo producto base) y <b>sustitutos</b> (según la <a href="{{ url_for('com.market_substitutes') }}">relación de productos sustitutos</a>). Nada se registra hasta que usted lo revise y confirme.</p>
 {% if not prev %}<form class="card row" method="post" enctype="multipart/form-data">{{ csrf() }}<div class="grow"><label>Informe (.xlsx o .pdf)</label><input type="file" name="archivo" accept=".xlsx,.xlsm,.pdf" required></div><div><button>Leer informe</button></div></form>
 {% else %}<form class="card" method="post">{{ csrf() }}<input type="hidden" name="accion" value="confirmar"><input type="hidden" name="token" value="{{ token }}">
 <h3>{{ prev.meta.archivo }}: {{ prev.filas|length }} fila(s) compatibles</h3>

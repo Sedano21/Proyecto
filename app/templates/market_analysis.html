@@ -2,7 +2,7 @@
 {% block content %}<p class="small"><a href="{{ url_for('com.costs') }}">← Costos vs mercado</a></p>
 <h1>Análisis de precios de mercado</h1>
 <form class="row card" method="get"><div><label>Periodo</label><select name="dias">{% for x in [90,180,365] %}<option value="{{ x }}" {{ 'selected' if dias==x }}>Últimos {{ x }} días</option>{% endfor %}</select></div><div><button class="sec">Actualizar</button></div>
-{% if can('costos.cargar') %}<div><a class="btn sec" href="{{ url_for('com.market_report') }}">Importar informe (Excel o PDF)</a></div>{% endif %}</form>
+<div><a class="btn sec" href="{{ url_for('com.market_substitutes') }}">Productos sustitutos</a></div>{% if can('costos.cargar') %}<div><a class="btn sec" href="{{ url_for('com.market_report') }}">Importar informe (Excel o PDF)</a></div>{% endif %}</form>
 <div class="card"><h2>Nivel 1 · ¿A cuánto compramos?</h2><p class="small muted">Compras nacionales (registradas por Compras) e importaciones (registradas por Importaciones), en S/ por kg. Variación: último precio frente al primero del periodo.</p>
 <div class="tw"><table class="small"><tr><th>Producto</th><th class="r">Compra nacional</th><th class="r">Var.</th><th class="r">Importación</th><th class="r">Var.</th><th>Conviene</th></tr>
 {% for f in d.compra %}<tr><td>{{ f.producto }}</td><td class="r">{{ f.nacional|n if f.nacional else '—' }}</td><td class="r">{{ ('%+.1f %%'|format(f.var_nacional)) if f.var_nacional is not none else '—' }}</td>

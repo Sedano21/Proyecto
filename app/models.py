@@ -124,6 +124,8 @@ class Product(Base):
     descripcion: Mapped[str] = mapped_column(String(200))
     um: Mapped[str] = mapped_column(String(20), default="UNIDAD")  # UNIDAD / KILOGRAMO
     peso_kg: Mapped[float | None] = mapped_column(Float, nullable=True)  # PPB: peso por unidad
+    # unidades por caja o bulto: el picking registra los bultos para el seguimiento del stock y los certificados
+    unidades_por_bulto: Mapped[float | None] = mapped_column(Float, nullable=True)
     tipo: Mapped[str] = mapped_column(String(10), default="")  # PT, MP, GR, EN, SU, ...
     calidad: Mapped[str] = mapped_column(String(30), default="")  # SUPERIOR / EXTRA
     maquina: Mapped[str] = mapped_column(String(30), default="")  # MAQ (E2000, T1000...)
@@ -442,6 +444,7 @@ class PickingRecord(Base):
     task_id: Mapped[int | None] = mapped_column(ForeignKey("picking_tasks.id"), nullable=True)
     lote: Mapped[str] = mapped_column(String(60))
     cantidad: Mapped[float] = mapped_column(Float)
+    bultos: Mapped[float | None] = mapped_column(Float, nullable=True)  # cajas / bultos (dato escrito a mano en el formato)
     fecha_produccion: Mapped[date | None] = mapped_column(Date, nullable=True)
     fecha_venc: Mapped[date | None] = mapped_column(Date, nullable=True)
     comentario: Mapped[str] = mapped_column(String(250), default="")
@@ -1161,6 +1164,36 @@ class MarketPrice(Base):
     competidor: Mapped[str] = mapped_column(String(160), default="")
     presentacion: Mapped[str] = mapped_column(String(60), default="")
     product_code: Mapped[str] = mapped_column(String(40), default="")
+
+
+class ProductSubstitute(Base):
+    """Producto sustituto de un producto base que ofrecemos (lo registra Comercial, uno a uno o por Excel)."""
+    __tablename__ = "product_substitutes"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    producto_base: Mapped[str] = mapped_column(String(120), index=True)  # p. ej. LENTEJA
+    sustituto: Mapped[str] = mapped_column(String(120))  # texto con el que aparece en los informes
+    observacion: Mapped[str] = mapped_column(String(250), default="")
+    activo: Mapped[bool] = mapped_column(Boolean, default=True)
+    origen: Mapped[str] = mapped_column(String(160), default="")  # alta manual o archivo
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+
+class PurchaseVariationRule(Base):
+    """Alerta de variación de compra configurada por canal o por cliente (panel de configuración, 15-oct-2026).
+    Precedencia: cliente > canal > parámetros generales. Un valor vacío hereda el del nivel siguiente."""
+    __tablename__ = "purchase_variation_rules"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    alcance: Mapped[str] = mapped_column(String(10))  # CANAL | CLIENTE
+    canal: Mapped[str] = mapped_column(String(60), default="")
+    customer_id: Mapped[int | None] = mapped_column(ForeignKey("customers.id"), nullable=True)
+    umbral_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    dias: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    alerta: Mapped[bool] = mapped_column(Boolean, default=True)  # False: no genera alerta para este canal o cliente
+    activo: Mapped[bool] = mapped_column(Boolean, default=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    customer: Mapped["Customer | None"] = relationship()
 
 
 class PriceListMeta(Base):

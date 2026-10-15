@@ -11,9 +11,10 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 from ..db import db
 from ..models import (Alert, AlertType, AuditLog, Customer, EmailOutbox, GGAlertPreference, ImportPhaseTemplate,
-                      LeadTime, Param, ParamHistory, Permission, Product, ProductionLine, Role, RolePermission, User,
-                      Warehouse)
+                      LeadTime, Param, ParamHistory, Permission, Product, ProductionLine, PurchaseVariationRule, Role,
+                      RolePermission, User, Warehouse)
 from ..services import alerts as alert_svc
+from ..services import prices as prices_svc
 from ..services.core import BusinessError, audit, coerce_param, set_param
 from .common import act, f_float, install, login_required, perm_required
 
@@ -289,13 +290,38 @@ def outbox():
 @perm_required("config.ver")
 def config():
     s = db()
-    params = list(s.execute(select(Param).order_by(Param.grupo, Param.key)).scalars())
+    from .. import catalogs
+    vigentes = {x[0] for x in catalogs.PARAMS}  # los parámetros retirados del catálogo no se muestran (no se borran)
+    params = [p for p in s.execute(select(Param).order_by(Param.grupo, Param.key)).scalars() if p.key in vigentes]
     return render_template("config.html", params=params,
                            warehouses=list(s.execute(select(Warehouse).order_by(Warehouse.uso, Warehouse.prioridad, Warehouse.code)).scalars()),
                            lead_times=list(s.execute(select(LeadTime).order_by(LeadTime.categoria)).scalars()),
                            lines=list(s.execute(select(ProductionLine)).scalars()),
                            phases=list(s.execute(select(ImportPhaseTemplate).order_by(ImportPhaseTemplate.orden)).scalars()),
-                           roles=list(s.execute(select(Role).order_by(Role.nombre)).scalars()))
+                           roles=list(s.execute(select(Role).order_by(Role.nombre)).scalars()),
+                           var_rules=list(s.execute(select(PurchaseVariationRule).where(PurchaseVariationRule.activo.is_(True))
+                                                    .order_by(PurchaseVariationRule.alcance, PurchaseVariationRule.canal)).scalars()),
+                           canales=sorted(set(prices_svc.canales()) | {c.canal_precio for c in s.execute(
+                               select(Customer).where(Customer.canal_precio != "")).scalars() if c.canal_precio}),
+                           clientes=list(s.execute(select(Customer).order_by(Customer.nombre)).scalars()))
+
+
+@bp.route("/configuracion/variacion-compra", methods=["POST"])
+@perm_required("config.editar")
+def variation_rule_edit():
+    from ..services import customer_behavior as cb
+    fm = request.form
+    if fm.get("accion") == "baja":
+        def _baja():
+            r = db().get(PurchaseVariationRule, int(fm.get("id") or 0))
+            if r is None:
+                raise BusinessError("Regla no encontrada.")
+            cb.remove_variation_rule(g.user, r)
+        return act(_baja, "Regla desactivada.", url_for("main.config") + "#variacion")
+    return act(lambda: cb.save_variation_rule(g.user, fm.get("alcance"), fm.get("canal"), fm.get("customer_id"),
+                                              f_float("umbral_pct"), int(fm["dias"]) if fm.get("dias") else None,
+                                              fm.get("alerta", "1") == "1", fm.get("id")),
+               "Regla de variación de compra guardada.", url_for("main.config") + "#variacion")
 
 
 @bp.route("/configuracion/param/<key>", methods=["POST"])
@@ -422,7 +448,7 @@ def product_edit(code):
                   "proveedor_habitual"):
             if k in request.form:
                 setattr(p, k, request.form.get(k, "").strip())
-        for k in ("peso_kg", "stock_minimo", "merma_pct", "costo_max_compra"):
+        for k in ("peso_kg", "stock_minimo", "merma_pct", "costo_max_compra", "unidades_por_bulto"):
             if k in request.form:
                 setattr(p, k, f_float(k))
         for k in ("periodo_analisis_dias", "margen_seguridad_dias", "tiempo_max_almacen_dias"):

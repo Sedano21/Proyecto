@@ -126,7 +126,14 @@ def start(t, user, foto):
     audit(user, "PICKING_INICIADO", "SalesOrder", t.order.numero, {"tarea": t.id})
 
 
-def record(t, user, line_id, cantidad, lote, fecha_produccion=None, fecha_venc=None, comentario=""):
+def bultos_de(product, cantidad):
+    """Bultos o cajas según las unidades por bulto del artículo (None si no está configurado)."""
+    if product is None or not product.unidades_por_bulto or cantidad is None:
+        return None
+    return round(cantidad / product.unidades_por_bulto, 2)
+
+
+def record(t, user, line_id, cantidad, lote, fecha_produccion=None, fecha_venc=None, comentario="", bultos=None):
     """Registro del picking como en el formato: despachado, lote, fecha de producción y de vencimiento."""
     from .orders import register_picking
     if not _es_asignado(t, user):
@@ -142,6 +149,7 @@ def record(t, user, line_id, cantidad, lote, fecha_produccion=None, fecha_venc=N
     lot = next((r.lot for r in line.reservations if r.estado == "ACTIVA" and r.lot.lote == lote), None)
     avance = register_picking(order, user, line_id, cantidad, lote)
     db().add(PickingRecord(order_id=order.id, line_id=line.id, task_id=t.id, lote=lote, cantidad=cantidad,
+                           bultos=bultos if bultos is not None else bultos_de(line.product, cantidad),
                            fecha_produccion=fecha_produccion or (lot.fecha_fab if lot else None),
                            fecha_venc=fecha_venc or (lot.fecha_venc if lot else None),
                            comentario=(comentario or "").strip(), user_id=user.id))
@@ -195,6 +203,7 @@ def format_rows(tasks):
             for r in mios:
                 out.append({"fecha": t.fecha, "ov": o.numero, "codigo": l.product_code, "cliente": o.customer.nombre,
                             "descripcion": l.product.descripcion if l.product else "", "solicitado": l.cantidad,
+                            "bultos": (r.bultos if r and r.bultos is not None else bultos_de(l.product, l.cantidad)),
                             "despachado": r.cantidad if r else None, "lote": r.lote if r else "",
                             "fecha_produccion": r.fecha_produccion if r else None, "fecha_venc": r.fecha_venc if r else None,
                             "comentario": (r.comentario if r and r.comentario else o.lugar_entrega or o.distrito)})

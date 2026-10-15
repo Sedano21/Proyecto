@@ -302,7 +302,8 @@ def picking_task(tid):
             "asignar": lambda: pk.assign(t, g.user, f.getlist("user_id"), f_date("fecha"), f.get("comentario", "")),
             "iniciar": lambda: pk.start(t, g.user, save_upload(request.files.get("foto"), up, f"picking{t.id}_ini")),
             "registrar": lambda: pk.record(t, g.user, f.get("line_id"), f_float("cantidad", True), f.get("lote", ""),
-                                           f_date("fecha_produccion"), f_date("fecha_venc"), f.get("comentario", "")),
+                                           f_date("fecha_produccion"), f_date("fecha_venc"), f.get("comentario", ""),
+                                           f_float("bultos")),
             "listo": lambda: pk.finish(t, g.user, save_upload(request.files.get("foto"), up, f"picking{t.id}_fin"),
                                        f.get("observacion", "")),
         }.get(acc) or abort(400)
