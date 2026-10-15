@@ -1,13 +1,14 @@
 {% extends "base.html" %}{% from "_m.html" import b, csrf %}
 {% block content %}{% set tarea = svc.is_task(a) %}{% set cerrada = svc.is_closed(a) %}{% set con_resp = a.asignado_a or a.asignado_rol %}
 <p class="small"><a href="{{ url_for('main.alerts') }}">← Alertas</a></p>
-<h1>{{ 'Tarea' if tarea else 'Aviso' }} #{{ a.id }} {{ b(a.prioridad) }} <span class="b {{ a.estado }}">{{ estado_txt.get(a.estado, a.estado) }}</span></h1>
+<div class="page-head"><div><h1>{{ a.titulo }}</h1>
+<p class="sub">{% if tarea %}<span class="b warn">Acción requerida · tarea #{{ a.id }}</span>{% else %}<span class="b info">Información · aviso #{{ a.id }}</span>{% endif %} {{ b(a.prioridad) }} <span class="b {{ a.estado }}">{{ estado_txt.get(a.estado, a.estado) }}</span></p></div></div>
 <div class="card"><table class="kv">
-<tr><td>Título</td><td><b>{{ a.titulo }}</b></td></tr><tr><td>Detalle</td><td style="white-space:pre-line">{{ a.mensaje }}</td></tr>
-<tr><td>Tipo</td><td>{{ a.type.nombre }} · <b>{{ 'Tarea (requiere aprobación o atención)' if tarea else 'Informativa (se reconoce)' }}</b> <span class="muted small">(condición: {{ a.type.condicion }})</span></td></tr>
+<tr><td>Qué ocurrió</td><td style="white-space:pre-line">{{ a.mensaje or a.titulo }}</td></tr>
+<tr><td>Tipo</td><td>{{ a.type.nombre }} · {{ 'Tarea: requiere aprobación o atención' if tarea else 'Informativa: se reconoce' }} <span class="muted small">(condición: {{ a.type.condicion }})</span></td></tr>
 <tr><td>Área / grupo</td><td>{{ a.area }} / {{ a.type.grupo }}</td></tr>
-<tr><td>Destinatarios</td><td>{{ a.roles|join(', ') }}</td></tr>
-<tr><td>Entidad</td><td>{{ a.entidad }} {{ a.entidad_id }}
+<tr><td>Destinatarios</td><td>{% for r in a.roles %}{{ roles_nombre.get(r, r) }}{{ ', ' if not loop.last }}{% else %}—{% endfor %}</td></tr>
+<tr><td>Documento relacionado</td><td>{{ entidad_txt.get(a.entidad, a.entidad) }} {{ a.entidad_id }}
 {% if not a.entidad_id %}{% if a.entidad=='UploadBatch' %} · <a href="{{ url_for('alm.uploads') }}">ver cargas</a>{% elif a.entidad=='ProductionRequest' %} · <a href="{{ url_for('prod.reports') }}">ver partes de producción</a>{% elif a.entidad=='PriceListMeta' %}{% endif %}{% elif a.entidad=='SalesOrder' %} · <a href="{{ url_for('com.order_detail', oid=a.entidad_id) }}">abrir OV</a>{% if a.type_code in ['PRESOLICITUD_AUTOMATICA','OV_FALTANTE'] and can('ov.opciones') %} · <a href="{{ url_for('com.order_options', oid=a.entidad_id) }}">ver opciones evaluadas y pre-solicitudes</a>{% endif %}{% elif a.entidad=='Route' %} · <a href="{{ url_for('dist.route_detail', rid=a.entidad_id) }}">abrir ruta</a>
 {% elif a.entidad=='ProductionRequest' %} · <a href="{{ url_for('prod.request_detail', rid=a.entidad_id) }}">abrir solicitud</a>{% elif a.entidad=='PurchaseRequest' %} · <a href="{{ url_for('buy.purchase_detail', pid=a.entidad_id) }}">abrir compra</a>
 {% elif a.entidad=='RepackRequest' %} · <a href="{{ url_for('alm.repack_detail', rid=a.entidad_id) }}">abrir reempaque</a>{% elif a.entidad=='Transfer' %} · <a href="{{ url_for('alm.transfers') }}">ver traslados</a>

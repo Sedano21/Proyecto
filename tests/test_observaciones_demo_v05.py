@@ -309,4 +309,4 @@ def test_diseno_adaptable(app):
     html = c.get("/").get_data(as_text=True)
     assert 'name="viewport"' in html and "menu-btn" in html
     css = c.get("/static/style.css").get_data(as_text=True)
-    assert "@media (max-width:700px)" in css and "@media (max-width:1024px)" in css
+    assert "@media (max-width:760px)" in css and "@media (max-width:1100px)" in css  # rediseño v0.8

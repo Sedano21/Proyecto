@@ -3,3 +3,5 @@
 {% macro bar(p) %}<div class="bar" title="{{ p }}%"><i style="width:{{ [p or 0,100]|min }}%"></i></div>{% endmacro %}
 {% macro post(url, label, cls='', confirm=None, fields=None) %}<form class="inline" method="post" action="{{ url }}"{% if confirm %} onsubmit="return confirm('{{ confirm }}')"{% endif %}>{{ csrf() }}{% if fields %}{% for k,v in fields.items() %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}{% endif %}<button class="{{ cls }}">{{ label }}</button></form>{% endmacro %}
 {% macro errs(lst, cls='err-list') %}{% if lst %}<ul class="{{ cls }}">{% for e in lst %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}{% endmacro %}
+{% macro ic(name, cls='') %}<svg class="ic {{ cls }}" aria-hidden="true" focusable="false"><use href="#i-{{ name }}"/></svg>{% endmacro %}
+{% macro empty(texto, icono='info') %}<div class="empty"><svg class="ic" aria-hidden="true" focusable="false"><use href="#i-{{ icono }}"/></svg><p>{{ texto }}</p></div>{% endmacro %}

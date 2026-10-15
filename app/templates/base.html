@@ -2,93 +2,160 @@
 <html lang="es">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#ffffff">
 <title>{% block title %}Módulo de Operaciones{% endblock %} · Corporación Productiva</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23007a3d'/%3E%3Cpath d='M10 23V9h6.5a4.5 4.5 0 0 1 0 9H10' fill='none' stroke='%23fff' stroke-width='3'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<script>try{if(localStorage.getItem('cp-nav')==='min')document.documentElement.classList.add('nav-min')}catch(e){}</script>
 </head>
 <body>
+{% include "_icons.html" %}
+{% from "_m.html" import ic %}
+{% macro nl(href, icono, texto, extra='') %}<a href="{{ href }}" title="{{ texto }}">{{ ic(icono) }}<span class="lbl">{{ texto }}</span>{{ extra }}</a>{% endmacro %}
 {% if user %}
+<a class="skip" href="#contenido">Saltar al contenido</a>
 <div class="layout">
-  <nav class="side">
-    <div class="brand">Módulo de Operaciones<small>Corporación Productiva · prototipo v0.7</small></div>
-    <a href="{{ url_for('main.dashboard') }}">Inicio / Tablero</a>
-    {% if can('informes.comercial') or can('informes.reempaque') or can('informes.produccion') or can('informes.distribucion') or can('informes.almacen') %}<a href="{{ url_for('rep.home') }}">Informes</a>{% endif %}
-    <a href="{{ url_for('main.alerts') }}">Alertas{% if alertas_abiertas %}<span class="badge-al">{{ alertas_abiertas }}</span>{% endif %}</a>
-    {% if can('ov.ver') %}<h4>Comercial</h4>
-      <a href="{{ url_for('com.orders') }}">Órdenes de venta</a>
-      {% if can('ov.crear') %}<a href="{{ url_for('com.order_new') }}">Registrar OV</a>{% endif %}
-      {% if can('clientes.ver') %}<a href="{{ url_for('com.customer_list') }}">Clientes (fichas)</a>{% endif %}
-      {% if can('ov.importar') or can('precios.editar') or can('costos.cargar') or can('clientes.canal') %}<a href="{{ url_for('alm.uploads', area='Comercial') }}">Cargas de archivos</a>{% endif %}
-      {% if can('precios.ver') %}<a href="{{ url_for('com.prices') }}">Listas de precios</a>{% endif %}
-      {% if can('costos.ver') %}<a href="{{ url_for('com.costs') }}">Costos vs mercado</a>{% endif %}
-    {% endif %}
-    {% if can('stock.ver') %}<h4>Almacén</h4>
-      <a href="{{ url_for('alm.stock') }}">Stock y reservas</a>
-      {% if can('preparacion.registrar') or can('ov.ver') %}<a href="{{ url_for('com.preparation') }}">Preparación (picking)</a>{% endif %}
-      {% if can('stock.cargar') %}<a href="{{ url_for('alm.uploads', area='Almacén') }}">Cargas de archivos</a>{% endif %}
-      {% if can('picking.asignar') or can('tareas.ejecutar') or can('preparacion.registrar') %}<a href="{{ url_for('alm.picking_schedule') }}">Programación de picking</a>{% endif %}
-      {% if can('stock.conteo') %}<a href="{{ url_for('alm.counts') }}">Conteos físicos</a>{% endif %}
-    {% endif %}
-    {% if can('traslados.ver') %}<a href="{{ url_for('alm.transfers') }}">Traslados</a>{% endif %}
-    {% if can('reempaque.ver') %}<a href="{{ url_for('alm.repacks') }}">Reempaque</a>{% endif %}
-    {% if can('produccion.ver') %}<h4>Producción</h4>
-      <a href="{{ url_for('prod.requests') }}">Solicitudes y programa</a>
-      <a href="{{ url_for('prod.bom') }}">Lista de materiales</a>
-      <a href="{{ url_for('prod.liquidations') }}">Liquidaciones</a>
-      <a href="{{ url_for('prod.reports') }}">Partes de producción</a>
-      {% if can('produccion.bom_cargar') or can('produccion.liquidar') %}<a href="{{ url_for('alm.uploads', area='Producción') }}">Cargas de archivos</a>{% endif %}
-    {% endif %}
-    {% if can('calidad.ver') or can('distribucion.seguridad') %}<h4>Calidad</h4>
-      {% if can('calidad.ver') %}<a href="{{ url_for('cal.home') }}">Liberación y registros</a>
-      <a href="{{ url_for('cal.certificates') }}">Certificados</a>{% endif %}
-      {% if can('distribucion.seguridad') and not can('calidad.ver') %}<a href="{{ url_for('cal.new_record', formato='VEHICULO') }}">Control de vehículos</a>{% endif %}
-    {% endif %}
-    {% if can('compras.ver') or can('importaciones.ver') %}<h4>Abastecimiento</h4>
-      {% if can('compras.ver') %}<a href="{{ url_for('buy.purchases') }}">Compras nacionales</a>
-      <a href="{{ url_for('buy.replenishment') }}">Análisis de reposición</a>{% endif %}
-      {% if can('importaciones.ver') %}<a href="{{ url_for('buy.imports') }}">Importaciones</a>{% endif %}
-    {% endif %}
-    {% if can('distribucion.ver') %}<h4>Distribución</h4>
-      <a href="{{ url_for('dist.routes') }}">Programación y rutas</a>
-      <a href="{{ url_for('dist.incidents') }}">Incidencias</a>
-      {% if can('distribucion.flota') %}<a href="{{ url_for('dist.fleet') }}">Flota y conductores</a>{% endif %}
-      {% if can('flota.ver') or can('distribucion.flota') %}<a href="{{ url_for('dist.fleet_tracking') }}">Seguimiento de flota</a>{% endif %}
-    {% endif %}
-    {% if can('config.ver') or can('auditoria.ver') %}<h4>Administración</h4>
-      {% if can('config.ver') %}<a href="{{ url_for('main.config') }}">Configuración</a>{% endif %}
-      {% if can('config.editar') %}<a href="{{ url_for('alm.uploads', area='Configuración') }}">Cargas de configuración</a>{% endif %}
-      {% if can('usuarios.administrar') %}<a href="{{ url_for('main.users') }}">Usuarios</a>
-      <a href="{{ url_for('main.permissions') }}">Permisos por rol</a>{% endif %}
-      {% if can('alertas.configurar') %}<a href="{{ url_for('main.alert_config') }}">Configurar alertas</a>
-      <a href="{{ url_for('main.outbox') }}">Bandeja de correo</a>{% endif %}
-      {% if can('auditoria.ver') %}<a href="{{ url_for('main.audit') }}">Auditoría</a>{% endif %}
-    {% endif %}
-    {% if user.role_code == 'GERENCIA_GENERAL' %}<a href="{{ url_for('main.gg_prefs') }}">Mis alertas directas</a>{% endif %}
+  <nav class="side" id="menu" aria-label="Navegación principal">
+    <div class="brand"><a href="{{ url_for('main.dashboard') }}" class="brand-link" title="Inicio"><img src="{{ logo_url }}" alt="Corporación Productiva" class="brand-logo"></a>
+      <div class="brand-mod lbl">Módulo de Operaciones</div></div>
+    <div class="nav-scroll">
+    <div class="grp" data-grupo="Panel">
+      {{ nl(url_for('main.dashboard'), 'home', 'Inicio') }}
+      {{ nl(url_for('main.alerts'), 'bell', 'Alertas y tareas', ('<span class="count" aria-label="' ~ alertas_abiertas ~ ' abiertas">' ~ alertas_abiertas ~ '</span>')|safe if alertas_abiertas else '') }}
+      {% if can('informes.comercial') or can('informes.reempaque') or can('informes.produccion') or can('informes.distribucion') or can('informes.almacen') %}{{ nl(url_for('rep.home'), 'chart', 'Informes') }}{% endif %}
+    </div>
+    {% if can('ov.ver') %}<div class="grp" data-grupo="Comercial"><h4><span class="lbl">Comercial</span></h4>
+      {{ nl(url_for('com.orders'), 'cart', 'Órdenes de venta') }}
+      {% if can('ov.crear') %}{{ nl(url_for('com.order_new'), 'plus', 'Registrar OV') }}{% endif %}
+      {% if can('clientes.ver') %}{{ nl(url_for('com.customer_list'), 'users', 'Clientes') }}{% endif %}
+      {% if can('precios.ver') %}{{ nl(url_for('com.prices'), 'tag', 'Listas de precios') }}{% endif %}
+      {% if can('costos.ver') %}{{ nl(url_for('com.costs'), 'scale', 'Costos vs mercado') }}{% endif %}
+      {% if can('ov.importar') or can('precios.editar') or can('costos.cargar') or can('clientes.canal') %}{{ nl(url_for('alm.uploads', area='Comercial'), 'upload', 'Cargas de archivos') }}{% endif %}
+    </div>{% endif %}
+    {% if can('stock.ver') or can('traslados.ver') or can('reempaque.ver') or can('tareas.ejecutar') %}<div class="grp" data-grupo="Almacén"><h4><span class="lbl">Almacén</span></h4>
+      {% if can('stock.ver') %}{{ nl(url_for('alm.stock'), 'box', 'Stock y reservas') }}{% endif %}
+      {% if can('preparacion.registrar') or can('ov.ver') %}{{ nl(url_for('com.preparation'), 'clipboard', 'Preparación (picking)') }}{% endif %}
+      {% if can('picking.asignar') or can('tareas.ejecutar') or can('preparacion.registrar') %}{{ nl(url_for('alm.picking_schedule'), 'calendar', 'Programación de picking') }}{% endif %}
+      {% if can('traslados.ver') %}{{ nl(url_for('alm.transfers'), 'swap', 'Traslados') }}{% endif %}
+      {% if can('reempaque.ver') %}{{ nl(url_for('alm.repacks'), 'refresh', 'Reempaque') }}{% endif %}
+      {% if can('stock.conteo') %}{{ nl(url_for('alm.counts'), 'count', 'Conteos físicos') }}{% endif %}
+      {% if can('stock.cargar') %}{{ nl(url_for('alm.uploads', area='Almacén'), 'upload', 'Cargas de archivos') }}{% endif %}
+    </div>{% endif %}
+    {% if can('produccion.ver') %}<div class="grp" data-grupo="Producción"><h4><span class="lbl">Producción</span></h4>
+      {{ nl(url_for('prod.requests'), 'factory', 'Solicitudes y programa') }}
+      {{ nl(url_for('prod.plan'), 'calendar', 'Planeamiento') }}
+      {{ nl(url_for('prod.bom'), 'layers', 'Lista de materiales') }}
+      {{ nl(url_for('prod.liquidations'), 'file', 'Liquidaciones') }}
+      {{ nl(url_for('prod.reports'), 'gauge', 'Partes de producción') }}
+      {% if can('produccion.bom_cargar') or can('produccion.liquidar') %}{{ nl(url_for('alm.uploads', area='Producción'), 'upload', 'Cargas de archivos') }}{% endif %}
+    </div>{% endif %}
+    {% if can('calidad.ver') or can('distribucion.seguridad') %}<div class="grp" data-grupo="Calidad"><h4><span class="lbl">Calidad</span></h4>
+      {% if can('calidad.ver') %}{{ nl(url_for('cal.home'), 'shield', 'Liberación y registros') }}
+      {{ nl(url_for('cal.certificates'), 'award', 'Certificados') }}{% endif %}
+      {% if can('distribucion.seguridad') and not can('calidad.ver') %}{{ nl(url_for('cal.new_record', formato='VEHICULO'), 'shield', 'Control de vehículos') }}{% endif %}
+    </div>{% endif %}
+    {% if can('compras.ver') or can('importaciones.ver') %}<div class="grp" data-grupo="Abastecimiento"><h4><span class="lbl">Abastecimiento</span></h4>
+      {% if can('compras.ver') %}{{ nl(url_for('buy.purchases'), 'bag', 'Compras nacionales') }}
+      {{ nl(url_for('buy.replenishment'), 'trend', 'Análisis de reposición') }}{% endif %}
+      {% if can('importaciones.ver') %}{{ nl(url_for('buy.imports'), 'ship', 'Importaciones') }}{% endif %}
+    </div>{% endif %}
+    {% if can('distribucion.ver') %}<div class="grp" data-grupo="Distribución"><h4><span class="lbl">Distribución</span></h4>
+      {{ nl(url_for('dist.routes'), 'route', 'Programación y rutas') }}
+      {{ nl(url_for('dist.incidents'), 'alert', 'Incidencias') }}
+      {% if can('distribucion.flota') %}{{ nl(url_for('dist.fleet'), 'truck', 'Flota y conductores') }}{% endif %}
+      {% if can('flota.ver') or can('distribucion.flota') %}{{ nl(url_for('dist.fleet_tracking'), 'wrench', 'Seguimiento de flota') }}{% endif %}
+    </div>{% endif %}
+    {% if can('config.ver') or can('auditoria.ver') or can('usuarios.administrar') or can('alertas.configurar') %}<div class="grp" data-grupo="Administración"><h4><span class="lbl">Administración</span></h4>
+      {% if can('config.ver') %}{{ nl(url_for('main.config'), 'settings', 'Configuración') }}{% endif %}
+      {% if can('config.editar') %}{{ nl(url_for('alm.uploads', area='Configuración'), 'database', 'Cargas de configuración') }}{% endif %}
+      {% if can('usuarios.administrar') %}{{ nl(url_for('main.users'), 'user', 'Usuarios') }}
+      {{ nl(url_for('main.permissions'), 'key', 'Permisos por rol') }}{% endif %}
+      {% if can('alertas.configurar') %}{{ nl(url_for('main.alert_config'), 'bell', 'Configurar alertas') }}
+      {{ nl(url_for('main.outbox'), 'mail', 'Bandeja de correo') }}{% endif %}
+      {% if can('auditoria.ver') %}{{ nl(url_for('main.audit'), 'history', 'Auditoría') }}{% endif %}
+    </div>{% endif %}
+    {% if user.role_code == 'GERENCIA_GENERAL' %}<div class="grp" data-grupo="Preferencias">{{ nl(url_for('main.gg_prefs'), 'mail', 'Mis alertas directas') }}</div>{% endif %}
+    </div>
+    <div class="side-foot lbl">Prototipo v0.8</div>
   </nav>
   <div class="main">
-    <div class="top">
-      <button type="button" class="menu-btn noprint" aria-label="Menú" onclick="document.body.classList.toggle('menu-open')">☰</button>
-      <div class="stockinfo">{% if stock_info %}Stock: última carga SAP <b>{{ stock_info.ts|d }}</b> ({{ stock_info.archivo }}, por {{ stock_info.usuario }}). <b>No es tiempo real.</b>{% else %}Stock: <b>sin carga SAP registrada</b>.{% endif %}</div>
-      <div class="who">{{ user.nombre }} · <b>{{ user.role.nombre }}</b> · <a href="{{ url_for('main.logout') }}">Salir</a></div>
-    </div>
-    <div class="content">
-      {% if demo_mode %}<div class="note info noprint">Entorno de demostración con datos ficticios. No conectado a SAP ni a sistemas productivos.</div>{% endif %}
-      {% with msgs = get_flashed_messages(with_categories=true) %}{% for c, m in msgs %}<div class="flash {{ c }}">{{ m }}</div>{% endfor %}{% endwith %}
+    <header class="top">
+      <button type="button" class="icon-btn menu-btn noprint" aria-label="Abrir menú" aria-controls="menu" aria-expanded="false">{{ ic('menu') }}</button>
+      <button type="button" class="icon-btn collapse-btn noprint" aria-label="Contraer o expandir el menú lateral">{{ ic('sidebar') }}</button>
+      <nav class="crumbs" aria-label="Ubicación"><a href="{{ url_for('main.dashboard') }}">Inicio</a><span class="crumb-rest"></span></nav>
+      <div class="top-right noprint">
+        <span class="stock-chip" title="{% if stock_info %}Última carga de stock de SAP: {{ stock_info.ts|d }} ({{ stock_info.archivo }}, por {{ stock_info.usuario }}). No es tiempo real.{% else %}Sin carga de stock de SAP registrada.{% endif %}">{{ ic('database') }}<span>{% if stock_info %}Stock SAP <b>{{ stock_info.ts|d }}</b><em class="hide-sm"> · no es tiempo real</em>{% else %}Sin carga SAP{% endif %}</span></span>
+        <a class="icon-btn bell" href="{{ url_for('main.alerts') }}" aria-label="Alertas: {{ alertas_abiertas }} abiertas">{{ ic('bell') }}{% if alertas_abiertas %}<span class="dot">{{ alertas_abiertas if alertas_abiertas < 100 else '99+' }}</span>{% endif %}</a>
+        <details class="usermenu"><summary aria-label="Menú de usuario"><span class="avatar" aria-hidden="true">{{ user.nombre[:1] }}</span><span class="who hide-sm"><b>{{ user.nombre }}</b><small>{{ user.role.nombre }}</small></span></summary>
+          <div class="menu-pop"><div class="menu-head"><b>{{ user.nombre }}</b><small>{{ user.role.nombre }}</small></div>
+            <a href="{{ url_for('main.change_password') }}">{{ ic('key') }} Cambiar contraseña</a>
+            <a href="{{ url_for('main.logout') }}">{{ ic('logout') }} Salir</a></div></details>
+      </div>
+    </header>
+    <main class="content" id="contenido" tabindex="-1">
+      {% if demo_mode %}<div class="demo-strip noprint">{{ ic('info') }} Entorno de demostración con datos ficticios. No conectado a SAP ni a sistemas productivos.</div>{% endif %}
+      {% with msgs = get_flashed_messages(with_categories=true) %}{% for c, m in msgs %}<div class="flash {{ c }}" role="{{ 'alert' if c == 'error' else 'status' }}">{{ ic('x' if c == 'error' else ('check' if c == 'ok' else 'info')) }}<span>{{ m }}</span></div>{% endfor %}{% endwith %}
       {% block content %}{% endblock %}
-    </div>
+    </main>
   </div>
 </div>
 {% else %}
-<div class="content">{% with msgs = get_flashed_messages(with_categories=true) %}{% for c, m in msgs %}<div class="flash {{ c }}">{{ m }}</div>{% endfor %}{% endwith %}{% block public %}{% endblock %}</div>
+<main class="public">{% with msgs = get_flashed_messages(with_categories=true) %}{% for c, m in msgs %}<div class="flash {{ c }}" role="alert">{{ m }}</div>{% endfor %}{% endwith %}{% block public %}{% endblock %}</main>
 {% endif %}
 <script>
 (function(){
-  // menú: marca la opción actual y cierra el panel lateral al tocar fuera (celular / tablet)
-  var p = location.pathname + location.search;
-  var best = null;
-  document.querySelectorAll('.side a').forEach(function(a){ var h = a.getAttribute('href') || '';
+  var html = document.documentElement, body = document.body;
+  // opción activa del menú y migas de pan
+  var p = location.pathname + location.search, best = null;
+  document.querySelectorAll('.side .nav-scroll a').forEach(function(a){ var h = a.getAttribute('href') || '';
     if (h === p || (h.indexOf('?') < 0 && h !== '/' && location.pathname.indexOf(h) === 0)) { if (!best || h.length > best.getAttribute('href').length) best = a; } });
-  if (best) best.classList.add('on');
-  document.addEventListener('click', function(e){ if (document.body.classList.contains('menu-open') && !e.target.closest('.side') && !e.target.closest('.menu-btn')) document.body.classList.remove('menu-open'); });
+  if (!best && location.pathname === '/') best = document.querySelector('.side .nav-scroll a');
+  var rest = document.querySelector('.crumb-rest'), h1 = document.querySelector('.content h1');
+  function crumb(t){ if (!rest || !t) return; var s = document.createElement('span'); s.textContent = t; rest.appendChild(s); }
+  if (best) { best.classList.add('on'); best.setAttribute('aria-current', 'page');
+    var grp = best.closest('.grp'), g = grp ? grp.dataset.grupo : '', lbl = best.querySelector('.lbl');
+    if (g && g !== 'Panel') crumb(g);
+    if (lbl && lbl.textContent !== 'Inicio') crumb(lbl.textContent);
+    var base = (best.getAttribute('href') || '').split('?')[0];
+    if (h1 && location.pathname !== base) crumb(h1txt());
+  } else if (h1) { crumb(h1txt()); }
+  function h1txt(){ var s = ''; h1.childNodes.forEach(function(n){ if (n.nodeType === 3) s += n.textContent; }); return (s.trim() || h1.textContent.trim()).replace(/\s+/g, ' ').slice(0, 70); }
+  // menú lateral: contraer en escritorio; panel desplegable en tablet y celular
+  var mb = document.querySelector('.menu-btn'), cb = document.querySelector('.collapse-btn');
+  function cerrar(){ body.classList.remove('menu-open'); if (mb) mb.setAttribute('aria-expanded', 'false'); }
+  if (mb) mb.addEventListener('click', function(){ var o = body.classList.toggle('menu-open'); mb.setAttribute('aria-expanded', o ? 'true' : 'false'); });
+  if (cb) cb.addEventListener('click', function(){ var m = html.classList.toggle('nav-min'); try { localStorage.setItem('cp-nav', m ? 'min' : 'full'); } catch(e) {} });
+  document.addEventListener('click', function(e){ if (body.classList.contains('menu-open') && !e.target.closest('.side') && !e.target.closest('.menu-btn')) cerrar();
+    document.querySelectorAll('details.usermenu[open]').forEach(function(d){ if (!d.contains(e.target)) d.open = false; }); });
+  document.addEventListener('keydown', function(e){ if (e.key === 'Escape') { cerrar(); document.querySelectorAll('details.usermenu[open]').forEach(function(d){ d.open = false; }); } });
+  // tablas: desplazamiento horizontal dentro del componente, nunca de toda la página
+  document.querySelectorAll('.content table, .content .ftable').forEach(function(t){
+    if (t.closest('.tw, .tbl, .doc') || t.classList.contains('kv')) return;
+    var w = document.createElement('div'); w.className = 'tw'; t.parentNode.insertBefore(w, t); w.appendChild(t); });
+  // celular: filtros plegables (abiertos si hay alguno aplicado) y tablas en fichas por registro
+  if (window.matchMedia('(max-width:760px)').matches) {
+    document.querySelectorAll('.content form.filters, .content form.row.card[method="get"]').forEach(function(f){
+      if (f.closest('details')) return;
+      var activos = [].some.call(f.querySelectorAll('select, input:not([type=hidden]):not([type=submit])'), function(x){ return x.tagName === 'SELECT' ? x.selectedIndex > 0 : !!x.value; });
+      var d = document.createElement('details'); d.className = 'filters-fold'; if (activos) d.open = true;
+      var s = document.createElement('summary'); s.textContent = activos ? 'Filtros (aplicados)' : 'Filtros'; d.appendChild(s);
+      f.parentNode.insertBefore(d, f); d.appendChild(f); });
+  }
+  document.querySelectorAll('.content .tbl > table, .content table.list').forEach(function(t){
+    if (!t.classList.contains('nostack') && !t.querySelector('th[colspan], td[rowspan]')) t.classList.add('stack'); });
+  document.querySelectorAll('.content table.stack').forEach(function(t){
+    var hs = [].map.call(t.querySelectorAll('thead th, tr:first-child > th'), function(h){ return h.textContent.trim(); });
+    t.querySelectorAll('tr').forEach(function(tr){ [].forEach.call(tr.children, function(td, i){ if (td.tagName === 'TD' && hs[i]) td.setAttribute('data-label', hs[i]); }); }); });
+  // campos obligatorios: marca visible en su etiqueta
+  document.querySelectorAll('.content [required]').forEach(function(el){
+    if (el.type === 'hidden' || el.type === 'checkbox') return;
+    var lb = el.id ? document.querySelector('label[for="' + el.id + '"]') : null;
+    if (!lb) { var prev = el.previousElementSibling; if (prev && prev.tagName === 'LABEL') lb = prev; }
+    if (lb) lb.classList.add('req'); });
+  // evita el doble envío accidental de formularios POST (el botón pulsado ya viaja en el envío)
+  document.querySelectorAll('.content form').forEach(function(f){ f.addEventListener('submit', function(e){
+    if ((f.getAttribute('method') || '').toLowerCase() !== 'post' || e.defaultPrevented) return;
+    var b = e.submitter; if (b) setTimeout(function(){ b.disabled = true; b.classList.add('busy'); setTimeout(function(){ b.disabled = false; b.classList.remove('busy'); }, 8000); }, 0); }); });
 })();
 </script>
 </body>

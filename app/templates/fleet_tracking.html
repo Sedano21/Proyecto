@@ -1,7 +1,7 @@
 {% extends "base.html" %}{% from "_m.html" import b %}
 {% block content %}<h1>Seguimiento de flota</h1>
 <p class="muted small">SOAT, revisión técnica, impuestos, multas, combustible y mantenimiento por vehículo. Se alerta a Distribución cuando un documento está por vencer o el vehículo se acerca a su mantenimiento.</p>
-<div class="tw"><table><tr><th>Vehículo</th><th>SOAT</th><th>Revisión técnica</th><th>Impuesto</th><th class="r">Multas pendientes</th><th class="r">Km actual</th><th>Próximo mantenimiento</th><th class="r">Rendimiento km/gal</th><th></th></tr>
+<div class="tw"><table class="list"><tr><th>Vehículo</th><th>SOAT</th><th>Revisión técnica</th><th>Impuesto</th><th class="r">Multas pendientes</th><th class="r">Km actual</th><th>Próximo mantenimiento</th><th class="r">Rendimiento km/gal</th><th></th></tr>
 {% for v, st in filas %}<tr><td><b>{{ v.placa }}</b> <span class="muted small">{{ v.descripcion }} · {{ 'propio' if v.propio else 'externo' }}</span></td>
 {% for t in ['SOAT','REVISION_TECNICA','IMPUESTO_VEHICULAR'] %}{% set d = st.documentos.get(t) %}<td>{% if d %}{% if d in st.vencidos %}<span class="b ALTA">vencido {{ d.vencimiento|d }}</span>{% else %}{{ d.vencimiento|d }}{% endif %}{% else %}<span class="muted">sin registro</span>{% endif %}</td>{% endfor %}
 <td class="r">{{ st.multas|selectattr('estado', 'equalto', 'PENDIENTE')|list|length }}</td><td class="r">{{ v.km_actual|n if v.km_actual is not none else '—' }}</td>

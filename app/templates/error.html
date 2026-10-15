@@ -1,3 +1,7 @@
-{% extends "base.html" %}
-{% block content %}<h1>Error {{ code }}</h1><p>{{ msg }}</p><p><a href="{{ url_for('main.dashboard') }}">Volver al inicio</a></p>{% endblock %}
-{% block public %}<h1>Error {{ code }}</h1><p>{{ msg }}</p><p><a href="{{ url_for('main.login') }}">Ingresar</a></p>{% endblock %}
+{% extends "base.html" %}{% from "_m.html" import ic %}
+{% block content %}<div class="card" style="max-width:640px;margin:24px auto;text-align:center;padding:32px 24px">
+<div style="color:{{ 'var(--warn)' if code == 403 else 'var(--muted)' }}">{{ ic('shield' if code == 403 else 'info', 'ic-xl') }}</div>
+<h1 style="margin-top:10px">{{ {403: 'Acceso restringido', 404: 'Página no encontrada', 400: 'Solicitud no válida'}.get(code, 'Error ' ~ code) }}</h1>
+<p class="muted">{{ msg }}</p><p class="small muted">Código {{ code }}</p>
+<p><a class="btn" href="{{ url_for('main.dashboard') }}">Volver al inicio</a> <a class="btn sec" href="javascript:history.back()">Regresar</a></p></div>{% endblock %}
+{% block public %}<div class="card login" style="text-align:center"><h1>Error {{ code }}</h1><p class="muted">{{ msg }}</p><p><a class="btn" href="{{ url_for('main.login') }}">Ingresar</a></p></div>{% endblock %}

@@ -135,6 +135,16 @@ def install(app):
         g.perms = user_perms(g.user) if g.user else set()
         check_csrf()
 
+    def _logo_url():
+        """Logotipo oficial si Sistemas lo cargó en static/img (logo_oficial.svg/png); si no, el logo de la empresa
+        usado en los formatos impresos."""
+        import os
+        from flask import url_for
+        for n in ("logo_oficial.svg", "logo_oficial.png"):
+            if os.path.exists(os.path.join(app.static_folder, "img", n)):
+                return url_for("static", filename=f"img/{n}")
+        return url_for("static", filename="img/logo_corporacion_productiva.png")
+
     @app.context_processor
     def _ctx():
         from ..services.stock import stock_freshness
@@ -147,6 +157,7 @@ def install(app):
             except Exception:  # noqa: BLE001
                 abiertas = 0
         return {"csrf_token": csrf_token, "user": u, "perms": g.get("perms", set()), "can": lambda p: p in g.get("perms", set()),
+                "logo_url": _logo_url(),
                 "fmt_date": fmt_date, "fmt_num": fmt_num, "stock_info": stock_freshness() if u else None,
                 "alertas_abiertas": abiertas, "today": date.today(), "demo_mode": app.config.get("DEMO_MODE")}
 
@@ -174,6 +185,25 @@ def install(app):
     app.jinja_env.globals["doc_param"] = doc_param
     app.jinja_env.filters["d"] = fmt_date
     app.jinja_env.filters["n"] = fmt_num
+
+    def dictfmt(d):
+        """Detalle legible de un registro (clave: valor) en lugar de JSON crudo."""
+        from markupsafe import Markup, escape
+        if not isinstance(d, dict):
+            return escape(d)
+
+        def val(v):
+            if isinstance(v, dict):
+                return ", ".join(f"{k}: {val(x)}" for k, x in v.items() if x not in (None, "", [], {}))
+            if isinstance(v, (list, tuple)):
+                return ", ".join(val(x) for x in v) or "—"
+            if isinstance(v, bool):
+                return "sí" if v else "no"
+            return str(v)
+        partes = [f"<b>{escape(str(k).replace('_', ' '))}</b>: {escape(val(v))}" for k, v in d.items()
+                  if v not in (None, "", [], {})]
+        return Markup('<span class="dictfmt">' + " · ".join(partes) + "</span>")
+    app.jinja_env.filters["dictfmt"] = dictfmt
 
 
 def fail(msg, redirect_to):

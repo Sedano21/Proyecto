@@ -1,18 +1,23 @@
 {% extends "base.html" %}
+{% block title %}Ingresar{% endblock %}
 {% block public %}
-<div class="login card">
-  <h1>Módulo de Operaciones</h1>
-  <p class="muted">Corporación Productiva · prototipo funcional</p>
-  {% if m365 %}<p><a class="btn" href="{{ url_for('m365.start') }}">Ingresar con Microsoft 365</a></p>{% endif %}
-  {% if local_login %}<form method="post">
-    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
-    <label>Usuario</label><input name="username" autofocus required style="width:100%">
-    <label>Contraseña</label><input name="password" type="password" required style="width:100%">
-    <p><button>{{ 'Ingresar con usuario local' if m365 else 'Ingresar' }}</button></p>
-  </form>{% endif %}
-  {% if demo_users %}
-  <details><summary>Usuarios de demostración (contraseña: Demo2026!)</summary>
-    <table class="small">{% for u in demo_users %}<tr><td class="mono">{{ u.username }}</td><td>{{ u.role.nombre }}</td></tr>{% endfor %}</table>
-  </details>{% endif %}
+<div class="login">
+  <div class="card" style="padding:28px 28px 22px">
+    <img src="{{ logo_url }}" alt="Corporación Productiva" class="brand-logo">
+    <h1 style="margin:0 0 2px">Módulo de Operaciones</h1>
+    <p class="muted" style="margin-top:0">Ingrese con su usuario para continuar.</p>
+    {% if m365 %}<p><a class="btn" style="width:100%" href="{{ url_for('m365.start') }}">Ingresar con Microsoft 365</a></p>{% endif %}
+    {% if local_login %}<form method="post">
+      <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+      <label for="l_user">Usuario</label><input id="l_user" name="username" autocomplete="username" autofocus required style="width:100%">
+      <label for="l_pass">Contraseña</label><input id="l_pass" name="password" type="password" autocomplete="current-password" required style="width:100%">
+      <p style="margin-top:16px"><button style="width:100%">{{ 'Ingresar con usuario local' if m365 else 'Ingresar' }}</button></p>
+    </form>{% endif %}
+    {% if demo_users %}
+    <details><summary>Usuarios de demostración (contraseña: Demo2026!)</summary>
+      <div class="tw" style="max-height:260px;overflow:auto"><table class="small">{% for u in demo_users %}<tr><td class="mono">{{ u.username }}</td><td>{{ u.role.nombre }}</td></tr>{% endfor %}</table></div>
+    </details>{% endif %}
+  </div>
+  <p class="small muted" style="text-align:center">Corporación Productiva · prototipo funcional</p>
 </div>
 {% endblock %}

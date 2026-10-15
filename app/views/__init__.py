@@ -125,7 +125,7 @@ def dashboard():
         if "dashboard.ver" in g.perms else None
     tareas = alert_svc.my_tasks(g.user)
     ids = {a.id for a in tareas}
-    mis = [a for a in alert_svc.inbox(g.user, solo_abiertas=True) if a.id not in ids][:15]
+    mis = [a for a in alert_svc.inbox(g.user, solo_abiertas=True) if a.id not in ids][:40]
     return render_template("dashboard.html", k=k, mis_alertas=mis, tareas=tareas, desde=desde or "", hasta=hasta or "",
                            estado_txt=alert_svc.ESTADO_TXT)
 
@@ -147,6 +147,9 @@ def alerts():
     if f["type_code"] and f["type_code"] not in codes:
         f["type_code"] = None
     rows = alert_svc.inbox(g.user, **f)  # solo los tipos de su área o que se comunican con ella
+    naturaleza = request.args.get("naturaleza") or ""
+    if naturaleza in ("TAREA", "INFORMATIVA"):
+        rows = [a for a in rows if (a.type.naturaleza if a.type else "TAREA") == naturaleza]
     agrupar = request.args.get("agrupar")
     grupos = {}
     if agrupar:
@@ -156,7 +159,7 @@ def alerts():
         grupos = dict(sorted(grupos.items(), key=lambda kv: (alert_svc.PRIORIDAD_ORDEN.get(kv[0][1], 9), kv[0][0])))
     return render_template("alerts.html", rows=rows, f=f, tipos=tipos, agrupar=agrupar, grupos=grupos,
                            areas=sorted({t.area for t in tipos}), grupos_tipo=sorted({t.grupo for t in tipos}),
-                           estados=alert_svc.ESTADOS, estado_txt=alert_svc.ESTADO_TXT)
+                           estados=alert_svc.ESTADOS, estado_txt=alert_svc.ESTADO_TXT, naturaleza=naturaleza)
 
 
 @bp.route("/alertas/<int:aid>")
@@ -168,7 +171,14 @@ def alert_detail(aid):
         abort(403)
     users, roles = alert_svc.assignable(g.user)
     todos = list(db().execute(select(User).where(User.activo.is_(True)).order_by(User.nombre)).scalars())
+    roles_nombre = {r.code: r.nombre for r in db().execute(select(Role)).scalars()}
+    entidad_txt = {"SalesOrder": "OV", "Route": "Ruta", "ProductionRequest": "Solicitud de producción", "PurchaseRequest": "Compra",
+                   "RepackRequest": "Reempaque", "Transfer": "Traslado", "ImportShipment": "Importación", "Certificate": "Certificado",
+                   "StockLot": "Lote", "UploadBatch": "Carga", "PriceListMeta": "Lista de precios", "Liquidation": "Liquidación",
+                   "OVChangeRequest": "Solicitud de modificación", "PhysicalCount": "Conteo", "Alert": "Tarea", "Vehicle": "Vehículo",
+                   "Customer": "Cliente", "Incident": "Incidencia", "MarketPrice": "Precio de mercado", "Product": "Producto"}
     return render_template("alert_detail.html", a=a, users=users, roles=roles, todos=todos, svc=alert_svc,
+                           roles_nombre=roles_nombre, entidad_txt=entidad_txt,
                            puede_decidir=alert_actions.can_decide(a), motivo_aprobar=alert_actions.motivo_obligatorio(a),
                            estado_txt=alert_svc.ESTADO_TXT)
 

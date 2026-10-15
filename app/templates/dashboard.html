@@ -1,59 +1,84 @@
-{% extends "base.html" %}{% from "_m.html" import b, csrf %}
+{% extends "base.html" %}{% from "_m.html" import b, csrf, ic, empty %}
 {% block content %}
-<h1>Inicio</h1>
+<div class="page-head"><div><h1>Inicio</h1><p class="sub">{{ user.nombre }} · {{ user.role.nombre }} · {{ today.strftime('%d/%m/%Y') }}</p></div>
+{% if k %}<form class="row noprint" method="get" aria-label="Filtrar indicadores por fecha comprometida">
+  <div><label for="f_desde">Fecha comprometida desde</label><input id="f_desde" type="date" name="desde" value="{{ desde }}"></div>
+  <div><label for="f_hasta">hasta</label><input id="f_hasta" type="date" name="hasta" value="{{ hasta }}"></div>
+  <div><button class="sec">Filtrar</button></div></form>{% endif %}</div>
 {% if user.debe_cambiar_clave %}<div class="note">Debe <a href="{{ url_for('main.change_password') }}">cambiar su contraseña</a>.</div>{% endif %}
+
+{# 1. Lo que requiere atención: tareas designadas y alertas abiertas, las de prioridad alta primero #}
+{% set criticas = mis_alertas|selectattr('prioridad', 'equalto', 'ALTA')|list %}
+{% set otras = mis_alertas|rejectattr('prioridad', 'equalto', 'ALTA')|list %}
+<div class="grid g2">
+<section class="card" aria-labelledby="t-tareas"><div class="card-head"><h3 id="t-tareas">Mis tareas</h3><span class="muted small">designadas a usted o a su cargo</span></div>
+{% if tareas %}<ul class="list-tasks">{% for a in tareas %}<li><span class="prio {{ a.prioridad }}" aria-hidden="true"></span><div class="t"><a href="{{ url_for('main.alert_detail', aid=a.id) }}">{{ a.titulo }}</a>
+<div class="meta">#{{ a.id }} · {{ a.area }} · {{ a.creado_ts|d }}</div></div><span class="b {{ a.estado }}">{{ estado_txt.get(a.estado, a.estado) }}</span></li>{% endfor %}</ul>
+{% else %}{{ empty('No tiene tareas designadas.', 'check') }}{% endif %}</section>
+<section class="card" aria-labelledby="t-alertas"><div class="card-head"><h3 id="t-alertas">Alertas abiertas de su área</h3><a class="small" href="{{ url_for('main.alerts') }}">Ver todas</a></div>
+{% if mis_alertas %}<ul class="list-tasks">{% for a in (criticas + otras)[:8] %}<li><span class="prio {{ a.prioridad }}" aria-hidden="true"></span><div class="t"><a href="{{ url_for('main.alert_detail', aid=a.id) }}">{{ a.titulo }}</a>
+<div class="meta">{{ b(a.prioridad) }} {{ a.area }} · {{ a.creado_ts|d }}{% if a.type and a.type.naturaleza == 'INFORMATIVA' %} · aviso{% endif %}</div></div><span class="b {{ a.estado }}">{{ estado_txt.get(a.estado, a.estado) }}</span></li>{% endfor %}</ul>
+{% else %}{{ empty('Sin alertas abiertas.', 'bell') }}{% endif %}</section>
+</div>
+
 {% if k %}
-<form class="row card noprint" method="get">
-  <div><label>Fecha comprometida desde</label><input type="date" name="desde" value="{{ desde }}"></div>
-  <div><label>hasta</label><input type="date" name="hasta" value="{{ hasta }}"></div>
-  <div><button class="sec">Filtrar</button></div>
-</form>
-<div class="grid g4">
-  <div class="tile"><div class="v">{{ k.pendientes }}</div><div class="l">Pedidos pendientes</div></div>
-  <div class="tile"><div class="v">{{ k.completos }}</div><div class="l">Pendientes completos (stock reservado 100 %)</div></div>
-  <div class="tile"><div class="v">{{ k.incompletos }}</div><div class="l">Pendientes incompletos</div></div>
-  <div class="tile"><div class="v">{% if k.cobertura_unidades_prom is not none %}{{ k.cobertura_unidades_prom }}% / {{ k.cobertura_lineas_prom }}%{% else %}—{% endif %}</div><div class="l">Cobertura promedio unidades / líneas</div></div>
-  <div class="tile"><div class="v">{% if k.otif_salida %}{{ k.otif_salida[0] }}%{% else %}—{% endif %}</div><div class="l">OTIF: salió completo y a tiempo ({% if k.otif_salida %}{{ k.otif_salida[1] }}/{{ k.otif_salida[2] }}{% else %}sin datos{% endif %})</div></div>
-  <div class="tile"><div class="v">{% if k.fill_rate_unidades is not none %}{{ k.fill_rate_unidades }}%{% else %}—{% endif %}</div><div class="l">Fill rate a la salida (unidades){% if k.fill_rate_lineas is not none %} · líneas {{ k.fill_rate_lineas }}%{% endif %}</div></div>
-  <div class="tile"><div class="v">{% if k.fill_rate_pedidos %}{{ k.fill_rate_pedidos[0] }}%{% else %}—{% endif %}</div><div class="l">Pedidos que salieron al 100 %{% if k.fill_rate_pedidos %} ({{ k.fill_rate_pedidos[1] }}/{{ k.fill_rate_pedidos[2] }}){% endif %}{% if k.completos_con_rechazo %} · {{ k.completos_con_rechazo[0] }} con rechazo posterior{% endif %}</div></div>
-  {% if can('dashboard.precios') %}<div class="tile"><div class="v">S/ {{ k.monto_total|n }}</div><div class="l">Monto OV (pendiente S/ {{ k.monto_pendiente|n }})</div></div>
-  <div class="tile"><div class="v">{{ k.precio_bajo_minimo }}</div><div class="l">OV con precio en el límite o bajo el mínimo de lista · {{ k.ov_sin_precio }} OV sin precio de venta</div></div>{% endif %}
-  <div class="tile"><div class="v">{{ k.volumen_kg|n }} kg</div><div class="l">Volumen OV (pendiente {{ k.volumen_pendiente_kg|n }} kg)</div></div>
-  {% if can('dashboard.operaciones') %}<div class="tile"><div class="v">{{ k.tiempo_preparacion_h if k.tiempo_preparacion_h is not none else '—' }} h</div><div class="l">Tiempo promedio de preparación</div></div>
-  <div class="tile"><div class="v">{{ k.tiempo_despacho_h if k.tiempo_despacho_h is not none else '—' }} h</div><div class="l">Tiempo preparado → salida</div></div>
-  <div class="tile"><div class="v">{{ k.compras_pendientes }} / {{ k.produccion_pendiente }}</div><div class="l">Compras / producción pendientes</div></div>
-  <div class="tile"><div class="v">{{ k.diferencias_inventario }}</div><div class="l">Diferencias de inventario (conteos) · {{ k.diferencias_liquidacion }} en recepción de PT</div></div>{% endif %}
-  <div class="tile"><div class="v">{{ k.rechazos }} / {{ k.devoluciones }} / {{ k.entregas_parciales }}</div><div class="l">Rechazos / devoluciones / entregas parciales</div></div>
+{# 2. Pedidos: situación de las órdenes de venta #}
+<div class="section-title">Pedidos</div>
+<div class="kpis">
+  <div class="kpi primary"><b>{{ k.pendientes }}</b><span>Pedidos pendientes</span><small>{{ k.completos }} completos · {{ k.incompletos }} incompletos</small></div>
+  <div class="kpi {{ 'warn' if k.incompletos else '' }}"><b>{% if k.cobertura_unidades_prom is not none %}{{ k.cobertura_unidades_prom }}%{% else %}—{% endif %}</b><span>Cobertura promedio</span><small>{% if k.cobertura_lineas_prom is not none %}líneas {{ k.cobertura_lineas_prom }}%{% else %}sin datos{% endif %}</small></div>
+  <div class="kpi primary"><b>{% if k.otif_salida %}{{ k.otif_salida[0] }}%{% else %}—{% endif %}</b><span>OTIF a la salida</span><small>completo y a tiempo{% if k.otif_salida %} ({{ k.otif_salida[1] }}/{{ k.otif_salida[2] }}){% else %} · sin datos{% endif %}</small></div>
+  <div class="kpi"><b>{% if k.fill_rate_unidades is not none %}{{ k.fill_rate_unidades }}%{% else %}—{% endif %}</b><span>Fill rate a la salida</span><small>unidades{% if k.fill_rate_lineas is not none %} · líneas {{ k.fill_rate_lineas }}%{% endif %}</small></div>
+  <div class="kpi"><b>{% if k.fill_rate_pedidos %}{{ k.fill_rate_pedidos[0] }}%{% else %}—{% endif %}</b><span>Pedidos que salieron al 100 %</span><small>{% if k.fill_rate_pedidos %}{{ k.fill_rate_pedidos[1] }}/{{ k.fill_rate_pedidos[2] }}{% else %}sin datos{% endif %}{% if k.completos_con_rechazo %} · {{ k.completos_con_rechazo[0] }} con rechazo posterior{% endif %}</small></div>
+  <div class="kpi"><b>{{ k.volumen_kg|n }} kg</b><span>Volumen de OV</span><small>pendiente {{ k.volumen_pendiente_kg|n }} kg</small></div>
+  <div class="kpi {{ 'alert' if k.rechazos else '' }}"><b>{{ k.rechazos }} / {{ k.devoluciones }} / {{ k.entregas_parciales }}</b><span>Rechazos / devoluciones / parciales</span></div>
 </div>
-<div class="note small">OTIF (decisión Q2): pedido que sale del almacén completo y en o antes de la fecha comprometida. Referencia: OTIF por entrega en destino {% if k.otif_entrega %}{{ k.otif_entrega[0] }}% ({{ k.otif_entrega[1] }}/{{ k.otif_entrega[2] }}){% else %}sin datos{% endif %}.
-Fill rate: lo que salió frente a lo pedido; para los que salieron al 100 % se indica si hubo rechazo y el motivo.</div>
+{% if can('dashboard.precios') %}<div class="section-title">Comercial</div>
+<div class="kpis">
+  <div class="kpi primary"><b>S/ {{ k.monto_total|n }}</b><span>Monto de OV</span><small>pendiente S/ {{ k.monto_pendiente|n }}</small></div>
+  <div class="kpi {{ 'warn' if k.precio_bajo_minimo else '' }}"><b>{{ k.precio_bajo_minimo }}</b><span>OV con precio en el límite o bajo el mínimo de lista</span><small>{{ k.ov_sin_precio }} OV sin precio de venta</small></div>
+</div>{% endif %}
+{% if can('dashboard.operaciones') %}<div class="section-title">Operación</div>
+<div class="kpis">
+  <div class="kpi"><b>{{ k.tiempo_preparacion_h if k.tiempo_preparacion_h is not none else '—' }} h</b><span>Tiempo promedio de preparación</span></div>
+  <div class="kpi"><b>{{ k.tiempo_despacho_h if k.tiempo_despacho_h is not none else '—' }} h</b><span>Tiempo de preparado a salida</span></div>
+  <div class="kpi"><b>{{ k.compras_pendientes }} / {{ k.produccion_pendiente }}</b><span>Compras / producción pendientes</span></div>
+  <div class="kpi {{ 'warn' if k.diferencias_inventario else '' }}"><b>{{ k.diferencias_inventario }}</b><span>Diferencias de inventario (conteos)</span><small>{{ k.diferencias_liquidacion }} en recepción de PT</small></div>
+</div>{% endif %}
+<p class="small muted">OTIF (decisión Q2): pedido que sale del almacén completo y en o antes de la fecha comprometida. Referencia OTIF por entrega en destino: {% if k.otif_entrega %}{{ k.otif_entrega[0] }}% ({{ k.otif_entrega[1] }}/{{ k.otif_entrega[2] }}){% else %}sin datos{% endif %}. Fill rate: lo que salió frente a lo pedido.</p>
+
+{# 3. Detalle de seguimiento #}
+<div class="section-title">Seguimiento</div>
 <div class="grid g2">
-  <div class="card"><h3>¿Dónde están los mayores errores? (por etapa)</h3>
-    <table><tr><th>Etapa</th><th>Causa</th><th class="r">Pedidos</th></tr>{% for e, m, n in k.fill_causas %}<tr><td>{{ e }}</td><td>{{ m }}</td><td class="r">{{ n }}</td></tr>{% else %}<tr><td colspan="3" class="muted">Sin fallas registradas</td></tr>{% endfor %}</table>
-    <p class="small muted">Asignación de causas a etapas: parámetro <i>etapa_por_incidencia</i> (propuesto, configurable).</p></div>
-  <div class="card"><h3>Fill rate por pedido despachado</h3>
-    <table class="small"><tr><th>OV</th><th>Comprom.</th><th>Salida</th><th class="r">Fill</th><th>A tiempo</th><th>Rechazo / motivo</th></tr>{% for x in k.fill_detalle[:20] %}<tr><td>{{ x.numero }}</td><td>{{ x.fecha|d }}</td><td>{{ x.salida|d }}</td><td class="r">{{ x.fill }}%</td><td>{{ 'sí' if x.a_tiempo else 'no' }}</td><td>{% if x.rechazo %}{{ x.motivos|join('; ') }}{% else %}—{% endif %}</td></tr>{% else %}<tr><td colspan="6" class="muted">Sin salidas en el período</td></tr>{% endfor %}</table></div>
-</div>
-<div class="grid g2">
-  <div class="card"><h3>Faltantes por producto (unidades no reservadas)</h3>
-    <table>{% for p, q in k.faltantes %}<tr><td>{{ p }}</td><td class="r">{{ q|n }}</td></tr>{% else %}<tr><td class="muted">Sin faltantes</td></tr>{% endfor %}</table></div>
   <div class="card"><h3>Pedidos detenidos y motivo</h3>
-    <table>{% for n, c, m in k.detenidos %}<tr><td>{{ n }}</td><td>{{ c }}</td><td class="small">{{ m }}</td></tr>{% else %}<tr><td class="muted">Ninguno</td></tr>{% endfor %}</table></div>
-  <div class="card"><h3>Estados de pedidos</h3><table>{% for e, n in k.estados.items() %}<tr><td>{{ b(e) }}</td><td class="r">{{ n }}</td></tr>{% endfor %}</table></div>
-  <div class="card"><h3>Incidencias por tipo</h3><table>{% for t, n in k.incidencias.items() %}<tr><td>{{ t }}</td><td class="r">{{ n }}</td></tr>{% else %}<tr><td class="muted">Sin incidencias</td></tr>{% endfor %}</table></div>
-  {% if can('dashboard.merma') %}<div class="card"><h3>Merma prevista vs real (liquidaciones con dato)</h3>
-    <table><tr><th>Liquidación</th><th>Producto</th><th class="r">Prevista %</th><th class="r">Real %</th></tr>
-    {% for d, p, pr, r in k.merma %}<tr><td>{{ d }}</td><td>{{ p }}</td><td class="r">{{ pr if pr is not none else 'no definida' }}</td><td class="r">{{ r }}</td></tr>{% else %}<tr><td colspan="4" class="muted">Sin datos suficientes</td></tr>{% endfor %}</table></div>{% endif %}
+    <table class="small"><thead><tr><th>OV</th><th>Cliente</th><th>Motivo</th></tr></thead><tbody>{% for n, c, m in k.detenidos %}<tr><td class="mono">{{ n }}</td><td>{{ c }}</td><td>{{ m }}</td></tr>{% else %}<tr><td colspan="3" class="muted">Ningún pedido detenido</td></tr>{% endfor %}</tbody></table></div>
+  <div class="card"><h3>Estados de pedidos</h3><table class="small"><tbody>{% for e, n in k.estados.items() %}<tr><td>{{ b(e) }}</td><td class="r">{{ n }}</td></tr>{% else %}<tr><td class="muted">Sin pedidos</td></tr>{% endfor %}</tbody></table>
+    <h3 style="margin-top:16px">Faltantes por producto <span class="muted small">(unidades no reservadas)</span></h3>
+    <table class="small"><tbody>{% for p, q in k.faltantes %}<tr><td>{{ p }} {{ pd(p) }}</td><td class="r">{{ q|n }}</td></tr>{% else %}<tr><td class="muted">Sin faltantes</td></tr>{% endfor %}</tbody></table></div>
+  <div class="card"><h3>Fill rate por pedido despachado</h3>
+    <table class="small"><thead><tr><th>OV</th><th>Comprom.</th><th>Salida</th><th class="r">Fill</th><th>A tiempo</th><th>Rechazo / motivo</th></tr></thead><tbody>{% for x in k.fill_detalle[:20] %}<tr><td class="mono">{{ x.numero }}</td><td>{{ x.fecha|d }}</td><td>{{ x.salida|d }}</td><td class="r">{{ x.fill }}%</td><td>{{ 'sí' if x.a_tiempo else 'no' }}</td><td>{% if x.rechazo %}{{ x.motivos|join('; ') }}{% else %}—{% endif %}</td></tr>{% else %}<tr><td colspan="6" class="muted">Sin salidas en el periodo</td></tr>{% endfor %}</tbody></table></div>
+  <div class="card"><h3>¿Dónde están los mayores errores? <span class="muted small">(por etapa)</span></h3>
+    <table class="small"><thead><tr><th>Etapa</th><th>Causa</th><th class="r">Pedidos</th></tr></thead><tbody>{% for e, m, n in k.fill_causas %}<tr><td>{{ e }}</td><td>{{ m }}</td><td class="r">{{ n }}</td></tr>{% else %}<tr><td colspan="3" class="muted">Sin fallas registradas</td></tr>{% endfor %}</tbody></table>
+    <p class="small muted">Asignación de causas a etapas: parámetro <i>etapa_por_incidencia</i> (propuesto, configurable).</p>
+    <h3 style="margin-top:16px">Incidencias por tipo</h3><table class="small"><tbody>{% for t, n in k.incidencias.items() %}<tr><td>{{ t }}</td><td class="r">{{ n }}</td></tr>{% else %}<tr><td class="muted">Sin incidencias</td></tr>{% endfor %}</tbody></table></div>
+  {% if can('dashboard.merma') %}<div class="card"><h3>Merma prevista vs real <span class="muted small">(liquidaciones con dato)</span></h3>
+    <table class="small"><thead><tr><th>Liquidación</th><th>Producto</th><th class="r">Prevista %</th><th class="r">Real %</th></tr></thead><tbody>
+    {% for d, p, pr, r in k.merma %}<tr><td>{{ d }}</td><td>{{ p }}</td><td class="r">{{ pr if pr is not none else 'no definida' }}</td><td class="r">{{ r }}</td></tr>{% else %}<tr><td colspan="4" class="muted">Sin datos suficientes</td></tr>{% endfor %}</tbody></table></div>{% endif %}
 </div>
 {% endif %}
-<div class="card"><h3>Mis tareas <span class="muted small">(designadas a usted o a su cargo)</span></h3>
-<table><tr><th>#</th><th>Prioridad</th><th>Tarea</th><th>Área</th><th>Estado</th><th>Creada</th></tr>
-{% for a in tareas %}<tr><td><a href="{{ url_for('main.alert_detail', aid=a.id) }}">{{ a.id }}</a></td><td>{{ b(a.prioridad) }}</td><td><a href="{{ url_for('main.alert_detail', aid=a.id) }}">{{ a.titulo }}</a></td><td>{{ a.area }}</td><td><span class="b {{ a.estado }}">{{ estado_txt.get(a.estado, a.estado) }}</span></td><td>{{ a.creado_ts|d }}</td></tr>
-{% else %}<tr><td colspan="6" class="muted">No tiene tareas designadas</td></tr>{% endfor %}</table></div>
-<div class="card"><h3>Alertas abiertas de su área</h3>
-<table><tr><th>#</th><th>Prioridad</th><th>Título</th><th>Área</th><th>Estado</th><th>Creada</th></tr>
-{% for a in mis_alertas %}<tr><td><a href="{{ url_for('main.alert_detail', aid=a.id) }}">{{ a.id }}</a></td><td>{{ b(a.prioridad) }}</td><td><a href="{{ url_for('main.alert_detail', aid=a.id) }}">{{ a.titulo }}</a>{% if a.type and a.type.naturaleza == 'INFORMATIVA' %} <span class="muted small">aviso</span>{% endif %}</td><td>{{ a.area }}</td><td><span class="b {{ a.estado }}">{{ estado_txt.get(a.estado, a.estado) }}</span></td><td>{{ a.creado_ts|d }}</td></tr>
-{% else %}<tr><td colspan="6" class="muted">Sin alertas abiertas</td></tr>{% endfor %}</table>
-<p><a href="{{ url_for('main.alerts') }}">Ver todas</a></p></div>
-{% if can('dashboard.ver') %}<form method="post" action="{{ url_for('main.run_checks') }}" class="noprint">{{ csrf() }}<button class="sec">Ejecutar verificaciones automáticas ahora</button> <span class="muted small">(retrasos, fases de importación, vencimientos, reposición, correo)</span></form>{% endif %}
+
+{# 4. Accesos rápidos según los permisos del usuario #}
+<div class="section-title">Accesos rápidos</div>
+<nav class="quick" aria-label="Accesos rápidos">
+  {% if can('ov.crear') %}<a href="{{ url_for('com.order_new') }}">{{ ic('plus') }}Registrar OV</a>{% endif %}
+  {% if can('ov.ver') %}<a href="{{ url_for('com.orders') }}">{{ ic('cart') }}Órdenes de venta</a>{% endif %}
+  {% if can('picking.asignar') or can('tareas.ejecutar') or can('preparacion.registrar') %}<a href="{{ url_for('alm.picking_schedule') }}">{{ ic('calendar') }}Programación de picking</a>{% endif %}
+  {% if can('stock.ver') %}<a href="{{ url_for('alm.stock') }}">{{ ic('box') }}Stock y reservas</a>{% endif %}
+  {% if can('produccion.ver') %}<a href="{{ url_for('prod.requests') }}">{{ ic('factory') }}Solicitudes de producción</a>{% endif %}
+  {% if can('calidad.ver') %}<a href="{{ url_for('cal.home') }}">{{ ic('shield') }}Liberación y registros</a>{% endif %}
+  {% if can('compras.ver') %}<a href="{{ url_for('buy.purchases') }}">{{ ic('bag') }}Compras</a>{% endif %}
+  {% if can('distribucion.ver') %}<a href="{{ url_for('dist.routes') }}">{{ ic('route') }}Rutas</a>{% endif %}
+  <a href="{{ url_for('main.alerts') }}">{{ ic('bell') }}Alertas y tareas</a>
+</nav>
+{% if can('dashboard.ver') %}<form method="post" action="{{ url_for('main.run_checks') }}" class="noprint" style="margin-top:20px">{{ csrf() }}<button class="sec">{{ ic('refresh') }}Ejecutar verificaciones automáticas ahora</button> <span class="muted small">retrasos, fases de importación, vencimientos, reposición, flota y correo</span></form>{% endif %}
 {% endblock %}

@@ -37,7 +37,7 @@
 </div></div>
 
 <h2>Líneas, reservas y lotes</h2>
-<table><tr><th>Producto</th><th class="r">Solicitado</th><th class="r">Reservado</th><th class="r">Faltante</th><th class="r">Preparado</th><th class="r">Despachado</th><th class="r">Entregado</th><th>Lotes reservados (almacén · vence)</th></tr>
+<table class="list"><tr><th>Producto</th><th class="r">Solicitado</th><th class="r">Reservado</th><th class="r">Faltante</th><th class="r">Preparado</th><th class="r">Despachado</th><th class="r">Entregado</th><th>Lotes reservados (almacén · vence)</th></tr>
 {% for l in o.lines if l.activa %}{% set r = line_reserved(l) %}<tr><td>{{ l.product_code }}<br><span class="small muted">{{ l.product.descripcion }}</span></td>
 <td class="r">{{ l.cantidad|n }}<br><span class="small {{ 'err' if l.precio_origen and (l.precio_origen.startswith('POR DEBAJO') or l.precio_origen.startswith('EN EL LÍMITE')) else 'muted' }}" title="{{ l.precio_origen }}">{% if l.precio_unitario %}S/ {{ '%.2f'|format(l.precio_unitario) }}{% else %}sin precio{% endif %}{% if l.precio_minimo %} · mín. {{ '%.2f'|format(l.precio_minimo) }}{% endif %}</span></td><td class="r">{{ r|n }}</td><td class="r">{% set f = l.cantidad - l.despachado - r %}{% if f > 0.0001 %}<b style="color:#b3261e">{{ f|n }}</b>{% else %}0{% endif %}</td>
 <td class="r">{{ l.preparado|n }}</td><td class="r">{{ l.despachado|n }}</td><td class="r">{{ l.entregado|n }}</td>
@@ -112,7 +112,7 @@
 <p><button>{{ 'Guardar y reevaluar' if can('ov.modificar') else 'Enviar solicitud' }}</button></p></form></details>{% endif %}
 
 {% if reqs %}<h2>Solicitudes de modificación</h2><table><tr><th>#</th><th>Fecha</th><th>Cambios</th><th>Motivo</th><th>Estado</th><th></th></tr>
-{% for r in reqs %}<tr><td>{{ r.id }}</td><td>{{ r.ts|d }}</td><td class="mono small">{{ r.payload|tojson|truncate(300) }}</td><td>{{ r.motivo }}</td><td>{{ b(r.estado) }}</td>
+{% for r in reqs %}<tr><td>{{ r.id }}</td><td>{{ r.ts|d }}</td><td>{{ r.payload|dictfmt }}</td><td>{{ r.motivo }}</td><td>{{ b(r.estado) }}</td>
 <td>{% if r.estado=='PENDIENTE' and can_auth %}{{ post(url_for('com.change_request', rid=r.id, decision='aprobar'), 'Autorizar') }} {{ post(url_for('com.change_request', rid=r.id, decision='rechazar'), 'Rechazar', 'sec') }}{% endif %}</td></tr>{% endfor %}</table>{% endif %}
 
 {% if can('ov.cancelar') and o.estado not in ['CANCELADA','DESPACHADA','ENTREGADA','ENTREGA_PARCIAL','RECHAZADA','DEVUELTA','EN_RUTA'] %}
@@ -120,7 +120,7 @@
 <input name="motivo" placeholder="motivo (obligatorio)" required style="width:60%"> <button class="danger">Cancelar OV</button></form>{% endif %}
 
 {% if decs %}<h2>Decisiones registradas</h2><table><tr><th>Fecha</th><th>Tipo</th><th>Estado</th><th>Detalle</th><th>Comentario</th><th>Usuario</th></tr>
-{% for d in decs %}<tr><td>{{ d.ts|d }}</td><td>{{ d.tipo }}</td><td>{{ b(d.estado) }}</td><td class="mono small">{{ d.detalle|tojson }}</td><td>{{ d.comentario }}</td><td>{{ d.user.nombre if d.user else '' }}</td></tr>{% endfor %}</table>{% endif %}
+{% for d in decs %}<tr><td>{{ d.ts|d }}</td><td>{{ d.tipo }}</td><td>{{ b(d.estado) }}</td><td>{{ d.detalle|dictfmt }}</td><td>{{ d.comentario }}</td><td>{{ d.user.nombre if d.user else '' }}</td></tr>{% endfor %}</table>{% endif %}
 {% if hist %}<h2>Historial (auditoría)</h2>
 <div class="tbl" style="max-height:320px"><table class="small"><tr><th>Fecha</th><th>Usuario</th><th>Acción</th><th>Detalle</th></tr>
 {% for h in hist %}<tr><td>{{ h.ts|d }}</td><td>{{ h.user.nombre if h.user else 'Sistema' }}</td><td>{{ h.accion }}</td><td class="mono">{{ h.detalle|tojson|truncate(300) }}</td></tr>{% endfor %}</table></div>{% endif %}

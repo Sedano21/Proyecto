@@ -1,17 +1,17 @@
-{% extends "base.html" %}{% from "_m.html" import b, bar %}
+{% extends "base.html" %}{% from "_m.html" import b, bar, ic %}
 {% block content %}
-<h1>Órdenes de venta</h1>
-<p class="muted small">Ordenadas por prioridad: fecha comprometida de despacho → completitud → urgencia (IF §5).</p>
-<form class="row card" method="get">
-  <div><label>Estado</label><select name="estado"><option value="">(todos)</option>{% for e in ['REGISTRADA','EVALUADA','EN_PREPARACION','PREPARADA','PROGRAMADA','DESPACHADA','ENTREGADA','ENTREGA_PARCIAL','RECHAZADA','DEVUELTA','CANCELADA'] %}<option {{ 'selected' if estado==e }}>{{ e }}</option>{% endfor %}</select></div>
-  <div><label>Cobertura</label><select name="estado_stock"><option value="">(todas)</option>{% for e in ['COMPLETA','INCOMPLETA','SIN_STOCK'] %}<option {{ 'selected' if estado_stock==e }}>{{ e }}</option>{% endfor %}</select></div>
-  <div><button>Filtrar</button> {% if can('ov.crear') %}<a class="btn" href="{{ url_for('com.order_new') }}">Registrar OV</a>{% endif %}
-  {% if can('ov.importar') %}<a class="btn sec" href="{{ url_for('alm.upload_new', tipo='OV') }}">Importar desde SAP</a>{% endif %}
-  {% if can('export.datos') %}<a class="btn sec" href="{{ url_for('main.export', entidad='ov') }}">Exportar</a>{% endif %}</div>
+<div class="page-head"><div><h1>Órdenes de venta</h1><p class="sub">Ordenadas por prioridad: fecha comprometida de despacho → completitud → urgencia (IF §5).</p></div>
+<div class="row">{% if can('ov.crear') %}<a class="btn" href="{{ url_for('com.order_new') }}">{{ ic('plus') }}Registrar OV</a>{% endif %}
+  {% if can('ov.importar') %}<a class="btn sec" href="{{ url_for('alm.upload_new', tipo='OV') }}">{{ ic('upload') }}Importar desde SAP</a>{% endif %}
+  {% if can('export.datos') %}<a class="btn sec" href="{{ url_for('main.export', entidad='ov') }}">Exportar</a>{% endif %}</div></div>
+<form class="row filters" method="get" aria-label="Filtros de órdenes de venta">
+  <div><label for="fo_est">Estado</label><select id="fo_est" name="estado"><option value="">(todos)</option>{% for e in ['REGISTRADA','EVALUADA','EN_PREPARACION','PREPARADA','PROGRAMADA','DESPACHADA','ENTREGADA','ENTREGA_PARCIAL','RECHAZADA','DEVUELTA','CANCELADA'] %}<option value="{{ e }}" {{ 'selected' if estado==e }}>{{ e|replace('_',' ')|capitalize }}</option>{% endfor %}</select></div>
+  <div><label for="fo_cob">Cobertura</label><select id="fo_cob" name="estado_stock"><option value="">(todas)</option>{% for e in ['COMPLETA','INCOMPLETA','SIN_STOCK'] %}<option value="{{ e }}" {{ 'selected' if estado_stock==e }}>{{ e|replace('_',' ')|capitalize }}</option>{% endfor %}</select></div>
+  <div><button class="sec">Filtrar</button> <a class="btn sec" href="{{ url_for('com.orders') }}">Limpiar</a></div>
 </form>
 {% if pend %}<div class="card"><h3>Solicitudes de modificación pendientes</h3><table><tr><th>OV</th><th>Solicitada</th><th>Cambios</th><th>Motivo</th></tr>
-{% for r in pend %}<tr><td><a href="{{ url_for('com.order_detail', oid=r.order_id) }}">{{ r.order.numero }}</a></td><td>{{ r.ts|d }}</td><td class="mono small">{{ r.payload|tojson|truncate(200) }}</td><td>{{ r.motivo }}</td></tr>{% endfor %}</table></div>{% endif %}
-<div class="tbl"><table><tr><th>OV</th><th>Cliente</th><th>Comprometida</th><th>Urg.</th><th>Estado</th><th>Cobertura</th><th>Unid. %</th><th>Líneas %</th><th>Decisión parcial</th><th>Motivo detención</th></tr>
+{% for r in pend %}<tr><td><a href="{{ url_for('com.order_detail', oid=r.order_id) }}">{{ r.order.numero }}</a></td><td>{{ r.ts|d }}</td><td class="mono small">{{ r.payload|dictfmt }}</td><td>{{ r.motivo }}</td></tr>{% endfor %}</table></div>{% endif %}
+<div class="tbl"><table class="stack"><tr><th>OV</th><th>Cliente</th><th>Comprometida</th><th>Urg.</th><th>Estado</th><th>Cobertura</th><th>Unid. %</th><th>Líneas %</th><th>Decisión parcial</th><th>Motivo detención</th></tr>
 {% for o in rows %}<tr><td><a href="{{ url_for('com.order_detail', oid=o.id) }}">{{ o.numero }}</a></td><td>{{ o.customer.nombre }}</td><td>{{ o.fecha_compromiso|d }}</td><td>{{ '⚑' if o.urgente }}</td>
 <td>{{ b(o.estado) }}</td><td>{{ b(o.estado_stock) }}</td><td>{{ bar(o.cobertura_unidades) }}{{ o.cobertura_unidades }}</td><td>{{ o.cobertura_lineas }}</td><td>{{ b(o.decision_parcial) }}</td><td class="small">{{ o.motivo_detencion }}</td></tr>
 {% else %}<tr><td colspan="10" class="muted">Sin órdenes</td></tr>{% endfor %}</table></div>
