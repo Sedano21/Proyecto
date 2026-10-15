@@ -86,7 +86,7 @@ automatizadas pasan después del rediseño.
 
 ## 5. Verificación
 
-- **Recorrido automatizado de las 89 rutas del sistema** (las de la prueba web más los detalles de OV, opciones,
+- **Recorrido automatizado de 90 rutas del sistema** (las de la prueba web más los detalles de OV, opciones,
   alertas, preparación, ruta y folio) a 1440, 1024, 768, 390 y 360 px:
   - Sin desbordes horizontales de la página.
   - Sin errores de JavaScript.
