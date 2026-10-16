@@ -53,6 +53,9 @@ def test_compra_de_materia_prima_requiere_gerencia_de_operaciones(s, U):
     assert buy.needs_go_approval(r) and buy.go_reason(r) == "materia prima"
     with pytest.raises(BusinessError, match="Gerencia de Operaciones"):
         buy.generate_order(r, U("compras"), "OC-1", date.today() + timedelta(days=5), "EXT-002")
+    for i in range(2):  # decisión del 16-oct: se requieren 3 cotizaciones para pedir la aprobación de GO
+        buy.quote(r, U("compras"), f"Proveedor extra {i}", "cotización", 11.0 + i)
+    buy.choose_quote(r, U("compras"), 0)
     buy.request_go_approval(r, U("compras"))
     buy.approve_go(r, U("gerente.operaciones"), True)
     buy.generate_order(r, U("compras"), "OC-1", date.today() + timedelta(days=5), "EXT-002")

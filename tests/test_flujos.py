@@ -370,6 +370,9 @@ def test_compra_nacional_flujo(s, U):
     buy.evaluate_sample(r, U("jefe.calidad"), True, "conforme")
     with pytest.raises(BusinessError):  # requiere aprobación de GO
         buy.generate_order(r, U("compras"), "OC-1", date.today() + timedelta(days=10), "EXT-002")
+    for i in range(2):  # decisión del 16-oct: se requieren 3 cotizaciones para pedir la aprobación de GO
+        buy.quote(r, U("compras"), f"Proveedor extra {i}", "cotización", 11.0 + i)
+    buy.choose_quote(r, U("compras"), 0)
     buy.request_go_approval(r, U("compras"))
     with pytest.raises(BusinessError):
         buy.approve_go(r, U("compras"), True)

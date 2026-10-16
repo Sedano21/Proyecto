@@ -1,5 +1,6 @@
 {% extends "base.html" %}{% from "_m.html" import csrf, b, empty %}
 {% block content %}<h1>Planeamiento de producción</h1>
+<p class="small"><a href="{{ url_for('main.holidays') }}">Feriados del año (marcar los que se trabajan)</a></p>
 <p class="muted small">Producción ingresa lo que producirá en el día, la semana o el mes; el sistema lo contrasta con lo liquidado y calcula la tasa de cumplimiento (Σ mín(real, plan) / Σ plan).</p>
 <p class="tabs">{% for p, t in [('DIA','Diario'),('SEMANA','Semanal'),('MES','Mensual')] %}<a class="btn {{ '' if d.periodo == p else 'sec' }}" href="{{ url_for('prod.plan', periodo=p) }}">{{ t }}</a> {% endfor %}</p>
 {% if can('produccion.programar') or can('produccion.liquidar') %}<form method="post" class="card">{{ csrf() }}<h3>Registrar plan</h3><div class="row">

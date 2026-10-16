@@ -53,7 +53,7 @@ GENERAL = [
         "En los detalles (por ejemplo una OV) la información está organizada en pestañas: Resumen, Productos y reservas, Condición y opciones, Editar, Gestionar, Expediente e Historial.",
         "En las listas, cada registro tiene iconos de acción: ojo (ver), lápiz (editar) y tres puntos (más opciones)."]},
     {"titulo": "Alertas y sonido", "pasos": [
-        "La campana muestra cuántas alertas abiertas tiene. Cuando llega una alerta nueva suena un aviso y aparece un mensaje en la esquina.",
+        "La campana muestra cuántas alertas abiertas tiene. Cuando llega una alerta nueva aparece un mensaje en la esquina; suena solo si usted debe actuar, derivar o tomar una decisión (si es información para su perfil, llega sin sonido).",
         "Las alertas importantes (urgencia ALTA que usted debe atender) tienen un sonido distinto, más insistente, y se repiten cada cierto tiempo hasta que se resuelvan.",
         "El botón del parlante (junto a la campana) silencia o activa el sonido en su equipo. El navegador solo permite sonar después de que usted toque o haga clic en la página una vez.",
         "Una tarea que otra área debe completar se ve como «Derivada · pendiente <área>» para su seguimiento."]},

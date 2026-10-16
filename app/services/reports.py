@@ -476,13 +476,14 @@ def produccion_capacidad(desde=None, hasta=None, agrupar="DIA", n=7):
     s = db()
     grupos = param("capacidad_lineas", []) or []
     jornada = {int(k): float(v) for k, v in (param("dias_operacion", {}) or {}).items()}
-    feriados = {str(x) for x in (param("feriados", []) or [])}
+    from .calendar import day_factor, holidays
+    feriados = holidays()
     linea_grupo = {l: g["grupo"] for g in grupos for l in g.get("lineas", [])}
     dias = [desde + timedelta(days=i) for i in range((hasta - desde).days + 1)]
     buckets = sorted({_bucket(d, agrupar, n, desde) for d in dias})
     cap = defaultdict(float)
     for d in dias:
-        f = 0.0 if d.isoformat() in feriados else jornada.get(d.weekday(), 1.0)
+        f = day_factor(d, feriados, jornada)
         if f <= 0:
             continue
         for g in grupos:

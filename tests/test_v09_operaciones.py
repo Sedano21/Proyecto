@@ -91,8 +91,11 @@ def test_ejecucion_de_compra_requiere_cotizaciones_y_go(s, U):
     assert r.estado == "SOLICITADA"
     buy.quote(r, U("compras"), "Proveedor A", "COT-A", precio=3.0)
     buy.quote(r, U("compras"), "Proveedor B", "COT-B", precio=2.8, plazo="5 días")
+    with pytest.raises(BusinessError, match="3 cotizaci"):  # decisión del 16-oct: 3 cotizaciones
+        buy.request_go_approval(r, U("compras"))
+    buy.quote(r, U("compras"), "Proveedor C", "COT-C", precio=3.1)
     buy.choose_quote(r, U("compras"), 0)
-    assert len(r.cotizaciones) == 2 and r.proveedor == "Proveedor A"
+    assert len(r.cotizaciones) == 3 and r.proveedor == "Proveedor A"
     with pytest.raises(BusinessError, match="Gerencia de Operaciones"):
         buy.generate_order(r, U("compras"), "OC-9", date.today() + timedelta(days=3), "EXT-002")
     buy.request_go_approval(r, U("compras"))
@@ -196,3 +199,57 @@ def test_pantallas_nuevas(app, s):
     c4 = app.test_client()
     login(c4, "asist.ventas")
     assert c4.get("/configuracion/canales").status_code == 403 and c4.get("/ov/regularizacion").status_code == 200
+
+
+def test_feriados_carga_anual_y_se_trabaja(s, U, tmp_path):
+    from openpyxl import Workbook
+    from app.services import calendar as cal
+    from app.services import production as prod
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["Fecha", "Nombre", "Se trabaja"])
+    ws.append([date(2027, 1, 1), "Año Nuevo", "NO"])
+    ws.append([date(2027, 7, 28), "Fiestas Patrias", "SI"])
+    ws.append(["no es fecha", "x", ""])
+    f = tmp_path / "feriados.xlsx"
+    wb.save(f)
+    with pytest.raises(BusinessError, match="Sistemas"):
+        cal.import_holidays(U("jefe.produccion"), str(f), "feriados.xlsx")
+    n, errores, anios = cal.import_holidays(U("sistemas"), str(f), "feriados.xlsx")
+    assert n == 2 and len(errores) == 1 and anios == ["2027"]
+    assert prod.day_factor(date(2027, 1, 1)) == 0 and prod.day_factor(date(2027, 7, 28)) == 1.0
+    cal.set_worked(U("jefe.produccion"), "2027-01-01", True)  # se trabaja según la necesidad
+    assert prod.day_factor(date(2027, 1, 1)) == 1.0
+    with pytest.raises(BusinessError):
+        cal.set_worked(U("aux.almacen"), "2027-01-01", False)
+
+
+def test_sonido_solo_para_quien_actua(app, s, U):
+    from .test_web import login
+    from app.services import purchasing as buy
+    buy.create_request(U("coord.almacen"), "EN-901", 5)
+    s.commit()
+    c = app.test_client()
+    login(c, "coord.logistica")
+    d = c.get("/alertas/estado.json").get_json()
+    assert any(a["tarea"] for a in d["recientes"])  # puede autorizar: le suena
+    c2 = app.test_client()
+    login(c2, "gerente.general")
+    d2 = c2.get("/alertas/estado.json").get_json()
+    assert d2["criticas"] == 0 or all(a["tarea"] for a in d2["recientes"] if a["prioridad"] == "ALTA")
+
+
+def test_pantalla_feriados_y_datos_de_guia(app, s):
+    from .test_web import login
+    c = app.test_client()
+    tok, _ = login(c, "sistemas")
+    assert c.get("/configuracion/feriados").status_code == 200
+    assert "facturacion2@corporacionproductiva.com" in c.get("/configuracion").get_data(as_text=True)
+    r = c.post("/configuracion/guia", data={"_csrf": tok, "correo": "otro@demo.local", "web": "www.demo.local",
+                                            "partida_ALM-001": "AV. DEMO 1"})
+    assert r.status_code == 302
+    from app.services.core import param
+    assert param("empresa_correo_documentos") == "otro@demo.local" and param("direccion_partida_por_almacen")["ALM-001"] == "AV. DEMO 1"
+    c2 = app.test_client()
+    login(c2, "jefe.produccion")
+    assert c2.get("/configuracion/feriados").status_code == 200

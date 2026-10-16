@@ -16,7 +16,7 @@ from ..models import (Alert, AlertType, AuditLog, Customer, EmailOutbox, GGAlert
 from ..services import alerts as alert_svc
 from ..services import prices as prices_svc
 from ..services.core import BusinessError, audit, coerce_param, set_param
-from .common import act, f_float, install, login_required, perm_required
+from .common import act, f_date, f_float, install, login_required, perm_required
 
 bp = Blueprint("main", __name__)
 _FAILS = {}
@@ -555,6 +555,69 @@ def customers():
     canales = sorted(set(psvc.canales()) | set(param("lista_granel_canales", []) or []))
     from ..services.customers import customer_groups
     return render_template("customers.html", rows=rows, canales=canales, canal_de=psvc.channel_of, grupos=customer_groups())
+
+
+@bp.route("/configuracion/guia", methods=["POST"])
+@perm_required("config.editar")
+def guide_data():
+    """Datos de la guía de remisión (correo, web y dirección de partida por almacén), modificables (16-oct)."""
+    from ..services.core import param
+    f = request.form
+
+    def _do():
+        set_param("empresa_correo_documentos", f.get("correo", "").strip(), g.user)
+        set_param("empresa_web", f.get("web", "").strip(), g.user)
+        dirs = dict(param("direccion_partida_por_almacen", {}) or {})
+        for k, v in f.items():
+            if k.startswith("partida_"):
+                code = k[len("partida_"):]
+                if v.strip():
+                    dirs[code] = v.strip()
+                else:
+                    dirs.pop(code, None)
+        set_param("direccion_partida_por_almacen", dirs, g.user)
+    return act(_do, "Datos de la guía de remisión guardados.", url_for("main.config") + "#guia")
+
+
+@bp.route("/configuracion/feriados", methods=["GET", "POST"])
+@perm_required("config.editar", "produccion.programar")
+def holidays():
+    """Feriados: carga anual (Excel o PDF) o uno por uno; cada feriado puede marcarse «se trabaja» (16-oct)."""
+    from ..services import calendar as cal
+    if request.method == "POST":
+        f = request.form
+        acc = f.get("accion")
+        volver = url_for("main.holidays")
+        if acc == "trabaja":
+            return act(lambda: cal.set_worked(g.user, f.get("fecha", ""), f.get("se_trabaja") == "1"),
+                       "Feriado actualizado.", volver)
+        if acc == "quitar":
+            return act(lambda: cal.remove_holiday(g.user, f.get("fecha", "")), "Feriado quitado.", volver)
+        if acc == "archivo":
+            def _imp():
+                import os
+                import tempfile
+                fa = request.files.get("archivo")
+                if fa is None or not fa.filename:
+                    raise BusinessError("Seleccione el archivo de feriados (Excel o PDF).")
+                suf = ".pdf" if fa.filename.lower().endswith(".pdf") else ".xlsx"
+                with tempfile.NamedTemporaryFile(suffix=suf, delete=False) as tmp:
+                    fa.save(tmp.name)
+                try:
+                    n, errores, anios = cal.import_holidays(g.user, tmp.name, fa.filename)
+                finally:
+                    os.unlink(tmp.name)
+                for e in errores[:20]:
+                    flash(e, "error")
+                return n, anios
+            return act(_imp, lambda r: f"{r[0]} feriado(s) cargados para {', '.join(r[1])} (reemplazan los de ese año).", volver)
+        return act(lambda: cal.add_holiday(g.user, f_date("fecha", True), f.get("nombre", ""), f.get("se_trabaja") == "1"),
+                   "Feriado registrado.", volver)
+    anio = request.args.get("anio", type=int) or date.today().year
+    todos = cal.holidays()
+    anios = sorted({int(k[:4]) for k in todos} | {date.today().year})
+    return render_template("holidays.html", filas=[v for k, v in todos.items() if k.startswith(str(anio))], anio=anio,
+                           anios=anios, dias=["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"])
 
 
 @bp.route("/configuracion/canales", methods=["GET", "POST"])

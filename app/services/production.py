@@ -291,11 +291,9 @@ def capacity_group(line_code):
 
 
 def day_factor(d):
-    """Jornada del día: 1 completa, 0,5 sábado (hasta mediodía), 0 domingo o feriado (decisión del 15-oct)."""
-    if d.isoformat() in {str(x) for x in (param("feriados", []) or [])}:
-        return 0.0
-    jornada = {int(k): float(v) for k, v in (param("dias_operacion", {}) or {}).items()}
-    return jornada.get(d.weekday(), 1.0)
+    """Jornada del día: 1 completa, 0,5 sábado (hasta mediodía), 0 domingo o feriado que no se trabaja."""
+    from .calendar import day_factor as _f
+    return _f(d)
 
 
 def schedule(req, user, line_code, fecha):

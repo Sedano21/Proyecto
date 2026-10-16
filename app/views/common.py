@@ -171,6 +171,7 @@ def install(app):
         from ..services.alerts import can_act
         return can_act(g.get("user"), a)
     app.jinja_env.globals["es_tarea"] = es_tarea
+    app.jinja_env.globals["strptime"] = lambda iso: date.fromisoformat(str(iso)[:10])
 
     def productos_base():
         """Productos base que ofrecemos (lista desplegable para precios de competencia, sustitutos, mercado)."""

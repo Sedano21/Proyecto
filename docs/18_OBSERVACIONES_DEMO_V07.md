@@ -94,10 +94,21 @@ incorporan al repositorio: se tomó solo el diseño del formato.
 6. Migración `0011` (tablas y columnas nuevas; en bases existentes actualiza el parámetro del precertificado, los
    destinatarios de dos tipos de alerta y la capacidad de las líneas).
 
-## 8. Pendientes o por confirmar
+## 8. Respuestas del 16-oct-2026 aplicadas
 
-1. Cantidad mínima de cotizaciones para pedir la aprobación de GO (hoy 1).
-2. Frecuencias de sonido y de actualización de alertas (60, 120 y 10 s, propuestas).
-3. Correo y web de la guía y dirección de partida por almacén (parámetros vacíos).
-4. Registros de Calidad «después de producir»: se propuso el formato de cierre del proceso; confirmar sus campos.
-5. Lista de feriados (parámetro `feriados`).
+| # | Respuesta | Aplicación |
+|---|---|---|
+| 1 | 3 cotizaciones | `cotizaciones_minimas_compra` = 3 (DEFINIDO): sin 3 cotizaciones Compras no puede pedir la aprobación de ejecución a GO. |
+| 2 | Las frecuencias deben brindarse a quien deba actuar, derivar o tomar una decisión | El sonido (al llegar y repetido hasta resolverse) suena solo a quien puede aprobar o desestimar, designar o ejecutar la tarea; a los demás les llega el aviso sin sonido. La actualización inmediata de pantallas se mantiene para todos (información certera). Valores: consulta 60 s, repetición 120 s, actualización 10 s (siguen como propuestos y se cambian en Configuración). |
+| 3 | Usar los datos del modelo, modificables en Configuración | Correo `facturacion2@corporacionproductiva.com`, web `www.corporacionproductiva.com` y punto de partida del almacén 1524 (EXT-002) `AV. AVIACION NRO. 1524 LA VICTORIA LIMA LIMA LIMA`, tomados del formato de guía. Se editan en Configuración → **Datos de la guía** (correo, web y dirección de partida por almacén; vacío = dirección de la empresa). |
+| 4 | De acuerdo con los campos de «después de producir» | Formato de cierre del proceso (limpieza de equipos y producto conforme) confirmado. |
+| 5 | Feriados: se suben cada año y algunos se trabajan según la necesidad | Configuración → **Feriados**: carga anual en Excel o PDF (Fecha, Nombre, opcional Se trabaja), que reemplaza los del año que trae el archivo, o alta uno por uno. Cada feriado puede marcarse «se trabaja» (Jefe de Producción o Sistemas): ese día cuenta como normal en la capacidad y la programación. |
+
+Decisión técnica: marcar si un feriado se trabaja lo puede hacer el Jefe de Producción (además de Sistemas), porque
+depende de la necesidad de producción; la carga de la lista anual queda en Sistemas. Migración `0012` (actualiza los
+parámetros en bases existentes sin pisar datos ya configurados).
+
+## 9. Pendientes o por confirmar
+
+1. Valores de las frecuencias de alertas (60, 120 y 10 s, propuestos).
+2. Cargar la lista de feriados 2026–2027 (pantalla disponible).

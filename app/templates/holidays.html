@@ -1,0 +1,18 @@
+{% extends "base.html" %}{% from "_m.html" import csrf, ic, empty %}
+{% block content %}
+<div class="page-head"><div><h1>Feriados {{ anio }}</h1><p class="sub">Los feriados no se operan y no cuentan en la capacidad ni en la programación de producción, salvo los marcados «se trabaja» según la necesidad. La lista se carga cada año.</p></div>
+<form method="get" class="row"><div><label for="f_anio">Año</label><select id="f_anio" name="anio" onchange="this.form.submit()">{% for a in anios + [anios[-1] + 1] %}<option {{ 'selected' if a == anio }}>{{ a }}</option>{% endfor %}</select></div></form></div>
+{% if can('config.editar') %}<div class="grid g2">
+<form class="card" method="post" enctype="multipart/form-data" data-confirm="Los feriados del año que trae el archivo reemplazan a los cargados para ese año. ¿Continuar?">{{ csrf() }}<input type="hidden" name="accion" value="archivo"><h3>Cargar la lista del año (Excel o PDF)</h3>
+<p class="small muted">Columnas: <b>Fecha</b>, <b>Nombre</b> (o Descripción) y opcional <b>Se trabaja</b> (SÍ/NO).</p>
+<label>Archivo</label><input type="file" name="archivo" accept=".xlsx,.xlsm,.pdf" required><p><button>{{ ic('upload') }}Cargar feriados</button></p></form>
+<form class="card" method="post">{{ csrf() }}<h3>Agregar un feriado</h3><div class="row"><div><label>Fecha</label><input type="date" name="fecha" required></div><div class="grow"><label>Nombre</label><input name="nombre"></div></div>
+<label class="chk"><input type="checkbox" name="se_trabaja" value="1"> Se trabaja</label><p><button>Agregar</button></p></form></div>{% endif %}
+<div class="card"><h3>Feriados del {{ anio }} ({{ filas|length }})</h3>
+{% if filas %}<div class="tw"><table class="list"><tr><th>Fecha</th><th>Día</th><th>Feriado</th><th>¿Se trabaja?</th><th></th></tr>
+{% for f in filas %}{% set d = f.fecha %}<tr><td>{{ d[8:10] }}/{{ d[5:7] }}/{{ d[:4] }}</td><td>{{ dias[strptime(d).weekday()] }}</td><td>{{ f.nombre or '—' }}</td>
+<td><form method="post" class="row">{{ csrf() }}<input type="hidden" name="accion" value="trabaja"><input type="hidden" name="fecha" value="{{ d }}"><select name="se_trabaja" onchange="this.form.submit()" aria-label="¿Se trabaja el {{ d }}?"><option value="0" {{ 'selected' if not f.se_trabaja }}>No se trabaja</option><option value="1" {{ 'selected' if f.se_trabaja }}>Se trabaja</option></select></form></td>
+<td>{% if can('config.editar') %}<form method="post" data-confirm="¿Quitar el feriado {{ d }}?">{{ csrf() }}<input type="hidden" name="accion" value="quitar"><input type="hidden" name="fecha" value="{{ d }}"><button class="small sec">Quitar</button></form>{% endif %}</td></tr>{% endfor %}</table></div>
+{% else %}{{ empty('No hay feriados cargados para ' ~ anio ~ '. Cargue la lista del año.', 'calendar') }}{% endif %}
+<p class="small muted">«Se trabaja» lo indica el Jefe de Producción (o Sistemas) según la necesidad; ese día cuenta como día normal.</p></div>
+{% endblock %}

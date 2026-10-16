@@ -281,10 +281,12 @@
       lset('cp-alert-last', String(Math.max(ultimo, d.ultimo_id || 0)));
       var sonó = false;
       if (ultimo && nuevas.length) {
-        var imp = nuevas.some(function (a) { return a.prioridad === 'ALTA' && a.tarea; });
-        sonó = sonar(imp);
-        toast('<b>' + (nuevas.length === 1 ? 'Nueva alerta' : nuevas.length + ' alertas nuevas') + '</b>' + nuevas.slice(0, 3).map(function (a) {
-          return '<a href="' + a.url + '">' + esc(a.titulo) + '</a>'; }).join('') + (sonó || silenciado() ? '' : '<small>Toque la pantalla para activar el sonido.</small>'), imp);
+        // suena solo para quien debe actuar, derivar o decidir (decisión del 16-oct); los demás reciben el aviso sin sonido
+        var accionables = nuevas.filter(function (a) { return a.tarea; });
+        var imp = accionables.some(function (a) { return a.prioridad === 'ALTA'; });
+        if (accionables.length) sonó = sonar(imp);
+        toast('<b>' + (nuevas.length === 1 ? 'Nueva alerta' : nuevas.length + ' alertas nuevas') + (accionables.length ? '' : ' (información)') + '</b>' + nuevas.slice(0, 3).map(function (a) {
+          return '<a href="' + a.url + '">' + esc(a.titulo) + '</a>'; }).join('') + (!accionables.length || sonó || silenciado() ? '' : '<small>Toque la pantalla para activar el sonido.</small>'), imp);
       }
       var ult = parseInt(lget('cp-alert-ring') || '0', 10);
       if (d.criticas > 0 && ahora - ult >= repetir) {
