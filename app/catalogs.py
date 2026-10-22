@@ -1112,3 +1112,136 @@ ALERT_TYPES += [
      "Seguridad registra una llegada no conforme (cantidad, estado, documentos, vehículo).", True),
 ]
 ALERT_INFORMATIVAS = set(ALERT_INFORMATIVAS) | {"OV_REGULARIZACION", "QUIEBRE_STOCK"}
+
+# ---------------------------------------------------------------------------
+# Marcha blanca (respuestas del 22-oct-2026)
+# ---------------------------------------------------------------------------
+MB = "Marcha blanca (respuestas del 22-oct-2026)"
+_AVISO_BORRADOR = (
+    "AVISO DE TRATAMIENTO DE DATOS PERSONALES Y RESPONSABILIDAD DE USO (BORRADOR PARA REVISIÓN)\n\n"
+    "Responsable: Corporación Productiva.\n\n"
+    "1. Datos que se registran. Para operar el Módulo de Operaciones se registran su nombre, usuario, correo, cargo y "
+    "área; las acciones que realiza en el sistema con su fecha y hora; y las fotografías y documentos que se cargan como "
+    "evidencia (por ejemplo, de mercadería, vehículos, carga y entregas), que podrían mostrar a personas. En el caso de "
+    "conductores, también su nombre, licencia y la placa del vehículo.\n\n"
+    "2. Finalidad. Gestionar y dar trazabilidad a las operaciones (ventas, almacén, producción, calidad, distribución y "
+    "seguridad), controlar y auditar lo registrado, y analizar el cumplimiento de las funciones asignadas dentro del "
+    "módulo. No se usa para fines distintos de los indicados.\n\n"
+    "3. Conservación y seguridad. Los datos se guardan en los servidores que administra Corporación Productiva, con "
+    "acceso restringido según el perfil de cada usuario, durante el tiempo que exijan las políticas internas y la "
+    "normativa aplicable.\n\n"
+    "4. Sus derechos. De acuerdo con la Ley N.° 29733, Ley de Protección de Datos Personales, y su Reglamento, puede "
+    "ejercer sus derechos de acceso, rectificación, cancelación y oposición dirigiéndose a Corporación Productiva.\n\n"
+    "5. Responsabilidad por su usuario y contraseña. Su usuario y contraseña son personales e intransferibles. Usted es "
+    "responsable de las acciones que se registren con ellos: no los comparta, no los anote a la vista, cierre la sesión "
+    "al terminar y avise de inmediato a Sistemas si sospecha que alguien más los conoce o los usó.\n\n"
+    "Al aceptar, declara haber leído este aviso, autoriza el tratamiento de sus datos para las finalidades indicadas y "
+    "asume la responsabilidad por el uso de su usuario y contraseña.")
+PARAMS += [
+    ("clave_longitud_minima", 8, "int", "Seguridad", "Longitud mínima de la contraseña.", "DEFINIDO", f"{MB}: mínimo 8 caracteres"),
+    ("clave_dias_vigencia", 90, "int", "Seguridad",
+     "Días de vigencia de la contraseña; al vencer, el sistema pide cambiarla al ingresar (0 = no vence).", "DEFINIDO",
+     f"{MB}: vencimiento cada 90 días (propuesta aceptada)"),
+    ("clave_intentos_bloqueo", 5, "int", "Seguridad", "Intentos fallidos seguidos que bloquean el usuario.", "DEFINIDO",
+     f"{MB}: bloqueo tras 5 intentos fallidos (propuesta aceptada)"),
+    ("clave_minutos_bloqueo", 15, "int", "Seguridad",
+     "Minutos que dura el bloqueo por intentos fallidos (0 = hasta que Sistemas lo desbloquee).", "PROPUESTO",
+     f"{MB}: el sistema opera 24/7; un bloqueo temporal evita depender de Sistemas de madrugada"),
+    ("aviso_datos_version", "1.0-borrador", "str", "Seguridad",
+     "Versión del aviso de datos personales; al cambiarla, todos deben aceptarlo de nuevo al ingresar.", "PROPUESTO",
+     f"{MB}: aviso al primer ingreso (Ley 29733)"),
+    ("aviso_datos_texto", _AVISO_BORRADOR, "text", "Seguridad",
+     "Texto del aviso de datos personales y de responsabilidad por el usuario y la contraseña.", "PROPUESTO",
+     f"{MB}: borrador redactado para revisión; responsable «Corporación Productiva»"),
+    ("asignar_solo_personal_en_turno", True, "bool", "Turnos",
+     "Las tareas (picking) se proponen y asignan solo a personal en turno ese día (incluye refuerzos de emergencia). "
+     "Mientras nadie del almacén tenga turno configurado, se usa todo el personal.", "DEFINIDO", f"{MB}: solo personas en turno"),
+    ("horas_plazo_tarea", {"ALTA": 4, "MEDIA": 24, "BAJA": 72}, "dict", "Turnos",
+     "Horas para atender una tarea según su urgencia; vencido el plazo se alerta al jefe del responsable.", "PROPUESTO",
+     f"{MB}: alertar a su jefe si no cumplió con algo (plazos propuestos, a confirmar)"),
+    ("jefe_por_rol", {
+        "AUX_ALMACEN": ["LIDER_ALMACEN", "SUPERV_ALMACEN"], "MONTACARGUISTA": ["LIDER_ALMACEN", "SUPERV_ALMACEN"],
+        "LIDER_ALMACEN": ["SUPERV_ALMACEN", "COORD_ALMACEN", "COORD_ALMACEN_MP"],
+        "SUPERV_ALMACEN": ["COORD_ALMACEN", "COORD_ALMACEN_MP"], "COORD_ALMACEN": ["JEFE_LOGISTICA"],
+        "COORD_ALMACEN_MP": ["JEFE_LOGISTICA"], "COORD_LOGISTICA": ["JEFE_LOGISTICA"], "JEFE_LOGISTICA": ["GERENCIA_OPERACIONES"],
+        "AUX_DESPACHO": ["COORD_DISTRIBUCION"], "CONDUCTOR": ["COORD_DISTRIBUCION"], "ASIST_DISTRIBUCION": ["COORD_DISTRIBUCION"],
+        "COORD_DISTRIBUCION": ["JEFE_LOGISTICA"], "ASIST_PRODUCCION": ["JEFE_PRODUCCION"], "JEFE_PRODUCCION": ["GERENCIA_OPERACIONES"],
+        "ASIST_CALIDAD": ["JEFE_CALIDAD"], "SUPERV_CALIDAD": ["JEFE_CALIDAD"], "JEFE_CALIDAD": ["GERENCIA_OPERACIONES"],
+        "ASIST_VENTAS": ["COORD_VENTAS", "JEFE_VENTAS"], "EJECUTIVO_VENTAS": ["COORD_VENTAS", "JEFE_VENTAS"],
+        "COORD_VENTAS": ["JEFE_VENTAS"], "JEFE_VENTAS": ["GERENTE_COMERCIAL"], "GERENTE_COMERCIAL": ["GERENCIA_GENERAL"],
+        "COMPRAS": ["JEFE_LOGISTICA"], "IMPORTACIONES": ["JEFE_LOGISTICA"], "SEGURIDAD": ["GERENCIA_OPERACIONES"],
+        "FACTURACION": ["GERENCIA_GENERAL"], "GERENCIA_OPERACIONES": ["GERENCIA_GENERAL"]}, "dict", "Turnos",
+     "Jefe (rol) a quien se alerta cuando una persona de ese rol no cumple una tarea en su plazo.", "PROPUESTO",
+     f"{MB}: alertar a su jefe; organigrama propuesto, a confirmar en la matriz"),
+    ("conciliacion_ov_modo", "ALERTAR", "str", "Conciliación SAP",
+     "Si una OV de la carga de SAP difiere de la del módulo: ALERTAR (se registra la diferencia y no se cambia la OV) o "
+     "APLICAR (se actualiza la OV con los datos de SAP, como antes).", "DEFINIDO",
+     f"{MB}: cualquier diferencia alerta para regularizar o levantar la observación"),
+    ("cortes_carga_sap", ["inicio de jornada", "mediodía", "fin de jornada"], "list", "Conciliación SAP",
+     "Cortes del día en que se cargan las exportaciones de SAP (stock, OV, liquidaciones, despachos y facturas).",
+     "DEFINIDO", f"{MB}: tres cortes al día; el objetivo es la sincronización automática con SAP (Service Layer)"),
+    ("modo_contingencia", {"activa": False}, "dict", "Sistemas",
+     "Registro en contingencia: mientras está activo, todo lo que se registra queda marcado como «registrado en "
+     "contingencia» (se activa y desactiva desde Contingencia).", "DEFINIDO", f"{MB}: se puede registrar en contingencia"),
+]
+for _k, _v in (("horas_max_sin_carga", {"STOCK": 8, "OV": 8, "LIQUIDACION": 8, "DESPACHOS": 8, "SALIDAS": 24}),):
+    for _i, _p in enumerate(PARAMS):
+        if _p[0] == _k:
+            PARAMS[_i] = (_p[0], _v) + tuple(_p[2:5]) + ("DEFINIDO", f"{MB}: tres cortes al día (inicio, mediodía, fin de jornada)")
+
+_JEFES = ["JEFE_LOGISTICA", "COORD_ALMACEN", "COORD_ALMACEN_MP", "LIDER_ALMACEN", "SUPERV_ALMACEN", "JEFE_PRODUCCION",
+          "COORD_DISTRIBUCION", "JEFE_CALIDAD", "JEFE_VENTAS", "COORD_VENTAS", "GERENTE_COMERCIAL"]
+_MB_PERMS = [
+    ("observaciones.gestionar", "Clasificar y atender las observaciones reportadas por los usuarios", "Sistemas", "exclusivo",
+     ["GERENCIA_GENERAL", "SISTEMAS"], "DEFINIDO"),
+    ("turnos.gestionar", "Configurar turnos, asignarlos al personal y agregar refuerzos de emergencia", "Configuración", "edicion",
+     ["SISTEMAS"] + _JEFES, "PROPUESTO"),
+    ("informes.cumplimiento", "Informe de interacciones y cumplimiento de funciones por persona", "Informes", "consulta",
+     ["SISTEMAS"] + _JEFES, "PROPUESTO"),
+    ("conciliacion.ver", "Ver las diferencias entre SAP y el módulo", "Conciliación SAP", "consulta",
+     ["SISTEMAS"] + _JEFES + ["ASIST_VENTAS", "ASIST_PRODUCCION", "ASIST_DISTRIBUCION", "FACTURACION", "COORD_LOGISTICA"],
+     "PROPUESTO"),
+    ("conciliacion.resolver", "Regularizar o levantar las diferencias con SAP de su área", "Conciliación SAP", "edicion",
+     ["COORD_ALMACEN", "COORD_ALMACEN_MP", "SUPERV_ALMACEN", "JEFE_LOGISTICA", "COORD_VENTAS", "JEFE_VENTAS", "ASIST_VENTAS",
+      "JEFE_PRODUCCION", "ASIST_PRODUCCION", "COORD_DISTRIBUCION", "ASIST_DISTRIBUCION", "FACTURACION"], "PROPUESTO"),
+    ("contingencia.gestionar", "Activar y desactivar el registro en contingencia", "Sistemas", "exclusivo",
+     ["SISTEMAS", "GERENCIA_GENERAL", "GERENCIA_OPERACIONES"], "PROPUESTO"),
+]
+for _code, _n, _m, _t, _roles, _o in _MB_PERMS:
+    if not any(p[0] == _code for p in PERMISSIONS):
+        PERMISSIONS.append((_code, _n, _m, _t))
+    for _r in _roles:
+        ROLE_PERMISSIONS.setdefault(_r, []).append((_code, _o, MB))
+    if _t != "exclusivo" and "GERENCIA_GENERAL" not in _roles:
+        ROLE_PERMISSIONS["GERENCIA_GENERAL"].append((_code, "DEFINIDO", f"{MB}; regla general de Gerencia General"))
+    if _t == "consulta" and "GERENCIA_OPERACIONES" not in _roles:
+        ROLE_PERMISSIONS["GERENCIA_OPERACIONES"].append((_code, "DEFINIDO", f"{MB}; Gerencias visualizan todas las áreas"))
+
+_TODOS = [r[0] for r in ROLES]
+ALERT_TYPES += [
+    ("CONCILIACION_STOCK", "Diferencias de stock entre SAP y el módulo", "Almacén", "Conciliación SAP", "ALTA",
+     _ALM + ["SUPERV_ALMACEN"] + _LOG, "DEFINIDO", f"{MB}: cualquier diferencia alerta",
+     "Al cargar el stock de SAP, un lote tiene distinta cantidad en SAP y en el módulo.", True),
+    ("CONCILIACION_OV", "Diferencias de OV entre SAP y el módulo", "Comercial", "Conciliación SAP", "ALTA",
+     _COM + ["ASIST_VENTAS"], "DEFINIDO", f"{MB}: cualquier diferencia alerta",
+     "Al cargar las OV de SAP, una OV difiere (cantidad, precio, fecha o estado) o no figura en uno de los dos.", True),
+    ("CONCILIACION_PRODUCCION", "Diferencias de liquidación entre SAP y el módulo", "Producción", "Conciliación SAP", "ALTA",
+     _PROD, "DEFINIDO", f"{MB}: cualquier diferencia alerta",
+     "Al cargar las liquidaciones de SAP, una ya registrada en el módulo tiene otros datos.", True),
+    ("CONCILIACION_DESPACHO", "Diferencias de despacho (guías) entre SAP y el módulo", "Distribución", "Conciliación SAP", "ALTA",
+     _DIST, "DEFINIDO", f"{MB}: cualquier diferencia alerta",
+     "Al cargar los despachos de SAP, la guía o la cantidad despachada difiere de la del módulo.", True),
+    ("CONCILIACION_FACTURA", "Diferencias de facturas entre SAP y el módulo", "Facturación", "Conciliación SAP", "ALTA",
+     ["FACTURACION"], "DEFINIDO", f"{MB}: cualquier diferencia alerta",
+     "Al cargar los despachos de SAP, la factura difiere de la registrada en el módulo o no se cargó.", True),
+    ("TAREA_INCUMPLIDA", "Tarea no cumplida en su plazo (aviso al jefe)", "Gerencia", "Cumplimiento", "ALTA",
+     [], "DEFINIDO", f"{MB}: alertar a su jefe si no cumplió con algo",
+     "Una tarea o un picking asignado no se completó dentro de su plazo; se avisa al jefe del responsable.", True),
+    ("OBSERVACION_REPORTADA", "Observación reportada por un usuario", "Sistemas", "Marcha blanca", "MEDIA",
+     ["SISTEMAS", "GERENCIA_GENERAL"], "DEFINIDO", f"{MB}: botón «Reportar observación» en cada pantalla",
+     "Un usuario reporta una observación desde una pantalla.", False),
+    ("CONTINGENCIA", "Registro en contingencia activado o desactivado", "Sistemas", "Marcha blanca", "ALTA",
+     _TODOS, "DEFINIDO", f"{MB}: volver al manual más SAP y registrar en contingencia",
+     "Se activa o desactiva el registro en contingencia.", False),
+]
+ALERT_INFORMATIVAS = set(ALERT_INFORMATIVAS) | {"OBSERVACION_REPORTADA", "CONTINGENCIA"}

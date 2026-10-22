@@ -127,14 +127,19 @@ def validate_load(route, user, lineas, observacion=""):
     return []
 
 
-def set_guide(stop, user, numero, origen, archivo=""):
-    """Distribución: generar guía en el sistema o registrar la guía generada en SAP (con archivo)."""
+def set_guide(stop, user, numero, origen, archivo="", motivo=None):
+    """Distribución: registrar la guía de SAP (la válida, con su número y archivo) o, si SAP no está disponible,
+    generarla en el sistema como contingencia (marcha blanca, 22-oct-2026), indicando el motivo."""
     if not has_perm(user, "distribucion.documentos"):
         raise BusinessError("La guía la genera o carga Distribución.")
     if origen not in ("SAP", "SISTEMA"):
         raise BusinessError("Origen de guía no válido.")
     if origen == "SAP" and not (numero.strip() and archivo):
         raise BusinessError("Para una guía de SAP registre el número y cargue el archivo.")
+    if origen == "SISTEMA" and motivo is not None and not motivo.strip():
+        raise BusinessError("La guía del sistema es de contingencia: indique el motivo (por ejemplo, SAP no disponible).")
+    if origen == "SISTEMA" and motivo:
+        stop.observacion = ((stop.observacion or "") + f"\nGuía generada en el sistema (contingencia): {motivo.strip()}").strip()
     if origen == "SISTEMA" and not numero.strip():
         numero = f"GS-{stop.route_id}-{stop.order.numero}"
     if stop.guia_numero and stop.guia_numero != numero.strip():
@@ -145,7 +150,8 @@ def set_guide(stop, user, numero, origen, archivo=""):
         stop.guia_path = archivo
     if not stop.route.guia_numero or stop.route.guia_numero.startswith("PRE-GUIA"):
         stop.route.guia_numero = stop.guia_numero
-    audit(user, "GUIA_REGISTRADA", "SalesOrder", stop.order.numero, {"guia": stop.guia_numero, "origen": origen})
+    audit(user, "GUIA_REGISTRADA", "SalesOrder", stop.order.numero, {"guia": stop.guia_numero, "origen": origen,
+                                                                     "contingencia": (motivo or "").strip()})
 
 
 def approve_guide(stop, user, comentario=""):

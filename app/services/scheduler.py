@@ -73,6 +73,8 @@ def run_checks(user=None, today=None):
     out["variacion_compra_clientes"] = check_purchase_variations(user, today)
     from .fleet import check_alerts as fleet_alerts
     out["flota"] = fleet_alerts(today)
+    from .shifts import check_overdue
+    out["tareas_incumplidas_aviso_jefe"] = check_overdue()
     out["correo"] = flush_outbox()
     return out
 

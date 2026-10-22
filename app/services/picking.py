@@ -67,7 +67,8 @@ def preschedule(order, user=None, hoy=None):
         if wh in existentes:
             continue
         fecha = _fecha_programada(order, hoy)
-        auxs = staff(wh, ROLES_PROPUESTA)
+        from .shifts import filter_on_shift  # marcha blanca: solo personal en turno (incluye refuerzos)
+        auxs = filter_on_shift(staff(wh, ROLES_PROPUESTA), fecha)
         carga = Counter()
         for t in db().execute(select(PickingTask).where(PickingTask.fecha == fecha)).scalars():
             for uid in t.asignados or []:
@@ -108,6 +109,13 @@ def assign(t, user, user_ids, fecha=None, comentario=""):
     validos = {u.id for u in staff(t.warehouse_code)}
     if any(i not in validos for i in ids):
         raise BusinessError("Solo puede asignar personal del almacén del picking.")
+    from .shifts import filter_on_shift
+    en_turno = {u.id for u in filter_on_shift(staff(t.warehouse_code), fecha or t.fecha)}
+    fuera = [i for i in ids if i not in en_turno]
+    if fuera:
+        nombres = ", ".join(u.nombre for u in staff(t.warehouse_code) if u.id in fuera)
+        raise BusinessError(f"{nombres}: no está(n) en turno el {(fecha or t.fecha):%d/%m/%Y}. Asigne personal en turno o "
+                            "agregue un refuerzo de emergencia en «Turnos del personal».")
     antes = list(t.asignados or [])
     t.asignados = ids
     if fecha:

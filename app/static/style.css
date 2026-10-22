@@ -302,6 +302,11 @@ details.filters-fold[open]>summary{margin-bottom:10px}
 dialog.confirm{border:none;border-radius:var(--r-lg);box-shadow:var(--sh-pop);padding:20px 22px;max-width:440px;width:calc(100% - 32px)}
 dialog.confirm::backdrop{background:rgba(16,24,20,.45)}
 dialog.confirm h3{margin:0 0 8px}dialog.confirm .actions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:16px}
+dialog.obs-dlg{border:none;border-radius:var(--r-lg);box-shadow:var(--sh-pop);padding:20px 22px;max-width:520px;width:calc(100% - 32px)}
+dialog.obs-dlg::backdrop{background:rgba(16,24,20,.45)}
+dialog.obs-dlg h3{margin:0 0 6px}dialog.obs-dlg .actions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:16px}
+.obs-btn{display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
+.flash.warn{background:#fff6dd;border-color:#f0c64a;color:#5a4300}
 /* avisos de alertas y sonido */
 .snd-btn.off{color:var(--muted)}
 .toasts{position:fixed;right:16px;bottom:16px;z-index:200;display:flex;flex-direction:column;gap:8px;max-width:min(380px,calc(100vw - 32px))}

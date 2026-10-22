@@ -130,12 +130,36 @@ def fmt_num(x, dec=2):
     return f"{x:,.{dec}f}".replace(",", " ")
 
 
+_LIBRES = {"static", "main.login", "main.logout", "main.change_password", "main.privacy_notice", "main.alerts_status",
+           "main.evidence"}
+
+
+def access_gate(user):
+    """Pantalla obligatoria antes de usar el sistema: aviso de datos (Ley 29733) o cambio de contraseña."""
+    from datetime import timedelta
+    from ..services.core import param
+    version = param("aviso_datos_version", "") or ""
+    if version and (user.aviso_aceptado or {}).get("version") != version:
+        return "main.privacy_notice"
+    if user.debe_cambiar_clave:
+        return "main.change_password"
+    dias = int(param("clave_dias_vigencia", 0) or 0)
+    if dias and (user.clave_ts is None or datetime.now() - user.clave_ts > timedelta(days=dias)):
+        return "main.change_password"
+    return None
+
+
 def install(app):
     @app.before_request
     def _load_user():
         g.user = current_user()
         g.perms = user_perms(g.user) if g.user else set()
         check_csrf()
+        # marcha blanca: aviso de datos personales y responsabilidad (primer ingreso o nueva versión) y contraseña al día
+        if g.user is not None and request.endpoint not in _LIBRES:
+            destino = access_gate(g.user)
+            if destino:
+                return redirect(url_for(destino, next=request.full_path if request.method == "GET" else None))
 
     def _logo_url():
         """Logotipo oficial si Sistemas lo cargó en static/img (logo_oficial.svg/png); si no, el logo de la empresa
@@ -162,7 +186,15 @@ def install(app):
                 "ve": lambda p: p in g.get("perms", set()) or "vista.total" in g.get("perms", set()),
                 "logo_url": _logo_url(),
                 "fmt_date": fmt_date, "fmt_num": fmt_num, "stock_info": stock_freshness() if u else None,
-                "alertas_abiertas": abiertas, "today": date.today(), "demo_mode": app.config.get("DEMO_MODE")}
+                "alertas_abiertas": abiertas, "today": date.today(), "demo_mode": app.config.get("DEMO_MODE"),
+                "contingencia": _contingencia() if u else {}}
+
+    def _contingencia():
+        from ..services.core import contingency
+        try:
+            return contingency()
+        except Exception:  # noqa: BLE001
+            return {}
 
     app.jinja_env.globals["csrf_token"] = csrf_token
 

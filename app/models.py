@@ -61,6 +61,12 @@ class User(Base):
     debe_cambiar_clave: Mapped[bool] = mapped_column(Boolean, default=False)
     # almacén donde trabaja el personal operativo (auxiliares, líderes, montacarguistas) para programar el picking
     almacen: Mapped[str] = mapped_column(String(20), default="")
+    # marcha blanca (22-oct-2026): aviso de datos personales aceptado {version, ts, ip}, vigencia de la contraseña y
+    # bloqueo por intentos fallidos
+    aviso_aceptado: Mapped[dict] = mapped_column(JSON, default=dict)
+    clave_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    intentos_fallidos: Mapped[int] = mapped_column(Integer, default=0)
+    bloqueado_hasta: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     role = relationship("Role")
 
 
@@ -1323,3 +1329,85 @@ class CustomerCondition(Base):
     origen: Mapped[str] = mapped_column(String(200), default="")
     ts: Mapped[datetime] = mapped_column(DateTime, default=now)
     customer = relationship("Customer")
+
+
+# ------------------------------ marcha blanca (22-oct-2026) ------------------------------
+class Observation(Base):
+    """Observación reportada por un usuario desde cualquier pantalla (botón «Reportar observación»)."""
+    __tablename__ = "observations"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    url: Mapped[str] = mapped_column(String(400), default="")
+    pantalla: Mapped[str] = mapped_column(String(200), default="")
+    tipo: Mapped[str] = mapped_column(String(20), default="ERROR")  # ERROR / MEJORA / DUDA
+    comentario: Mapped[str] = mapped_column(Text, default="")
+    captura: Mapped[str] = mapped_column(String(250), default="")
+    # SIN_CLASIFICAR / BLOQUEANTE / MAYOR / MENOR / MEJORA
+    clasificacion: Mapped[str] = mapped_column(String(20), default="SIN_CLASIFICAR")
+    estado: Mapped[str] = mapped_column(String(20), default="ABIERTA")  # ABIERTA / EN_CURSO / CORREGIDA / DESCARTADA
+    respuesta: Mapped[str] = mapped_column(Text, default="")
+    version: Mapped[str] = mapped_column(String(40), default="")
+    atendido_por: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    atendido_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    user = relationship("User", foreign_keys=[user_id])
+    atendido = relationship("User", foreign_keys=[atendido_por])
+
+
+class Shift(Base):
+    """Turno de trabajo: días de la semana (0 = lunes), hora de inicio y fin (si fin < inicio, termina al día siguiente)
+    y minutos de refrigerio que se descuentan."""
+    __tablename__ = "shifts"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    nombre: Mapped[str] = mapped_column(String(80))
+    dias: Mapped[list] = mapped_column(JSON, default=list)
+    inicio: Mapped[str] = mapped_column(String(5))
+    fin: Mapped[str] = mapped_column(String(5))
+    refrigerio_min: Mapped[int] = mapped_column(Integer, default=0)
+    activo: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class UserShift(Base):
+    """Turno asignado a una persona en un rango de fechas. Rotación semanal: aplica a las semanas en que
+    (n.° de semana ISO) mod ciclo == semana. Una persona puede tener varios turnos. REFUERZO: personal agregado para
+    atender una emergencia (también cuenta como «en turno»)."""
+    __tablename__ = "user_shifts"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    shift_id: Mapped[int | None] = mapped_column(ForeignKey("shifts.id"), nullable=True)
+    desde: Mapped[date] = mapped_column(Date)
+    hasta: Mapped[date | None] = mapped_column(Date, nullable=True)
+    ciclo: Mapped[int] = mapped_column(Integer, default=1)
+    semana: Mapped[int] = mapped_column(Integer, default=0)
+    tipo: Mapped[str] = mapped_column(String(10), default="REGULAR")  # REGULAR / REFUERZO
+    inicio: Mapped[str] = mapped_column(String(5), default="")  # refuerzo sin turno: horario propio
+    fin: Mapped[str] = mapped_column(String(5), default="")
+    motivo: Mapped[str] = mapped_column(Text, default="")
+    creado_por: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    user = relationship("User", foreign_keys=[user_id])
+    shift = relationship("Shift")
+
+
+class SapDiscrepancy(Base):
+    """Diferencia entre lo cargado desde SAP y lo registrado en el módulo (marcha blanca en paralelo). Se regulariza
+    o se levanta la observación con motivo."""
+    __tablename__ = "sap_discrepancies"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    origen: Mapped[str] = mapped_column(String(20))  # STOCK / OV / LIQUIDACION / DESPACHO / FACTURA
+    area: Mapped[str] = mapped_column(String(40))
+    upload_id: Mapped[int | None] = mapped_column(ForeignKey("upload_batches.id"), nullable=True)
+    referencia: Mapped[str] = mapped_column(String(80), default="")  # OV, OF, guía, factura
+    product_code: Mapped[str] = mapped_column(String(40), default="")
+    lote: Mapped[str] = mapped_column(String(60), default="")
+    almacen: Mapped[str] = mapped_column(String(20), default="")
+    campo: Mapped[str] = mapped_column(String(60), default="")
+    valor_sap: Mapped[str] = mapped_column(String(200), default="")
+    valor_modulo: Mapped[str] = mapped_column(String(200), default="")
+    detalle: Mapped[str] = mapped_column(Text, default="")
+    estado: Mapped[str] = mapped_column(String(15), default="PENDIENTE")  # PENDIENTE / REGULARIZADA / LEVANTADA
+    motivo: Mapped[str] = mapped_column(Text, default="")
+    resuelto_por: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    resuelto_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    resuelto = relationship("User", foreign_keys=[resuelto_por])

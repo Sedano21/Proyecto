@@ -2,7 +2,7 @@
 import io
 import os
 import time
-from datetime import date
+from datetime import date, datetime, timedelta
 
 from flask import (Blueprint, abort, flash, g, redirect, render_template, request, send_file, send_from_directory,
                    session, url_for)
@@ -32,9 +32,10 @@ def register_views(app):
     app.register_blueprint(calidad.bp)
     app.register_blueprint(compras.bp)
     app.register_blueprint(distribucion.bp)
-    from . import m365, informes
+    from . import m365, informes, marcha
     app.register_blueprint(m365.bp)
     app.register_blueprint(informes.bp)
+    app.register_blueprint(marcha.bp)
 
     @app.errorhandler(403)
     def _403(e):
@@ -57,26 +58,43 @@ def login():
         if os.environ.get("LOCAL_LOGIN", "1") == "0":
             abort(403)  # solo Microsoft 365
         username = (request.form.get("username") or "").strip().lower()
-        fails = _FAILS.get(username, [])
-        fails = [t for t in fails if time.time() - t < 300]
-        if len(fails) >= 5:
-            flash("Usuario bloqueado temporalmente por intentos fallidos (5 minutos).", "error")
-            return render_template("login.html")
         u = db().execute(select(User).where(User.username == username)).scalars().first()
+        ahora = datetime.now()
+        if u is not None and u.bloqueado_hasta and u.bloqueado_hasta > ahora:
+            audit(None, "LOGIN_BLOQUEADO", "User", username)
+            db().commit()
+            flash("Usuario bloqueado por intentos fallidos. " + ("Pida a Sistemas que lo desbloquee."
+                  if u.bloqueado_hasta.year >= 9000 else f"Intente después de las {u.bloqueado_hasta:%H:%M}."), "error")
+            return render_template("login.html", local_login=True)
+        fails = [t for t in _FAILS.get(username, []) if time.time() - t < 300]  # usuarios inexistentes
+        if u is None and len(fails) >= 5:
+            flash("Demasiados intentos. Espere unos minutos.", "error")
+            return render_template("login.html", local_login=True)
         if u and u.activo and check_password_hash(u.password_hash, request.form.get("password") or ""):
             tok = session.get("_csrf")
             session.clear()
             session["uid"] = u.id
             if tok:
                 session["_csrf"] = tok
+            u.intentos_fallidos, u.bloqueado_hasta = 0, None
             _FAILS.pop(username, None)
             audit(u, "LOGIN", "User", u.id)
             db().commit()
             nxt = request.args.get("next") or url_for("main.dashboard")
             seguro = nxt.startswith("/") and not nxt.startswith("//") and "\\" not in nxt
             return redirect(nxt if seguro else url_for("main.dashboard"))
-        fails.append(time.time())
-        _FAILS[username] = fails
+        if u is not None:  # marcha blanca: bloqueo tras N intentos fallidos seguidos
+            from ..services.core import param
+            u.intentos_fallidos = (u.intentos_fallidos or 0) + 1
+            limite = int(param("clave_intentos_bloqueo", 5) or 5)
+            if u.intentos_fallidos >= limite:
+                mins = int(param("clave_minutos_bloqueo", 15) or 0)
+                u.bloqueado_hasta = ahora + timedelta(minutes=mins) if mins else datetime(9999, 1, 1)
+                u.intentos_fallidos = 0
+                audit(None, "USUARIO_BLOQUEADO", "User", username, {"intentos": limite, "minutos": mins or "hasta desbloqueo"})
+        else:
+            fails.append(time.time())
+            _FAILS[username] = fails
         audit(None, "LOGIN_FALLIDO", "User", username)
         db().commit()
         flash("Usuario o contraseña incorrectos.", "error")
@@ -98,21 +116,67 @@ def logout():
     return redirect(url_for("main.login"))
 
 
+def check_new_password(user, nueva):
+    """Política de contraseñas (marcha blanca): longitud mínima configurable y distinta del usuario."""
+    from ..services.core import param
+    minimo = int(param("clave_longitud_minima", 8) or 8)
+    if len(nueva or "") < minimo:
+        raise BusinessError(f"La contraseña debe tener al menos {minimo} caracteres.")
+    if user is not None and (nueva or "").lower() == user.username.lower():
+        raise BusinessError("La contraseña no puede ser igual al usuario.")
+
+
 @bp.route("/cambiar-clave", methods=["GET", "POST"])
 @login_required
 def change_password():
+    from ..services.core import param
     if request.method == "POST":
         def _do():
             if not check_password_hash(g.user.password_hash, request.form.get("actual") or ""):
                 raise BusinessError("La contraseña actual no es correcta.")
             nueva = request.form.get("nueva") or ""
-            if len(nueva) < 10:
-                raise BusinessError("La nueva contraseña debe tener al menos 10 caracteres.")
+            if nueva != (request.form.get("repetir") or ""):
+                raise BusinessError("La nueva contraseña y su confirmación no coinciden.")
+            check_new_password(g.user, nueva)
+            if check_password_hash(g.user.password_hash, nueva):
+                raise BusinessError("La nueva contraseña debe ser distinta de la actual.")
             g.user.password_hash = generate_password_hash(nueva)
             g.user.debe_cambiar_clave = False
+            g.user.clave_ts = datetime.now()
             audit(g.user, "CLAVE_CAMBIADA", "User", g.user.id)
-        return act(_do, "Contraseña actualizada.", url_for("main.dashboard"))
-    return render_template("change_password.html")
+        nxt = request.args.get("next") or ""
+        return act(_do, "Contraseña actualizada.", nxt if nxt.startswith("/") and not nxt.startswith("//") else url_for("main.dashboard"))
+    dias = int(param("clave_dias_vigencia", 0) or 0)
+    vencida = bool(dias and (g.user.clave_ts is None or datetime.now() - g.user.clave_ts > timedelta(days=dias)))
+    return render_template("change_password.html", minimo=int(param("clave_longitud_minima", 8) or 8), dias=dias,
+                           obligatorio=g.user.debe_cambiar_clave or vencida, vencida=vencida and not g.user.debe_cambiar_clave)
+
+
+@bp.route("/aviso-datos", methods=["GET", "POST"])
+@login_required
+def privacy_notice():
+    """Aviso de datos personales (Ley 29733) y responsabilidad por el usuario y la contraseña: se acepta al primer
+    ingreso y cada vez que cambia su versión."""
+    from ..services.core import param
+    version = param("aviso_datos_version", "") or ""
+    if request.method == "POST":
+        if request.form.get("accion") == "rechazar":
+            audit(g.user, "AVISO_DATOS_RECHAZADO", "User", g.user.username, {"version": version})
+            db().commit()
+            session.clear()
+            flash("Para usar el sistema debe aceptar el aviso de datos personales y la responsabilidad por su usuario.", "error")
+            return redirect(url_for("main.login"))
+        if not (request.form.get("acepto_datos") and request.form.get("acepto_responsabilidad")):
+            flash("Marque ambas casillas para continuar.", "error")
+            return redirect(url_for("main.privacy_notice", next=request.args.get("next")))
+        g.user.aviso_aceptado = {"version": version, "ts": datetime.now().isoformat(timespec="seconds"),
+                                 "ip": request.headers.get("X-Forwarded-For", request.remote_addr or "")}
+        audit(g.user, "AVISO_DATOS_ACEPTADO", "User", g.user.username, {"version": version})
+        db().commit()
+        nxt = request.args.get("next") or ""
+        return redirect(nxt if nxt.startswith("/") and not nxt.startswith("//") else url_for("main.dashboard"))
+    return render_template("privacy_notice.html", texto=param("aviso_datos_texto", "") or "", version=version,
+                           aceptado=(g.user.aviso_aceptado or {}))
 
 
 # ------------------------------- tablero -----------------------------------
@@ -650,22 +714,25 @@ def users():
             uid = request.form.get("id")
             if uid:
                 u = s.get(User, int(uid))
+                if request.form.get("accion") == "desbloquear":  # solo desbloquea; no toca el resto de la ficha
+                    u.bloqueado_hasta, u.intentos_fallidos = None, 0
+                    audit(g.user, "USUARIO_DESBLOQUEADO", "User", u.username)
+                    return
                 antes = {"rol": u.role_code, "activo": u.activo}
                 u.role_code = request.form.get("role_code", u.role_code)
                 u.activo = request.form.get("activo") == "1"
                 u.email = request.form.get("email", u.email)
                 if request.form.get("password"):
-                    if len(request.form["password"]) < 10:
-                        raise BusinessError("La contraseña debe tener al menos 10 caracteres.")
+                    check_new_password(u, request.form["password"])
                     u.password_hash = generate_password_hash(request.form["password"])
-                    u.debe_cambiar_clave = True
+                    u.debe_cambiar_clave = True  # la clave asignada por Sistemas se cambia en el primer ingreso
+                    u.bloqueado_hasta, u.intentos_fallidos = None, 0
                 audit(g.user, "USUARIO_EDITADO", "User", u.username, {"antes": antes, "rol": u.role_code, "activo": u.activo})
             else:
                 from ..seed import create_user
                 pwd = request.form.get("password") or ""
-                if len(pwd) < 10:
-                    raise BusinessError("La contraseña debe tener al menos 10 caracteres.")
                 un = request.form.get("username", "").strip().lower()
+                check_new_password(None, pwd)
                 if not un or s.execute(select(User).where(User.username == un)).first():
                     raise BusinessError("Usuario vacío o existente.")
                 u = create_user(un, request.form.get("nombre", un), request.form["role_code"], pwd, request.form.get("email"))
@@ -673,7 +740,9 @@ def users():
                 audit(g.user, "USUARIO_CREADO", "User", un, {"rol": u.role_code})
         return act(_do, "Usuario guardado.", url_for("main.users"))
     roles = list(s.execute(select(Role).order_by(Role.area, Role.nombre)).scalars())
-    return render_template("users.html", users=list(s.execute(select(User).order_by(User.role_code)).scalars()), roles=roles)
+    from ..services.core import param
+    return render_template("users.html", users=list(s.execute(select(User).order_by(User.role_code)).scalars()), roles=roles,
+                           now_=datetime.now(), minimo=int(param("clave_longitud_minima", 8) or 8))
 
 
 @bp.route("/usuarios/permisos")

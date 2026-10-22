@@ -67,9 +67,18 @@ def _jsonable(v):
     return v
 
 
+def contingency():
+    """Registro en contingencia (marcha blanca): {activa, desde, motivo, por} o {} si no está activo."""
+    c = param("modo_contingencia", {}) or {}
+    return c if c.get("activa") else {}
+
+
 def audit(user, accion, entidad, entidad_id="", detalle=None):
+    detalle = dict(detalle or {})
+    if contingency():
+        detalle["registrado_en_contingencia"] = True  # todo lo registrado mientras está activo queda marcado
     db().add(AuditLog(user_id=user.id if user else None, accion=accion, entidad=entidad,
-                      entidad_id=str(entidad_id), detalle=_jsonable(detalle or {})))
+                      entidad_id=str(entidad_id), detalle=_jsonable(detalle)))
 
 
 # ------------------------------- permisos ---------------------------------

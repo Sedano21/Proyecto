@@ -1,0 +1,17 @@
+{% extends "base.html" %}{% from "_m.html" import b, csrf %}
+{% block content %}<h1>Conciliación SAP</h1>
+<p class="muted small">Marcha blanca en paralelo: cada carga de SAP ({{ cortes|join(', ') }}) se compara con lo registrado en el módulo. <b>Cualquier diferencia</b> se registra aquí y se alerta al área. Regularícela (se corrigió en SAP o en el módulo) o levante la observación explicando el motivo. Cargas que se comparan: stock por lote, órdenes de venta, liquidaciones y despachos de SAP (guías y facturas).</p>
+<div class="kpis">{% for a, r in resumen.items() %}<a class="kpi {{ 'warn' if r.get('PENDIENTE') }}" href="?estado=PENDIENTE&area={{ a }}"><b>{{ r.get('PENDIENTE', 0) }}</b><span>{{ a }}: pendientes</span><small>{{ r.get('REGULARIZADA', 0) }} regularizadas · {{ r.get('LEVANTADA', 0) }} levantadas</small></a>{% else %}<div class="kpi"><b>0</b><span>Sin diferencias registradas</span></div>{% endfor %}</div>
+<form class="card row" method="get"><div><label>Estado</label><select name="estado"><option value="">(todos)</option>{% for e in ['PENDIENTE', 'REGULARIZADA', 'LEVANTADA'] %}<option {{ 'selected' if e == estado }}>{{ e }}</option>{% endfor %}</select></div>
+<div><label>Área</label><select name="area"><option value="">(todas)</option>{% for a in areas %}<option {{ 'selected' if a == area }}>{{ a }}</option>{% endfor %}</select></div>
+<div><label>Origen</label><select name="origen"><option value="">(todos)</option>{% for k, t in origenes.items() %}<option value="{{ k }}" {{ 'selected' if k == origen }}>{{ t }}</option>{% endfor %}</select></div><div><button>Filtrar</button></div></form>
+<form method="post">{{ csrf() }}
+<div class="tw"><table class="small"><tr><th></th><th>Fecha / carga</th><th>Área</th><th>Origen</th><th>Documento</th><th>Producto · lote · almacén</th><th>Dato</th><th class="r">SAP</th><th class="r">Módulo</th><th>Detalle</th><th>Estado</th></tr>
+{% for d in rows %}<tr><td>{% if d.estado == 'PENDIENTE' and puede(d) %}<input type="checkbox" name="ids" value="{{ d.id }}" aria-label="Seleccionar">{% endif %}</td>
+<td>{{ d.ts|d }}{% if d.upload_id %}<br><a href="{{ url_for('alm.upload_detail', bid=d.upload_id) }}">carga #{{ d.upload_id }}</a>{% endif %}</td><td>{{ d.area }}</td><td>{{ origenes.get(d.origen, d.origen) }}</td><td>{{ d.referencia }}</td>
+<td>{{ d.product_code }}{{ ' · ' ~ d.lote if d.lote }}{{ ' · ' ~ d.almacen if d.almacen }}</td><td>{{ d.campo }}</td><td class="r"><b>{{ d.valor_sap }}</b></td><td class="r"><b>{{ d.valor_modulo }}</b></td><td>{{ d.detalle }}</td>
+<td>{{ b(d.estado) }}{% if d.motivo %}<br><span class="muted">{{ d.motivo }}{{ ' · ' ~ d.resuelto.nombre if d.resuelto }}</span>{% endif %}</td></tr>
+{% else %}<tr><td colspan="11" class="muted">Sin diferencias con este filtro.</td></tr>{% endfor %}</table></div>
+{% if rows|selectattr('estado', 'equalto', 'PENDIENTE')|list %}<div class="card row"><div class="grow"><label>Qué se hizo / motivo (se aplica a las seleccionadas)</label><input name="motivo" required style="width:100%"></div>
+<div><button name="accion" value="REGULARIZADA">Regularizada</button> <button class="sec" name="accion" value="LEVANTADA">Levantar observación</button></div></div>{% endif %}
+</form>{% endblock %}

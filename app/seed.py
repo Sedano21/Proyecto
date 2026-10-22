@@ -1,7 +1,7 @@
 """Carga de catálogos (desde app/catalogs.py) y de datos FICTICIOS de demostración."""
 import os
 import tempfile
-from datetime import date, timedelta
+from datetime import datetime, date, timedelta
 
 from sqlalchemy import select
 from werkzeug.security import generate_password_hash
@@ -159,6 +159,10 @@ def seed_demo(upload_dir=None, today=None):
     if s.execute(select(User)).first():
         return False
     users = {u: create_user(u, n, r) for u, n, r in DEMO_USERS}
+    from .services.core import param as _param
+    for _u in users.values():  # demostración: aviso de datos aceptado (los usuarios reales lo aceptan al primer ingreso)
+        _u.aviso_aceptado = {"version": _param("aviso_datos_version", ""), "ts": "demo", "ip": ""}
+        _u.clave_ts = datetime.now()
     for u in users.values():  # almacén del personal operativo (para programar el picking)
         if u.role_code in ("AUX_ALMACEN", "AUX_DESPACHO", "LIDER_ALMACEN", "MONTACARGUISTA"):
             u.almacen = "EXT-002" if u.username.endswith(".mp") else "ALM-001"

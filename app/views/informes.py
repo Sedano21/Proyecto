@@ -14,6 +14,7 @@ INFORMES = {
     "produccion": ("Producción", ("informes.produccion",)),
     "distribucion": ("Distribución", ("informes.distribucion",)),
     "almacen": ("Movimiento de stock del almacén", ("informes.almacen",)),
+    "cumplimiento": ("Interacciones y cumplimiento por persona", ("informes.cumplimiento",)),
 }
 
 
@@ -146,6 +147,11 @@ def _show(nombre):
                                 title="Programado vs ejecutado (cumplimiento)", color=2)
         return render_template("informe_produccion.html", d=d, cap=cap, graf_cap=graf_cap, graf_prog=graf_prog,
                                charts=charts, items=disponibles(), actual=nombre)
+    if nombre == "cumplimiento":
+        from datetime import date, timedelta
+        from ..services.shifts import compliance
+        d = compliance(desde or date.today() - timedelta(days=6), hasta or date.today())
+        return render_template("informe_cumplimiento.html", d=d, items=disponibles(), actual=nombre)
     fn = getattr(rsvc, nombre)
     d = fn(desde, hasta)
     return render_template(f"informe_{nombre}.html", d=d, charts=charts, items=disponibles(), actual=nombre)

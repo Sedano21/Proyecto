@@ -58,10 +58,13 @@ def main(argv):
                 return 2
             from .seed import create_user
             pwd = getpass.getpass("Contraseña: ")
-            if len(pwd) < 10:
-                print("La contraseña debe tener al menos 10 caracteres.")
+            from .services.core import param
+            minimo = int(param("clave_longitud_minima", 8) or 8)
+            if len(pwd) < minimo:
+                print(f"La contraseña debe tener al menos {minimo} caracteres.")
                 return 2
-            create_user(argv[1], argv[3], argv[2], pwd, argv[4])
+            u = create_user(argv[1], argv[3], argv[2], pwd, argv[4])
+            u.debe_cambiar_clave = True  # la cambia en su primer ingreso
             print("Usuario creado")
         elif cmd == "muestras":
             from .demo_data import write_all

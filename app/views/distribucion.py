@@ -105,7 +105,8 @@ def route_detail(rid):
 
             def fn():
                 arch = dsvc.save_upload(request.files.get("archivo"), current_app.config["UPLOAD_DIR"], f"guia_{stop.order.numero}")
-                dsp.set_guide(stop, u, f.get("numero", ""), f.get("origen", "SISTEMA"), arch)
+                dsp.set_guide(stop, u, f.get("numero", ""), f.get("origen", "SAP"), arch,
+                              f.get("motivo", "") if f.get("origen") == "SISTEMA" else None)
         elif acc == "factura":
             stop = db().get(RouteStop, int(f["stop_id"]))
 

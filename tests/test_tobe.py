@@ -142,6 +142,8 @@ def test_sistemas_no_aprueba_gerencia_general_si(s, U, new_order):
 
 def test_asistente_carga_consolidado_cambios_requieren_autorizacion(s, U, tmp_path):
     from app.demo_data import write_ovs
+    from app.services.core import set_param
+    set_param("conciliacion_ov_modo", "APLICAR")  # modo previo a la marcha blanca (en ALERTAR solo se concilia)
     p = os.path.join(tmp_path, "ovs.xlsx")
     write_ovs(p, date.today())
     up.confirm(up.create_batch(U("asist.ventas"), "OV", p, "ovs.xlsx"), U("asist.ventas"))

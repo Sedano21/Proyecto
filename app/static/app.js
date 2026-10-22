@@ -346,4 +346,22 @@
     pop.style.top = top + 'px';
   }, true);
   window.addEventListener('scroll', function () { document.querySelectorAll('details.row-menu[open]').forEach(function (x) { x.open = false; }); }, true);
+
+  /* ------------------------------------------------------------------ 5. reportar observación (marcha blanca) */
+  var obs = document.getElementById('obsdlg');
+  if (obs) {
+    document.addEventListener('click', function (e) {
+      if (e.target.closest('[data-obs]')) {
+        var h1 = document.querySelector('main h1');
+        var nombre = (h1 ? h1.textContent.trim() : document.title).slice(0, 190);
+        obs.querySelector('[name=url]').value = location.pathname + location.search;
+        obs.querySelector('[name=pantalla]').value = nombre;
+        obs.querySelector('.obs-pant').textContent = nombre;
+        if (obs.showModal) obs.showModal(); else obs.setAttribute('open', '');
+        obs.querySelector('textarea').focus();
+      } else if (e.target.closest('[data-obs-close]')) {
+        obs.close ? obs.close() : obs.removeAttribute('open');
+      }
+    });
+  }
 })();

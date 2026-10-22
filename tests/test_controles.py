@@ -112,7 +112,13 @@ def test_importar_ov_sap_y_liquidacion(s, U, tmp_path):
     up.confirm(b2, U("asist.produccion"), {"origen": "SAP"})
     s.commit()
     b3 = up.create_batch(U("asist.produccion"), "LIQUIDACION", p2, "liq.xlsx")
-    assert b3.estado == "VALIDADO_CON_ERRORES"  # duplicado contra lo ya registrado
+    # marcha blanca (22-oct): lo ya registrado no se duplica; se concilia con SAP (sin diferencias si coincide)
+    assert b3.estado != "VALIDADO_CON_ERRORES"
+    from app.models import Liquidation
+    n = s.query(Liquidation).count()
+    r3 = up.confirm(b3, U("asist.produccion"), {"origen": "SAP"})
+    s.commit()
+    assert s.query(Liquidation).count() == n and r3["liquidaciones"] == 0 and r3["diferencias_sap"] == 0
 
 
 def test_parse_presentation():

@@ -1,0 +1,42 @@
+{% extends "base.html" %}{% from "_m.html" import b, csrf %}
+{% block content %}<h1>Turnos del personal</h1>
+<p class="muted small">Las tareas (picking) se proponen y asignan {{ '<b>solo a personal en turno</b>'|safe if solo_turno else 'a todo el personal (parámetro desactivado)' }}. Una persona puede tener varios turnos y turnos rotativos por semana; el refrigerio se descuenta. La entrada y salida las mide otro sistema: aquí solo se planifica el personal disponible para las tareas.</p>
+<div class="grid g2">
+<div class="card"><h3>Turnos</h3><div class="tw"><table class="small"><tr><th>Turno</th><th>Días</th><th>Horario</th><th>Refrigerio</th><th>Activo</th></tr>
+{% for t in turnos %}<tr><td>{{ t.nombre }}</td><td>{% for d in t.dias %}{{ dias[d][:2] }}{{ ' ' if not loop.last }}{% endfor %}</td><td>{{ t.inicio }}–{{ t.fin }}{% if t.fin < t.inicio %} <span class="muted">(termina al día siguiente)</span>{% endif %}</td><td>{{ t.refrigerio_min }} min</td><td>{{ 'Sí' if t.activo else 'No' }}</td></tr>
+{% else %}<tr><td colspan="5" class="muted">Aún no hay turnos.</td></tr>{% endfor %}</table></div>
+<details {{ 'open' if not turnos }}><summary><b>Nuevo turno</b></summary><form method="post">{{ csrf() }}<input type="hidden" name="accion" value="turno">
+<label>Nombre</label><input name="nombre" required placeholder="Mañana L-S">
+<label>Días</label><div class="row">{% for d in dias %}<label class="chk"><input type="checkbox" name="dias" value="{{ loop.index0 }}" {{ 'checked' if loop.index0 < 5 }}> {{ d }}</label>{% endfor %}</div>
+<div class="row"><div><label>Inicio</label><input type="time" name="inicio" required value="07:00"></div><div><label>Fin</label><input type="time" name="fin" required value="16:00"></div><div><label>Refrigerio (min)</label><input type="number" name="refrigerio_min" min="0" value="60" style="width:90px"></div></div>
+<p><button>Guardar turno</button></p></form></details></div>
+
+<div class="card"><h3>Asignar turno a una persona</h3><form method="post">{{ csrf() }}<input type="hidden" name="accion" value="asignar">
+<label>Persona</label><select name="user_id" required>{% for u in users %}<option value="{{ u.id }}">{{ u.nombre }} — {{ u.role.nombre }}{{ ' · ' ~ u.almacen if u.almacen }}</option>{% endfor %}</select>
+<label>Turno</label><select name="shift_id" required>{% for t in turnos if t.activo %}<option value="{{ t.id }}">{{ t.nombre }} ({{ t.inicio }}–{{ t.fin }})</option>{% endfor %}</select>
+<div class="row"><div><label>Desde</label><input type="date" name="desde" required value="{{ today.isoformat() }}"></div><div><label>Hasta (opcional)</label><input type="date" name="hasta"></div></div>
+<div class="row"><div><label>Rotación: cada</label><select name="ciclo"><option value="1">todas las semanas</option><option value="2">2 semanas</option><option value="3">3 semanas</option><option value="4">4 semanas</option></select></div>
+<div><label>…le toca la semana</label><select name="semana"><option>1</option><option>2</option><option>3</option><option>4</option></select></div></div>
+<p class="small muted">Rotativo: asigne a la persona un turno con «cada 2 semanas · semana 1» y otro con «cada 2 semanas · semana 2».</p>
+<p><button>Asignar</button></p></form></div>
+</div>
+
+<div class="card" style="border-left:4px solid var(--warn)"><h3>Refuerzo de emergencia</h3><p class="small muted">Agrega personal en turno para atender una emergencia (también recibe tareas).</p>
+<form method="post" class="row">{{ csrf() }}<input type="hidden" name="accion" value="refuerzo">
+<div class="grow"><label>Persona</label><select name="user_id" required>{% for u in users %}<option value="{{ u.id }}">{{ u.nombre }} — {{ u.role.nombre }}</option>{% endfor %}</select></div>
+<div><label>Desde</label><input type="date" name="desde" required value="{{ today.isoformat() }}"></div><div><label>Hasta</label><input type="date" name="hasta" value="{{ today.isoformat() }}"></div>
+<div><label>Inicio</label><input type="time" name="inicio" required></div><div><label>Fin</label><input type="time" name="fin" required></div>
+<div class="grow"><label>Motivo</label><input name="motivo" required placeholder="Emergencia que se atiende"></div><div><button>Agregar refuerzo</button></div></form></div>
+
+<div class="card"><h3>Asignaciones vigentes</h3><div class="tw"><table class="small"><tr><th>Persona</th><th>Tipo</th><th>Turno / horario</th><th>Vigencia</th><th>Rotación</th><th></th></tr>
+{% for a in asignaciones %}<tr><td>{{ a.user.nombre }} <span class="muted">{{ a.user.role.nombre }}</span></td><td>{{ b(a.tipo) }}{% if a.motivo %}<br><span class="muted">{{ a.motivo }}</span>{% endif %}</td>
+<td>{% if a.shift %}{{ a.shift.nombre }} ({{ a.shift.inicio }}–{{ a.shift.fin }}){% else %}{{ a.inicio }}–{{ a.fin }}{% endif %}</td><td>{{ a.desde|d }} – {{ a.hasta|d if a.hasta else 'sin fin' }}</td>
+<td>{% if a.ciclo > 1 %}semana {{ a.semana + 1 }} de {{ a.ciclo }}{% else %}—{% endif %}</td>
+<td><form method="post" data-confirm="¿Retirar esta asignación?">{{ csrf() }}<input type="hidden" name="accion" value="retirar"><input type="hidden" name="id" value="{{ a.id }}"><button class="small sec">Retirar</button></form></td></tr>
+{% else %}<tr><td colspan="6" class="muted">Sin asignaciones.</td></tr>{% endfor %}</table></div></div>
+
+<div class="card"><h3>Quién trabaja el día</h3><form class="row" method="get"><div><input type="date" name="dia" value="{{ dia.isoformat() }}"></div><div><button class="sec">Ver</button></div></form>
+<div class="tw"><table class="small"><tr><th>Persona</th><th>Rol</th><th>Almacén</th><th>Horario</th></tr>
+{% for u, w in tabla %}<tr><td>{{ u.nombre }}</td><td>{{ u.role.nombre }}</td><td>{{ u.almacen }}</td><td>{% for a, z, r, l in w %}{{ l }}: {{ a.strftime('%H:%M') }}–{{ z.strftime('%H:%M') }}{{ ' (−' ~ r ~ ' min refrigerio)' if r }}{{ '; ' if not loop.last }}{% endfor %}</td></tr>
+{% else %}<tr><td colspan="4" class="muted">Nadie con turno ese día.</td></tr>{% endfor %}</table></div></div>
+{% endblock %}

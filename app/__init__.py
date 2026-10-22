@@ -19,6 +19,7 @@ def create_app(config=None):
         SESSION_COOKIE_SAMESITE="Lax",
         SESSION_COOKIE_SECURE=os.environ.get("SESSION_COOKIE_SECURE", "0") == "1",
         DEMO_MODE=os.environ.get("DEMO_MODE", "1") == "1",
+        APP_VERSION=os.environ.get("APP_VERSION", "1.0.0-mb"),  # versión que se muestra y queda en las observaciones
     )
     if config:
         app.config.update(config)

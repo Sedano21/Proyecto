@@ -53,6 +53,7 @@ python -m pytest tests -v
 | `HOST`, `PORT` | Dirección del servidor de desarrollo | 127.0.0.1:5000 |
 | `SCHEMA_AUTO_CREATE` | `0` en producción: el esquema lo crea y actualiza Alembic (`alembic upgrade head`) | 1 |
 | `M365_CLIENT_ID`, `M365_CLIENT_SECRET`, `M365_TENANT_ID`, `M365_REDIRECT_URI` | Ingreso con Microsoft 365 (ver §9) | Desactivado |
+| `APP_VERSION` | Versión que se muestra en el menú y queda registrada en cada observación de los usuarios | 1.0.0-mb |
 | `LOCAL_LOGIN` | `0` = solo Microsoft 365 (oculta usuario/contraseña locales). Se recomienda dejar 1 cuenta local de emergencia de Sistemas | 1 |
 
 Alternativa a `CHECK_INTERVAL_MIN`: programar `python -m app.cli verificar` con cron o el Programador de tareas de Windows.

@@ -1,0 +1,10 @@
+{% extends "base.html" %}{% from "_m.html" import csrf %}
+{% block content %}<h1>Registro en contingencia</h1>
+<p class="muted small">Si el sistema no está disponible se trabaja en manual más SAP. Al volver, active el registro en contingencia mientras se registra lo trabajado: todo lo que se registre en ese lapso queda marcado como «registrado en contingencia» en la auditoría y se muestra un aviso en todas las pantallas. El objetivo es la carga automática desde SAP; esto cubre lo que no llegue por esa vía.</p>
+{% if actual %}<div class="card" style="border-left:4px solid var(--warn)"><h3>Activo</h3><p>Desde <b>{{ (actual.desde or '')[:16]|replace('T', ' ') }}</b> por {{ actual.por }} · {{ actual.motivo }}</p>
+<form method="post" data-confirm="¿Desactivar el registro en contingencia?">{{ csrf() }}<button name="accion" value="desactivar">Desactivar</button></form></div>
+{% else %}<form method="post" class="card">{{ csrf() }}<h3>Activar</h3><label>Motivo</label><input name="motivo" required style="width:100%" placeholder="Ej.: caída del sistema de 08:10 a 10:40; se registra lo trabajado en manual">
+<p><button name="accion" value="activar">Activar registro en contingencia</button></p></form>{% endif %}
+<div class="card"><h3>Historial</h3><table class="small"><tr><th>Fecha</th><th>Usuario</th><th>Detalle</th></tr>{% for a in hist %}<tr><td>{{ a.ts|d }}</td><td>{{ a.user.nombre if a.user }}</td><td>{{ a.detalle.valor }}</td></tr>{% else %}<tr><td colspan="3" class="muted">Sin activaciones.</td></tr>{% endfor %}</table></div>
+<div class="card"><h3>Registros marcados en contingencia (últimos)</h3><div class="tw"><table class="small"><tr><th>Fecha</th><th>Usuario</th><th>Acción</th><th>Documento</th></tr>{% for a in marcados %}<tr><td>{{ a.ts|d }}</td><td>{{ a.user.nombre if a.user }}</td><td>{{ a.accion }}</td><td>{{ a.entidad }} {{ a.entidad_id }}</td></tr>{% else %}<tr><td colspan="4" class="muted">Ninguno.</td></tr>{% endfor %}</table></div></div>
+{% endblock %}

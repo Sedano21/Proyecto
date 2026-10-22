@@ -5,7 +5,7 @@
 <meta name="theme-color" content="#ffffff">
 <title>{% block title %}Módulo de Operaciones{% endblock %} · Corporación Productiva</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23007a3d'/%3E%3Cpath d='M10 23V9h6.5a4.5 4.5 0 0 1 0 9H10' fill='none' stroke='%23fff' stroke-width='3'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=1.0.0-mb">
 <script>try{if(localStorage.getItem('cp-nav')==='min')document.documentElement.classList.add('nav-min')}catch(e){}</script>
 </head>
 <body{% if user %} data-alertas="{{ url_for('main.alerts_status') }}"{% endif %}>
@@ -64,6 +64,7 @@
     {% if ve('distribucion.ver') %}<div class="grp" data-grupo="Distribución"><h4><span class="lbl">Distribución</span></h4>
       {{ nl(url_for('dist.routes'), 'route', 'Programación y rutas') }}
       {{ nl(url_for('dist.incidents'), 'alert', 'Incidencias') }}
+      {% if ve('distribucion.documentos') %}{{ nl(url_for('alm.uploads', area='Distribución'), 'upload', 'Cargas de SAP (despachos)') }}{% endif %}
       {% if ve('distribucion.flota') %}{{ nl(url_for('dist.fleet'), 'truck', 'Flota y conductores') }}{% endif %}
       {% if ve('flota.ver') or ve('distribucion.flota') %}{{ nl(url_for('dist.fleet_tracking'), 'wrench', 'Seguimiento de flota') }}{% endif %}
     </div>{% endif %}
@@ -76,10 +77,16 @@
       {% if ve('alertas.configurar') %}{{ nl(url_for('main.alert_config'), 'bell', 'Configurar alertas') }}
       {{ nl(url_for('main.outbox'), 'mail', 'Bandeja de correo') }}{% endif %}
       {% if ve('auditoria.ver') %}{{ nl(url_for('main.audit'), 'history', 'Auditoría') }}{% endif %}
+      {% if ve('turnos.gestionar') %}{{ nl(url_for('mb.shifts'), 'calendar', 'Turnos del personal') }}{% endif %}
+      {% if can('contingencia.gestionar') %}{{ nl(url_for('mb.contingency_view'), 'alert', 'Contingencia') }}{% endif %}
+    </div>{% endif %}
+    {% if ve('conciliacion.ver') or ve('conciliacion.resolver') or can('observaciones.gestionar') %}<div class="grp" data-grupo="Marcha blanca"><h4><span class="lbl">Marcha blanca</span></h4>
+      {% if ve('conciliacion.ver') or ve('conciliacion.resolver') %}{{ nl(url_for('mb.conciliation'), 'swap', 'Conciliación SAP') }}{% endif %}
+      {% if can('observaciones.gestionar') %}{{ nl(url_for('mb.observations'), 'flag', 'Observaciones') }}{% endif %}
     </div>{% endif %}
     {% if user.role_code == 'GERENCIA_GENERAL' %}<div class="grp" data-grupo="Preferencias">{{ nl(url_for('main.gg_prefs'), 'mail', 'Mis alertas directas') }}</div>{% endif %}
     </div>
-    <div class="side-foot lbl"><a href="{{ url_for('main.help') }}">Manual de usuario</a> · Prototipo v0.9</div>
+    <div class="side-foot lbl"><a href="{{ url_for('main.help') }}">Manual de usuario</a> · {{ 'Prototipo' if demo_mode else 'Versión' }} {{ config.APP_VERSION }}</div>
   </nav>
   <div class="main">
     <header class="top">
@@ -88,22 +95,34 @@
       <nav class="crumbs" aria-label="Ubicación"><a href="{{ url_for('main.dashboard') }}">Inicio</a><span class="crumb-rest"></span></nav>
       <div class="top-right noprint">
         <span class="stock-chip" title="{% if stock_info %}Última carga de stock de SAP: {{ stock_info.ts|d }} ({{ stock_info.archivo }}, por {{ stock_info.usuario }}). No es tiempo real.{% else %}Sin carga de stock de SAP registrada.{% endif %}">{{ ic('database') }}<span>{% if stock_info %}Stock SAP <b>{{ stock_info.ts|d }}</b><em class="hide-sm"> · no es tiempo real</em>{% else %}Sin carga SAP{% endif %}</span></span>
+        <button type="button" class="btn sec small obs-btn" data-obs title="Reportar una observación de esta pantalla">{{ ic('flag') }}<span class="hide-sm"> Reportar observación</span></button>
         <button type="button" class="icon-btn snd-btn" aria-label="Sonido de alertas activado (pulse para silenciar)" title="Sonido de alertas">{{ ic('volume') }}</button>
         <a class="icon-btn bell" href="{{ url_for('main.alerts') }}" aria-label="Alertas: {{ alertas_abiertas }} abiertas">{{ ic('bell') }}{% if alertas_abiertas %}<span class="dot">{{ alertas_abiertas if alertas_abiertas < 100 else '99+' }}</span>{% endif %}</a>
         <details class="usermenu"><summary aria-label="Menú de usuario"><span class="avatar" aria-hidden="true">{{ user.nombre[:1] }}</span><span class="who hide-sm"><b>{{ user.nombre }}</b><small>{{ user.role.nombre }}</small></span></summary>
           <div class="menu-pop"><div class="menu-head"><b>{{ user.nombre }}</b><small>{{ user.role.nombre }}</small></div>
             <a href="{{ url_for('main.help') }}">{{ ic('help') }} Manual de usuario</a>
             <a href="{{ url_for('main.change_password') }}">{{ ic('key') }} Cambiar contraseña</a>
+            <a href="{{ url_for('mb.observations', propias=1) }}">{{ ic('flag') }} Mis observaciones</a>
             <a href="{{ url_for('main.logout') }}">{{ ic('logout') }} Salir</a></div></details>
       </div>
     </header>
     <main class="content" id="contenido" tabindex="-1">
+      {% if contingencia %}<div class="flash warn noprint" role="status">{{ ic('alert') }}<span><b>Registro en contingencia activo</b> desde {{ (contingencia.desde or '')[:16]|replace('T', ' ') }} ({{ contingencia.motivo }}): todo lo que registre queda marcado como «registrado en contingencia».</span></div>{% endif %}
       {% if demo_mode %}<div class="demo-strip noprint">{{ ic('info') }} Entorno de demostración con datos ficticios. No conectado a SAP ni a sistemas productivos.</div>{% endif %}
       {% with msgs = get_flashed_messages(with_categories=true) %}{% for c, m in msgs %}<div class="flash {{ c }}" role="{{ 'alert' if c == 'error' else 'status' }}">{{ ic('x' if c == 'error' else ('check' if c == 'ok' else 'info')) }}<span>{{ m }}</span></div>{% endfor %}{% endwith %}
       {% block content %}{% endblock %}
     </main>
   </div>
 </div>
+<dialog class="obs-dlg noprint" id="obsdlg" aria-labelledby="obs-t"><form method="post" action="{{ url_for('mb.observation_new') }}" enctype="multipart/form-data">
+  <input type="hidden" name="_csrf" value="{{ csrf_token() }}"><input type="hidden" name="url"><input type="hidden" name="pantalla">
+  <h3 id="obs-t">Reportar observación</h3><p class="small muted">Pantalla: <b class="obs-pant"></b>. Se revisa en la reunión diaria de la marcha blanca.</p>
+  <label>Tipo</label><select name="tipo"><option value="ERROR">Algo no funciona</option><option value="MEJORA">Sugerencia de mejora</option><option value="DUDA">Duda de uso</option></select>
+  <label>¿Qué pasó o qué propone?</label><textarea name="comentario" required rows="4" style="width:100%"></textarea>
+  <label class="chk"><input type="checkbox" name="impide" value="1"> Me impide seguir trabajando</label>
+  <label>Captura de pantalla o foto (opcional)</label><input type="file" name="captura" accept="image/*,.pdf">
+  <div class="actions"><button type="button" class="sec" data-obs-close>Cancelar</button> <button>Enviar observación</button></div>
+</form></dialog>
 {% else %}
 <main class="public">{% with msgs = get_flashed_messages(with_categories=true) %}{% for c, m in msgs %}<div class="flash {{ c }}" role="alert">{{ m }}</div>{% endfor %}{% endwith %}{% block public %}{% endblock %}</main>
 {% endif %}
@@ -163,6 +182,6 @@
     var b = e.submitter; if (b) setTimeout(function(){ b.disabled = true; b.classList.add('busy'); setTimeout(function(){ b.disabled = false; b.classList.remove('busy'); }, 8000); }, 0); }); });
 })();
 </script>
-<script src="{{ url_for('static', filename='app.js') }}?v=0.9.1"></script>
+<script src="{{ url_for('static', filename='app.js') }}?v=1.0.0-mb"></script>
 </body>
 </html>

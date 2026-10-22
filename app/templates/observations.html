@@ -1,0 +1,17 @@
+{% extends "base.html" %}{% from "_m.html" import b, csrf %}
+{% block content %}<h1>{{ 'Observaciones de la marcha blanca' if gestiona else 'Mis observaciones' }}</h1>
+<p class="muted small">Se reportan con el botón «Reportar observación» de cada pantalla. {% if gestiona %}Gerencia General prioriza con el equipo de desarrollo en la revisión diaria: <b>bloqueante</b> se corrige de inmediato, <b>mayor</b> en la noche, <b>menor</b> y <b>mejora</b> van a la lista de pendientes.{% endif %}</p>
+{% if gestiona %}<div class="kpis">{% for k, t in clasif.items() %}{% set n = conteo.get(k, 0) %}<a class="kpi {{ 'warn' if k == 'BLOQUEANTE' and n }}" href="?estado=ABIERTA&clasificacion={{ k }}"><b>{{ n }}</b><span>{{ t.split(' (')[0] }} abiertas</span></a>{% endfor %}</div>{% endif %}
+<form class="card row" method="get"><div><label>Estado</label><select name="estado"><option value="">(todos)</option>{% for k, t in estados.items() %}<option value="{{ k }}" {{ 'selected' if k == estado }}>{{ t }}</option>{% endfor %}</select></div>
+{% if gestiona %}<div><label>Clasificación</label><select name="clasificacion"><option value="">(todas)</option>{% for k, t in clasif.items() %}<option value="{{ k }}" {{ 'selected' if k == clasificacion }}>{{ t }}</option>{% endfor %}</select></div>{% endif %}
+<div><button>Filtrar</button> <a class="btn sec" href="?estado={{ estado }}&clasificacion={{ clasificacion }}&formato=xlsx">Excel</a></div></form>
+<div class="tw"><table class="small"><tr><th>#</th><th>Fecha</th><th>Usuario</th><th>Pantalla</th><th>Observación</th><th>Clasificación / estado</th><th>Respuesta</th></tr>
+{% for o in rows %}<tr><td>{{ o.id }}</td><td>{{ o.ts|d }}</td><td>{{ o.user.nombre if o.user }}<br><span class="muted">{{ o.user.role.nombre if o.user }}</span></td>
+<td>{% if o.url %}<a href="{{ o.url }}">{{ o.pantalla or o.url }}</a>{% endif %}<br><span class="muted">v{{ o.version }}</span></td>
+<td><b>{{ tipos.get(o.tipo, o.tipo) }}</b><br>{{ o.comentario }}{% if o.captura %}<br><a href="{{ url_for('mb.observation_capture', oid=o.id) }}">captura</a>{% endif %}</td>
+<td>{% if gestiona %}<form method="post">{{ csrf() }}<input type="hidden" name="id" value="{{ o.id }}"><select name="clasificacion">{% for k, t in clasif.items() %}<option value="{{ k }}" {{ 'selected' if k == o.clasificacion }}>{{ t.split(' (')[0] }}</option>{% endfor %}</select>
+<select name="estado">{% for k, t in estados.items() %}<option value="{{ k }}" {{ 'selected' if k == o.estado }}>{{ t }}</option>{% endfor %}</select>
+<textarea name="respuesta" rows="2" placeholder="Respuesta / qué se corrigió" style="width:100%">{{ o.respuesta }}</textarea><button class="small">Guardar</button></form>
+{% else %}{{ b(o.clasificacion) }} {{ b(o.estado) }}{% endif %}</td>
+<td>{{ o.respuesta }}{% if o.atendido %}<br><span class="muted">{{ o.atendido.nombre }} · {{ o.atendido_ts|d }}</span>{% endif %}</td></tr>
+{% else %}<tr><td colspan="7" class="muted">Sin observaciones.</td></tr>{% endfor %}</table></div>{% endblock %}

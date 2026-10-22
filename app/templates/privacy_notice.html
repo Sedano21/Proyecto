@@ -1,0 +1,9 @@
+{% extends "base.html" %}{% from "_m.html" import csrf %}
+{% block content %}<h1>Aviso de datos personales y responsabilidad de uso</h1>
+<p class="muted small">Versión {{ version }}. Debe aceptarlo para usar el Módulo de Operaciones{% if aceptado.version %} (aceptó la versión {{ aceptado.version }}; el texto cambió){% endif %}.</p>
+<div class="card" style="max-width:860px;white-space:pre-line;line-height:1.55">{{ texto }}</div>
+<form method="post" class="card" style="max-width:860px">{{ csrf() }}
+<label class="chk"><input type="checkbox" name="acepto_datos" value="1" required> Leí el aviso y autorizo el tratamiento de mis datos personales para las finalidades indicadas.</label>
+<label class="chk"><input type="checkbox" name="acepto_responsabilidad" value="1" required> Acepto la responsabilidad por el uso de mi usuario y contraseña, que son personales e intransferibles.</label>
+<p><button name="accion" value="aceptar">Aceptar y continuar</button> <button class="sec" name="accion" value="rechazar" formnovalidate>No acepto (salir)</button></p>
+</form>{% endblock %}

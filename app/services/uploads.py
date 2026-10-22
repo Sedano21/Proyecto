@@ -76,6 +76,17 @@ SPECS = {
                  "fecha_venc": ["Fecha de vencimiento"]},
         "req": ["numero", "producto", "completada", "lote"],
     },
+    "DESPACHOS": {
+        # marcha blanca (22-oct-2026): guías y facturas de SAP para conciliar con lo despachado en el módulo.
+        # Encabezados propuestos: el área de SAP ajusta su consulta a estos nombres (o se agregan sinónimos).
+        "area": "Distribución", "nombre": "Despachos de SAP (guías y facturas)", "perm": "distribucion.documentos",
+        "confirm_perm": "distribucion.documentos",
+        "hojas": ["DESPACHOS"],
+        "cols": {"ov": ["Número de OV", "OV", "Pedido", "Orden de venta"], "guia": ["Número de guía", "Guía", "N° Guía"],
+                 "factura": ["Número de factura", "Factura", "N° Factura"], "fecha": ["Fecha", "Fecha de despacho"],
+                 "producto": ["Código de producto", "Código de Producto"], "cantidad": ["Cantidad", "Cantidad despachada"]},
+        "req": ["ov", "producto", "cantidad"],
+    },
     "PRODUCTOS": {
         "area": "Configuración", "nombre": "Maestro de artículos (tabla DATA)", "perm": "config.editar", "confirm_perm": "config.editar",
         "hojas": ["DATA"],
@@ -190,7 +201,7 @@ def _price_rows(spec, header, margins, rows):
     return out
 
 
-AREAS = ["Comercial", "Almacén", "Producción", "Configuración"]
+AREAS = ["Comercial", "Almacén", "Producción", "Distribución", "Configuración"]
 
 
 def specs_for(user, area=None):
@@ -435,7 +446,7 @@ def validate_batch(b):
     fn = {"STOCK": _v_stock, "BOM": _v_bom, "OV": _v_ov, "LIQUIDACION": _v_liq, "PRODUCTOS": _v_prod,
           "SALIDAS": _v_salidas, "PRECIOS": _v_precios, "PRECIOS_GRANEL": _v_precios,
           "CLIENTES_CONDICIONES": _v_condiciones, "COSTOS": _v_costos, "MERCADO": _v_mercado,
-          "CLIENTES": _v_clientes}[b.tipo]
+          "CLIENTES": _v_clientes, "DESPACHOS": _v_despachos}[b.tipo]
     for r in b.rows:
         r.errores, r.advertencias = [], []
     fn(b)
@@ -664,7 +675,7 @@ def _v_liq(b):
         if not num:
             e.append("Número de documento vacío")
         elif (num, _txt(d.get("lote"))) in existentes:
-            e.append("Liquidación ya registrada (duplicado documento/lote)")
+            w.append("Liquidación ya registrada en el módulo: no se duplica; se compara con SAP (conciliación)")
         if num and por_doc[num] > 1:
             tot = d.get("completada_doc")
             if tot is not None:
@@ -798,7 +809,7 @@ def confirm(b, user, opciones=None):
     result = {"STOCK": _c_stock, "BOM": _c_bom, "OV": _c_ov, "LIQUIDACION": _c_liq, "PRODUCTOS": _c_prod,
               "PRECIOS": _c_precios, "PRECIOS_GRANEL": _c_precios, "CLIENTES_CONDICIONES": _c_condiciones,
               "COSTOS": _c_costos, "MERCADO": _c_mercado, "CLIENTES": _c_clientes,
-              "SALIDAS": _c_salidas}[b.tipo](b, user, opciones)
+              "SALIDAS": _c_salidas, "DESPACHOS": _c_despachos}[b.tipo](b, user, opciones)
     b.estado = "CONFIRMADO"
     b.confirmado_ts = now()
     b.confirmado_por = user.id
@@ -869,6 +880,17 @@ def _c_stock(b, user, opciones):
     segs = defaultdict(list)
     for lot in s.execute(select(StockLot).where(StockLot.warehouse_code.in_(file_whs))).scalars():
         segs[(lot.product_code, lot.lote, lot.warehouse_code)].append(lot)
+    diferencias = 0
+    if not primera:  # marcha blanca: lo que el módulo tiene por lote frente a SAP (la carga inicial no se compara)
+        from .conciliation import Collector
+        conc = Collector(b, user)
+        for k in sorted(set(sap) | set(segs)):
+            modulo = sum(l.cantidad for l in segs.get(k, []))
+            if abs(sap.get(k, 0.0) - modulo) > 1e-9:
+                conc.add("STOCK", f"{k[0]} · {k[1]}", "Cantidad", sap.get(k, 0.0), modulo,
+                         "No figura en SAP" if k not in sap else ("No figura en el módulo" if not segs.get(k) else ""),
+                         product_code=k[0], lote=k[1], almacen=k[2])
+        diferencias = conc.close()
     afectadas = set()
     nuevos = actualizados = puestos_cero = 0
     advertencias = []
@@ -934,7 +956,7 @@ def _c_stock(b, user, opciones):
     reev = reevaluate_pending(user) if param("reevaluar_tras_carga", True) else 0
     return {"lotes_nuevos": nuevos, "lotes_actualizados": actualizados, "puestos_en_cero": puestos_cero,
             "ov_afectadas": len(afectadas), "ov_reevaluadas": reev, "advertencias": advertencias[:50],
-            "base_inicial": primera}
+            "base_inicial": primera, "diferencias_sap": diferencias}
 
 
 def _c_bom(b, user, opciones):
@@ -973,11 +995,19 @@ def _c_bom(b, user, opciones):
 
 
 def _c_ov(b, user, opciones):
+    from .conciliation import Collector
     from .orders import _apply_changes, create_order
+    from .stock import ORDEN_ESTADOS_CERRADOS
     s = db()
+    alertar = (param("conciliacion_ov_modo", "ALERTAR") or "ALERTAR") == "ALERTAR"
+    conc = Collector(b, user)
     grupos = defaultdict(list)
+    cerradas_sap = set()
     for r in b.rows:
-        if r.excluida or (_txt(r.datos.get("estado")) or "").lower() == "cerrado":
+        if r.excluida:
+            continue
+        if (_txt(r.datos.get("estado")) or "").lower() == "cerrado":
+            cerradas_sap.add(_txt(r.datos["numero"]))
             continue
         grupos[_txt(r.datos["numero"])].append(r.datos)
     creadas = modificadas = sin_cambio = solicitudes = 0
@@ -1027,6 +1057,24 @@ def _c_ov(b, user, opciones):
                     sin_cambio += 1
                     continue
                 cambios = {"fecha_compromiso": _date(d0["fecha_compromiso"]), "lines": lines}
+                if alertar:
+                    if o.fecha_compromiso != _date(d0["fecha_compromiso"]):
+                        conc.add("OV", numero, "Fecha comprometida", f"{_date(d0['fecha_compromiso']):%d/%m/%Y}",
+                                 f"{o.fecha_compromiso:%d/%m/%Y}")
+                    pm = {l["product_code"]: l for l in lines}
+                    for code in sorted(set(actual) | set(nuevo)):
+                        if abs(actual.get(code, 0) - nuevo.get(code, 0)) > 1e-9:
+                            conc.add("OV", numero, "Cantidad pendiente", nuevo.get(code, 0), actual.get(code, 0),
+                                     "Producto solo en SAP" if code not in actual else ("Producto solo en el módulo"
+                                                                                       if code not in nuevo else ""),
+                                     product_code=code)
+                        elif code in pm and abs(precios.get(code, 0) - round(pm[code]["precio_unitario"] or 0, 6)) > 1e-9:
+                            conc.add("OV", numero, "Precio unitario", pm[code]["precio_unitario"], precios.get(code),
+                                     product_code=code)
+                    if o.estado in ORDEN_ESTADOS_CERRADOS:
+                        conc.add("OV", numero, "Estado", "Abierta con saldo pendiente", o.estado)
+                    sin_cambio += 1
+                    continue
                 if has_perm(user, "ov.modificar"):
                     _apply_changes(o, user, cambios)
                     modificadas += 1
@@ -1037,8 +1085,17 @@ def _c_ov(b, user, opciones):
                     solicitudes += 1
         except BusinessError as ex:
             errores.append(f"OV {numero}: {ex}")
+    if alertar:  # OV abiertas del módulo que SAP da por cerradas o que no figuran en la carga
+        for o in s.execute(select(SalesOrder).where(SalesOrder.estado.notin_(ORDEN_ESTADOS_CERRADOS))).scalars():
+            if o.numero in grupos or (o.regularizacion or {}):
+                continue
+            if o.numero in cerradas_sap:
+                conc.add("OV", o.numero, "Estado", "Cerrada en SAP", o.estado)
+            else:
+                conc.add("OV", o.numero, "Existencia", "No figura en la carga de SAP", o.estado,
+                         "OV abierta en el módulo que no está en la exportación de SAP")
     return {"ov_creadas": creadas, "ov_modificadas": modificadas, "solicitudes_de_modificacion": solicitudes,
-            "sin_cambio": sin_cambio, "errores": errores}
+            "sin_cambio": sin_cambio, "errores": errores, "diferencias_sap": conc.close()}
 
 
 def _v_condiciones(b):
@@ -1352,19 +1409,37 @@ def _c_precios(b, user, opciones):
 
 
 def _c_liq(b, user, opciones):
+    from .conciliation import Collector
     from .production import register_liquidation
-    n = 0
+    s = db()
+    conc = Collector(b, user)
+    n = conciliadas = 0
     for r in b.rows:
         if r.excluida:
             continue
         d = r.datos
+        ya = s.execute(select(Liquidation).where(Liquidation.numero_documento == _txt(d["numero"]),
+                                                 Liquidation.lote == _txt(d["lote"]))).scalars().first()
+        if ya is not None:  # marcha blanca: registrada también en el módulo; se compara con SAP
+            conciliadas += 1
+            ref = f"{ya.numero_documento} / lote {ya.lote}"
+            if ya.product_code != _txt(d["producto"]):
+                conc.add("LIQUIDACION", ref, "Producto", _txt(d["producto"]), ya.product_code, lote=ya.lote)
+            if abs((ya.cantidad_completada or 0) - (_num(d["completada"]) or 0)) > 1e-9:
+                conc.add("LIQUIDACION", ref, "Cantidad completada", _num(d["completada"]), ya.cantidad_completada,
+                         product_code=ya.product_code, lote=ya.lote)
+            fv = _date(d.get("fecha_venc"))
+            if fv and ya.fecha_venc and fv != ya.fecha_venc:
+                conc.add("LIQUIDACION", ref, "Fecha de vencimiento", f"{fv:%d/%m/%Y}", f"{ya.fecha_venc:%d/%m/%Y}",
+                         product_code=ya.product_code, lote=ya.lote)
+            continue
         register_liquidation(user, _txt(d["numero"]), _txt(d["producto"]), _num(d["completada"]), _txt(d["lote"]),
                              fecha_fab=_date(d.get("fecha_fab")), fecha_venc=_date(d.get("fecha_venc")),
                              cantidad_planificada=_num(d.get("planificada")), origen=opciones.get("origen", "SAP"),
                              almacen=_txt(d.get("almacen")), valorizado=_num(d.get("valorizado")),
                              realizado_por=_txt(d.get("realizado_por")), fecha=_date(d.get("fecha")))
         n += 1
-    return {"liquidaciones": n}
+    return {"liquidaciones": n, "ya_registradas_conciliadas": conciliadas, "diferencias_sap": conc.close()}
 
 
 def _c_prod(b, user, opciones):
@@ -1413,6 +1488,68 @@ def _c_salidas(b, user, opciones):
                            documento=_txt(d.get("documento")), origen="CARGA", upload_id=b.id))
         n += 1
     return {"registros": n, "omitidos_ya_cargados": omit_dup, "omitidos_sin_producto": omit_sin}
+
+
+def _v_despachos(b):
+    s = db()
+    prods = set(s.execute(select(Product.code)).scalars())
+    for r in [r for r in b.rows if not r.excluida]:
+        d = r.datos
+        e, w = [], []
+        if not _txt(d.get("ov")):
+            e.append("Número de OV vacío")
+        elif s.execute(select(SalesOrder.id).where(SalesOrder.numero == _txt(d.get("ov")))).first() is None:
+            w.append("La OV no existe en el módulo: se registrará como diferencia")
+        if _txt(d.get("producto")) not in prods:
+            w.append("Producto no existe en el catálogo")
+        try:
+            if _num(d.get("cantidad")) is None:
+                e.append("Cantidad vacía")
+        except ValueError as ex:
+            e.append(str(ex))
+        if not _txt(d.get("guia")) and not _txt(d.get("factura")):
+            w.append("Fila sin guía ni factura")
+        r.errores, r.advertencias = e, w
+
+
+def _c_despachos(b, user, opciones):
+    """Guías, facturas y cantidades despachadas según SAP frente a lo registrado en el módulo (por OV)."""
+    from ..models import RouteStop
+    from .conciliation import Collector
+    s = db()
+    conc = Collector(b, user)
+    por_ov = defaultdict(lambda: {"guias": set(), "facturas": set(), "cant": defaultdict(float)})
+    for r in b.rows:
+        if r.excluida:
+            continue
+        d = r.datos
+        g = por_ov[_txt(d["ov"])]
+        if _txt(d.get("guia")):
+            g["guias"].add(_txt(d["guia"]))
+        if _txt(d.get("factura")):
+            g["facturas"].add(_txt(d["factura"]))
+        g["cant"][_txt(d["producto"])] += _num(d["cantidad"]) or 0
+    for numero, g in por_ov.items():
+        o = s.execute(select(SalesOrder).where(SalesOrder.numero == numero)).scalars().first()
+        if o is None:
+            conc.add("DESPACHO", numero, "Existencia", "Despachada en SAP", "No existe en el módulo")
+            continue
+        stops = list(s.execute(select(RouteStop).where(RouteStop.order_id == o.id)).scalars())
+        guias_mod = {st.guia_numero for st in stops if st.guia_numero}
+        fact_mod = {st.factura_numero for st in stops if st.factura_numero}
+        if g["guias"] and g["guias"] != guias_mod:
+            conc.add("DESPACHO", numero, "Guía", ", ".join(sorted(g["guias"])), ", ".join(sorted(guias_mod)) or "sin guía",
+                     "En marcha blanca la guía válida es la de SAP: registre su número en la ruta o explique la diferencia")
+        if g["facturas"] and g["facturas"] != fact_mod:
+            conc.add("FACTURA", numero, "Factura", ", ".join(sorted(g["facturas"])), ", ".join(sorted(fact_mod)) or "sin factura")
+        desp = defaultdict(float)
+        for l in o.lines:
+            if l.activa:
+                desp[l.product_code] += l.despachado or 0
+        for code in sorted(set(g["cant"]) | {c for c, q in desp.items() if q}):
+            if abs(g["cant"].get(code, 0) - desp.get(code, 0)) > 1e-9:
+                conc.add("DESPACHO", numero, "Cantidad despachada", g["cant"].get(code, 0), desp.get(code, 0), product_code=code)
+    return {"ov": len(por_ov), "diferencias_sap": conc.close()}
 
 
 def _sales_key(d):
