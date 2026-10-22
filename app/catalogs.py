@@ -1159,6 +1159,10 @@ PARAMS += [
     ("horas_plazo_tarea", {"ALTA": 4, "MEDIA": 24, "BAJA": 72}, "dict", "Turnos",
      "Horas para atender una tarea según su urgencia; vencido el plazo se alerta al jefe del responsable.", "PROPUESTO",
      f"{MB}: alertar a su jefe si no cumplió con algo (plazos propuestos, a confirmar)"),
+    ("minutos_plazo_tarea_por_area", {"Producción": {"ALTA": 10, "MEDIA": 10, "BAJA": 10}}, "dict", "Turnos",
+     "Plazo de atención en minutos por área (del tipo de alerta) y urgencia; reemplaza al plazo general en esa área. "
+     "Se edita en Configuración de alertas.", "PROPUESTO",
+     f"{MB}: plazo según el área, configurable en el panel de alertas (23-oct); Producción: aviso al jefe a los 10 min como máximo"),
     ("jefe_por_rol", {
         "AUX_ALMACEN": ["LIDER_ALMACEN", "SUPERV_ALMACEN"], "MONTACARGUISTA": ["LIDER_ALMACEN", "SUPERV_ALMACEN"],
         "LIDER_ALMACEN": ["SUPERV_ALMACEN", "COORD_ALMACEN", "COORD_ALMACEN_MP"],

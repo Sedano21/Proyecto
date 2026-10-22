@@ -56,7 +56,12 @@ periodo, aparecerán diferencias de cantidad).
   tenga turno configurado se usa todo el personal (transición).
 - **Aviso al jefe**: en cada verificación automática, una tarea que vence su plazo (`horas_plazo_tarea`: ALTA 4 h, MEDIA 24 h,
   BAJA 72 h, propuesta) o un picking atrasado genera la alerta «Tarea no cumplida» al jefe del responsable, una sola vez.
-  El jefe se define por rol en `jefe_por_rol` (organigrama **propuesto**, a confirmar).
+  El jefe se define por rol en `jefe_por_rol` (organigrama confirmado el 23-oct).
+- **Plazo por área** (23-oct: «de acuerdo con el área, se debe poder configurar en el panel de alertas»): en
+  **Configuración de alertas → Plazos de atención de tareas por área** se fija, por área del tipo de alerta y urgencia, un
+  plazo en minutos (`minutos_plazo_tarea_por_area`); vacío = plazo general en horas. Valor inicial: Producción 10 min
+  (reunión con Producción: si el asistente no atiende, avisar al jefe en máximo 10 minutos). Para plazos en minutos, las
+  verificaciones deben programarse cada 5 minutos o menos (`CHECK_INTERVAL_MIN` o `python -m app.cli verificar`).
 - **Informe de interacciones y cumplimiento por persona** (Informes): acciones registradas (dentro y fuera de turno, solo
   para análisis), tareas recibidas, a tiempo, fuera de plazo y vencidas, y pickings listos, con retraso y atrasados.
 
@@ -99,7 +104,7 @@ estado (abierta, en curso, corregida, descartada), respuesta y exportación a Ex
 
 ## 8. Pendiente de confirmar
 
-1. Plazos de atención por urgencia (`horas_plazo_tarea`) y organigrama de jefes (`jefe_por_rol`).
+1. Plazos de atención de las demás áreas (Producción: 10 min; el resto usa el general ALTA 4 h, MEDIA 24 h, BAJA 72 h).
 2. Texto definitivo del aviso de datos (borrador en Configuración).
 3. Encabezados de la exportación de despachos de SAP.
-4. Duración del bloqueo por intentos (15 min propuesto).
+4. ~~Duración del bloqueo por intentos~~: 15 min confirmado el 23-oct.

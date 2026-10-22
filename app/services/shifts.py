@@ -13,7 +13,7 @@ from datetime import date, datetime, time, timedelta
 from sqlalchemy import select
 
 from ..db import db
-from ..models import Alert, AuditLog, PickingTask, Shift, User, UserShift
+from ..models import Alert, AlertType, AuditLog, PickingTask, Shift, User, UserShift
 from . import alerts
 from ..models import now
 from .core import BusinessError, audit, has_perm, param
@@ -199,18 +199,74 @@ def _avisado(dedup_key):
     return db().execute(select(Alert.id).where(Alert.dedup_key == dedup_key)).first() is not None
 
 
+PRIORIDADES = ("ALTA", "MEDIA", "BAJA")
+
+
+def deadlines():
+    """Plazos de atención en minutos: {área: {urgencia: minutos}} más el plazo general (en horas) para las áreas sin
+    plazo propio."""
+    general = {k: float(v) * 60 for k, v in (param("horas_plazo_tarea", {}) or {}).items() if v}
+    por_area = param("minutos_plazo_tarea_por_area", {}) or {}
+    areas = {t.code: t.area for t in db().execute(select(AlertType)).scalars()}
+    return general, por_area, areas
+
+
+def deadline_minutes(alert, plazos=None):
+    general, por_area, areas = plazos or deadlines()
+    propio = (por_area.get(areas.get(alert.type_code)) or {}).get(alert.prioridad)
+    return float(propio) if propio else general.get(alert.prioridad)
+
+
+def fmt_plazo(minutos):
+    return f"{minutos:g} min" if minutos < 60 else f"{minutos / 60:g} h"
+
+
+def save_deadlines(user, form):
+    """Guarda desde el panel de alertas el plazo general (horas) y los plazos por área (minutos; vacío = general)."""
+    general, por_area = {}, {}
+    for p in PRIORIDADES:
+        v = (form.get(f"general_{p}") or "").strip()
+        try:
+            general[p] = float(v) if v else None
+        except ValueError:
+            raise BusinessError(f"Plazo general {p}: indique horas en número.")
+        if not general[p] or general[p] <= 0:
+            raise BusinessError(f"Plazo general {p}: debe ser mayor que cero.")
+        general[p] = int(general[p]) if general[p] == int(general[p]) else general[p]
+    for area in form.getlist("areas"):
+        fila = {}
+        for p in PRIORIDADES:
+            v = (form.get(f"area_{area}_{p}") or "").strip()
+            if not v:
+                continue
+            try:
+                m = int(v)
+            except ValueError:
+                raise BusinessError(f"{area} {p}: indique minutos en número entero.")
+            if m <= 0:
+                raise BusinessError(f"{area} {p}: debe ser mayor que cero.")
+            fila[p] = m
+        if fila:
+            por_area[area] = fila
+    from .core import set_param
+    if general != (param("horas_plazo_tarea", {}) or {}):
+        set_param("horas_plazo_tarea", general, user)
+    if por_area != (param("minutos_plazo_tarea_por_area", {}) or {}):
+        set_param("minutos_plazo_tarea_por_area", por_area, user)
+
+
 def check_overdue(ahora=None):
     """Tareas (alertas que son tareas) y pickings que vencieron su plazo sin completarse: se alerta al jefe del
     responsable (una sola vez por tarea)."""
     ahora = ahora or now()
-    plazos = param("horas_plazo_tarea", {}) or {}
+    plazos = deadlines()
     n = 0
     for a in db().execute(select(Alert).where(Alert.estado.in_(["PENDIENTE", "EN_EJECUCION", "INCIDENCIA"]),
                                               Alert.type_code != "TAREA_INCUMPLIDA")).scalars():
         if not alerts.is_task(a):
             continue
-        horas = plazos.get(a.prioridad)
-        if not horas or (ahora - a.creado_ts).total_seconds() < float(horas) * 3600:
+        minutos = deadline_minutes(a, plazos)
+        if not minutos or (ahora - a.creado_ts).total_seconds() < minutos * 60:
             continue
         resp = db().get(User, a.asignado_a) if a.asignado_a else None
         roles = [resp.role_code] if resp else ([a.asignado_rol] if a.asignado_rol else list(a.roles or []))
@@ -219,7 +275,7 @@ def check_overdue(ahora=None):
             continue
         quien = resp.nombre if resp else ", ".join(roles)
         if alerts.emit("TAREA_INCUMPLIDA", f"Tarea vencida sin completar: {a.titulo}"[:250],
-                       f"Responsable: {quien}. Creada {a.creado_ts:%d/%m/%Y %H:%M}; plazo {horas} h (urgencia {a.prioridad}). "
+                       f"Responsable: {quien}. Creada {a.creado_ts:%d/%m/%Y %H:%M}; plazo {fmt_plazo(minutos)} (urgencia {a.prioridad}). "
                        f"Estado: {a.estado}.", "Alert", a.id, extra_roles=jefes, dedup_key=f"INCUMPLIDA:A{a.id}") is not None:
             n += 1
     hoy = ahora.date()
@@ -243,7 +299,7 @@ def compliance(desde, hasta):
     """Interacciones y cumplimiento por persona en el periodo: acciones registradas (dentro y fuera de turno, solo para
     análisis), tareas recibidas, completadas a tiempo o fuera de plazo y vencidas abiertas, y pickings."""
     s = db()
-    plazos = param("horas_plazo_tarea", {}) or {}
+    plazos = deadlines()
     t0, t1 = datetime.combine(desde, time.min), datetime.combine(hasta, time.max)
     users = {u.id: u for u in s.execute(select(User)).scalars()}
     cache = defaultdict(list)
@@ -263,8 +319,8 @@ def compliance(desde, hasta):
             continue
         c = acc[uid]
         c["tareas"] += 1
-        horas = plazos.get(a.prioridad)
-        lim = a.creado_ts + timedelta(hours=float(horas)) if horas else None
+        minutos = deadline_minutes(a, plazos)
+        lim = a.creado_ts + timedelta(minutes=minutos) if minutos else None
         if a.cerrado_ts:
             c["a_tiempo" if (lim is None or a.cerrado_ts <= lim) else "fuera_plazo"] += 1
         elif lim and now() > lim:
@@ -301,5 +357,6 @@ def compliance(desde, hasta):
         reco.append("Más acciones fuera de su turno (solo análisis): " + ", ".join(f"{f['user'].nombre} ({f['fuera']})" for f in fuera) + ".")
     if not any(cache.values()):
         reco.append("Aún no hay turnos configurados: las acciones no se separan en dentro y fuera de turno.")
-    return {"desde": desde, "hasta": hasta, "filas": filas, "plazos": plazos,
+    return {"desde": desde, "hasta": hasta, "filas": filas, "plazos": param("horas_plazo_tarea", {}) or {},
+            "plazos_area": {a: {k: fmt_plazo(float(v)) for k, v in f.items()} for a, f in plazos[1].items()},
             "turnos_configurados": any(cache.values()), "recomendaciones": reco}

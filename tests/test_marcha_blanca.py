@@ -305,3 +305,35 @@ def test_guia_del_sistema_solo_como_contingencia(s, U, new_order):
         dsp.set_guide(st, U("coord.distribucion"), "", "SISTEMA", "", motivo="")
     dsp.set_guide(st, U("coord.distribucion"), "", "SISTEMA", "", motivo="SAP no disponible")
     assert st.guia_origen == "SISTEMA" and "contingencia" in st.observacion
+
+
+def test_plazo_por_area_produccion_10_minutos(app, s, U):
+    from app.models import Alert
+    from app.services import alerts
+    from app.services.shifts import check_overdue
+    tipo = next(t for t in s.query(__import__("app.models", fromlist=["AlertType"]).AlertType)
+                .filter_by(area="Producción", naturaleza="TAREA").all())
+    a = alerts.emit(tipo.code, "Tarea de producción de prueba", "", "Liquidation", 1)
+    a.asignado_a = U("asist.produccion").id
+    a.creado_ts = datetime.now() - timedelta(minutes=5)
+    s.commit()
+    assert check_overdue() == 0  # aún dentro de los 10 minutos
+    a.creado_ts = datetime.now() - timedelta(minutes=11)
+    s.commit()
+    assert check_overdue() == 1
+    av = s.query(Alert).filter_by(type_code="TAREA_INCUMPLIDA").one()
+    assert "JEFE_PRODUCCION" in av.roles and "10 min" in av.mensaje
+    # se configura desde el panel de alertas
+    c = app.test_client()
+    login(c, "sistemas")
+    html = c.get("/alertas/configuracion").get_data(as_text=True)
+    assert "Plazos de atención de tareas por área" in html
+    datos = {"_csrf": csrf(c, "/alertas/configuracion"), "accion": "plazos", "general_ALTA": "4", "general_MEDIA": "24", "general_BAJA": "72",
+             "areas": ["Producción", "Almacén"], "area_Producción_ALTA": "15", "area_Almacén_MEDIA": "120"}
+    assert c.post("/alertas/configuracion", data=datos).status_code == 302
+    s.expire_all()
+    assert param("minutos_plazo_tarea_por_area") == {"Producción": {"ALTA": 15}, "Almacén": {"MEDIA": 120}}
+    datos["general_ALTA"] = "0"
+    c.post("/alertas/configuracion", data=datos)
+    s.expire_all()
+    assert param("horas_plazo_tarea")["ALTA"] == 4

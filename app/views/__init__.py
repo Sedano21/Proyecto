@@ -330,6 +330,11 @@ def alert_config():
     tipos = list(db().execute(select(AlertType).order_by(AlertType.area, AlertType.code)).scalars())
     roles = list(db().execute(select(Role).order_by(Role.area, Role.nombre)).scalars())
     users = list(db().execute(select(User).order_by(User.nombre)).scalars())
+    from ..services import shifts as ssvc
+    from ..services.core import param
+    if request.method == "POST" and request.form.get("accion") == "plazos":
+        return act(lambda: ssvc.save_deadlines(g.user, request.form), "Plazos de atención guardados.",
+                   url_for("main.alert_config") + "#plazos")
     if request.method == "POST":
         def _do():
             t = db().get(AlertType, request.form["code"])
@@ -347,7 +352,12 @@ def alert_config():
             audit(g.user, "ALERTA_TIPO_EDITADO", "AlertType", t.code, {"antes": antes, "despues": {
                 "roles": t.roles, "prioridad": t.prioridad, "correo": t.enviar_correo, "activo": t.activo, "usuarios": t.usuarios}})
         return act(_do, "Configuración de alerta guardada.", url_for("main.alert_config") + f"#{request.form['code']}")
-    return render_template("alert_config.html", tipos=tipos, roles=roles, users=users)
+    import os
+    return render_template("alert_config.html", tipos=tipos, roles=roles, users=users, prioridades=ssvc.PRIORIDADES,
+                           areas=sorted({t.area for t in tipos if t.naturaleza == "TAREA"}),
+                           plazo_general=param("horas_plazo_tarea", {}) or {},
+                           plazo_area=param("minutos_plazo_tarea_por_area", {}) or {},
+                           intervalo=int(os.environ.get("CHECK_INTERVAL_MIN", "0") or 0))
 
 
 @bp.route("/alertas/preferencias", methods=["GET", "POST"])
