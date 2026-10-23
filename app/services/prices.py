@@ -186,7 +186,7 @@ def _compare(line, product, m, margen):
             e = "LIMITE"
         else:
             e = "SOBRE"
-        partes.append(f"por {nombre}: {v:.4f} vs mínimo {minimo:.4f}")
+        partes.append(f"por {nombre}: S/ {v:,.2f} vs mínimo S/ {minimo:,.2f}")
         if e == "DEBAJO" or (e == "LIMITE" and estado == "SOBRE"):
             estado = e
     return estado, "; ".join(partes)
@@ -210,7 +210,7 @@ def check_order_prices(order, user=None):
         if costo is not None and (l.precio_unitario or 0) < costo - 1e-9 and l.precio_unitario:
             # R4 (13-oct): ninguna venta por debajo del costo. El texto visible en la OV no muestra el costo.
             observadas.append(f"{l.product_code}: precio de venta POR DEBAJO DEL COSTO")
-            bajo_costo.append(f"{l.product_code}: {l.precio_unitario:.4f} vs costo {costo:.4f}"
+            bajo_costo.append(f"{l.product_code}: S/ {l.precio_unitario:,.2f} vs costo S/ {costo:,.2f}"
                               f"{' por ' + l.um_venta.lower() if l.um_venta else ''}")
         m, motivo = m0, _
         if m is None:

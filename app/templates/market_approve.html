@@ -1,0 +1,8 @@
+{% extends "base.html" %}{% from "_m.html" import b, csrf %}
+{% block content %}<h1>Precios de mercado por aprobar</h1>
+<p class="muted small">Cada vendedor registra precios de mercado, de la competencia o de sustitutos; solo entran al análisis costo vs mercado cuando el Jefe Comercial los aprueba.</p>
+<form method="post">{{ csrf() }}<div class="tw"><table class="small"><tr><th></th><th>Fecha</th><th>Categoría</th><th>Producto</th><th>Competidor / mercado</th><th>Presentación</th><th class="r">S/ por kg</th><th>Fuente</th><th>Registró</th></tr>
+{% for m in rows %}<tr><td><input type="checkbox" name="ids" value="{{ m.id }}" checked aria-label="Seleccionar"></td><td>{{ m.fecha|d }}</td><td>{{ categorias.get(m.categoria, [m.categoria])[0] }}</td><td>{{ m.producto }} {{ m.variedad }}</td><td>{{ m.competidor or m.mercado }}</td><td>{{ m.presentacion }}</td><td class="r">{{ '{:,.2f}'.format(m.precio_kg) }}</td><td>{{ m.fuente }}{% if m.url %} · <a href="{{ m.url }}" target="_blank" rel="noopener">enlace</a>{% endif %}</td><td>{{ m.origen }}</td></tr>
+{% else %}<tr><td colspan="9" class="muted">No hay precios pendientes.</td></tr>{% endfor %}</table></div>
+{% if rows %}<p><button name="decision" value="aprobar">Aprobar seleccionados</button> <button class="sec" name="decision" value="rechazar">Rechazar seleccionados</button></p>{% endif %}</form>
+{% endblock %}

@@ -19,7 +19,7 @@ def test_hora_de_cita_24h_y_lugar_de_entrega(s, U, cust, today):
     assert "14:30" in osvc.horas_cita() and "2:30 pm" not in osvc.horas_cita()
     with pytest.raises(BusinessError):
         osvc.create_order(U("coord.ventas"), "H-1", c.id, today + timedelta(days=2),
-                          [{"product_code": "PT-905", "cantidad": 1, "precio_unitario": 999}], hora_cita="2:30 pm")
+                          [{"product_code": "PT-905", "cantidad": 1, "precio_unitario": 999}], hora_cita="2:30 pm", oc_archivo="oc_prueba.pdf")
     with pytest.raises(BusinessError):  # "otro" lugar sin distrito/provincia: no se puede calcular la ruta
         osvc.resolve_delivery(c, None, "Almacén Norte", "Av. Demo 123", "", "", guardar=True, user=U("coord.ventas"))
     e = osvc.resolve_delivery(c, None, "Almacén Norte", "Av. Demo 123", "Comas", "Lima", guardar=True, user=U("coord.ventas"))
@@ -27,7 +27,7 @@ def test_hora_de_cita_24h_y_lugar_de_entrega(s, U, cust, today):
     assert site.nombre == "Almacén Norte" and site.customer_id == c.id
     o = osvc.create_order(U("coord.ventas"), "H-2", c.id, today + timedelta(days=2),
                           [{"product_code": "PT-905", "cantidad": 1, "precio_unitario": 999}], hora_cita="14:30",
-                          entrega=osvc.resolve_delivery(c, site.id))
+                          entrega=osvc.resolve_delivery(c, site.id), oc_archivo="oc_prueba.pdf")
     assert o.lugar_entrega == "Almacén Norte" and o.distrito == "Comas" and o.provincia == "Lima" and o.hora_cita == "14:30"
 
 
@@ -37,7 +37,7 @@ def test_venta_por_saco_se_convierte_a_kg(s, U, cust, today):
     it = s.query(PriceItem).filter_by(lista="GRANEL", vigente=True).first()
     assert it is not None and it.kg_saco
     o = osvc.create_order(U("coord.ventas"), "S-1", cust("20000000001").id, today + timedelta(days=2),
-                          [{"product_code": it.product_code, "cantidad": 2, "precio_unitario": 999 * it.kg_saco, "um_venta": "SACO"}])
+                          [{"product_code": it.product_code, "cantidad": 2, "precio_unitario": 999 * it.kg_saco, "um_venta": "SACO"}], oc_archivo="oc_prueba.pdf")
     l = o.lines[0]
     assert l.um_venta == "SACO" and l.cantidad_venta == 2 and l.cantidad == pytest.approx(2 * it.kg_saco)
     assert l.precio_unitario == pytest.approx(999)  # por kg
@@ -136,7 +136,7 @@ def test_plan_vs_liquidacion_y_cumplimiento(s, U):
     hoy = date.today()
     psvc.add_plan(U("jefe.produccion"), "DIA", hoy, "PT-905", 100)
     psvc.add_plan(U("jefe.produccion"), "SEMANA", hoy, "PT-905", 500)
-    psvc.register_liquidation(U("jefe.produccion"), "OF-PLAN-1", "PT-905", 80, "LPLAN1", fecha=hoy)
+    psvc.register_liquidation(U("jefe.produccion"), "OF-PLAN-1", "PT-905", 80, "LPLAN1", fecha=hoy, horas=8, operarios=4)
     d = psvc.plan_vs_real("DIA", hoy, hoy)
     f = [x for x in d["filas"] if x["producto"] == "PT-905"][0]
     assert f["plan"] == 100 and f["real"] == 80 and f["cumplimiento"] == 80.0 and d["tasa"] == 80.0

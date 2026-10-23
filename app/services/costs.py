@@ -131,7 +131,7 @@ def trend(series):
 def market_analysis(tipo_precio="MAYORISTA"):
     """Cruce automático costo vs mercado, con tendencia y recomendación por artículo con costo vigente."""
     s = db()
-    mp = list(s.execute(select(MarketPrice).where(MarketPrice.tipo_precio == tipo_precio)
+    mp = list(s.execute(select(MarketPrice).where(MarketPrice.tipo_precio == tipo_precio, MarketPrice.estado == "APROBADO")
                         .order_by(MarketPrice.producto, MarketPrice.fecha)).scalars())
     series = {}
     for m in mp:
@@ -239,7 +239,7 @@ def quote_impact(product_codes=None):
     for sh in s.execute(select(ImportShipment).where(ImportShipment.valor_mercaderia.is_not(None)).order_by(ImportShipment.ts)).scalars():
         cs = cost_summary(sh)
         cot.setdefault(sh.product_code, {})["importacion"] = (sh, _por_kg(sh.product, cs["costo_puesto_unidad"]))
-    mp = list(s.execute(select(MarketPrice).order_by(MarketPrice.fecha)).scalars())
+    mp = list(s.execute(select(MarketPrice).where(MarketPrice.estado == "APROBADO").order_by(MarketPrice.fecha)).scalars())
     umbral = float(param("margen_minimo_reporte_pct", 10) or 10)
     out = []
     for code, fuentes in sorted(cot.items()):

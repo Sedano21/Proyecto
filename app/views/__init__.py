@@ -25,6 +25,7 @@ _FAILS = {}
 def register_views(app):
     install(app)
     from . import calidad, comercial, compras, distribucion, produccion, almacen
+    from . import comercial_mb2, produccion_mb2  # noqa: F401  (rutas de la ronda 23-oct-2026 en los mismos blueprints)
     app.register_blueprint(bp)
     app.register_blueprint(comercial.bp)
     app.register_blueprint(almacen.bp)
@@ -32,7 +33,8 @@ def register_views(app):
     app.register_blueprint(calidad.bp)
     app.register_blueprint(compras.bp)
     app.register_blueprint(distribucion.bp)
-    from . import m365, informes, marcha
+    from . import finanzas, m365, informes, marcha
+    app.register_blueprint(finanzas.bp)
     app.register_blueprint(m365.bp)
     app.register_blueprint(informes.bp)
     app.register_blueprint(marcha.bp)
@@ -191,8 +193,9 @@ def dashboard():
     tareas = alert_svc.my_tasks(g.user)
     ids = {a.id for a in tareas}
     mis = [a for a in alert_svc.inbox(g.user, solo_abiertas=True) if a.id not in ids][:40]
+    from ..services.shifts import pending_carryover
     return render_template("dashboard.html", k=k, mis_alertas=mis, tareas=tareas, desde=desde or "", hasta=hasta or "",
-                           estado_txt=alert_svc.ESTADO_TXT)
+                           estado_txt=alert_svc.ESTADO_TXT, arrastre=pending_carryover(g.user))
 
 
 @bp.route("/verificaciones", methods=["POST"])
@@ -357,6 +360,7 @@ def alert_config():
                            areas=sorted({t.area for t in tipos if t.naturaleza == "TAREA"}),
                            plazo_general=param("horas_plazo_tarea", {}) or {},
                            plazo_area=param("minutos_plazo_tarea_por_area", {}) or {},
+                           fin_turno=param("minutos_antes_fin_turno_por_area", {}) or {},
                            intervalo=int(os.environ.get("CHECK_INTERVAL_MIN", "0") or 0))
 
 

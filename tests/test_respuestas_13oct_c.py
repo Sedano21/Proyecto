@@ -173,7 +173,7 @@ def test_venta_bajo_costo_detiene_y_alerta_sin_mostrar_costo(s, U, new_order):
     assert o.retenida_precio and any("DEBAJO DEL COSTO" in x for x in o.precio_observado)
     assert not any("50.0" in x for x in o.precio_observado)  # el texto visible en la OV no expone el costo
     a = alerts_of(s, "OV_PRECIO_BAJO_COSTO", o.id)
-    assert a and "costo 50.0000" in a[0].mensaje
+    assert a and "costo S/ 50.00" in a[0].mensaje
     approve_price(o, U("coord.ventas"), "Cliente estratégico")
     assert not o.retenida_precio and a[0].estado == "COMPLETADA"
 

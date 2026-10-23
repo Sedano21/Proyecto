@@ -122,7 +122,11 @@ def material_requirements(product_code, cantidad, version=None):
             continue
         merma, nivel = _merma_pct(product_code, bl.componente) if aplicar_merma else (0.0, "no aplica")
         requerido = base * (1 + (merma or 0) / 100.0)
-        disp_bom = available_in(bl.componente, [bl.almacen_comp] if bl.almacen_comp else None)
+        # ronda 23-oct-2026: si Producción tiene almacenes propios configurados, solo se valida contra ellos y lo que falte
+        # se pide en traslado desde Almacén
+        propios = [w for w in (param("almacenes_produccion", []) or []) if w]
+        alm_valida = propios or ([bl.almacen_comp] if bl.almacen_comp else None)
+        disp_bom = available_in(bl.componente, alm_valida)
         disp_total = available_in(bl.componente)
         falt = max(requerido - disp_bom, 0)
         comp = db().get(Product, bl.componente)
@@ -130,7 +134,7 @@ def material_requirements(product_code, cantidad, version=None):
         if falt > 1e-9:
             factible = False
             # observaciones al demo v0.6: si falta materia prima, revisar si hay en almacenes externos
-            externos = available_by_warehouse(bl.componente, [bl.almacen_comp] if bl.almacen_comp else None)
+            externos = available_by_warehouse(bl.componente, alm_valida)
             cubre = sum(externos.values())
             if externos:
                 res["avisos"].append(
@@ -140,7 +144,7 @@ def material_requirements(product_code, cantidad, version=None):
         res["materiales"].append({
             "componente": bl.componente, "descripcion": bl.componente_desc, "por_unidad": bl.cantidad / (bl.cantidad_bom or 1),
             "requerido_base": base, "merma_pct": merma, "merma_nivel": nivel, "requerido": requerido,
-            "almacen": bl.almacen_comp, "disponible_almacen": disp_bom, "disponible_total": disp_total, "faltante": falt,
+            "almacen": ", ".join(propios) if propios else bl.almacen_comp, "disponible_almacen": disp_bom, "disponible_total": disp_total, "faltante": falt,
             "tipo": comp.tipo if comp else bl.componente[:2], "es_mp_granel": bl.componente[:2] in ("MP", "GR", "C3"),
             "otros_almacenes": externos, "cubre_con_traslado": bool(externos) and sum(externos.values()) >= falt - 1e-9,
         })
@@ -350,7 +354,8 @@ def finish(req, user):
 # ----------------------------- liquidación ---------------------------------
 def register_liquidation(user, numero_documento, product_code, cantidad_completada, lote, fecha_fab=None, fecha_venc=None,
                          cantidad_planificada=None, request=None, origen="MANUAL", almacen="", valorizado=None,
-                         realizado_por="", merma_mp_kg=None, merma_granel_kg=None, merma_insumos=None, fecha=None):
+                         realizado_por="", merma_mp_kg=None, merma_granel_kg=None, merma_insumos=None, fecha=None,
+                         horas=None, operarios=None, mp_kg=None):
     s = db()
     if not numero_documento:
         raise BusinessError("Número de documento obligatorio.")
@@ -368,9 +373,26 @@ def register_liquidation(user, numero_documento, product_code, cantidad_completa
                       cantidad_completada=cantidad_completada, lote=lote, fecha_fab=fecha_fab, fecha_venc=fecha_venc,
                       origen=origen, almacen=almacen, valorizado=valorizado, realizado_por=realizado_por,
                       merma_mp_kg=merma_mp_kg, merma_granel_kg=merma_granel_kg, merma_insumos=merma_insumos or {},
-                      fecha=fecha or date.today())
+                      fecha=fecha or date.today(), horas=horas, operarios=operarios, mp_kg=mp_kg)
     s.add(liq)
     s.flush()
+    if origen == "MANUAL":
+        # ronda 23-oct-2026: horas y operarios obligatorios (SAP los exige) y balance de masa; fuera de rango se bloquea
+        if not horas or horas <= 0 or not operarios or operarios <= 0:
+            raise BusinessError("Indique las horas trabajadas y el número de operarios (SAP los exige para liquidar).")
+        motivos = liquidation_checks(liq)
+        if motivos:
+            _block(liq, user, motivos)
+            return liq
+    return _liquidation_effects(liq, user, request)
+
+
+def _liquidation_effects(liq, user, request=None):
+    """Efectos de una liquidación válida: estado de la solicitud, consumo, PT en tránsito y alertas."""
+    s = db()
+    product_code, lote, cantidad_completada = liq.product_code, liq.lote, liq.cantidad_completada
+    request = request if request is not None else liq.request
+    origen = liq.origen
     if request is not None:
         if request.estado in ("PROGRAMADA", "EN_PROCESO"):
             request.fin_ts = request.fin_ts or now()
@@ -385,7 +407,7 @@ def register_liquidation(user, numero_documento, product_code, cantidad_completa
         # Q5: Producción deja el producto terminado en el almacén virtual de tránsito (ALM-003) hasta que
         # Almacén lo valida y lo pasa al almacén de producto terminado.
         from .stock import add_or_increase_lot
-        add_or_increase_lot(product_code, transito, lote, cantidad_completada, "PENDIENTE_REVISION", fecha_venc, fecha_fab,
+        add_or_increase_lot(product_code, transito, lote, cantidad_completada, "PENDIENTE_REVISION", liq.fecha_venc, liq.fecha_fab,
                             origen=f"LIQ-{liq.numero_documento}")
     alerts.emit("LIQUIDACION_MONTACARGUISTA", f"Liquidación {liq.numero_documento}: mover PT {product_code}",
                 f"Lote {lote}, cantidad {cantidad_completada:g}"
@@ -399,8 +421,93 @@ def register_liquidation(user, numero_documento, product_code, cantidad_completa
                     f"{product_code}, liquidación {liq.numero_documento}. Revisar antes de que Almacén confirme la recepción.",
                     "Liquidation", liq.id, dedup_key=f"CAL_LIQ:{liq.id}", creado_por=user)
     audit(user, "LIQUIDACION_REGISTRADA", "Liquidation", liq.numero_documento,
-          {"producto": product_code, "cantidad": cantidad_completada, "lote": lote, "origen": origen})
+          {"producto": product_code, "cantidad": cantidad_completada, "lote": lote, "origen": origen,
+           "horas": liq.horas, "operarios": liq.operarios})
     return liq
+
+
+def _partes_of(liq):
+    from ..models import ProductionReport
+    if not liq.numero_documento:
+        return []
+    return list(db().execute(select(ProductionReport).where(ProductionReport.of == liq.numero_documento)).scalars())
+
+
+def liquidation_checks(liq):
+    """Motivos de bloqueo: horas sobre el tope de SAP y rendimiento (balance de masa) fuera del rango de la línea y
+    presentación. Los kg de MP salen de la liquidación o de los partes de la OF."""
+    from .parte import tolerance_for
+    motivos = []
+    tope = param("tope_horas_of", 150)
+    if tope and liq.horas and liq.horas > float(tope):
+        motivos.append(f"Horas {liq.horas:g} superan el tope de {float(tope):g} h por OF que acepta SAP.")
+    p = liq.product
+    partes = _partes_of(liq)
+    mp = liq.mp_kg or sum(r.peso_entrada_kg or 0 for r in partes)
+    if not mp:
+        return motivos
+    if p is None:
+        return motivos
+    kg_unidad = 1.0 if (p.um or "").upper().startswith("K") else (p.peso_kg or 0)
+    if not kg_unidad:
+        return motivos
+    producido = liq.cantidad_completada * kg_unidad
+    rend = 100.0 * producido / mp
+    linea = (partes[0].linea if partes else None) or (liq.request.line_code if liq.request and liq.request.line_code else "*")
+    regla = tolerance_for(linea, None if kg_unidad == 1.0 and (p.um or "").upper().startswith("K") else kg_unidad) or {}
+    mn, mx = regla.get("min_pct"), regla.get("max_pct")
+    ideal = mp / kg_unidad
+    if mx is not None and rend > float(mx) + 1e-9:
+        motivos.append(f"Balance de masa: con {mp:,.1f} kg de MP lo máximo es {ideal * float(mx) / 100:,.0f} "
+                       f"{'kg' if kg_unidad == 1 else 'und'} ({float(mx):g} %); se declaró {liq.cantidad_completada:,.0f} "
+                       f"(rendimiento {rend:.1f} %).")
+    if mn is not None and rend < float(mn) - 1e-9:
+        motivos.append(f"Balance de masa: rendimiento {rend:.1f} % por debajo del mínimo {float(mn):g} % para {linea}"
+                       f"{' ' + format(kg_unidad, 'g') + ' kg' if kg_unidad != 1 else ''} (se esperaba al menos "
+                       f"{ideal * float(mn) / 100:,.0f}).")
+    return motivos
+
+
+def _block(liq, user, motivos):
+    liq.estado = "BLOQUEADA"
+    liq.bloqueo = {"motivos": motivos, "ts": now().isoformat(timespec="minutes"), "user": user.nombre if user else ""}
+    alerts.emit("LIQUIDACION_BLOQUEADA", f"Liquidación {liq.numero_documento} bloqueada ({liq.product_code})",
+                " ".join(motivos) + " Corrija los datos para continuar.", "Liquidation", liq.id,
+                dedup_key=f"LIQ_BLOQ:{liq.id}:{len((liq.bloqueo or {}).get('historial', []))}", creado_por=user)
+    audit(user, "LIQUIDACION_BLOQUEADA", "Liquidation", liq.numero_documento, {"motivos": motivos})
+
+
+def correct_liquidation(liq, user, cantidad_completada=None, horas=None, operarios=None, mp_kg=None, motivo=""):
+    """Corrige una liquidación bloqueada; si ya cuadra, sigue su curso (decisión 3: bloquea hasta que lo solucionen)."""
+    from .core import has_perm
+    if not has_perm(user, "produccion.liquidar"):
+        raise BusinessError("Corrige la liquidación Producción.")
+    if liq.estado != "BLOQUEADA":
+        raise BusinessError("La liquidación no está bloqueada.")
+    if not (motivo or "").strip():
+        raise BusinessError("Indique qué se corrigió.")
+    antes = {"cantidad": liq.cantidad_completada, "horas": liq.horas, "operarios": liq.operarios, "mp_kg": liq.mp_kg}
+    if cantidad_completada is not None:
+        liq.cantidad_completada = cantidad_completada
+    if horas is not None:
+        liq.horas = horas
+    if operarios is not None:
+        liq.operarios = operarios
+    if mp_kg is not None:
+        liq.mp_kg = mp_kg
+    hist = list((liq.bloqueo or {}).get("historial") or []) + [{"motivos": (liq.bloqueo or {}).get("motivos"), "antes": antes,
+                                                                "correccion": motivo.strip(), "user": user.nombre,
+                                                                "ts": now().isoformat(timespec="minutes")}]
+    motivos = liquidation_checks(liq)
+    alerts.close_by_system(f"LIQ_BLOQ:{liq.id}:{len(hist) - 1}", "Liquidación corregida")
+    if motivos:
+        liq.bloqueo = {"motivos": motivos, "historial": hist, "ts": now().isoformat(timespec="minutes")}
+        _block(liq, user, motivos)
+        return liq
+    liq.bloqueo = {"motivos": [], "historial": hist, "resuelto_ts": now().isoformat(timespec="minutes")}
+    liq.estado = "REGISTRADA"
+    audit(user, "LIQUIDACION_CORREGIDA", "Liquidation", liq.numero_documento, {"antes": antes, "motivo": motivo})
+    return _liquidation_effects(liq, user)
 
 
 def merma_real_pct(liq):
@@ -655,6 +762,15 @@ def update_plan(user, pl, cantidad, comentario):
     antes = pl.cantidad
     if cantidad is None or cantidad < 0:
         raise BusinessError("Cantidad inválida.")
+    if not has_perm(user, "produccion.plan_validar"):
+        # ronda 23-oct-2026: el cambio del asistente queda pendiente hasta que lo valida el Jefe de Producción
+        pl.cambio_pendiente = {"cantidad": cantidad, "motivo": comentario.strip(), "user": user.nombre, "user_id": user.id,
+                               "ts": now().isoformat(timespec="minutes"), "antes": antes}
+        alerts.emit("PROGRAMA_CAMBIO_POR_VALIDAR", f"Validar cambio de programa: {pl.product_code} {antes:g} → {cantidad:g}",
+                    f"{pl.periodo} {pl.fecha:%d/%m/%Y}. Propuesto por {user.nombre}: {comentario.strip()}", "ProductionPlan", pl.id,
+                    dedup_key=f"PLAN_CAMBIO:{pl.id}:{pl.cambio_pendiente['ts']}", creado_por=user)
+        audit(user, "PLAN_CAMBIO_PROPUESTO", "ProductionPlan", pl.id, pl.cambio_pendiente)
+        return pl
     if cantidad == 0:
         db().delete(pl)
     else:
@@ -810,3 +926,64 @@ def preschedule_plan(user, periodo="SEMANA", desde=None, hasta=None):
         audit(user, "PLAN_PREPROGRAMADO", "ProductionPlan", ",".join(str(p.id) for p in nuevas),
               {"periodo": d["periodo"], "entradas": len(nuevas)})
     return nuevas
+
+
+def validate_plan_change(user, pl, aprobar, comentario=""):
+    """El Jefe de Producción (o quien tenga su perfil) valida el cambio de programa propuesto por un asistente."""
+    from .core import has_perm
+    if not has_perm(user, "produccion.plan_validar"):
+        raise BusinessError("Valida los cambios al programa el Jefe de Producción.")
+    c = dict(pl.cambio_pendiente or {})
+    if not c:
+        raise BusinessError("No hay un cambio pendiente.")
+    if not aprobar and not (comentario or "").strip():
+        raise BusinessError("Indique por qué no se aprueba el cambio.")
+    alerts.close_by_system(f"PLAN_CAMBIO:{pl.id}:{c.get('ts')}", "Cambio validado" if aprobar else "Cambio rechazado")
+    pl.cambio_pendiente = {}
+    audit(user, "PLAN_CAMBIO_" + ("APROBADO" if aprobar else "RECHAZADO"), "ProductionPlan", pl.id, dict(c, comentario=comentario))
+    if not aprobar:
+        return pl
+    antes = pl.cantidad
+    if float(c["cantidad"]) == 0:
+        db().delete(pl)
+        return None
+    pl.cantidad = float(c["cantidad"])
+    pl.comentario = (pl.comentario + "\n" if pl.comentario else "") + (f"{c['user']}: {antes:g} → {pl.cantidad:g} "
+                                                                       f"({c['motivo']}); validado por {user.nombre}")
+    return pl
+
+
+def edit_bom_line(user, line, cantidad=None, componente=None, motivo=""):
+    """Ronda 23-oct-2026: los asistentes pueden modificar la receta (aviso informativo al Jefe); solo el Jefe cambia el
+    código de un componente (p. ej. un granel alternativo), siempre con motivo."""
+    from .core import has_perm
+    if not has_perm(user, "produccion.bom_aprobar"):
+        raise BusinessError("Modifica la receta Producción.")
+    if not (motivo or "").strip():
+        raise BusinessError("Indique el motivo del cambio de la receta.")
+    jefe = has_perm(user, "produccion.plan_validar")
+    antes = {"componente": line.componente, "cantidad": line.cantidad}
+    componente = (componente or "").strip().upper()
+    if componente and componente != line.componente:
+        if not jefe:
+            raise BusinessError("Solo el Jefe de Producción cambia el código de un componente.")
+        comp = db().get(Product, componente)
+        if comp is None:
+            raise BusinessError(f"El componente {componente} no existe en el catálogo.")
+        line.componente, line.componente_desc = componente, comp.descripcion
+    if cantidad is not None:
+        if cantidad <= 0:
+            raise BusinessError("La cantidad debe ser mayor que cero.")
+        line.cantidad = cantidad
+    v = line.version_obj
+    cambios = dict(v.cambios or {})
+    cambios.setdefault("ediciones", []).append({"padre": line.padre, "antes": antes, "despues": {"componente": line.componente,
+                                                "cantidad": line.cantidad}, "motivo": motivo.strip(), "user": user.nombre,
+                                                "ts": now().isoformat(timespec="minutes")})
+    v.cambios = cambios
+    if not jefe:
+        alerts.emit("BOM_CAMBIO_ASISTENTE", f"Receta modificada: {line.padre}",
+                    f"{user.nombre} cambió {antes['componente']} {antes['cantidad']:g} → {line.componente} {line.cantidad:g}. "
+                    f"Motivo: {motivo.strip()}", "BOMVersion", v.id, creado_por=user)
+    audit(user, "BOM_EDITADA", "BOMLine", line.id, {"antes": antes, "motivo": motivo})
+    return line

@@ -71,8 +71,8 @@ def request_detail(rid):
                                                            f_float("cantidad_completada", True), request.form.get("lote", "").strip(),
                                                            f_date("fecha_fab"), f_date("fecha_venc"), r.cantidad, r, "MANUAL",
                                                            merma_mp_kg=f_float("merma_mp_kg"), merma_granel_kg=f_float("merma_granel_kg"),
-                                                           merma_insumos=_insumos()),
-                         "Liquidación registrada; se alertó al montacarguista.", "produccion.liquidar"),
+                                                           merma_insumos=_insumos(), **_horas()),
+                         _liq_msg, "produccion.liquidar"),
         }
         if acc not in fns:
             abort(404)
@@ -84,6 +84,17 @@ def request_detail(rid):
     liqs = list(db().execute(select(Liquidation).where(Liquidation.request_id == r.id)).scalars())
     seguimiento = psvc.missing_materials_tracking(r) if r.estado in psvc.OPEN_REQ + ("EN_PROCESO",) else []
     return render_template("prod_detail.html", r=r, a=r.analisis or {}, lines=lines, liqs=liqs, seguimiento=seguimiento)
+
+
+def _horas():
+    ops = (request.form.get("operarios") or "").strip()
+    return {"horas": f_float("horas"), "operarios": int(float(ops)) if ops else None, "mp_kg": f_float("mp_kg")}
+
+
+def _liq_msg(liq):
+    if liq.estado == "BLOQUEADA":
+        return "Liquidación BLOQUEADA: " + " ".join((liq.bloqueo or {}).get("motivos", [])) + " Se alertó al Jefe de Producción."
+    return "Liquidación registrada; se alertó al montacarguista."
 
 
 def _insumos():
@@ -129,12 +140,18 @@ def liquidations():
                        "Recepción validada.", url_for("prod.liquidations"))
         if "produccion.liquidar" not in g.perms:
             abort(403)
+        if acc == "corregir":
+            liq = db().get(Liquidation, int(request.form["id"])) or abort(404)
+            ops = (request.form.get("operarios") or "").strip()
+            return act(lambda: psvc.correct_liquidation(liq, g.user, f_float("cantidad_completada"), f_float("horas"),
+                                                        int(float(ops)) if ops else None, f_float("mp_kg"),
+                                                        request.form.get("motivo", "")), _liq_msg, url_for("prod.liquidations"))
         return act(lambda: psvc.register_liquidation(g.user, request.form.get("numero_documento", "").strip(),
                                                      request.form.get("product_code", "").strip().upper(), f_float("cantidad_completada", True),
                                                      request.form.get("lote", "").strip(), f_date("fecha_fab"), f_date("fecha_venc"),
                                                      f_float("cantidad_planificada"), None, "MANUAL", merma_mp_kg=f_float("merma_mp_kg"),
-                                                     merma_granel_kg=f_float("merma_granel_kg"), merma_insumos=_insumos()),
-                   "Liquidación registrada.", url_for("prod.liquidations"))
+                                                     merma_granel_kg=f_float("merma_granel_kg"), merma_insumos=_insumos(), **_horas()),
+                   _liq_msg, url_for("prod.liquidations"))
     rows = list(db().execute(select(Liquidation).order_by(Liquidation.id.desc())).scalars())
     whs = list(db().execute(select(Warehouse).where(Warehouse.uso == "PT")).scalars())
     from ..services.quality import lot_entries_vs_liquidation
@@ -151,11 +168,17 @@ def plan():
         per = request.form.get("periodo") or "SEMANA"
         return act(lambda: psvc.preschedule_plan(g.user, per), lambda n: f"Planeamiento preprogramado: {len(n)} entrada(s) nuevas.",
                    url_for("prod.plan", periodo=per))
+    if request.method == "POST" and request.form.get("accion") == "validar_cambio":
+        pl = db().get(ProductionPlan, int(request.form.get("plan_id") or 0)) or abort(404)
+        per = pl.periodo
+        return act(lambda: psvc.validate_plan_change(g.user, pl, request.form.get("aprobar") == "1", request.form.get("comentario", "")),
+                   "Cambio de programa resuelto.", url_for("prod.plan", periodo=per))
     if request.method == "POST" and request.form.get("accion") == "modificar":
         f = request.form
         pl = db().get(ProductionPlan, int(f.get("plan_id") or 0)) or abort(404)
         return act(lambda: psvc.update_plan(g.user, pl, f_float("cantidad", True), f.get("comentario", "")),
-                   "Programación modificada.", url_for("prod.plan", periodo=pl.periodo))
+                   lambda r: ("Cambio propuesto: lo valida el Jefe de Producción." if r is not None
+                               else "Programación modificada."), url_for("prod.plan", periodo=pl.periodo))
     if request.method == "POST":
         f = request.form
         return act(lambda: psvc.add_plan(g.user, f.get("periodo"), f_date("fecha", True), f.get("product_code", "").strip().upper().split(" ")[0],
@@ -208,8 +231,13 @@ def reports():
             f.get("observacion", ""), int(f["parada_min"]) if (f.get("parada_min") or "").strip().isdigit() else None,
             f.get("motivo_parada", "")), lambda r: f"Parte registrado: rendimiento {r.rendimiento_pct}%, desmedro {r.desmedro_pct}%.",
             url_for("prod.reports"))
-    rows = list(db().execute(select(ProductionReport).order_by(ProductionReport.fecha.desc(), ProductionReport.id.desc())
-                             .limit(300)).scalars())
+    from ..services import parte as ptsvc
+    from ..services.core import param
+    visibles = ptsvc.lines_for(g.user)  # ronda 23-oct-2026: cada asistente ve sus líneas
+    rows = [r for r in db().execute(select(ProductionReport).order_by(ProductionReport.fecha.desc(), ProductionReport.id.desc())
+                                    .limit(500)).scalars() if r.linea in visibles][:300]
+    programados = [r for r in rows if r.estado == "PROGRAMADO"]
     comp = db().get(ProductionReport, int(request.args["completar"])) if request.args.get("completar", "").isdigit() else None
     products = list(db().execute(select(Product).where(Product.tipo.in_(["PT", "GR", "MP", "C3"])).order_by(Product.code)).scalars())
-    return render_template("prod_reports.html", rows=rows, lineas=PRODUCTION_LINES, hoy=date.today(), comp=comp, products=products)
+    return render_template("prod_reports.html", rows=rows, lineas=[x for x in PRODUCTION_LINES if x[0] in visibles], hoy=date.today(),
+                           comp=comp, products=products, programados=programados, turnos=param("turnos_produccion", []) or [])

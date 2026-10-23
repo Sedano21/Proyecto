@@ -1,0 +1,10 @@
+{% extends "base.html" %}{% from "_m.html" import b %}
+{% block content %}<p class="small"><a href="javascript:history.back()">← Volver</a> · <a href="#" onclick="window.print();return false">Imprimir</a></p>
+<div class="card"><h1>Cotización {{ q.numero }}</h1>
+<p>Corporación Productiva · Fecha {{ q.fecha|d }}{% if q.vigencia %} · válida hasta {{ q.vigencia|d }}{% endif %} · {{ b(q.estado) }}</p>
+<p><b>Cliente:</b> {{ q.customer.nombre }} (RUC {{ q.customer.ruc }})</p>
+<table><tr><th>Código</th><th>Descripción</th><th>Unidad</th><th class="r">Cantidad</th><th class="r">Precio S/</th><th class="r">Subtotal S/</th></tr>
+{% for l in q.lineas %}<tr><td>{{ l.product_code }}</td><td>{{ l.descripcion }}</td><td>{{ l.um }}</td><td class="r">{{ l.cantidad|n }}</td><td class="r">{{ '{:,.2f}'.format(l.precio) }}</td><td class="r">{{ '{:,.2f}'.format(l.cantidad * l.precio) }}</td></tr>{% endfor %}
+<tr><th colspan="5" class="r">Total S/</th><th class="r">{{ '{:,.2f}'.format(q.total) }}</th></tr></table>
+{% if q.observacion %}<p>{{ q.observacion }}</p>{% endif %}<p class="small muted">Emitida por {{ q.user.nombre if q.user }}.</p></div>
+{% endblock %}

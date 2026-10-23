@@ -1,6 +1,6 @@
 {% extends "base.html" %}{% from "_m.html" import b, bar, csrf, post, ic %}
 {% block content %}
-{% set editable = o.estado in ['REGISTRADA','EVALUADA','EN_PREPARACION','PREPARADA'] %}
+{% set editable = o.estado in ['BORRADOR','REGISTRADA','EVALUADA','EN_PREPARACION','PREPARADA'] %}
 {% set puede_editar = editable and (can('ov.modificar') or can('ov.solicitar_modificacion')) %}
 {% set gestionable = o.estado not in ['CANCELADA','DESPACHADA','ENTREGADA','ENTREGA_PARCIAL','RECHAZADA','DEVUELTA','EN_RUTA'] %}
 {% set puede_gestionar = gestionable and (can('ov.renegociar') or can('ov.cancelar')) %}
@@ -39,6 +39,21 @@
 {% if o.regularizacion %}<tr><td>Regularización</td><td>{{ o.regularizacion.motivo }} <span class="muted small">— {{ o.regularizacion.user }}, {{ o.regularizacion.ts[:16]|replace('T',' ') }}. No reserva stock.</span></td></tr>{% endif %}
 <tr><td>Comentarios</td><td>{{ o.comentarios }}</td></tr>
 </table></div>
+{% set cmp = o.compromiso or {} %}
+<div class="card"><h3>Orden de compra y compromiso de entrega</h3>
+{% if o.estado == 'BORRADOR' %}<div class="note warn"><b>Borrador:</b> falta la orden de compra del cliente. La OV no se evalúa ni reserva stock hasta adjuntarla.</div>{% endif %}
+<p>Orden de compra: {% if o.oc_archivo %}<a href="{{ url_for('main.evidence', name=o.oc_archivo) }}">{{ o.oc_numero or 'ver archivo' }}</a>{% else %}<span class="muted">sin adjuntar</span>{% endif %}</p>
+{% if o.estado not in ['CANCELADA','DESPACHADA','ENTREGADA'] and (can('ov.crear') or can('ov.modificar')) %}<form method="post" enctype="multipart/form-data" class="row" action="{{ url_for('com.order_action', oid=o.id, accion='oc') }}">{{ csrf() }}<div><label>N° de OC</label><input name="oc_numero" value="{{ o.oc_numero }}"></div><div class="grow"><label class="req">Archivo de la OC</label><input type="file" name="archivo" required></div><div><button>{{ 'Adjuntar y registrar' if o.estado == 'BORRADOR' else 'Adjuntar' }}</button></div></form>{% endif %}
+{% if cmp %}<p>Compromiso de Operaciones: {{ b(cmp.estado) }} <b>{{ comp_estados.get(cmp.estado, cmp.estado) }}</b>{% if cmp.automatico %} <span class="small muted">(automático: {{ cmp.detalle }})</span>{% endif %}
+{% if cmp.estado == 'PENDIENTE' and cmp.vence %} · responder antes del {{ cmp.vence[:16]|replace('T',' ') }}{% endif %}
+{% if cmp.user %} · {{ cmp.user }}, {{ (cmp.ts or '')[:16]|replace('T',' ') }}{% endif %}{% if cmp.motivo %}<br><span class="small">Motivo: {{ cmp.motivo }}</span>{% endif %}{% if cmp.fecha_estimada %}<br><span class="small">Fecha estimada: {{ cmp.fecha_estimada }}</span>{% endif %}</p>
+{% if can('ov.compromiso') and o.estado not in ['CANCELADA','DESPACHADA','ENTREGADA','BORRADOR'] %}<form method="post" class="row" action="{{ url_for('com.order_action', oid=o.id, accion='compromiso') }}">{{ csrf() }}
+<div><label>Respuesta</label><select name="cumple"><option value="1">Cumple</option><option value="0" {{ 'selected' if cmp.estado == 'CUMPLE' }}>No cumple</option></select></div>
+<div class="grow"><label>Motivo (obligatorio si no cumple)</label><input name="motivo"></div><div><label>Fecha estimada</label><input type="date" name="fecha_estimada"></div><div><button>Responder</button></div></form>
+<p class="small muted">Días para producir: {% for k, v in dias_prod.items() %}{{ k|replace('_',' ')|lower }} {{ v }} d{{ ' · ' if not loop.last }}{% endfor %}.</p>{% endif %}
+{% endif %}
+{% if can('ov.solicitar_cambio_fecha') and o.estado in ['REGISTRADA','EVALUADA','EN_PREPARACION','PREPARADA'] %}<details><summary>Solicitar cambio de fecha de despacho a Comercial</summary><form method="post" class="row" action="{{ url_for('com.order_action', oid=o.id, accion='cambio_fecha') }}">{{ csrf() }}<div><label class="req">Nueva fecha</label><input type="date" name="nueva_fecha" required></div><div class="grow"><label class="req">Motivo</label><input name="motivo" required></div><div><button>Enviar solicitud</button></div></form></details>{% endif %}
+</div>
 <div class="card"><h3>Cobertura y estado</h3>
 <p>Unidades: <b>{{ o.cobertura_unidades }}%</b> {{ bar(o.cobertura_unidades) }} Líneas totalmente cubiertas: <b>{{ o.cobertura_lineas }}%</b> {{ bar(o.cobertura_lineas) }}</p>
 {% if o.retenida_precio %}<div class="card" style="border-left:4px solid var(--err)"><b>OV detenida por precio</b> (en el límite o por debajo de la lista de precios mínimos o del costo). No se prepara ni se despacha hasta la confirmación del Coordinador Comercial o del Jefe Comercial.
@@ -154,7 +169,19 @@
 {% for st in paradas %}<tr><td>Guía de remisión</td><td>{{ st.guia_numero or '—' }}</td><td>{% if st.guia_numero %}{{ b('APROBADA' if st.guia_aprobada else 'EMITIDA') }}{% else %}{{ b('PENDIENTE') }}{% endif %}</td><td>{% if can('distribucion.ver') %}<a href="{{ url_for('dist.folio', rid=st.route_id, tipo='guia') }}">ver</a>{% endif %}{% if st.guia_path %} · <a href="{{ url_for('main.evidence', name=st.guia_path) }}">archivo</a>{% endif %}</td></tr>
 <tr><td>Factura</td><td>{{ st.factura_numero or '—' }}</td><td>{{ b('CARGADA' if st.factura_path else 'PENDIENTE') }}</td><td>{% if st.factura_path %}<a href="{{ url_for('main.evidence', name=st.factura_path) }}">archivo</a>{% endif %}</td></tr>
 {% else %}<tr><td>Guía y factura</td><td colspan="3" class="muted">Se generan al programar la ruta de despacho.</td></tr>{% endfor %}
-</table></div>
+{% for i in docs.facturas %}<tr><td>{{ 'Nota de crédito' if i.tipo == 'NOTA_CREDITO' else 'Factura' }} (Finanzas)</td><td>{{ i.numero }}{% if i.referencia %} <span class="small muted">ref. {{ i.referencia }}</span>{% endif %}</td><td>{{ b(i.estado) }} · S/ {{ i.monto|n }}{% if i.tipo == 'FACTURA' %} · saldo S/ {{ i.saldo|n }}{% endif %}</td><td>{% if i.archivo %}<a href="{{ url_for('main.evidence', name=i.archivo) }}">archivo</a>{% endif %}</td></tr>{% endfor %}
+{% for a in docs.adjuntos %}<tr><td>{{ tipos_doc.get(a.tipo, a.tipo) }}</td><td>{{ a.nombre }}</td><td class="small">{{ a.user.nombre if a.user }} · {{ a.ts|d }}{% if a.observacion %} · {{ a.observacion }}{% endif %}</td><td><a href="{{ url_for('main.evidence', name=a.archivo) }}">archivo</a></td></tr>{% endfor %}
+</table>
+{% if can('ov.modificar') or can('ov.crear') or can('distribucion.entrega') or can('calidad.registrar') or can('facturas.cargar') or can('nc.solicitar') %}
+<details><summary>Agregar documento (constancia de devolución, nota de crédito, otro)</summary>
+<form method="post" enctype="multipart/form-data" class="row" action="{{ url_for('com.order_action', oid=o.id, accion='documento') }}">{{ csrf() }}
+<div><label>Tipo</label><select name="tipo">{% for k, v in tipos_doc.items() if k != 'OC' %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select></div>
+<div><label>Número / nombre</label><input name="nombre"></div><div class="grow"><label>Observación</label><input name="observacion"></div>
+<div><label class="req">Archivo</label><input type="file" name="archivo" required></div><div><button>Agregar</button></div></form></details>{% endif %}
+{% if can('nc.solicitar') and o.estado in ['DESPACHADA','ENTREGADA','ENTREGA_PARCIAL','RECHAZADA','DEVUELTA'] %}
+<details><summary>Solicitar nota de crédito</summary><form method="post" class="row" action="{{ url_for('com.order_action', oid=o.id, accion='nota_credito') }}">{{ csrf() }}
+<div class="grow"><label class="req">Motivo</label><input name="motivo" required></div><div><label>Monto estimado S/</label><input name="monto" type="number" step="0.01" min="0"></div><div><button>Solicitar</button></div></form></details>{% endif %}
+</div>
 </section>
 
 {% if reqs or decs or hist %}

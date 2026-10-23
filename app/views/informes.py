@@ -48,8 +48,12 @@ def custom():
         r = cr.run(g.user, fuente, request.args.getlist("col"), desde, hasta, request.args.get("q", ""),
                    request.args.get("agrupar", ""))
         nombre = f"informe_{fuente}_{r['hasta']:%Y%m%d}"
+        elementos = request.args.getlist("elem") or ["tabla", "grafico", "kpis", "recomendaciones"]
+        notas_pdf = r["notas"] + ([f"{k}: {v}" for k, v in r["kpis"]] if "kpis" in elementos else []) + (
+            ["Recomendación: " + x for x in r["recomendaciones"]] if "recomendaciones" in elementos else [])
         if request.args.get("formato") == "pdf":
-            return send_file(io.BytesIO(pdfreport.table_pdf(r["titulo"], r["columnas"], r["filas"], r["notas"])),
+            return send_file(io.BytesIO(pdfreport.table_pdf(r["titulo"], r["columnas"], r["filas"] if "tabla" in elementos else [],
+                                                            notas_pdf)),
                              mimetype="application/pdf", as_attachment=True, download_name=nombre + ".pdf")
         if request.args.get("formato") == "xlsx":
             from openpyxl import Workbook
@@ -59,7 +63,7 @@ def custom():
             ws.title = r["titulo"][:30]
             ws.append([r["titulo"]])
             ws["A1"].font = Font(bold=True, size=12)
-            for n in r["notas"]:
+            for n in notas_pdf:
                 ws.append([n])
             ws.append(r["columnas"])
             for c in ws[ws.max_row]:
@@ -70,8 +74,14 @@ def custom():
             wb.save(out)
             return send_file(io.BytesIO(out.getvalue()), as_attachment=True, download_name=nombre + ".xlsx",
                              mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    elementos = request.args.getlist("elem") or ["tabla", "grafico", "kpis", "recomendaciones"]
+    grafico = None
+    if r is not None and "grafico" in elementos:
+        med = request.args.get("medida")
+        grafico = cr.chart(r, request.args.get("tipo_grafico", "barras"), int(med) if (med or "").isdigit() else None)
     return render_template("informe_personalizado.html", fuentes=fuentes, fuente=fuente, columnas=cr.columns(fuente),
-                           r=r, sel=request.args.getlist("col"), items=disponibles())
+                           r=r, sel=request.args.getlist("col"), items=disponibles(), por_area=cr.sources_by_area(g.user),
+                           elementos=elementos, grafico=grafico)
 
 
 @bp.route("/")
@@ -112,7 +122,22 @@ def show(nombre):
 def _show(nombre):
     desde, hasta = _periodo()
     if nombre == "comercial":
-        d = rsvc.comercial(desde, hasta, ver_costos="costos.ver" in g.perms)
+        fa = request.args
+        vend = fa.get("vendedor", "")
+        if g.user.role_code == "EJECUTIVO_VENTAS":  # el ejecutivo ve lo suyo
+            vend = g.user.nombre
+        d = rsvc.comercial(desde, hasta, ver_costos="costos.ver" in g.perms, canal=fa.get("canal", ""),
+                           customer_id=fa.get("customer_id") or None, vendedor=vend, tipo=fa.get("tipo", ""))
+        from sqlalchemy import select
+        from ..db import db
+        from ..models import Customer
+        from ..services import kpis as kpisvc
+        from ..services import prices as prsvc
+        clientes = list(db().execute(select(Customer).order_by(Customer.nombre)).scalars())
+        filtros = {"canales": sorted({prsvc.channel_of(c) for c in clientes} - {"", None}), "clientes": clientes,
+                   "vendedores": sorted({v for v, _ in d["vendedores"]})}
+        k = kpisvc.compute(desde, hasta)
+        d["tiempos"] = {"preparacion_h": k.get("tiempo_preparacion_h"), "despacho_h": k.get("tiempo_despacho_h")}
         graf = {"semanal": charts.line([("Ventas S/", d["serie_semanal"])], "S/", title="Ventas semanales"),
                 "vend_soles": charts.bars([(k, v["soles"]) for k, v in d["vendedores"]], "S/", title="Ventas por vendedor (S/)"),
                 "vend_kg": charts.bars([(k, v["kg"]) for k, v in d["vendedores"]], "kg", title="Ventas por vendedor (kg)", color=2),
@@ -124,7 +149,8 @@ def _show(nombre):
         cb = behavior(d["desde"], d["hasta"])
         graf["cumplimiento"] = charts.bars([(x["customer"].nombre[:22], x["cumplimiento"] or 0) for x in cb["clientes"][:15]], "%",
                                            title="Cumplimiento por cliente (entregados completos / pedidos)", color=2)
-        return render_template("informe_comercial.html", d=d, cb=cb, graf=graf, items=disponibles(), actual=nombre)
+        graf["top_kg"] = charts.bars([(f"{k} {n[:18]}", v) for k, n, v, _ in d["top_kg"]], "kg", title="Productos más vendidos (kg)", color=2)
+        return render_template("informe_comercial.html", d=d, cb=cb, graf=graf, items=disponibles(), actual=nombre, filtros=filtros)
     if nombre == "almacen":
         from ..services.core import warehouse_scopes
         propios = warehouse_scopes().get(g.user.role_code)

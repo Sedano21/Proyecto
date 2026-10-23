@@ -98,7 +98,7 @@ def test_partes_de_produccion_con_formulas_de_los_formatos(s, U):
     assert e.rendimiento_pct == pytest.approx(99.49) and e.desmedro_pct == pytest.approx(0.51)
     # la merma real de la liquidación se toma del parte (por OF) y dispara la alerta si supera el umbral
     set_param("umbral_merma_pct", 2.0, U("sistemas"))
-    liq = prod.register_liquidation(U("asist.produccion"), "LQ-P1", "PT-903", 100, "L-P1")
+    liq = prod.register_liquidation(U("asist.produccion"), "LQ-P1", "PT-903", 100, "L-P1", horas=8, operarios=4)
     assert prod.merma_real_pct(liq) == pytest.approx(2.779, rel=1e-3)
     prod.register_report(U("asist.produccion"), "TRUER", date.today(), "MP-901", 1000, granel_kg=950, desmedro_kg=40)
     assert alerts_of(s, "MERMA_FUERA_PARAMETRO")

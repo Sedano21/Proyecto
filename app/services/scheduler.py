@@ -75,6 +75,12 @@ def run_checks(user=None, today=None):
     out["flota"] = fleet_alerts(today)
     from .shifts import check_overdue
     out["tareas_incumplidas_aviso_jefe"] = check_overdue()
+    from .shifts import check_end_of_shift
+    out["tareas_pendientes_fin_turno"] = check_end_of_shift()
+    from .commitment import check_pending
+    out["ov_sin_compromiso"] = check_pending()
+    from .finance import check_overdue as facturas_vencidas
+    out["facturas_vencidas"] = facturas_vencidas(today)
     out["correo"] = flush_outbox()
     return out
 

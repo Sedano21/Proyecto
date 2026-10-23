@@ -22,7 +22,7 @@ def test_parametros_versionados_y_auditados(s, U):
 def test_merma_fuera_de_parametro(s, U):
     from app.services.production import register_liquidation
     set_param("umbral_merma_pct", 1.0, U("sistemas"))
-    register_liquidation(U("asist.produccion"), "LQ-M", "PT-901", 100, "LM1", merma_mp_kg=5)  # 5/(50+5)=9 %
+    register_liquidation(U("asist.produccion"), "LQ-M", "PT-901", 100, "LM1", merma_mp_kg=5, horas=8, operarios=4)  # 5/(50+5)=9 %
     s.commit()
     from .conftest import alerts_of
     assert alerts_of(s, "MERMA_FUERA_PARAMETRO")

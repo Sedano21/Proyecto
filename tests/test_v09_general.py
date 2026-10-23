@@ -57,10 +57,10 @@ def test_ov_exige_producto_cantidad_y_precio(s, U, cust):
     from app.services import orders as osvc
     hoy = date.today()
     with pytest.raises(BusinessError, match="precio"):
-        osvc.create_order(U("coord.ventas"), "X-1", cust().id, hoy + timedelta(days=2), [{"product_code": "PT-905", "cantidad": 5}])
+        osvc.create_order(U("coord.ventas"), "X-1", cust().id, hoy + timedelta(days=2), [{"product_code": "PT-905", "cantidad": 5}], oc_archivo="oc_prueba.pdf")
     with pytest.raises(BusinessError, match="Regularización"):
         osvc.create_order(U("coord.ventas"), "X-2", cust().id, hoy - timedelta(days=1),
-                          [{"product_code": "PT-905", "cantidad": 5, "precio_unitario": 10}])
+                          [{"product_code": "PT-905", "cantidad": 5, "precio_unitario": 10}], oc_archivo="oc_prueba.pdf")
 
 
 def test_regularizacion_sin_reserva_y_liberacion(s, U, cust):

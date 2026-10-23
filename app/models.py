@@ -133,6 +133,7 @@ class Product(Base):
     # unidades por caja o bulto: el picking registra los bultos para el seguimiento del stock y los certificados
     unidades_por_bulto: Mapped[float | None] = mapped_column(Float, nullable=True)
     tipo: Mapped[str] = mapped_column(String(10), default="")  # PT, MP, GR, EN, SU, ...
+    foto: Mapped[str] = mapped_column(String(250), default="")  # foto del catálogo (ronda 23-oct-2026)
     calidad: Mapped[str] = mapped_column(String(30), default="")  # SUPERIOR / EXTRA
     maquina: Mapped[str] = mapped_column(String(30), default="")  # MAQ (E2000, T1000...)
     marca: Mapped[str] = mapped_column(String(60), default="")
@@ -192,6 +193,18 @@ class Customer(Base):
     certificaciones: Mapped[str] = mapped_column(Text, default="")  # certificaciones que pide el cliente
     penalidades: Mapped[str] = mapped_column(Text, default="")  # penalidades establecidas con el cliente
     vendedor_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)  # vendedor responsable
+    # Ronda 23-oct-2026: ubigeo (guía), condición de pago aprobada por Finanzas y prospecto (módulo de oportunidades)
+    ubigeo: Mapped[str] = mapped_column(String(10), default="")
+    condicion_pago: Mapped[str] = mapped_column(String(10), default="")  # CONTADO / CREDITO
+    credito_monto: Mapped[float | None] = mapped_column(Float, nullable=True)  # línea de crédito solicitada (S/)
+    credito_dias: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # SIN_SOLICITAR / PENDIENTE / APROBADA / OBSERVADA / RECHAZADA. Los clientes existentes y los cargados desde SAP ya
+    # tienen su condición en SAP (APROBADA); los creados en el módulo empiezan SIN_SOLICITAR.
+    condicion_estado: Mapped[str] = mapped_column(String(15), default="APROBADA")
+    condicion_docs: Mapped[dict] = mapped_column(JSON, default=dict)  # {documento: archivo}
+    condicion_historial: Mapped[list] = mapped_column(JSON, default=list)
+    es_prospecto: Mapped[bool] = mapped_column(Boolean, default=False)
+    convertido: Mapped[dict] = mapped_column(JSON, default=dict)  # paso de prospecto a cliente (OC, usuario, fecha)
     vendedor = relationship("User", foreign_keys=[vendedor_id])
     sites = relationship("CustomerSite", back_populates="customer", order_by="CustomerSite.id")
 
@@ -206,6 +219,7 @@ class CustomerSite(Base):
     distrito: Mapped[str] = mapped_column(String(80), default="")
     provincia: Mapped[str] = mapped_column(String(80), default="")
     referencia: Mapped[str] = mapped_column(String(250), default="")
+    ubigeo: Mapped[str] = mapped_column(String(10), default="")
     horario_recepcion: Mapped[str] = mapped_column(String(60), default="")
     contacto: Mapped[str] = mapped_column(String(120), default="")
     telefono: Mapped[str] = mapped_column(String(60), default="")
@@ -394,6 +408,12 @@ class SalesOrder(Base):
     customer = relationship("Customer")
     # canal / grupo de precios elegido al registrar (el mínimo varía por canal; observaciones al demo v0.6)
     canal_precio: Mapped[str] = mapped_column(String(60), default="")
+    # Ronda 23-oct-2026: orden de compra del cliente (obligatoria en las OV del módulo; sin ella queda en BORRADOR) y
+    # compromiso de Operaciones (CUMPLE / NO_CUMPLE) dentro del plazo configurado
+    oc_archivo: Mapped[str] = mapped_column(String(250), default="")
+    oc_numero: Mapped[str] = mapped_column(String(60), default="")
+    compromiso: Mapped[dict] = mapped_column(JSON, default=dict)
+    cancelacion_motivo: Mapped[str] = mapped_column(Text, default="")
     lines = relationship("SalesOrderLine", back_populates="order", cascade="all, delete-orphan",
                          order_by="SalesOrderLine.id")
     parent = relationship("SalesOrder", remote_side="SalesOrder.id")
@@ -621,6 +641,11 @@ class Liquidation(Base):
     merma_mp_kg: Mapped[float | None] = mapped_column(Float, nullable=True)
     merma_insumos: Mapped[dict] = mapped_column(JSON, default=dict)  # {codigo: cantidad}
     merma_granel_kg: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Ronda 23-oct-2026: horas y operarios (SAP los exige), kg de MP para el balance de masa y bloqueo
+    horas: Mapped[float | None] = mapped_column(Float, nullable=True)
+    operarios: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    mp_kg: Mapped[float | None] = mapped_column(Float, nullable=True)
+    bloqueo: Mapped[dict] = mapped_column(JSON, default=dict)  # {motivos: [...], ts, resuelto_ts}
     estado: Mapped[str] = mapped_column(String(25), default="REGISTRADA")
     # REGISTRADA / RECIBIDA_COMPLETA / RECIBIDA_FALTANTE / RECIBIDA_SOBRANTE
     cantidad_recibida: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -1203,6 +1228,10 @@ class MarketPrice(Base):
     # directa, sustituto o referencia de mercado), con la marca/empresa y el producto nuestro compatible.
     categoria: Mapped[str] = mapped_column(String(20), default="MERCADO")
     competidor: Mapped[str] = mapped_column(String(160), default="")
+    # ronda 23-oct-2026: lo registra cada vendedor y lo aprueba el Jefe Comercial (APROBADO / PENDIENTE / RECHAZADO)
+    estado: Mapped[str] = mapped_column(String(12), default="APROBADO")
+    aprobado_por: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    aprobado_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     presentacion: Mapped[str] = mapped_column(String(60), default="")
     product_code: Mapped[str] = mapped_column(String(40), default="")
 
@@ -1281,10 +1310,31 @@ class ProductionReport(Base):
     ratio_kg_hora: Mapped[float | None] = mapped_column(Float, nullable=True)
     parada_min: Mapped[int | None] = mapped_column(Integer, nullable=True)  # paradas de línea (obs. demo v0.6)
     motivo_parada: Mapped[str] = mapped_column(String(160), default="")
-    estado: Mapped[str] = mapped_column(String(20), default="EN PROCESO")  # PROGRAMADO / EN PROCESO / PENDIENTE / LIQUIDADO
+    estado: Mapped[str] = mapped_column(String(20), default="EN PROCESO")  # lista cerrada: production.ESTADOS_PARTE
     observacion: Mapped[str] = mapped_column(Text, default="")
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    # Ronda 23-oct-2026: parte en línea como el control de producción (pallets, MP, colaboradores, pausas, defectos, OEE)
+    maquina: Mapped[str] = mapped_column(String(30), default="")  # máquina para la velocidad nominal (R1, ENFARDADO_500…)
+    maquinista: Mapped[str] = mapped_column(String(120), default="")
+    ean: Mapped[str] = mapped_column(String(20), default="")
+    ean_ok: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    lote_pt: Mapped[str] = mapped_column(String(60), default="")
+    fv_pt: Mapped[date | None] = mapped_column(Date, nullable=True)
+    fv_mp: Mapped[date | None] = mapped_column(Date, nullable=True)
+    und_paquete: Mapped[float | None] = mapped_column(Float, nullable=True)
+    sacos: Mapped[float | None] = mapped_column(Float, nullable=True)
+    peso_saco_kg: Mapped[float | None] = mapped_column(Float, nullable=True)
+    saldo_mp_kg: Mapped[float | None] = mapped_column(Float, nullable=True)
+    refrigerio_min: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    pallets: Mapped[list] = mapped_column(JSON, default=list)  # [{destino, cantidad}]
+    colaboradores: Mapped[list] = mapped_column(JSON, default=list)  # [{nombre, inicio, fin, refrigerio_min, kg}]
+    pausas: Mapped[list] = mapped_column(JSON, default=list)  # [{inicio, fin, causa, foto, user}]
+    defectos: Mapped[dict] = mapped_column(JSON, default=dict)  # {causa: unidades}
+    indicadores: Mapped[dict] = mapped_column(JSON, default=dict)  # OEE, peso promedio, desviación, horas efectivas…
+    inicio_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    fin_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    bloqueo: Mapped[dict] = mapped_column(JSON, default=dict)  # BLOQUEADO por Calidad: {motivo, user, ts}
     product = relationship("Product", primaryjoin="foreign(ProductionReport.product_code) == Product.code", viewonly=True)
 
 
@@ -1302,6 +1352,8 @@ class ProductionPlan(Base):
     ts: Mapped[datetime] = mapped_column(DateTime, default=now)
     # obs. demo v0.7: MANUAL (lo registra Producción) o SISTEMA (preprogramado con los requerimientos; lo edita el Jefe)
     origen: Mapped[str] = mapped_column(String(10), default="MANUAL")
+    # ronda 23-oct-2026: el cambio que propone un asistente queda pendiente hasta que lo valida el Jefe de Producción
+    cambio_pendiente: Mapped[dict] = mapped_column(JSON, default=dict)
     product = relationship("Product")
 
 
@@ -1411,3 +1463,214 @@ class SapDiscrepancy(Base):
     resuelto_por: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     resuelto_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     resuelto = relationship("User", foreign_keys=[resuelto_por])
+
+
+# ---------------------------------------------------------------------------
+# Ronda 23-oct-2026: Finanzas, expediente, margen, objetivos, incentivos, oportunidades, GS1, personal y asistencia
+# ---------------------------------------------------------------------------
+class CustomerInvoice(Base):
+    """Factura o nota de crédito del cliente (carga SAP en Excel, PDF o registro de Finanzas). El saldo se actualiza con
+    los pagos confirmados por Finanzas."""
+    __tablename__ = "customer_invoices"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    customer_id: Mapped[int] = mapped_column(ForeignKey("customers.id"), index=True)
+    order_id: Mapped[int | None] = mapped_column(ForeignKey("sales_orders.id"), nullable=True)
+    tipo: Mapped[str] = mapped_column(String(15), default="FACTURA")  # FACTURA / NOTA_CREDITO
+    numero: Mapped[str] = mapped_column(String(40), index=True)
+    referencia: Mapped[str] = mapped_column(String(40), default="")  # factura que afecta la nota de crédito
+    fecha: Mapped[date] = mapped_column(Date)
+    vencimiento: Mapped[date | None] = mapped_column(Date, nullable=True)
+    moneda: Mapped[str] = mapped_column(String(10), default="SOLES")
+    monto: Mapped[float] = mapped_column(Float, default=0)
+    saldo: Mapped[float] = mapped_column(Float, default=0)
+    estado: Mapped[str] = mapped_column(String(12), default="PENDIENTE")  # PENDIENTE / PARCIAL / PAGADA / ANULADA
+    archivo: Mapped[str] = mapped_column(String(250), default="")
+    origen: Mapped[str] = mapped_column(String(20), default="MANUAL")  # MANUAL / EXCEL / PDF / SAP
+    observacion: Mapped[str] = mapped_column(Text, default="")
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    customer = relationship("Customer")
+    order = relationship("SalesOrder")
+    __table_args__ = (UniqueConstraint("tipo", "numero", name="uq_invoice_tipo_numero"),)
+
+
+class CustomerPayment(Base):
+    """Comprobante de pago subido por Comercial o Finanzas; Finanzas lo confirma y se aplica al saldo de la factura."""
+    __tablename__ = "customer_payments"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    customer_id: Mapped[int] = mapped_column(ForeignKey("customers.id"), index=True)
+    invoice_id: Mapped[int | None] = mapped_column(ForeignKey("customer_invoices.id"), nullable=True)
+    fecha: Mapped[date] = mapped_column(Date)
+    monto: Mapped[float] = mapped_column(Float)
+    medio: Mapped[str] = mapped_column(String(40), default="")
+    operacion: Mapped[str] = mapped_column(String(60), default="")
+    archivo: Mapped[str] = mapped_column(String(250), default="")
+    estado: Mapped[str] = mapped_column(String(12), default="REPORTADO")  # REPORTADO / CONFIRMADO / OBSERVADO
+    observacion: Mapped[str] = mapped_column(Text, default="")
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    confirmado_por: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    confirmado_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    customer = relationship("Customer")
+    invoice = relationship("CustomerInvoice")
+    user = relationship("User", foreign_keys=[user_id])
+
+
+class OrderAttachment(Base):
+    """Documentos del expediente de la OV: orden de compra, constancia de devolución, nota de crédito, otros."""
+    __tablename__ = "order_attachments"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    order_id: Mapped[int] = mapped_column(ForeignKey("sales_orders.id"), index=True)
+    tipo: Mapped[str] = mapped_column(String(20))  # OC / DEVOLUCION / NOTA_CREDITO / OTRO
+    nombre: Mapped[str] = mapped_column(String(200), default="")
+    archivo: Mapped[str] = mapped_column(String(250))
+    observacion: Mapped[str] = mapped_column(Text, default="")
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    user = relationship("User")
+
+
+class MarginInvestment(Base):
+    """Inversión adicional (mercaderismo u otra) por cliente y mes, para el margen de contribución variable."""
+    __tablename__ = "margin_investments"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    customer_id: Mapped[int] = mapped_column(ForeignKey("customers.id"), index=True)
+    mes: Mapped[str] = mapped_column(String(7), index=True)  # AAAA-MM
+    concepto: Mapped[str] = mapped_column(String(60), default="MERCADERISMO")
+    monto: Mapped[float] = mapped_column(Float, default=0)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    customer = relationship("Customer")
+
+
+class SalesTarget(Base):
+    """Objetivo de ventas mensual: GENERAL, por CANAL o por VENDEDOR (soles y, opcionalmente, kg)."""
+    __tablename__ = "sales_targets"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    mes: Mapped[str] = mapped_column(String(7), index=True)
+    alcance: Mapped[str] = mapped_column(String(10))  # GENERAL / CANAL / VENDEDOR
+    clave: Mapped[str] = mapped_column(String(120), default="")  # canal o id del vendedor
+    soles: Mapped[float] = mapped_column(Float, default=0)
+    kg: Mapped[float | None] = mapped_column(Float, nullable=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    __table_args__ = (UniqueConstraint("mes", "alcance", "clave", name="uq_target"),)
+
+
+class IncentiveRule(Base):
+    """Regla de incentivo de vendedores (varía por canal y vendedor). Precedencia: vendedor+canal > vendedor > canal >
+    general."""
+    __tablename__ = "incentive_rules"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    canal: Mapped[str] = mapped_column(String(60), default="")  # vacío = todos
+    vendedor_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)  # vacío = todos
+    base: Mapped[str] = mapped_column(String(15), default="VENTA")  # VENTA / MARGEN_BRUTO / MARGEN_CONTRIB
+    pct: Mapped[float] = mapped_column(Float, default=0)
+    cumplimiento_min_pct: Mapped[float | None] = mapped_column(Float, nullable=True)  # vs objetivo del vendedor
+    tope: Mapped[float | None] = mapped_column(Float, nullable=True)
+    desde: Mapped[date | None] = mapped_column(Date, nullable=True)
+    hasta: Mapped[date | None] = mapped_column(Date, nullable=True)
+    activo: Mapped[bool] = mapped_column(Boolean, default=True)
+    observacion: Mapped[str] = mapped_column(Text, default="")
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    vendedor = relationship("User", foreign_keys=[vendedor_id])
+
+
+class Opportunity(Base):
+    """Oportunidad comercial (reemplaza el módulo de oportunidades de SAP)."""
+    __tablename__ = "opportunities"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    customer_id: Mapped[int] = mapped_column(ForeignKey("customers.id"), index=True)
+    vendedor_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    titulo: Mapped[str] = mapped_column(String(200))
+    productos: Mapped[str] = mapped_column(Text, default="")  # productos de interés
+    proyeccion_mensual: Mapped[float | None] = mapped_column(Float, nullable=True)  # S/ por mes
+    proyeccion_kg: Mapped[float | None] = mapped_column(Float, nullable=True)
+    estado: Mapped[str] = mapped_column(String(15), default="ABIERTA")  # ABIERTA / COTIZADA / NEGOCIACION / GANADA / PERDIDA
+    tipo: Mapped[str] = mapped_column(String(15), default="NUEVO")  # NUEVO (cliente nuevo) / ADICIONAL (venta adicional)
+    motivo_cierre: Mapped[str] = mapped_column(Text, default="")
+    creado_ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    cerrado_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    customer = relationship("Customer")
+    vendedor = relationship("User")
+    actions = relationship("CustomerAction", back_populates="opportunity", order_by="CustomerAction.fecha.desc()")
+
+
+class CustomerAction(Base):
+    """Acción con el cliente: visita, llamada, reunión virtual, mensajería, carta u oficio, etc."""
+    __tablename__ = "customer_actions"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    customer_id: Mapped[int] = mapped_column(ForeignKey("customers.id"), index=True)
+    opportunity_id: Mapped[int | None] = mapped_column(ForeignKey("opportunities.id"), nullable=True)
+    tipo: Mapped[str] = mapped_column(String(30))
+    fecha: Mapped[date] = mapped_column(Date)
+    gasto: Mapped[float | None] = mapped_column(Float, nullable=True)
+    resultado: Mapped[str] = mapped_column(Text, default="")
+    proxima_accion: Mapped[date | None] = mapped_column(Date, nullable=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    customer = relationship("Customer")
+    opportunity = relationship("Opportunity", back_populates="actions")
+    user = relationship("User")
+
+
+class Quote(Base):
+    """Cotización (oferta de venta) a un cliente o prospecto."""
+    __tablename__ = "quotes"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    numero: Mapped[str] = mapped_column(String(30), unique=True)
+    customer_id: Mapped[int] = mapped_column(ForeignKey("customers.id"), index=True)
+    opportunity_id: Mapped[int | None] = mapped_column(ForeignKey("opportunities.id"), nullable=True)
+    fecha: Mapped[date] = mapped_column(Date)
+    vigencia: Mapped[date | None] = mapped_column(Date, nullable=True)
+    lineas: Mapped[list] = mapped_column(JSON, default=list)  # [{product_code, descripcion, cantidad, precio}]
+    total: Mapped[float] = mapped_column(Float, default=0)
+    estado: Mapped[str] = mapped_column(String(12), default="EMITIDA")  # EMITIDA / ACEPTADA / RECHAZADA / VENCIDA
+    observacion: Mapped[str] = mapped_column(Text, default="")
+    order_id: Mapped[int | None] = mapped_column(ForeignKey("sales_orders.id"), nullable=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    customer = relationship("Customer")
+    opportunity = relationship("Opportunity")
+    user = relationship("User")
+
+
+class ProductGTIN(Base):
+    """Relación GS1 (EAN13 / EAN14) ↔ código SAP; se carga en Configuración."""
+    __tablename__ = "product_gtins"
+    gtin: Mapped[str] = mapped_column(String(20), primary_key=True)
+    tipo: Mapped[str] = mapped_column(String(10), default="")  # EAN13 / EAN14
+    product_code: Mapped[str] = mapped_column(String(40), index=True)
+    marca: Mapped[str] = mapped_column(String(80), default="")
+    descripcion: Mapped[str] = mapped_column(String(250), default="")
+    envase: Mapped[str] = mapped_column(String(60), default="")
+    contenido: Mapped[str] = mapped_column(String(30), default="")
+    unidad: Mapped[str] = mapped_column(String(20), default="")
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+
+class Worker(Base):
+    """Personal operativo de Producción (no son usuarios del sistema): asistencia y productividad."""
+    __tablename__ = "workers"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    nombre: Mapped[str] = mapped_column(String(160))
+    documento: Mapped[str] = mapped_column(String(20), default="")
+    linea: Mapped[str] = mapped_column(String(20), default="")
+    sublinea: Mapped[str] = mapped_column(String(40), default="")
+    externo: Mapped[bool] = mapped_column(Boolean, default=False)
+    activo: Mapped[bool] = mapped_column(Boolean, default=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+
+class Attendance(Base):
+    __tablename__ = "attendance"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    worker_id: Mapped[int] = mapped_column(ForeignKey("workers.id"), index=True)
+    fecha: Mapped[date] = mapped_column(Date, index=True)
+    estado: Mapped[str] = mapped_column(String(20))  # lista configurable: asistencia_estados
+    observacion: Mapped[str] = mapped_column(String(250), default="")
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    worker = relationship("Worker")
+    __table_args__ = (UniqueConstraint("worker_id", "fecha", name="uq_attendance"),)

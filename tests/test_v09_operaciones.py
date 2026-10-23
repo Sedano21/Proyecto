@@ -122,7 +122,7 @@ def test_requerimientos_consolidados_y_preprogramacion(s, U):
     s.flush()
     assert nuevas and all(p.origen == "SISTEMA" for p in nuevas)
     with pytest.raises(BusinessError, match="Jefe de Producción"):
-        prod.update_plan(U("asist.produccion"), nuevas[0], 1, "ajuste")
+        prod.update_plan(U("asist.produccion2"), nuevas[0], 1, "ajuste")
     prod.update_plan(U("jefe.produccion"), nuevas[0], 1, "ajuste")
     assert not [f for f in prod.requirements("SEMANA")["filas"] if f["producto"] == "PT-903" and f["por_planificar"] > 300]
     assert r.id
@@ -135,7 +135,7 @@ def test_calidad_antes_durante_y_lote_vs_liquidacion(s, U):
                                                                "linea": "TRUER", "detalle": "Faja sucia"})
     assert rec.resultado == "NO_CONFORME" and alerts_of(s, "CALIDAD_NO_CONFORME")
     q.register(U("asist.calidad"), "LOTE_PRODUCIDO", {"cantidad": 90, "linea": "TRUER"}, "PT-903", "LQ-LOTE-1")
-    liq = prod.register_liquidation(U("asist.produccion"), "LQ-77", "PT-903", 100, "LQ-LOTE-1")
+    liq = prod.register_liquidation(U("asist.produccion"), "LQ-77", "PT-903", 100, "LQ-LOTE-1", horas=8, operarios=4)
     s.flush()
     c = q.lot_entries_vs_liquidation(liq)
     assert c["calidad"] == 90 and not c["coincide"] and alerts_of(s, "CALIDAD_VS_LIQUIDACION", liq.id)

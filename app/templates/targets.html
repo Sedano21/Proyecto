@@ -1,0 +1,9 @@
+{% extends "base.html" %}{% from "_m.html" import bar %}
+{% block content %}<h1>Objetivos de venta</h1>
+<form class="card row" method="get"><div><label>Mes</label><input type="month" name="mes" value="{{ d.mes }}"></div><div><button>Ver</button></div>{% if can('comercial.configurar') %}<div><a class="btn sec" href="{{ url_for('com.commercial_config') }}#objetivos">Configurar objetivos</a></div>{% endif %}</form>
+<p class="small muted">El avance se mide contra lo <b>facturado</b> (debe coincidir con la facturación); también se muestra la venta real de las OV del mes. Avance esperado a hoy: <b>{{ d.esperado_pct }} %</b> del mes.</p>
+<div class="card"><div class="tw"><table class="small"><tr><th>Alcance</th><th>Canal / vendedor</th><th class="r">Objetivo S/</th><th class="r">Facturado S/</th><th>Avance</th><th class="r">Venta real (OV) S/</th><th class="r">Avance OV</th></tr>
+{% for x in d.filas %}<tr><td>{{ x.t.alcance|capitalize }}</td><td>{{ x.nombre }}</td><td class="r">{{ x.t.soles|n }}</td><td class="r">{{ x.facturado|n }}</td><td>{{ x.avance if x.avance is not none else '-' }} % {{ bar(x.avance or 0) }}{% if x.avance is not none and x.avance < d.esperado_pct %}<span class="small warn">por debajo de lo esperado</span>{% endif %}</td><td class="r">{{ x.pedido|n }}</td><td class="r">{{ x.avance_pedido if x.avance_pedido is not none else '-' }} %</td></tr>
+{% else %}<tr><td colspan="7" class="muted">Sin objetivos para el mes.</td></tr>{% endfor %}</table></div></div>
+<div class="card"><h3>Facturado por semana</h3><table class="small">{% for a, b_, v in d.semanas %}<tr><td>{{ a|d }} – {{ b_|d }}</td><td class="r">S/ {{ v|n }}</td></tr>{% endfor %}</table></div>
+{% endblock %}

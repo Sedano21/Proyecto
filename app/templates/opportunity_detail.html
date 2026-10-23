@@ -1,0 +1,24 @@
+{% extends "base.html" %}{% from "_m.html" import b, csrf %}
+{% block content %}<p class="small"><a href="{{ url_for('com.opportunities') }}">← Oportunidades</a></p>
+<h1>{{ o.titulo }}</h1>
+<p class="sub">{% if o.customer.es_prospecto %}<span class="b MEDIA">PROSPECTO</span> {% endif %}<a href="{{ url_for('com.customer_card', cid=o.customer_id) }}">{{ o.customer.nombre }}</a> · {{ b(o.estado) }} · {{ 'Cliente nuevo' if o.tipo == 'NUEVO' else 'Venta adicional' }} · vendedor {{ o.vendedor.nombre if o.vendedor else '-' }}{% if o.motivo_cierre %} · {{ o.motivo_cierre }}{% endif %}</p>
+<div class="grid g2">
+<form method="post" class="card">{{ csrf() }}<h3>Datos</h3>
+<label>Título</label><input name="titulo" value="{{ o.titulo }}" style="width:100%" required>
+<label>Productos de interés</label><input name="productos" value="{{ o.productos }}" style="width:100%">
+<div class="row"><div><label>Proyección S/ por mes</label><input name="proyeccion_mensual" type="number" step="0.01" value="{{ o.proyeccion_mensual or '' }}"></div><div><label>Proyección kg por mes</label><input name="proyeccion_kg" type="number" step="0.01" value="{{ o.proyeccion_kg or '' }}"></div></div>
+<p><button>Guardar</button></p></form>
+<form method="post" class="card">{{ csrf() }}<input type="hidden" name="accion" value="estado"><h3>Estado</h3>
+<div class="row"><div><label>Estado</label><select name="estado">{% for k, v in estados.items() %}<option value="{{ k }}" {{ 'selected' if o.estado == k }}>{{ v }}</option>{% endfor %}</select></div><div class="grow"><label>Motivo / detalle (obligatorio al ganar o perder)</label><input name="motivo"></div></div><p><button>Actualizar</button></p></form></div>
+<div class="grid g2">
+<div class="card"><h3>Acciones con el cliente</h3>
+<form method="post" class="row">{{ csrf() }}<input type="hidden" name="accion" value="accion"><div><label>Tipo</label><select name="tipo">{% for x in tipos %}<option>{{ x }}</option>{% endfor %}</select></div><div><label>Fecha</label><input type="date" name="fecha" value="{{ today.isoformat() }}"></div><div><label>Gasto S/</label><input name="gasto" type="number" step="0.01" min="0" style="width:90px"></div><div><label>Próxima</label><input type="date" name="proxima"></div><div class="grow"><label class="req">Resultado</label><input name="resultado" required></div><div><button>Registrar</button></div></form>
+<table class="small">{% for a in o.actions %}<tr><td>{{ a.fecha|d }}</td><td>{{ a.tipo }}</td><td>{{ a.resultado }}</td><td class="r">{{ 'S/ ' ~ (a.gasto|n) if a.gasto }}</td><td>{{ a.user.nombre if a.user }}</td></tr>{% else %}<tr><td class="muted">Sin acciones.</td></tr>{% endfor %}</table></div>
+<div class="card"><h3>Cotizaciones (oferta de venta)</h3>
+<table class="small">{% for q in quotes %}<tr><td><a href="{{ url_for('com.quote_print', qid=q.id) }}">{{ q.numero }}</a></td><td>{{ q.fecha|d }}</td><td class="r">S/ {{ q.total|n }}</td><td>{{ b(q.estado) }}</td>
+<td><form method="post" class="row">{{ csrf() }}<input type="hidden" name="accion" value="cotizacion_estado"><input type="hidden" name="id" value="{{ q.id }}"><select name="estado">{% for e in ['EMITIDA','ACEPTADA','RECHAZADA','VENCIDA'] %}<option {{ 'selected' if q.estado == e }}>{{ e }}</option>{% endfor %}</select><button class="small sec">Cambiar</button></form></td></tr>{% else %}<tr><td class="muted">Sin cotizaciones.</td></tr>{% endfor %}</table>
+<details><summary>Nueva cotización</summary><form method="post">{{ csrf() }}<input type="hidden" name="accion" value="cotizacion">
+<table class="small"><tr><th>Producto</th><th>Cantidad</th><th>Precio S/</th></tr>{% for i in range(5) %}<tr><td><input name="product_code" list="prods_q" style="width:100%"></td><td><input name="cantidad" type="number" step="any" min="0"></td><td><input name="precio" type="number" step="0.01" min="0"></td></tr>{% endfor %}</table>
+<datalist id="prods_q">{% for p in products %}<option value="{{ p.code }} {{ p.descripcion }}"></option>{% endfor %}</datalist>
+<div class="row"><div><label>Vigencia</label><input type="date" name="vigencia"></div><div class="grow"><label>Observación</label><input name="observacion"></div></div><p><button>Emitir cotización</button></p></form></details></div></div>
+{% endblock %}

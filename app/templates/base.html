@@ -31,7 +31,18 @@
       {% if ve('clientes.ver') %}{{ nl(url_for('com.customer_list'), 'users', 'Clientes') }}{% endif %}
       {% if ve('precios.ver') %}{{ nl(url_for('com.prices'), 'tag', 'Listas de precios') }}{% endif %}
       {% if ve('costos.ver') %}{{ nl(url_for('com.costs'), 'scale', 'Costos vs mercado') }}{% endif %}
+      {% if ve('oportunidades.registrar') or ve('oportunidades.ver_todas') %}{{ nl(url_for('com.opportunities'), 'users', 'Oportunidades') }}{% endif %}
+      {% if ve('catalogo.ver') or ve('catalogo.fotos') %}{{ nl(url_for('com.catalog'), 'box', 'Catálogo') }}{% endif %}
+      {% if ve('objetivos.ver') %}{{ nl(url_for('com.targets'), 'gauge', 'Objetivos de venta') }}{% endif %}
+      {% if ve('margen.ver') %}{{ nl(url_for('com.margin_report'), 'chart', 'Margen') }}{% endif %}
+      {% if ve('incentivos.ver') %}{{ nl(url_for('com.incentives'), 'tag', 'Incentivos') }}{% endif %}
+      {% if ve('mercado.aprobar') %}{{ nl(url_for('com.market_approve'), 'check', 'Precios de mercado por aprobar') }}{% endif %}
+      {% if ve('comercial.configurar') %}{{ nl(url_for('com.commercial_config'), 'layers', 'Configuración comercial') }}{% endif %}
       {% if ve('ov.importar') or ve('precios.editar') or ve('costos.cargar') or ve('clientes.canal') %}{{ nl(url_for('alm.uploads', area='Comercial'), 'upload', 'Cargas de archivos') }}{% endif %}
+    </div>{% endif %}
+    {% if ve('finanzas.ver') or ve('finanzas.gestionar') or ve('facturas.cargar') %}<div class="grp" data-grupo="Finanzas"><h4><span class="lbl">Finanzas</span></h4>
+      {{ nl(url_for('fin.board'), 'scale', 'Cobranza y condiciones') }}
+      {% if ve('clientes.ver') and not ve('ov.ver') %}{{ nl(url_for('com.customer_list'), 'users', 'Clientes') }}{% endif %}
     </div>{% endif %}
     {% if ve('stock.ver') or ve('traslados.ver') or ve('reempaque.ver') or ve('tareas.ejecutar') %}<div class="grp" data-grupo="Almacén"><h4><span class="lbl">Almacén</span></h4>
       {% if ve('stock.ver') %}{{ nl(url_for('alm.stock'), 'box', 'Stock y reservas') }}{% endif %}
@@ -48,6 +59,11 @@
       {{ nl(url_for('prod.bom'), 'layers', 'Lista de materiales') }}
       {{ nl(url_for('prod.liquidations'), 'file', 'Liquidaciones') }}
       {{ nl(url_for('prod.reports'), 'gauge', 'Partes de producción') }}
+      {{ nl(url_for('prod.control'), 'chart', 'Control de producción') }}
+      {{ nl(url_for('prod.oee_dashboard'), 'gauge', 'Tablero OEE') }}
+      {{ nl(url_for('prod.attendance'), 'users', 'Asistencia') }}
+      {{ nl(url_for('prod.productivity'), 'chart', 'Productividad por persona') }}
+      {% if ve('produccion.configurar') %}{{ nl(url_for('prod.prod_config'), 'layers', 'Configuración de Producción') }}{% endif %}
       {% if ve('produccion.bom_cargar') or ve('produccion.liquidar') %}{{ nl(url_for('alm.uploads', area='Producción'), 'upload', 'Cargas de archivos') }}{% endif %}
     </div>{% endif %}
     {% if ve('calidad.ver') or ve('distribucion.seguridad') %}<div class="grp" data-grupo="Calidad"><h4><span class="lbl">{{ 'Calidad' if can('calidad.ver') else 'Seguridad' }}</span></h4>

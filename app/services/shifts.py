@@ -248,7 +248,20 @@ def save_deadlines(user, form):
             fila[p] = m
         if fila:
             por_area[area] = fila
+    fin_turno = {}
+    for area in ["*"] + form.getlist("areas"):
+        v = (form.get(f"finturno_{area}") or "").strip()
+        if v:
+            try:
+                m = int(v)
+            except ValueError:
+                raise BusinessError(f"{area}: minutos antes del fin de turno en número entero.")
+            if m < 0:
+                raise BusinessError("Los minutos antes del fin de turno no pueden ser negativos.")
+            fin_turno[area] = m
     from .core import set_param
+    if fin_turno and fin_turno != (param("minutos_antes_fin_turno_por_area", {}) or {}):
+        set_param("minutos_antes_fin_turno_por_area", fin_turno, user)
     if general != (param("horas_plazo_tarea", {}) or {}):
         set_param("horas_plazo_tarea", general, user)
     if por_area != (param("minutos_plazo_tarea_por_area", {}) or {}):
@@ -360,3 +373,75 @@ def compliance(desde, hasta):
     return {"desde": desde, "hasta": hasta, "filas": filas, "plazos": param("horas_plazo_tarea", {}) or {},
             "plazos_area": {a: {k: fmt_plazo(float(v)) for k, v in f.items()} for a, f in plazos[1].items()},
             "turnos_configurados": any(cache.values()), "recomendaciones": reco}
+
+
+# ------------------------------------------------------------------ cierre de turno (ronda 23-oct-2026, decisión 7)
+def _open_tasks_of(u):
+    out = []
+    for a in db().execute(select(Alert).where(Alert.estado.in_(["PENDIENTE", "EN_EJECUCION", "INCIDENCIA"]),
+                                              Alert.asignado_a == u.id)).scalars():
+        if alerts.is_task(a):
+            out.append(a)
+    return out
+
+
+def minutes_before_end(u):
+    cfg = param("minutos_antes_fin_turno_por_area", {}) or {}
+    area = u.role.area if u.role else ""
+    v = cfg.get(area, cfg.get("*"))
+    return float(v) if v not in (None, "") else None
+
+
+def check_end_of_shift(ahora=None):
+    """X minutos antes del fin del turno (configurable por área), si la persona tiene tareas abiertas se avisa a su jefe
+    (una vez por persona y turno)."""
+    ahora = ahora or now()
+    n = 0
+    for u in db().execute(select(User).where(User.activo.is_(True))).scalars():
+        mins = minutes_before_end(u)
+        if mins is None:
+            continue
+        for d in (ahora.date(), ahora.date() - timedelta(days=1)):
+            for _a, fin, _r, etiqueta in windows(u.id, d):
+                if not (fin - timedelta(minutes=mins) <= ahora <= fin + timedelta(hours=2)):
+                    continue
+                tareas = _open_tasks_of(u)
+                jefes = [j for j in _bosses([u.role_code]) if j != u.role_code]
+                if not tareas or not jefes or _avisado(f"FIN_TURNO:{u.id}:{fin:%Y%m%d%H%M}"):
+                    continue
+                if alerts.emit("TAREAS_PENDIENTES_FIN_TURNO", f"{u.nombre}: {len(tareas)} tarea(s) abierta(s) al cierre del turno",
+                               f"Turno {etiqueta} termina {fin:%d/%m %H:%M}. Pendientes: "
+                               + "; ".join(a.titulo[:60] for a in tareas[:5]) + ("…" if len(tareas) > 5 else ""),
+                               "User", u.id, extra_roles=jefes, dedup_key=f"FIN_TURNO:{u.id}:{fin:%Y%m%d%H%M}") is not None:
+                    n += 1
+    return n
+
+
+def pending_carryover(user, ahora=None):
+    """Tareas que la persona dejó abiertas de días anteriores (se muestran primero al iniciar el día) con su tiempo de
+    atención, y su indicador de los últimos 30 días (% atendidas dentro del plazo y tiempo promedio de atención)."""
+    ahora = ahora or now()
+    hoy = datetime.combine(ahora.date(), time.min)
+    plazos = deadlines()
+    abiertas = [a for a in db().execute(select(Alert).where(Alert.estado.in_(["PENDIENTE", "EN_EJECUCION", "INCIDENCIA"]),
+                                                            Alert.creado_ts < hoy)).scalars()
+                if alerts.is_task(a) and alerts.is_assignee(user, a)]
+    filas = []
+    for a in sorted(abiertas, key=lambda x: x.creado_ts):
+        lim = deadline_minutes(a, plazos)
+        edad = (ahora - a.creado_ts).total_seconds() / 60.0
+        filas.append({"alerta": a, "horas": round(edad / 60.0, 1), "plazo": fmt_plazo(lim) if lim else "-",
+                      "vencida": bool(lim and edad > lim)})
+    desde = ahora - timedelta(days=30)
+    cerradas = [a for a in db().execute(select(Alert).where(Alert.creado_ts >= desde, Alert.cerrado_ts.isnot(None))).scalars()
+                if alerts.is_task(a) and (a.asignado_a == user.id or a.cerrado_por == user.id)]
+    a_tiempo, tiempos = 0, []
+    for a in cerradas:
+        lim = deadline_minutes(a, plazos)
+        m = (a.cerrado_ts - a.creado_ts).total_seconds() / 60.0
+        tiempos.append(m)
+        if not lim or m <= lim:
+            a_tiempo += 1
+    return {"filas": filas, "cerradas_30d": len(cerradas),
+            "a_tiempo_pct": round(100.0 * a_tiempo / len(cerradas), 1) if cerradas else None,
+            "atencion_prom": fmt_plazo(sum(tiempos) / len(tiempos)) if tiempos else None}

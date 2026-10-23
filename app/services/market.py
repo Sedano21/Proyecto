@@ -25,9 +25,9 @@ from .core import BusinessError, audit, has_perm, param
 CATEGORIAS = {
     "COMPRA_NACIONAL": ("Compra nacional", ("compras.gestionar",)),
     "IMPORTACION": ("Importación", ("importaciones.gestionar",)),
-    "COMPETENCIA": ("Competencia directa", ("costos.cargar",)),
-    "SUSTITUTO": ("Producto sustituto", ("costos.cargar",)),
-    "MERCADO": ("Referencia de mercado (mayorista / minorista)", ("costos.cargar",)),
+    "COMPETENCIA": ("Competencia directa", ("costos.cargar", "mercado.registrar")),
+    "SUSTITUTO": ("Producto sustituto", ("costos.cargar", "mercado.registrar")),
+    "MERCADO": ("Referencia de mercado (mayorista / minorista)", ("costos.cargar", "mercado.registrar")),
 }
 NIVEL_COMPRA = ("COMPRA_NACIONAL", "IMPORTACION")
 NIVEL_VENTA = ("COMPETENCIA", "SUSTITUTO")
@@ -221,6 +221,8 @@ def add(user, categoria, rows, origen):
     _check(user, categoria)
     s = db()
     n = 0
+    # ronda 23-oct-2026: lo que registra un vendedor queda pendiente hasta que lo aprueba el Jefe Comercial
+    estado = "APROBADO" if (categoria in NIVEL_COMPRA or has_perm(user, "mercado.aprobar")) else "PENDIENTE"
     for r in rows:
         prod = (r.get("producto") or "").strip().upper()
         if not prod or not r.get("precio_kg") or not r.get("fecha"):
@@ -229,14 +231,39 @@ def add(user, categoria, rows, origen):
         if precio <= 0:
             raise BusinessError("El precio por kg debe ser mayor que cero.")
         tipo = "IMPORTACION" if categoria == "IMPORTACION" else (r.get("tipo_precio") or "MAYORISTA").upper()
-        s.add(MarketPrice(producto=prod, variedad=(r.get("variedad") or "").upper(), precio_kg=precio, tipo_precio=tipo,
+        s.add(MarketPrice(estado=estado, producto=prod, variedad=(r.get("variedad") or "").upper(), precio_kg=precio, tipo_precio=tipo,
                           mercado=r.get("mercado") or "", fecha=r["fecha"], fuente=r.get("fuente") or "",
                           url=r.get("url") or "", origen=origen, user_id=user.id, categoria=categoria,
                           competidor=(r.get("competidor") or "").strip(), presentacion=(r.get("presentacion") or "").strip(),
                           product_code=(r.get("product_code") or "").strip()))
         n += 1
     s.flush()
-    audit(user, "PRECIOS_MERCADO_REGISTRADOS", "MarketPrice", origen, {"categoria": categoria, "filas": n})
+    audit(user, "PRECIOS_MERCADO_REGISTRADOS", "MarketPrice", origen, {"categoria": categoria, "filas": n, "estado": estado})
+    if n and estado == "PENDIENTE":
+        from . import alerts
+        alerts.emit("PRECIO_MERCADO_PENDIENTE", f"{n} precio(s) de mercado por aprobar", f"Registrados por {user.nombre} "
+                    f"({CATEGORIAS[categoria][0].lower()}).", "MarketPrice", "", creado_por=user)
+    return n
+
+
+def pending():
+    return list(db().execute(select(MarketPrice).where(MarketPrice.estado == "PENDIENTE").order_by(MarketPrice.ts)).scalars())
+
+
+def approve(user, ids, aprobar=True):
+    """El Jefe Comercial aprueba o rechaza los precios de mercado registrados por los vendedores."""
+    if not has_perm(user, "mercado.aprobar"):
+        raise BusinessError("Solo el Jefe Comercial aprueba los precios de mercado.")
+    n = 0
+    from ..models import now
+    for i in ids:
+        m = db().get(MarketPrice, int(i))
+        if m is None or m.estado != "PENDIENTE":
+            continue
+        m.estado = "APROBADO" if aprobar else "RECHAZADO"
+        m.aprobado_por, m.aprobado_ts = user.id, now()
+        n += 1
+    audit(user, "PRECIOS_MERCADO_" + ("APROBADOS" if aprobar else "RECHAZADOS"), "MarketPrice", ",".join(map(str, ids)), {"n": n})
     return n
 
 
@@ -321,7 +348,7 @@ def analysis(dias=180):
     hasta = date.today()
     desde = hasta - timedelta(days=dias)
     s = db()
-    mp = list(s.execute(select(MarketPrice).where(MarketPrice.fecha >= desde)).scalars())
+    mp = list(s.execute(select(MarketPrice).where(MarketPrice.fecha >= desde, MarketPrice.estado == "APROBADO")).scalars())
     por = defaultdict(lambda: defaultdict(list))
     for m in mp:
         por[m.categoria or "MERCADO"][m.producto].append(m)

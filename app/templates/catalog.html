@@ -1,0 +1,8 @@
+{% extends "base.html" %}{% from "_m.html" import csrf %}
+{% block content %}<h1>Catálogo de productos</h1>
+<form class="card row" method="get"><div class="grow"><label>Buscar</label><input name="q" value="{{ q }}" placeholder="código, nombre o marca"></div><div><label><input type="checkbox" name="con_foto" value="1" {{ 'checked' if con_foto }}> Solo con foto</label></div><div><button>Buscar</button></div></form>
+{% if can('catalogo.fotos') %}<form class="card row" method="post" enctype="multipart/form-data">{{ csrf() }}<div class="grow"><label>Fotos (varias a la vez: nombre cada archivo con el código del producto, p. ej. PT-901.jpg)</label><input type="file" name="fotos" multiple accept="image/*" required></div><div><label>O elija el producto (una foto)</label><input name="product_code" list="prods_cat"></div><div><button>Subir</button></div>
+<datalist id="prods_cat">{% for p in rows %}<option value="{{ p.code }}">{{ p.descripcion }}</option>{% endfor %}</datalist></form>{% endif %}
+<div class="catalogo">{% for p in rows %}<div class="card prod-card">{% if p.foto %}<img src="{{ url_for('main.evidence', name=p.foto) }}" alt="{{ p.descripcion }}" loading="lazy">{% else %}<div class="sin-foto">Sin foto</div>{% endif %}
+<b>{{ p.descripcion }}</b><span class="small mono">{{ p.code }}</span><span class="small">{{ p.marca }}{{ ' · ' ~ p.presentacion if p.presentacion }} · se vende por {{ 'kilo' if unit_for(p) == 'KG' else 'unidad' }}</span></div>{% else %}<p class="muted">Sin productos.</p>{% endfor %}</div>
+{% endblock %}

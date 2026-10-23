@@ -77,16 +77,22 @@ def order_new():
                                             guardar=f_bool("guardar_lugar"), user=g.user)
             if sid == "FISCAL":
                 entrega["lugar_entrega"] = "Dirección fiscal"
+            from flask import current_app
+            from ..services.finance import save_document
+            oc = save_document(request.files.get("oc_archivo"), current_app.config["UPLOAD_DIR"], "oc")
             o = osvc.create_order(g.user, fm.get("numero"), fm.get("customer_id"),
                                   f_date("fecha_compromiso", True), _lines_from_form(), urgente=f_bool("urgente"),
                                   comentarios=fm.get("comentarios", ""), hora_cita=fm.get("hora_cita", ""),
                                   cita_confirmada=f_bool("cita_confirmada"), vendedor_id=fm.get("vendedor_id") or None,
                                   entrega=entrega, canal_precio=fm.get("canal_precio", ""),
-                                  tipo_venta="Muestra comercial" if f_bool("muestra") else "")
+                                  tipo_venta="Muestra comercial" if f_bool("muestra") else "", oc_archivo=oc,
+                                  oc_numero=fm.get("oc_numero", ""))
             holder["o"] = o
             return o
-        resp = act(_do, lambda o: f"OV {o.numero} registrada y evaluada: cobertura {o.cobertura_unidades}% unidades / "
-                                  f"{o.cobertura_lineas}% líneas.", url_for("com.orders"))
+        resp = act(_do, lambda o: (f"OV {o.numero} guardada como BORRADOR: adjunte la orden de compra del cliente para "
+                                   "registrarla y evaluarla." if o.estado == "BORRADOR" else
+                                   f"OV {o.numero} registrada y evaluada: cobertura {o.cobertura_unidades}% unidades / "
+                                   f"{o.cobertura_lineas}% líneas."), url_for("com.orders"))
         if "o" in holder and holder["o"].id:
             return redirect(url_for("com.order_detail", oid=holder["o"].id))
         return resp
@@ -100,8 +106,12 @@ def order_new():
     from ..services.core import param
     canales = sorted(set(psvc.canales()) | set(param("lista_granel_canales", []) or []))
     canal_cliente = {c.id: psvc.channel_of(c) for c in customers}
+    unidades = {p.code: osvc.unit_for(p) for p in products}
+    estado_cli = {c.id: {"prospecto": c.es_prospecto, "condicion": c.condicion_estado} for c in customers}
     return render_template("ov_new.html", customers=customers, vendedores=vendedores, products=products, sitios=sitios,
-                           horas=osvc.horas_cita(), granel=granel, canales=canales, canal_cliente=canal_cliente)
+                           horas=osvc.horas_cita(), granel=granel, canales=canales, canal_cliente=canal_cliente,
+                           unidades=unidades, estado_cli=estado_cli, corte=param("hora_corte_ov_dia_siguiente", ""),
+                           exigir_oc=param("exigir_oc_ov_modulo", True))
 
 
 @bp.route("/<int:oid>")
@@ -132,8 +142,11 @@ def order_detail(oid):
               [("Compra", x.id, x.product_code, x.cantidad, x.estado, url_for("buy.purchase_detail", pid=x.id))
                for x in db().execute(select(PurchaseRequest).where(PurchaseRequest.order_id == o.id)).scalars()])
     from ..models import RouteStop
+    from ..services import commitment as cmsvc
+    from ..services.finance import TIPOS_DOC_OV, order_documents
     paradas = list(db().execute(select(RouteStop).where(RouteStop.order_id == o.id).order_by(RouteStop.id)).scalars())
-    return render_template("ov_detail.html", o=o, alts=alts, paradas=paradas, whs=whs, reqs=reqs, decs=decs, hist=hist, certs=certs,
+    return render_template("ov_detail.html", o=o, alts=alts, paradas=paradas, docs=order_documents(o), tipos_doc=TIPOS_DOC_OV,
+                           comp_estados=cmsvc.ESTADOS, dias_prod=cmsvc.production_days(), whs=whs, reqs=reqs, decs=decs, hist=hist, certs=certs,
                            products=products, line_reserved=line_reserved, monto=osvc.order_amount(o), peso=peso,
                            sin_peso=sin_peso, can_auth=osvc.can_authorize_change(g.user, o), prep=osvc.prep_progress(o),
                            saldos=saldos, aprobadores=osvc.partial_approvers(), pendientes_parcial=osvc.partial_pending_roles(o),
@@ -269,7 +282,26 @@ def order_action(oid, accion):
                        "Solicitud preliminar de producción creada (borrador para revisión de Almacén)."),
         "compra": (lambda: buysvc.create_request(u, f.get("product_code"), f_float("cantidad", True), o.fecha_compromiso, "OV", o),
                    "Solicitud de compra enviada a Compras."),
+        # ronda 23-oct-2026
+        "oc": (lambda: osvc.attach_oc(o, u, _doc("oc"), f.get("oc_numero", "")),
+               lambda r: "Orden de compra adjunta." + (" La OV quedó registrada y evaluada." if o.estado != "BORRADOR" else "")),
+        "compromiso": (lambda: __import__("app.services.commitment", fromlist=["x"]).respond(
+            o, u, f.get("cumple") == "1", f.get("motivo", ""), f_date("fecha_estimada")), "Respuesta registrada."),
+        "cambio_fecha": (lambda: osvc.request_date_change(o, u, f_date("nueva_fecha", True), f.get("motivo", "")),
+                         "Solicitud de cambio de fecha enviada a Comercial."),
+        "documento": (lambda: __import__("app.services.finance", fromlist=["x"]).attach_to_order(
+            o, u, f.get("tipo"), _doc("ovdoc"), f.get("nombre", ""), f.get("observacion", "")), "Documento agregado al expediente."),
+        "nota_credito": (lambda: __import__("app.services.finance", fromlist=["x"]).request_credit_note(
+            o, u, f.get("motivo", ""), f_float("monto")), "Nota de crédito solicitada a Facturación y Finanzas."),
     }
+
+    def _doc(prefix):
+        from flask import current_app
+        from ..services.finance import save_document
+        return save_document(request.files.get("archivo"), current_app.config["UPLOAD_DIR"], f"{prefix}_{o.numero}")
+    if accion == "documento" and not ({"ov.modificar", "ov.crear", "distribucion.entrega", "calidad.registrar",
+                                       "facturas.cargar", "nc.solicitar"} & g.perms):
+        abort(403)
     if accion not in actions:
         abort(404)
     fn, msg = actions[accion]
@@ -437,6 +469,8 @@ def customer_card(cid):
                 abort(404)
             return act(lambda: csv_.save_site(g.user, c, request.form, site), "Lugar de entrega guardado.",
                        url_for("com.customer_card", cid=cid))
+        if acc in ("condicion", "condicion_resolver", "pago", "pago_confirmar", "convertir"):
+            return _customer_finance_action(c, acc)
         if acc == "penalidad":
             from ..services.customer_conditions import set_penalty_amounts
             cond = for_customer(c) or abort(404)
@@ -455,10 +489,54 @@ def customer_card(cid):
             return csv_.save_customer(g.user, c, datos)
         return act(_guardar, "Ficha guardada.", url_for("com.customer_card", cid=cid))
     canales = sorted(set(psvc.canales()) | set(param("lista_granel_canales", []) or []))
-    return render_template("customer_card.html", c=c, p=csv_.profile(c), grupos=csv_.customer_groups(), cond=for_customer(c), canal=psvc.channel_of(c),
+    from ..models import CustomerAction, Opportunity, Quote
+    from ..services import finance as fin
+    rules = fin.credit_rules()
+    opps = list(db().execute(select(Opportunity).where(Opportunity.customer_id == c.id).order_by(Opportunity.id.desc())).scalars())
+    acciones = list(db().execute(select(CustomerAction).where(CustomerAction.customer_id == c.id)
+                                 .order_by(CustomerAction.fecha.desc()).limit(20)).scalars())
+    cotiz = list(db().execute(select(Quote).where(Quote.customer_id == c.id).order_by(Quote.id.desc()).limit(20)).scalars())
+    return render_template("customer_card.html", c=c, p=csv_.profile(c), fin=fin, docs_nombres=rules.get("documentos") or {},
+                           tramos=rules.get("tramos") or [], todos_plazos=rules.get("plazos_todos_los_documentos") or [],
+                           opps=opps, acciones=acciones, cotiz=cotiz, grupos=csv_.customer_groups(), cond=for_customer(c), canal=psvc.channel_of(c),
                            canales=canales, editable="clientes.editar" in g.perms,
                            tipo_txt=TIPO_TXT, vendedores=list(db().execute(select(User).where(User.role_code.in_(
                                ("EJECUTIVO_VENTAS", "COORD_VENTAS", "JEFE_VENTAS"))).order_by(User.nombre)).scalars()))
+
+
+def _customer_finance_action(c, acc):
+    """Ronda 23-oct-2026: condición de pago (Comercial solicita, Finanzas resuelve), comprobantes de pago y paso de
+    prospecto a cliente; todo queda en el archivo del cliente."""
+    from flask import current_app
+    from ..services import finance as fin
+    from ..services import opportunities as opsvc
+    f = request.form
+    back = url_for("com.customer_card", cid=c.id) + "#finanzas"
+    up = current_app.config["UPLOAD_DIR"]
+    if acc == "condicion":
+        def _do():
+            archivos = {k: fin.save_document(request.files.get(f"doc_{k}"), up, f"cond_{c.ruc}_{k.lower()}")
+                        for k in (fin.credit_rules().get("documentos") or {})}
+            return fin.request_condition(c, g.user, f.get("condicion"), f_float("monto"), f.get("dias") or None, archivos,
+                                         f.get("comentario", ""))
+        return act(_do, "Condición de pago enviada a Finanzas.", back)
+    if acc == "condicion_resolver":
+        return act(lambda: fin.resolve_condition(c, g.user, f.get("decision"), f.get("comentario", "")),
+                   "Condición de pago resuelta.", back)
+    if acc == "pago":
+        return act(lambda: fin.report_payment(g.user, c, f_date("fecha") or date.today(), f_float("monto", True),
+                                              fin.save_document(request.files.get("archivo"), up, f"pago_{c.ruc}"),
+                                              f.get("invoice_id") or None, f.get("medio", ""), f.get("operacion", ""),
+                                              f.get("observacion", "")),
+                   "Comprobante registrado: Finanzas lo confirmará.", back)
+    if acc == "pago_confirmar":
+        from ..models import CustomerPayment
+        pg = db().get(CustomerPayment, int(f.get("id") or 0)) or abort(404)
+        if pg.customer_id != c.id:
+            abort(404)
+        return act(lambda: fin.confirm_payment(pg, g.user, f.get("ok") == "1", f.get("observacion", "")), "Pago revisado.", back)
+    return act(lambda: opsvc.convert_prospect(g.user, c, fin.save_document(request.files.get("archivo"), up, f"oc_{c.ruc}")),
+               "El prospecto pasó a cliente.", url_for("com.customer_card", cid=c.id))
 
 
 # ------------------- precios de mercado por origen (obs. demo v0.6) -------------------

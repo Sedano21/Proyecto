@@ -28,6 +28,15 @@ def _require(user):
         raise BusinessError("La ficha del cliente la modifica o completa solo el área Comercial.")
 
 
+def _ubigeo(valor, obligatorio):
+    v = (valor or "").strip()
+    if not v and obligatorio:
+        raise BusinessError("El ubigeo (6 dígitos) es obligatorio: se usa en la guía de remisión.")
+    if v and (not v.isdigit() or len(v) != 6):
+        raise BusinessError("Ubigeo inválido: son 6 dígitos (departamento, provincia y distrito).")
+    return v
+
+
 def save_customer(user, c, datos):
     _require(user)
     nuevo = c is None
@@ -37,8 +46,13 @@ def save_customer(user, c, datos):
             raise BusinessError("RUC (11 dígitos) o DNI (8 dígitos) obligatorio.")
         if db().execute(select(Customer).where(Customer.ruc == ruc)).scalars().first():
             raise BusinessError("El RUC ya existe.")
-        c = Customer(ruc=ruc, nombre="")
+        # ronda 23-oct-2026: el cliente creado en el módulo empieza como prospecto (pasa a cliente con una acción y su
+        # orden de compra) y sin condición de pago: Finanzas la aprueba
+        c = Customer(ruc=ruc, nombre="", condicion_estado="SIN_SOLICITAR",
+                     es_prospecto=str(datos.get("prospecto", "1")) in ("1", "on", "true", "True"))
         db().add(c)
+    if nuevo or "ubigeo" in datos:
+        c.ubigeo = _ubigeo(datos.get("ubigeo"), nuevo)
     for k in CAMPOS:
         if k in datos and datos[k] is not None:
             setattr(c, k, str(datos[k]).strip())
@@ -86,9 +100,12 @@ def save_customer(user, c, datos):
 
 def save_site(user, c, datos, site=None):
     _require(user)
+    nuevo = site is None
     if site is None:
         site = CustomerSite(customer_id=c.id, nombre="")
         db().add(site)
+    if nuevo or "ubigeo" in datos:
+        site.ubigeo = _ubigeo(datos.get("ubigeo"), nuevo)
     for k in ("nombre", "direccion", "distrito", "provincia", "referencia", "horario_recepcion", "contacto", "telefono"):
         if k in datos:
             setattr(site, k, (datos.get(k) or "").strip())
@@ -127,7 +144,7 @@ def profile(c):
     """Indicadores de compra del cliente a partir de sus OV en el sistema."""
     from .orders import order_amount, order_weight_kg
     ovs = list(db().execute(select(SalesOrder).where(SalesOrder.customer_id == c.id).order_by(SalesOrder.fecha_emision)).scalars())
-    validas = [o for o in ovs if o.estado != "CANCELADA"]
+    validas = [o for o in ovs if o.estado not in ("CANCELADA", "BORRADOR")]  # venta real (ronda 23-oct-2026)
     fechas = sorted({o.fecha_emision for o in validas if o.fecha_emision})
     gaps = [(b - a).days for a, b in zip(fechas, fechas[1:])]
     prods = Counter()
@@ -141,7 +158,22 @@ def profile(c):
         l.activa and l.despachado + 1e-9 < l.cantidad for l in o.lines)]
     incid = list(db().execute(select(Incident).join(SalesOrder, Incident.order_id == SalesOrder.id)
                               .where(SalesOrder.customer_id == c.id).order_by(Incident.id.desc())).scalars())
-    return {"ovs": list(reversed(ovs))[:50], "n": len(validas), "soles": sum(order_amount(o) for o in validas),
+    # pedido vs atendido vs facturado, en S/ y en kg (ronda 23-oct-2026)
+    atendido_s = atendido_kg = 0.0
+    for o in validas:
+        for l in o.lines:
+            if l.activa and l.despachado:
+                atendido_s += l.despachado * (l.precio_unitario or 0)
+                p = l.product
+                atendido_kg += l.despachado * (1 if (p.um or "").upper().startswith("K") else (p.peso_kg or 0)) if p else 0
+    from .finance import statement
+    est = statement(c)
+    pedido_s = sum(order_amount(o) for o in validas)
+    canceladas = [o for o in ovs if o.estado == "CANCELADA"]
+    return {"ovs": list(reversed(ovs))[:50], "n": len(validas), "soles": pedido_s,
+            "atendido_soles": round(atendido_s, 2), "atendido_kg": round(atendido_kg, 1),
+            "facturado_soles": est["facturado"], "atencion_pct": round(100 * atendido_s / pedido_s, 1) if pedido_s else None,
+            "cuenta": est, "canceladas": len(canceladas), "canceladas_soles": sum(order_amount(o) for o in canceladas),
             "kg": sum(order_weight_kg(o, "solicitado")[0] for o in validas),
             "ticket": mean([order_amount(o) for o in validas]) if validas else 0,
             "ultima": fechas[-1] if fechas else None, "frecuencia_dias": round(mean(gaps), 1) if gaps else None,

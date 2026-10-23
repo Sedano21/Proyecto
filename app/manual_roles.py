@@ -215,3 +215,73 @@ ROLES = {
                       "Registre la cantidad que ingresa, placa y chofer; marque conforme o registre el incidente con foto (se notifica).")]},
     "FACTURACION": {"resumen": "Evalúa el pedido validado y carga la factura de SAP en la ruta.", "tareas": [ALERTA]},
 }
+
+# ------------------------------------------------------------------ ronda del 23-oct-2026
+ROLES["COORD_FINANZAS"] = {
+    "resumen": "Aprueba las condiciones de pago de los clientes, carga las facturas y notas de crédito, confirma los pagos "
+               "que sube Comercial y gestiona la cobranza de las facturas vencidas.",
+    "no_hace": "Registrar OV ni modificar la ficha comercial del cliente (lo hace Comercial).",
+    "tareas": [ALERTA,
+               _t("Aprobar una condición de pago", "Finanzas · Cobranza y condiciones → cliente",
+                  "Abra la alerta «Condición de pago por aprobar» o el cuadro de Finanzas.",
+                  "En la ficha del cliente revise la condición (contado o crédito, monto y plazo) y los documentos del tramo.",
+                  "Apruebe, observe (indique qué falta) o rechace con el motivo. Sin aprobación el cliente solo tiene OV de muestra."),
+               _t("Cargar facturas y notas de crédito", "Finanzas · Cobranza y condiciones",
+                  "Suba el Excel exportado de SAP (número, tipo, RUC, OV, fechas, monto, saldo).",
+                  "Adjunte los PDF: individual (un número) o consolidado (varios números separados por coma).",
+                  "O registre una factura o nota de crédito manualmente; la nota de crédito descuenta el saldo de su factura."),
+               _t("Confirmar pagos y gestionar vencidas", "Finanzas · Cobranza y condiciones",
+                  "Confirme u observe los comprobantes que subieron los vendedores: al confirmar se descuenta el saldo.",
+                  "Gestione las vencidas por antigüedad (1-15, 16-30, 31-60 y más de 60 días); el vendedor recibe la alerta.",
+                  "Todo queda en el archivo del cliente: deuda, facturas, pagos y documentos.")]}
+_COM_R23 = [_t("Registrar una OV con su orden de compra", "Comercial · Registrar OV",
+               "La unidad la fija el código (granel y MP en kilos; envasado en unidades).",
+               "Adjunte la orden de compra del cliente o la plantilla del pedido por WhatsApp o correo; sin ella la OV queda "
+               "como borrador y no se evalúa (adjúntela después desde la OV).",
+               "Después de las 12:00 no se registra una OV para despachar mañana.",
+               "Si Operaciones responde «No cumple», le llega la alerta para negociar con el cliente."),
+            _t("Oportunidades, acciones y cotizaciones", "Comercial · Oportunidades",
+               "Registre cada acción con el cliente (visita, llamada, reunión virtual, mensajería, carta u oficio) con su resultado.",
+               "Cree la oportunidad con los productos de interés y la proyección mensual; emita cotizaciones desde ella.",
+               "Para pasar un prospecto a cliente: una acción registrada y su orden de compra (ficha del cliente)."),
+            _t("Condición de pago y pagos del cliente", "Clientes → ficha → Finanzas",
+               "Solicite la condición de pago con los documentos del tramo; Finanzas la aprueba.",
+               "Suba los comprobantes de pago de sus clientes; Finanzas los confirma y se actualiza la deuda.")]
+for _r in ("JEFE_VENTAS", "COORD_VENTAS", "EJECUTIVO_VENTAS"):
+    ROLES.setdefault(_r, {"resumen": "", "tareas": [ALERTA]})["tareas"] = list(ROLES[_r].get("tareas", [])) + _COM_R23
+ROLES["JEFE_VENTAS"]["tareas"].append(_t(
+    "Configuración comercial", "Comercial · Configuración comercial",
+    "Configure por defecto, por canal y por cliente los rebates (comercial, logística, B2B, no devolución) y los gastos.",
+    "Registre el mercaderismo por cliente y mes, los objetivos de venta y las reglas de incentivo por canal y vendedor.",
+    "Revise el margen (Comercial · Margen), los objetivos y los incentivos; apruebe los precios de mercado de los vendedores."))
+_PROD_R23 = [_t("Parte en línea", "Producción · Partes de producción",
+                "Inicie el parte con línea, producto, EAN escaneado, lote y kg de MP (si el EAN no coincide se alerta).",
+                "Pause con la causa de la lista (y foto si desea) y reanude; el tiempo muerto se suma solo.",
+                "Al finalizar registre operarios, pallets, defectos por causa y colaboradores: se calculan rendimiento, "
+                "desviación de peso, horas efectivas, velocidad y OEE."),
+             _t("Liquidar", "Producción · Liquidaciones",
+                "Registre horas trabajadas y operarios (SAP los exige) y los kg de MP.",
+                "Si el rendimiento está fuera del rango de la línea y presentación, o las horas pasan del tope, la liquidación "
+                "queda bloqueada hasta corregirla y se alerta al Jefe de Producción."),
+             _t("Control de producción y tablero OEE", "Producción · Control de producción / Tablero OEE",
+                "Revise el reporte diario, semanal o mensual: producción vs plan por línea, horas efectivas, kg/h, asistencia, "
+                "hallazgos y acciones.", "En el tablero OEE vea disponibilidad, rendimiento, calidad y el Pareto de causas.")]
+for _r in ("JEFE_PRODUCCION", "ASIST_PRODUCCION"):
+    ROLES.setdefault(_r, {"resumen": "", "tareas": [ALERTA]})["tareas"] = list(ROLES[_r].get("tareas", [])) + _PROD_R23
+ROLES["JEFE_PRODUCCION"]["tareas"].append(_t(
+    "Validar cambios y configurar", "Producción · Planeamiento / Configuración de Producción",
+    "Valide o rechace los cambios al programa que proponen los asistentes.",
+    "Configure velocidades nominales, causas, tolerancias, líneas de cada asistente y cargue la tabla GS1 ↔ SAP.",
+    "Registre la asistencia del personal (también el asistente designado)."))
+for _r in ("JEFE_CALIDAD", "SUPERV_CALIDAD", "ASIST_CALIDAD"):
+    ROLES.setdefault(_r, {"resumen": "", "tareas": [ALERTA]})["tareas"] = list(ROLES[_r].get("tareas", [])) + [_t(
+        "Bloquear un parte de producción", "Producción · Partes de producción → ver parte",
+        "Si encuentra un problema, bloquee el parte indicando el motivo (se alerta a Producción).",
+        "Tras la fumigación o el reproceso, libérelo indicando la acción realizada.")]
+for _r in ("JEFE_LOGISTICA", "COORD_LOGISTICA", "COORD_ALMACEN", "COORD_ALMACEN_MP"):
+    ROLES.setdefault(_r, {"resumen": "", "tareas": [ALERTA]})["tareas"] = list(ROLES[_r].get("tareas", [])) + [_t(
+        "Responder CUMPLE / NO CUMPLE", "OV → Resumen → Orden de compra y compromiso",
+        "Al evaluar la OV responda si se cumplirá la fecha (con stock completo el sistema responde «Cumple» solo).",
+        "Si no se cumplirá, indique el motivo y una fecha estimada: Comercial recibe la alerta. Sin respuesta en el plazo "
+        "se alerta a Operaciones y a Comercial.",
+        "Para cambiar la fecha de despacho, envíe la solicitud a Comercial desde la OV.")]

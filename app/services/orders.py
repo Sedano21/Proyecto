@@ -1,17 +1,17 @@
 """Órdenes de venta: registro, modificación (con autorización), cancelación, decisiones ante faltante y
 preparación por prioridad y cortes (IF §4, §5, §6.3, §14)."""
 import re
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from sqlalchemy import select
 
 from ..db import db
 from ..models import (Alert, Customer, OVChangeRequest, OVDecision, Product, RouteStop, SalesOrder, SalesOrderLine, User, now)
 from . import alerts
-from .core import BusinessError, audit, has_perm, param
+from .core import BusinessError, audit, can_self_approve, has_perm, param
 from .stock import (ORDEN_ESTADOS_CERRADOS, evaluate_order, line_reserved, priority_key, release_order)
 
-EDITABLE_ESTADOS = ("REGISTRADA", "EVALUADA", "EN_PREPARACION", "PREPARADA")
+EDITABLE_ESTADOS = ("BORRADOR", "REGISTRADA", "EVALUADA", "EN_PREPARACION", "PREPARADA")
 
 
 def _validate_header(customer_id, fecha_compromiso):
@@ -34,6 +34,59 @@ def check_not_past(fecha, hora_cita="", hoy=None, ahora=None):
         if h < f"{ahora:%H:%M}":
             raise BusinessError(f"La hora de cita {h} de hoy ya transcurrió: no se puede registrar ni reservar. "
                                 "Use «Regularización de OV» o indique una fecha u hora vigente.")
+
+
+def check_cutoff(fecha, ahora=None):
+    """Ronda 23-oct-2026: después de la hora de corte (12:00) no se registra ni se programa una OV para el día siguiente."""
+    corte = (param("hora_corte_ov_dia_siguiente", "") or "").strip()[:5]
+    if not corte or not isinstance(fecha, date):
+        return
+    ahora = ahora or datetime.now()
+    if fecha == ahora.date() + timedelta(days=1) and f"{ahora:%H:%M}" > corte:
+        raise BusinessError(f"Después de las {corte} no se registra una OV para despachar mañana ({fecha:%d/%m/%Y}). "
+                            "Elija otra fecha de despacho.")
+
+
+def unit_for(product):
+    """Unidad de venta fija según el prefijo del código (ronda 23-oct-2026): KG o UND."""
+    mapa = {k.upper(): v for k, v in (param("um_por_prefijo", {}) or {}).items()}
+    letras = re.match(r"[A-Za-z]+", product.code or "")
+    pref = letras.group(0).upper() if letras else ""
+    for n in (3, 2):
+        if pref[:n] in mapa and len(pref) >= n:
+            return mapa[pref[:n]]
+    return "KG" if (product.um or "").upper().startswith("K") else "UND"
+
+
+def apply_unit_rule(lines):
+    """La unidad no se elige: KG (permite vender por saco el granel) o UND según el código."""
+    out = []
+    for ln in lines:
+        code = (ln.get("product_code") or "").strip().upper()
+        p = db().get(Product, code) if code else None
+        if p is None:
+            out.append(ln)
+            continue
+        um = unit_for(p)
+        pedido = (ln.get("um_venta") or "").upper()
+        if um == "UND" and pedido in ("KG", "SACO"):
+            raise BusinessError(f"{code} se vende por unidades (la unidad la fija el código del producto).")
+        if um == "KG" and pedido in ("UND", "UNIDAD"):
+            raise BusinessError(f"{code} se vende por kilos (la unidad la fija el código del producto).")
+        out.append(dict(ln, um_venta=pedido if pedido == "SACO" else um))
+    return out
+
+
+def customer_can_order(customer, muestra=False):
+    """Ronda 23-oct-2026: un prospecto o un cliente sin condición de pago aprobada por Finanzas solo tiene OV de muestra."""
+    if muestra:
+        return
+    if customer.es_prospecto:
+        raise BusinessError(f"{customer.nombre} es un prospecto: solo admite OV de muestra hasta que pase a cliente "
+                            "(acción registrada y orden de compra, en Oportunidades).")
+    if param("condicion_pago_requerida", True) and customer.condicion_estado != "APROBADA":
+        raise BusinessError(f"{customer.nombre} no tiene condición de pago aprobada por Finanzas "
+                            f"(estado: {customer.condicion_estado.replace('_', ' ').lower()}). Solo puede registrar OV de muestra.")
 
 
 HORA_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d(-([01]\d|2[0-3]):[0-5]\d)?$")
@@ -154,7 +207,7 @@ def next_cutoff(ts=None):
 
 def create_order(user, numero, customer_id, fecha_compromiso, lines, urgente=False, comentarios="", hora_cita="",
                  cita_confirmada=False, vendedor_id=None, fecha_emision=None, origen="MODULO", evaluar=True,
-                 tipo_venta="", vendedor_nombre="", entrega=None, canal_precio="", regularizacion=""):
+                 tipo_venta="", vendedor_nombre="", entrega=None, canal_precio="", regularizacion="", oc_archivo="", oc_numero=""):
     """entrega: dict de resolve_delivery (lugar, dirección, distrito, provincia). En el módulo es obligatorio.
     regularizacion: motivo; registra una OV con fecha pasada u hora transcurrida sin reservar stock (obs. demo v0.7)."""
     regularizacion = (regularizacion or "").strip()
@@ -168,8 +221,13 @@ def create_order(user, numero, customer_id, fecha_compromiso, lines, urgente=Fal
     if db().execute(select(SalesOrder).where(SalesOrder.numero == numero)).scalars().first():
         raise BusinessError(f"La OV {numero} ya existe.")
     _validate_header(customer_id, fecha_compromiso)
+    muestra = "MUESTRA" in (tipo_venta or "").upper()
     if origen == "MODULO" and not regularizacion:
         check_not_past(fecha_compromiso, hora_cita)
+        check_cutoff(fecha_compromiso)
+        customer_can_order(db().get(Customer, int(customer_id)), muestra)
+    if origen == "MODULO":
+        lines = apply_unit_rule(lines)
     lines = [convert_sale_units(ln) for ln in lines]
     # precio obligatorio en el módulo (obs. demo v0.7), salvo la muestra comercial (decisión 13-oct: precio 0 y la OV
     # queda detenida hasta la confirmación del Coordinador o Jefe Comercial)
@@ -185,7 +243,8 @@ def create_order(user, numero, customer_id, fecha_compromiso, lines, urgente=Fal
                    lugar_entrega=entrega["lugar_entrega"], site_id=entrega["site_id"], vendedor_id=vend.id if vend else None,
                    vendedor_nombre=vend.nombre if vend else vendedor_nombre, fecha_emision=fecha_emision or date.today(),
                    tipo_venta=tipo_venta or "", canal_precio=(canal_precio or "").strip(),
-                   origen=origen, creado_por=user.id if user else None, corte=next_cutoff())
+                   origen=origen, creado_por=user.id if user else None, corte=next_cutoff(),
+                   oc_archivo=oc_archivo or "", oc_numero=(oc_numero or "").strip())
     for ln in lines:
         o.lines.append(SalesOrderLine(product_code=ln["product_code"].strip(), cantidad=float(ln["cantidad"]),
                                       precio_unitario=float(ln.get("precio_unitario") or 0),
@@ -203,13 +262,54 @@ def create_order(user, numero, customer_id, fecha_compromiso, lines, urgente=Fal
                     f"Fecha comprometida {fecha_compromiso:%d/%m/%Y}. Motivo: {regularizacion}. No reserva stock.",
                     "SalesOrder", o.id, creado_por=user)
         return o
+    if oc_archivo:
+        from ..models import OrderAttachment
+        db().add(OrderAttachment(order_id=o.id, tipo="OC", nombre=o.oc_numero or "Orden de compra", archivo=oc_archivo,
+                                 user_id=user.id if user else None))
+    audit(user, "OV_CREADA", "SalesOrder", o.numero, {"lineas": lines, "fecha_compromiso": fecha_compromiso,
+                                                      "urgente": urgente, "canal_precio": o.canal_precio,
+                                                      "oc": bool(oc_archivo)})
+    if origen == "MODULO" and not muestra and not oc_archivo and param("exigir_oc_ov_modulo", True):
+        # ronda 23-oct-2026 (decisión 2): sin orden de compra la OV se guarda como borrador y no se ejecuta
+        o.estado = "BORRADOR"
+        o.estado_stock = ""
+        o.motivo_detencion = "Borrador: falta adjuntar la orden de compra del cliente"
+        return o
+    _activate(o, user, evaluar)
+    return o
+
+
+def _activate(o, user, evaluar=True):
     from .prices import check_order_prices
     check_order_prices(o, user)  # Q11: la lista es el precio mínimo; alerta si la OV está en el límite o debajo
-    audit(user, "OV_CREADA", "SalesOrder", o.numero, {"lineas": lines, "fecha_compromiso": fecha_compromiso,
-                                                      "urgente": urgente, "canal_precio": o.canal_precio})
     if evaluar:
         evaluate_order(o, user, "CREACION")
-    return o
+    from .commitment import open_commitment
+    open_commitment(o)
+
+
+def attach_oc(order, user, archivo, numero=""):
+    """Adjunta la orden de compra; si la OV estaba en borrador, se registra y se evalúa (ronda 23-oct-2026)."""
+    from ..models import OrderAttachment
+    if not archivo:
+        raise BusinessError("Adjunte el archivo de la orden de compra (PDF, imagen o la plantilla del pedido).")
+    if order.estado in ORDEN_ESTADOS_CERRADOS:
+        raise BusinessError(f"La OV está {order.estado}.")
+    db().add(OrderAttachment(order_id=order.id, tipo="OC", nombre=(numero or "").strip() or "Orden de compra", archivo=archivo,
+                             user_id=user.id))
+    order.oc_archivo = archivo
+    order.oc_numero = (numero or order.oc_numero or "").strip()
+    audit(user, "OV_OC_ADJUNTA", "SalesOrder", order.numero, {"archivo": archivo, "numero": order.oc_numero})
+    if order.estado == "BORRADOR":
+        check_not_past(order.fecha_compromiso, order.hora_cita)
+        check_cutoff(order.fecha_compromiso)
+        customer_can_order(order.customer)
+        order.estado = "REGISTRADA"
+        order.estado_stock = "SIN_EVALUAR"
+        order.motivo_detencion = ""
+        order.creado_ts = now()
+        _activate(order, user)
+    return order
 
 
 def _apply_changes(order, user, changes):
@@ -219,6 +319,10 @@ def _apply_changes(order, user, changes):
     antes = snapshot(order)
     if "fecha_compromiso" in changes and changes["fecha_compromiso"]:
         fc = changes["fecha_compromiso"]
+        if isinstance(fc, str) and fc and date.fromisoformat(fc[:10]) != order.fecha_compromiso:
+            check_cutoff(date.fromisoformat(fc[:10]))
+        elif isinstance(fc, date) and fc != order.fecha_compromiso:
+            check_cutoff(fc)
         if isinstance(fc, str):
             fc = date.fromisoformat(fc)
         if fc != order.fecha_compromiso:
@@ -233,6 +337,8 @@ def _apply_changes(order, user, changes):
         if k in changes and changes[k] is not None:
             setattr(order, k, changes[k])
     if "lines" in changes and changes["lines"] is not None:
+        if order.origen == "MODULO":
+            changes["lines"] = apply_unit_rule(changes["lines"])
         changes["lines"] = [convert_sale_units(ln) for ln in changes["lines"]]
         _validate_lines(changes["lines"])
         if order.origen == "MODULO":  # las líneas nuevas requieren precio (las existentes conservan el suyo)
@@ -266,9 +372,11 @@ def _apply_changes(order, user, changes):
                                               um_venta=ln.get("um_venta") or ""))
     order.version += 1
     db().flush()
+    audit(user, "OV_MODIFICADA", "SalesOrder", order.numero, {"antes": antes, "despues": snapshot(order)})
+    if order.estado == "BORRADOR":  # se valida y evalúa al adjuntar la orden de compra
+        return
     from .prices import check_order_prices
     check_order_prices(order, user)
-    audit(user, "OV_MODIFICADA", "SalesOrder", order.numero, {"antes": antes, "despues": snapshot(order)})
     evaluate_order(order, user, "MODIFICACION")
 
 
@@ -322,7 +430,7 @@ def resolve_change(req, user, aprobar, comentario=""):
     order = req.order
     if not can_authorize_change(user, order):
         raise BusinessError("Solo autorizan el Coordinador de Ventas, el Jefe de Ventas o el vendedor responsable (IF §5).")
-    if req.solicitado_por == user.id:
+    if req.solicitado_por == user.id and not can_self_approve(user):
         raise BusinessError("No puede autorizar su propia solicitud.")
     req.estado = "APROBADA" if aprobar else "RECHAZADA"
     req.resuelto_por = user.id
@@ -351,6 +459,7 @@ def cancel_order(order, user, motivo):
             paradas += 1
     order.estado = "CANCELADA"
     order.motivo_detencion = f"Cancelada: {motivo}"
+    order.cancelacion_motivo = motivo.strip()
     alerts.close_by_system(f"OV_FALTANTE:{order.id}", "OV cancelada")
     alerts.close_by_system(f"OV_DECISION_PARCIAL:{order.id}", "OV cancelada")
     alerts.emit("OV_CANCELADA", f"OV {order.numero} cancelada", f"Motivo: {motivo}. Reservas liberadas: {liberadas}; "
@@ -697,3 +806,27 @@ def regularize_close(order, user, comentario):
     order.regularizacion = reg
     order.estado = "REGULARIZADA_CERRADA"
     audit(user, "OV_REGULARIZACION_CERRADA", "SalesOrder", order.numero, {"comentario": comentario})
+
+
+def request_date_change(order, user, nueva_fecha, motivo):
+    """Ronda 23-oct-2026: Logística o Distribución solicita cambiar la fecha de despacho; Comercial aprueba o desaprueba."""
+    if not has_perm(user, "ov.solicitar_cambio_fecha"):
+        raise BusinessError("Solicitan el cambio de fecha Logística o Distribución.")
+    if order.estado not in EDITABLE_ESTADOS:
+        raise BusinessError(f"La OV está {order.estado}; ya no se puede modificar.")
+    if isinstance(nueva_fecha, str):
+        nueva_fecha = date.fromisoformat(nueva_fecha)
+    if not isinstance(nueva_fecha, date) or nueva_fecha == order.fecha_compromiso:
+        raise BusinessError("Indique una fecha de despacho distinta de la actual.")
+    check_not_past(nueva_fecha)
+    if not (motivo or "").strip():
+        raise BusinessError("Indique el motivo del cambio de fecha.")
+    req = OVChangeRequest(order_id=order.id, solicitado_por=user.id, payload={"fecha_compromiso": nueva_fecha.isoformat()},
+                          motivo=motivo.strip())
+    db().add(req)
+    db().flush()
+    alerts.emit("OV_CAMBIO_FECHA_SOLICITUD", f"Cambio de fecha de la OV {order.numero}: {order.fecha_compromiso:%d/%m/%Y} → "
+                f"{nueva_fecha:%d/%m/%Y}", f"Solicitado por {user.nombre}. Motivo: {motivo.strip()}", "OVChangeRequest", req.id,
+                extra_users=[order.vendedor_id] if order.vendedor_id else None, dedup_key=f"OV_MODIF:{req.id}", creado_por=user)
+    audit(user, "OV_CAMBIO_FECHA_SOLICITADO", "SalesOrder", order.numero, {"nueva_fecha": nueva_fecha, "motivo": motivo})
+    return req

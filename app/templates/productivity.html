@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block content %}<h1>Productividad por persona</h1>
+<form class="card row" method="get"><div><label>Desde</label><input type="date" name="desde" value="{{ d.desde.isoformat() }}"></div><div><label>Hasta</label><input type="date" name="hasta" value="{{ d.hasta.isoformat() }}"></div><div><button>Ver</button></div></form>
+<p class="small muted">Horas por colaborador = fin − inicio − refrigerio, registradas en los partes (selección manual). kg por hora = kg seleccionados / horas.</p>
+<div class="card">{{ graf }}</div>
+<div class="card"><table class="small"><tr><th>Colaborador</th><th class="r">Partes</th><th class="r">Horas</th><th class="r">kg</th><th class="r">kg/h</th></tr>{% for x in d.filas %}<tr><td>{{ x.nombre }}</td><td class="r">{{ x.partes }}</td><td class="r">{{ x.horas }}</td><td class="r">{{ x.kg|n }}</td><td class="r">{{ x.kg_hora or '-' }}</td></tr>{% else %}<tr><td colspan="5" class="muted">Sin colaboradores registrados en los partes del periodo.</td></tr>{% endfor %}</table></div>
+{% endblock %}

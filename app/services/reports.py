@@ -42,13 +42,40 @@ def _var(serie):
 
 
 # ------------------------------------------------------------------ comercial
-def comercial(desde=None, hasta=None, ver_costos=False):
+def order_channel(o):
+    from .prices import channel_of
+    return o.canal_precio or channel_of(o.customer) or ""
+
+
+def filter_orders(ovs, canal="", customer_id=None, vendedor=""):
+    """Filtros de los informes comerciales (ronda 23-oct-2026): canal, cliente y vendedor."""
+    if canal:
+        ovs = [o for o in ovs if order_channel(o) == canal]
+    if customer_id:
+        ovs = [o for o in ovs if o.customer_id == int(customer_id)]
+    if vendedor:
+        ovs = [o for o in ovs if (o.vendedor_nombre or "(sin vendedor)") == vendedor or str(o.vendedor_id or "") == str(vendedor)]
+    return ovs
+
+
+def line_kind(product):
+    """GRANEL (se vende por kilos) o ENVASADO (por unidades), según el prefijo del código."""
+    from .orders import unit_for
+    return "GRANEL" if product is not None and unit_for(product) == "KG" else "ENVASADO"
+
+
+def comercial(desde=None, hasta=None, ver_costos=False, canal="", customer_id=None, vendedor="", tipo=""):
     from .costs import cost_for_line
     from .orders import order_amount
     desde, hasta = periodo(desde, hasta)
     s = db()
-    ovs = [o for o in s.execute(select(SalesOrder).where(SalesOrder.fecha_emision >= desde, SalesOrder.fecha_emision <= hasta))
-           .scalars() if o.estado != "CANCELADA"]
+    todas = filter_orders([o for o in s.execute(select(SalesOrder).where(SalesOrder.fecha_emision >= desde,
+                                                                         SalesOrder.fecha_emision <= hasta)).scalars()
+                           if o.estado != "BORRADOR"], canal, customer_id, vendedor)
+    # venta real: OV abiertas y cerradas; las canceladas se muestran aparte con su motivo (ronda 23-oct-2026)
+    ovs = [o for o in todas if o.estado != "CANCELADA"]
+    canceladas = [o for o in todas if o.estado == "CANCELADA"]
+    prod_kg = defaultdict(float)
     vend = defaultdict(lambda: {"soles": 0.0, "kg": 0.0, "ovs": 0})
     sem = defaultdict(float)
     prod_soles, prod_qty, pres = defaultdict(float), defaultdict(float), Counter()
@@ -56,8 +83,15 @@ def comercial(desde=None, hasta=None, ver_costos=False):
     marg_prod = defaultdict(lambda: [0.0, 0.0])  # ventas, costo (solo líneas con costo)
     inc_qty = inc_soles = 0.0
     inc_ovs = 0
+    def _lineas(o):
+        return [l for l in o.lines if l.activa and (not tipo or line_kind(l.product) == tipo)]
+
+    def _monto(o):
+        return sum(l.cantidad * (l.precio_unitario or 0) for l in _lineas(o)) if tipo else order_amount(o)
+    if tipo:
+        ovs = [o for o in ovs if _lineas(o)]
     for o in ovs:
-        monto = order_amount(o)
+        monto = _monto(o)
         v = vend[o.vendedor_nombre or "(sin vendedor)"]
         v["soles"] += monto
         v["ovs"] += 1
@@ -67,12 +101,11 @@ def comercial(desde=None, hasta=None, ver_costos=False):
         c["ovs"] += 1
         c["fechas"].append(o.fecha_emision)
         incompleta = False
-        for l in o.lines:
-            if not l.activa:
-                continue
+        for l in _lineas(o):
             p = l.product
             kg = l.cantidad * (p.peso_kg or (1 if (p.um or "").upper().startswith("K") else 0)) if p else 0
             v["kg"] += kg
+            prod_kg[l.product_code] += kg
             venta = l.cantidad * (l.precio_unitario or 0)
             prod_soles[l.product_code] += venta
             prod_qty[l.product_code] += l.cantidad
@@ -120,10 +153,14 @@ def comercial(desde=None, hasta=None, ver_costos=False):
         dias_sin = (hasta - f[-1]).days
         riesgo = bool(frec and dias_sin > 2 * frec)
         clientes.append({"nombre": nombre, "soles": c["soles"], "ovs": c["ovs"], "frecuencia": round(frec, 1) if frec else None,
+                         "ticket": round(c["soles"] / c["ovs"], 2) if c["ovs"] else 0,
                          "ultima": f[-1], "dias_sin_compra": dias_sin, "riesgo": riesgo})
     clientes.sort(key=lambda x: -x["soles"])
     nombres = {p.code: p.descripcion for p in s.execute(select(Product).where(Product.code.in_(list(prod_soles) or [""]))).scalars()}
     top = sorted(prod_soles.items(), key=lambda x: -x[1])[:15]
+    top_kg = sorted(prod_kg.items(), key=lambda x: -x[1])[:15]
+    nombres.update({p.code: p.descripcion for p in s.execute(select(Product).where(Product.code.in_(list(prod_kg) or [""]))).scalars()})
+    motivos = Counter((o.cancelacion_motivo or o.motivo_detencion.replace("Cancelada: ", "") or "(sin motivo)") for o in canceladas)
     reco = []
     var_sem = _var([v for _, v in serie_sem])
     if var_sem is not None and var_sem <= -10:
@@ -147,6 +184,10 @@ def comercial(desde=None, hasta=None, ver_costos=False):
         "vendedores": sorted(vend.items(), key=lambda x: -x[1]["soles"]),
         "serie_semanal": serie_sem, "var_semanal": var_sem,
         "top_productos": [(k, nombres.get(k, ""), v, prod_qty[k]) for k, v in top],
+        "top_kg": [(k, nombres.get(k, ""), v, prod_soles.get(k, 0)) for k, v in top_kg],
+        "canceladas": {"ovs": len(canceladas), "soles": round(sum(order_amount(o) for o in canceladas), 2),
+                       "pct": _pct(len(canceladas), len(todas)), "motivos": motivos.most_common(10)},
+        "filtros": {"canal": canal, "customer_id": customer_id, "vendedor": vendedor, "tipo": tipo},
         "presentaciones": pres.most_common(10),
         "clientes": clientes[:30],
         "margen_promedio": round(margen_prom, 1) if margen_prom is not None and ver_costos else None,

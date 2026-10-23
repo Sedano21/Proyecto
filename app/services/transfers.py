@@ -6,7 +6,7 @@ from sqlalchemy import select
 from ..db import db
 from ..models import OVDecision, StockLot, Transfer, Warehouse, now
 from . import alerts
-from .core import BusinessError, audit, check_warehouse_scope, has_perm
+from .core import can_self_approve, BusinessError, audit, check_warehouse_scope, has_perm
 from .stock import add_or_increase_lot, free_qty, lot_usable, reevaluate_pending
 
 
@@ -59,7 +59,7 @@ def authorize(t, user, aprobar, observacion="", llegada=None):
         raise BusinessError("El traslado lo aprueba el Jefe o el Coordinador de Logística (IF §6.2, §13; Q13).")
     if t.estado != "SOLICITADO":
         raise BusinessError("El traslado no está pendiente de autorización.")
-    if t.solicitado_por is not None and t.solicitado_por == user.id:
+    if t.solicitado_por is not None and t.solicitado_por == user.id and not can_self_approve(user):
         raise BusinessError("No puede aprobar su propia solicitud de traslado: la aprueba el Jefe de Logística (decisión 13-oct).")
     if aprobar:
         disp = transferable_qty(t.lot)  # la solicitud aún no compromete stock: se valida contra lo libre hoy

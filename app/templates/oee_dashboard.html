@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}<h1>Tablero de Producción (OEE)</h1>
+<form class="card row" method="get"><div><label>Desde</label><input type="date" name="desde" value="{{ d.desde.isoformat() }}"></div><div><label>Hasta</label><input type="date" name="hasta" value="{{ d.hasta.isoformat() }}"></div>
+<div><label>Línea</label><select name="linea"><option value="">(todas)</option>{% for l in lineas %}<option {{ 'selected' if f.get('linea') == l }}>{{ l }}</option>{% endfor %}</select></div>
+<div><label>Turno</label><select name="turno"><option value="">(todos)</option>{% for t in turnos %}<option {{ 'selected' if f.get('turno') == t }}>{{ t }}</option>{% endfor %}</select></div>
+<div><label>Máquina</label><select name="maquina"><option value="">(todas)</option>{% for m in maquinas %}<option {{ 'selected' if f.get('maquina') == m }}>{{ m }}</option>{% endfor %}</select></div><div><button>Ver</button></div></form>
+<div class="kpis"><div class="kpi"><b>{{ d.oee if d.oee is not none else '-' }} %</b><span>OEE</span><small>{{ d.calificacion.nombre if d.calificacion }}</small></div>
+<div class="kpi"><b>{{ d.disponibilidad if d.disponibilidad is not none else '-' }} %</b><span>Disponibilidad</span></div><div class="kpi"><b>{{ d.rendimiento if d.rendimiento is not none else '-' }} %</b><span>Rendimiento</span></div><div class="kpi"><b>{{ d.calidad if d.calidad is not none else '-' }} %</b><span>Calidad</span></div>
+<div class="kpi"><b>{{ d.partes }}</b><span>Partes</span><small>{{ d.sin_velocidad }} sin velocidad nominal</small></div><div class="kpi"><b>{{ d.kg_sobrepeso|n }} kg</b><span>Entregados de más</span><small>desviación de peso</small></div></div>
+{% if d.calificacion %}<div class="note small"><b>{{ d.calificacion.nombre }}:</b> {{ d.calificacion.plan }}</div>{% endif %}
+<div class="grid g2"><div class="card"><h3>OEE por línea</h3>{{ graf.oee }}</div><div class="card"><h3>% merma por línea</h3>{{ graf.merma }}</div>
+<div class="card"><h3>Pareto de tiempo muerto</h3>{{ graf.causas }}</div><div class="card"><h3>Defectos por causa</h3>{{ graf.defectos }}</div></div>
+<div class="card"><h3>OEE diario</h3>{{ graf.serie }}</div>
+<div class="card"><h3>Detalle por línea</h3><div class="tw"><table class="small"><tr><th>Línea</th><th class="r">Partes</th><th class="r">OEE</th><th class="r">Disp.</th><th class="r">Rend.</th><th class="r">Calidad</th><th class="r">% merma</th><th class="r">Tiempo muerto (min)</th><th class="r">kg</th></tr>
+{% for x in d.lineas %}<tr><td>{{ x.linea }}</td><td class="r">{{ x.partes }}</td><td class="r">{{ x.oee if x.oee is not none else '-' }}</td><td class="r">{{ x.disponibilidad or '-' }}</td><td class="r">{{ x.rendimiento or '-' }}</td><td class="r">{{ x.calidad or '-' }}</td><td class="r">{{ x.merma_pct if x.merma_pct is not none else '-' }}</td><td class="r">{{ x.muerto_min|n }}</td><td class="r">{{ x.kg|n }}</td></tr>{% else %}<tr><td colspan="9" class="muted">Sin partes en el periodo.</td></tr>{% endfor %}</table></div></div>
+<div class="grid g2"><div class="card"><h3>Semana por línea (kg)</h3><table class="small">{% for lunes, porl in d.semanas %}<tr><td>Semana del {{ lunes|d }}</td><td>{% for l, kg in porl.items() %}{{ l }} {{ kg|n }}{{ ' · ' if not loop.last }}{% endfor %}</td></tr>{% endfor %}</table></div>
+<div class="card"><h3>Por producto (kg)</h3><table class="small">{% for p, kg in d.productos %}<tr><td>{{ p }} {{ pd(p) }}</td><td class="r">{{ kg|n }}</td></tr>{% endfor %}</table></div></div>
+{% endblock %}

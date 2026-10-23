@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block content %}<h1>Incentivos de vendedores</h1>
+<form class="card row" method="get"><div><label>Mes</label><input type="month" name="mes" value="{{ d.mes }}"></div><div><button>Calcular</button></div>{% if can('comercial.configurar') %}<div><a class="btn sec" href="{{ url_for('com.commercial_config') }}#incentivos">Reglas de incentivo</a></div>{% endif %}</form>
+<p class="small muted">Cálculo con la venta facturada del mes y las reglas configuradas por canal y vendedor. Sin regla no hay incentivo. Total del mes: <b>S/ {{ d.total|n }}</b>.</p>
+<div class="card"><div class="tw"><table class="small"><tr><th>Vendedor</th><th>Canal</th><th class="r">Venta S/</th><th>Regla</th><th class="r">Base S/</th><th class="r">Cumplimiento</th><th class="r">Incentivo S/</th><th>Nota</th></tr>
+{% for x in d.filas %}<tr><td>{{ x.vendedor }}</td><td>{{ x.canal }}</td><td class="r">{{ x.venta|n }}</td><td>{% if x.regla %}#{{ x.regla.id }} {{ x.regla.pct }} % de {{ x.regla.base|replace('_',' ')|lower }}{% else %}—{% endif %}</td><td class="r">{{ x.base|n }}</td><td class="r">{{ x.cumplimiento if x.cumplimiento is not none else '-' }} %</td><td class="r"><b>{{ x.incentivo|n }}</b></td><td class="small">{{ x.nota }}</td></tr>
+{% else %}<tr><td colspan="8" class="muted">Sin ventas facturadas en el mes.</td></tr>{% endfor %}</table></div></div>
+{% endblock %}

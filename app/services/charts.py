@@ -100,3 +100,52 @@ def bars(items, unit="", width=640, title="", color=0, max_items=15):
 def kpi(valor, etiqueta, sub="", unidad=""):
     return Markup(f'<div class="kpi"><b>{_fmt(valor) if isinstance(valor, (int, float)) else escape(str(valor))}'
                   f'{escape(unidad)}</b><span>{escape(etiqueta)}</span>{f"<small>{escape(sub)}</small>" if sub else ""}</div>')
+
+
+def columns(labels, series, unit="", width=640, height=240, title="", colors=None):
+    """Columnas verticales agrupadas: labels [str], series [(nombre, [valores])]. Valor sobre cada columna y leyenda."""
+    if not labels or not series:
+        return Markup('<p class="muted small">Sin datos para el periodo.</p>')
+    pal = colors or SERIES
+    vmax = _nice_max(max([v or 0 for _, vals in series for v in vals] + [1]))
+    T, B, L, R = 22, 46, 8, 8
+    ph = height - T - B
+    gw = (width - L - R) / len(labels)
+    bw = min(34, (gw - 12) / len(series))
+    out = [f'<svg class="chart" viewBox="0 0 {width} {height}" role="img" aria-label="{escape(title or "Gráfico de columnas")}">',
+           f'<line x1="{L}" x2="{width - R}" y1="{T + ph}" y2="{T + ph}" class="grid"/>']
+    for i, lb in enumerate(labels):
+        x0 = L + i * gw + (gw - bw * len(series)) / 2
+        for j, (nombre, vals) in enumerate(series):
+            v = vals[i] or 0
+            h = max(v / vmax * ph, 1 if v else 0)
+            x = x0 + j * bw
+            out.append(f'<rect x="{x:.1f}" y="{T + ph - h:.1f}" width="{bw - 3:.1f}" height="{h:.1f}" rx="3" fill="{pal[j % len(pal)]}">'
+                       f'<title>{escape(str(lb))} · {escape(nombre)}: {_fmt(v, 2)} {escape(unit)}</title></rect>'
+                       f'<text x="{x + (bw - 3) / 2:.1f}" y="{T + ph - h - 4:.1f}" class="val" text-anchor="middle">{_fmt(v)}</text>')
+        lbl = str(lb) if len(str(lb)) <= 14 else str(lb)[:13] + "…"
+        out.append(f'<text x="{L + i * gw + gw / 2:.1f}" y="{T + ph + 16}" class="ax" text-anchor="middle">{escape(lbl)}</text>')
+    if len(series) > 1:
+        x = L
+        for j, (nombre, _) in enumerate(series):
+            out.append(f'<rect x="{x}" y="{height - 14}" width="10" height="10" rx="2" fill="{pal[j % len(pal)]}"/>'
+                       f'<text x="{x + 14}" y="{height - 5}" class="ax">{escape(nombre)}</text>')
+            x += 18 + 8 * len(nombre)
+    out.append("</svg>")
+    return Markup("".join(out))
+
+
+def donut(pct, etiqueta="", size=150, colors=None):
+    """Anillo con el porcentaje al centro (p. ej. asistencia general)."""
+    if pct is None:
+        return Markup('<p class="muted small">Sin datos.</p>')
+    import math
+    pal = colors or SERIES
+    r, c = 52, size / 2
+    largo = 2 * math.pi * r
+    hecho = largo * max(min(pct, 100), 0) / 100
+    return Markup(f'<svg class="chart donut" viewBox="0 0 {size} {size}" width="{size}" role="img" aria-label="{escape(etiqueta)} {pct}%">'
+                  f'<circle cx="{c}" cy="{c}" r="{r}" fill="none" stroke="{pal[1]}" stroke-opacity=".25" stroke-width="16"/>'
+                  f'<circle cx="{c}" cy="{c}" r="{r}" fill="none" stroke="{pal[0]}" stroke-width="16" stroke-dasharray="{hecho:.1f} {largo:.1f}"'
+                  f' transform="rotate(-90 {c} {c})"/><text x="{c}" y="{c + 2}" text-anchor="middle" class="donut-v">{pct:g}%</text>'
+                  f'<text x="{c}" y="{c + 20}" text-anchor="middle" class="ax">{escape(etiqueta)}</text></svg>')

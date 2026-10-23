@@ -321,13 +321,13 @@ def test_produccion_bom_merma_y_liquidacion(s, U):
     prod.schedule(r, U("jefe.produccion"), "R1", dia)
     prod.start(r, U("asist.produccion"))
     prod.finish(r, U("asist.produccion"))
-    liq = prod.register_liquidation(U("asist.produccion"), "LQ-T1", "PT-903", 300, "L903P", request=r, merma_mp_kg=3)
+    liq = prod.register_liquidation(U("asist.produccion"), "LQ-T1", "PT-903", 300, "L903P", request=r, merma_mp_kg=3, horas=8, operarios=4)
     s.commit()
     transito = lot(s, "PT-903", "L903P", "ALM-003")  # Q5: el PT queda en el tránsito de Producción
     assert transito.cantidad == 300 and transito.warehouse.reservable is False
     assert r.estado == "LIQUIDADA" and alerts_of(s, "LIQUIDACION_MONTACARGUISTA")[0].roles[0] == "MONTACARGUISTA"
     with pytest.raises(BusinessError):
-        prod.register_liquidation(U("asist.produccion"), "LQ-T1", "PT-903", 1, "L903P")
+        prod.register_liquidation(U("asist.produccion"), "LQ-T1", "PT-903", 1, "L903P", horas=8, operarios=4)
     prod.receive_pt(liq, U("coord.almacen"), 298)
     s.commit()
     assert liq.estado == "RECIBIDA_FALTANTE" and liq.diferencia == 2

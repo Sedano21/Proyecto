@@ -92,8 +92,9 @@ def test_flujo_web_ov_y_detalles(app):
     from app.models import Customer
     cid = SessionLocal().query(Customer).first().id
     r = c.post("/ov/nueva", data={"_csrf": tok, "numero": "WEB-1", "customer_id": cid, "fecha_compromiso": fecha,
-                                  "product_code": ["PT-901", "PT-903"], "cantidad": ["50", "10"], "precio_unitario": ["999", "999"]},
-               follow_redirects=True)
+                                  "product_code": ["PT-901", "PT-903"], "cantidad": ["50", "10"], "precio_unitario": ["999", "999"],
+                                  "oc_archivo": (io.BytesIO(b"%PDF-1.4 oc"), "oc.pdf")},
+               content_type="multipart/form-data", follow_redirects=True)
     html = r.get_data(as_text=True)
     # Comercial ve solo el avance de su pedido, no la evaluación de opciones (observaciones al demo v0.6)
     assert r.status_code == 200 and "OV WEB-1" in html and "Seguimiento del pedido" in html
@@ -146,7 +147,7 @@ def test_pantallas_ruta_y_folio_en_cada_etapa(app):
     u = s.query(User).filter_by(username="coord.ventas").one()
     c = s.query(Customer).first()
     o = create_order(u, "WEB-R1", c.id, date.today() + timedelta(days=1), [{"product_code": "PT-905", "cantidad": 20,
-                                                                                      "precio_unitario": 50}])
+                                                                                      "precio_unitario": 50}], oc_archivo="oc_prueba.pdf")
     s.commit()
     r = dist.active_stop(o).route
     for estado_paso in ("PROPUESTA", "CONFIRMADA"):

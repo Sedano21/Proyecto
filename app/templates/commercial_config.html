@@ -1,0 +1,48 @@
+{% extends "base.html" %}{% from "_m.html" import csrf %}
+{% block content %}<h1>Configuración comercial</h1>
+<p class="muted small">Las tasas del margen son muy variables por cliente: se configuran por defecto, por canal y por cliente (el cliente prevalece sobre el canal y el canal sobre el valor por defecto; un casillero vacío hereda). Edita el Jefe Comercial. <a href="{{ url_for('com.margin_report') }}">Ver margen</a> · <a href="{{ url_for('com.targets') }}">Objetivos</a> · <a href="{{ url_for('com.incentives') }}">Incentivos</a></p>
+{% set dis = '' if editable else 'disabled' %}
+<section id="tasas" class="card"><h2>Rebates y gastos (% de la venta)</h2>
+<div class="tw"><table class="small"><tr><th>Aplica a</th>{% for k, n in tasas + gastos %}<th class="r">{{ n }}</th>{% endfor %}<th></th></tr>
+<tr><td><b>Por defecto</b></td>{% for k, n in tasas + gastos %}<td class="r">{{ cfg.defecto.get(k, 0) }}</td>{% endfor %}<td></td></tr>
+{% for canal, v in cfg.canales.items() %}<tr><td>Canal {{ canal }}</td>{% for k, n in tasas + gastos %}<td class="r">{{ v.get(k, 'hereda') }}</td>{% endfor %}<td></td></tr>{% endfor %}
+{% for ruc, v in cfg.clientes.items() %}<tr><td>Cliente {{ por_ruc[ruc].nombre if ruc in por_ruc else ruc }}</td>{% for k, n in tasas + gastos %}<td class="r">{{ v.get(k, 'hereda') }}</td>{% endfor %}<td></td></tr>{% endfor %}
+</table></div>
+<p class="small">Impuesto a la renta: <b>{{ cfg.ir_pct }} %</b> (solo si la utilidad antes de impuestos es positiva).</p>
+{% if editable %}<form method="post">{{ csrf() }}<input type="hidden" name="accion" value="tasas"><div class="row">
+<div><label>Aplica a</label><select name="alcance" id="alc"><option value="DEFECTO">Por defecto</option><option value="CANAL">Canal</option><option value="CLIENTE">Cliente</option></select></div>
+<div><label>Canal</label><select name="clave" id="cl_canal"><option value="">—</option>{% for c in canales %}<option>{{ c }}</option>{% endfor %}</select></div>
+<div class="grow"><label>Cliente</label><select id="cl_cli"><option value="">—</option>{% for c in clientes %}<option value="{{ c.id }}">{{ c.nombre }}</option>{% endfor %}</select></div>
+<div><label>IR %</label><input name="ir_pct" type="number" step="0.01" min="0" max="100" placeholder="{{ cfg.ir_pct }}" style="width:80px"></div></div>
+<div class="row">{% for k, n in tasas + gastos %}<div><label>{{ n }} %</label><input name="{{ k }}" type="number" step="0.001" min="0" max="100" style="width:110px" placeholder="hereda"></div>{% endfor %}</div>
+<p class="small muted">Para quitar la configuración de un canal o cliente, guarde con todos los casilleros vacíos.</p><p><button>Guardar tasas</button></p></form>
+<script>(function(){var a=document.getElementById('alc'),c=document.getElementById('cl_canal'),k=document.getElementById('cl_cli');function u(){c.name=a.value==='CANAL'?'clave':'';k.name=a.value==='CLIENTE'?'clave':'';c.disabled=a.value!=='CANAL';k.disabled=a.value!=='CLIENTE';}a.addEventListener('change',u);u();})();</script>{% endif %}
+</section>
+<section id="inversion" class="card"><h2>Mercaderismo y otras inversiones (monto por cliente y mes)</h2>
+{% if editable %}<form method="post" class="row">{{ csrf() }}<input type="hidden" name="accion" value="inversion"><div class="grow"><label class="req">Cliente</label><select name="customer_id" required><option value="">—</option>{% for c in clientes %}<option value="{{ c.id }}">{{ c.nombre }}</option>{% endfor %}</select></div>
+<div><label class="req">Mes</label><input type="month" name="mes" value="{{ mes }}" required></div><div><label>Concepto</label><input name="concepto" value="MERCADERISMO"></div><div><label class="req">Monto S/</label><input name="monto" type="number" step="0.01" min="0" required></div><div><button>Guardar</button></div></form>{% endif %}
+<table class="small"><tr><th>Mes</th><th>Cliente</th><th>Concepto</th><th class="r">S/</th></tr>{% for x in inversiones %}<tr><td>{{ x.mes }}</td><td>{{ x.customer.nombre }}</td><td>{{ x.concepto }}</td><td class="r">{{ x.monto|n }}</td></tr>{% else %}<tr><td colspan="4" class="muted">Sin inversiones registradas.</td></tr>{% endfor %}</table></section>
+<section id="objetivos" class="card"><h2>Objetivos de venta</h2>
+{% if editable %}<form method="post" class="row">{{ csrf() }}<input type="hidden" name="accion" value="objetivo"><div><label class="req">Mes</label><input type="month" name="mes" value="{{ mes }}" required></div>
+<div><label>Alcance</label><select name="alcance" id="obj_alc"><option value="GENERAL">General</option><option value="CANAL">Canal</option><option value="VENDEDOR">Vendedor</option></select></div>
+<div><label>Canal</label><select id="obj_canal"><option value="">—</option>{% for c in canales %}<option>{{ c }}</option>{% endfor %}</select></div>
+<div><label>Vendedor</label><select id="obj_vend"><option value="">—</option>{% for v in vendedores %}<option value="{{ v.id }}">{{ v.nombre }}</option>{% endfor %}</select></div>
+<div><label class="req">Objetivo S/</label><input name="soles" type="number" step="0.01" min="0" required></div><div><label>Objetivo kg</label><input name="kg" type="number" step="0.01" min="0"></div><div><button>Guardar</button></div></form>
+<script>(function(){var a=document.getElementById('obj_alc'),c=document.getElementById('obj_canal'),v=document.getElementById('obj_vend');function u(){c.name=a.value==='CANAL'?'clave':'';v.name=a.value==='VENDEDOR'?'clave':'';c.disabled=a.value!=='CANAL';v.disabled=a.value!=='VENDEDOR';}a.addEventListener('change',u);u();})();</script>{% endif %}
+<table class="small"><tr><th>Mes</th><th>Alcance</th><th>Canal / vendedor</th><th class="r">S/</th><th class="r">kg</th></tr>{% for t in objetivos %}<tr><td>{{ t.mes }}</td><td>{{ t.alcance|capitalize }}</td><td>{{ usuarios.get(t.clave, t.clave) or '—' }}</td><td class="r">{{ t.soles|n }}</td><td class="r">{{ t.kg|n if t.kg is not none else '' }}</td></tr>{% else %}<tr><td colspan="5" class="muted">Sin objetivos.</td></tr>{% endfor %}</table></section>
+<section id="incentivos" class="card"><h2>Reglas de incentivo</h2>
+<p class="small muted">Varían por canal y vendedor. Precedencia: vendedor y canal &gt; vendedor &gt; canal &gt; general. Base: venta facturada, margen bruto o margen de contribución variable. Si se fija un cumplimiento mínimo, el incentivo se paga solo si el vendedor alcanza ese % de su objetivo del mes.</p>
+<table class="small"><tr><th>#</th><th>Canal</th><th>Vendedor</th><th>Base</th><th class="r">%</th><th class="r">Cumpl. mín.</th><th class="r">Tope S/</th><th>Vigencia</th><th>Activa</th><th>Observación</th></tr>
+{% for r in reglas %}<tr><td>{{ r.id }}</td><td>{{ r.canal or 'todos' }}</td><td>{{ r.vendedor.nombre if r.vendedor else 'todos' }}</td><td>{{ r.base|replace('_',' ')|lower }}</td><td class="r">{{ r.pct }}</td><td class="r">{{ r.cumplimiento_min_pct or '' }}</td><td class="r">{{ r.tope|n if r.tope is not none else '' }}</td><td>{{ r.desde|d if r.desde else '' }} – {{ r.hasta|d if r.hasta else '' }}</td><td>{{ 'Sí' if r.activo else 'No' }}</td><td>{{ r.observacion }}</td></tr>{% else %}<tr><td colspan="10" class="muted">Sin reglas: no se calcula incentivo hasta configurarlas.</td></tr>{% endfor %}</table>
+{% if editable %}<form method="post">{{ csrf() }}<input type="hidden" name="accion" value="incentivo"><div class="row">
+<div><label>Editar regla #</label><select name="id"><option value="">(nueva)</option>{% for r in reglas %}<option>{{ r.id }}</option>{% endfor %}</select></div>
+<div><label>Canal</label><select name="canal"><option value="">(todos)</option>{% for c in canales %}<option>{{ c }}</option>{% endfor %}</select></div>
+<div><label>Vendedor</label><select name="vendedor_id"><option value="">(todos)</option>{% for v in vendedores %}<option value="{{ v.id }}">{{ v.nombre }}</option>{% endfor %}</select></div>
+<div><label>Base</label><select name="base"><option value="VENTA">Venta facturada</option><option value="MARGEN_BRUTO">Margen bruto</option><option value="MARGEN_CONTRIB">Margen contrib. variable</option></select></div>
+<div><label class="req">% incentivo</label><input name="pct" type="number" step="0.001" min="0" max="100" required style="width:90px"></div>
+<div><label>Cumpl. mínimo %</label><input name="cumplimiento_min_pct" type="number" step="0.1" min="0" style="width:90px"></div>
+<div><label>Tope S/</label><input name="tope" type="number" step="0.01" min="0" style="width:100px"></div>
+<div><label>Desde</label><input type="date" name="desde"></div><div><label>Hasta</label><input type="date" name="hasta"></div>
+<div><label>Activa</label><select name="activo"><option value="1">Sí</option><option value="0">No</option></select></div></div>
+<label>Observación</label><input name="observacion" style="width:100%"><p><button>Guardar regla</button></p></form>{% endif %}</section>
+{% endblock %}

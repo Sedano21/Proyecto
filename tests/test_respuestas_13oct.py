@@ -48,7 +48,7 @@ def test_q11_alerta_si_la_ov_esta_en_el_limite_o_por_debajo(s, U, new_order):
     o = osvc.create_order(U("coord.ventas"), "P-1", s.query(Customer).filter_by(ruc="20000000001").one().id,
                           date.today() + timedelta(days=3), [{"product_code": "PT-905", "cantidad": 10,
                                                               "precio_unitario": round(minimo - 0.01, 4)}],
-                          vendedor_id=U("vendedor1").id)
+                          vendedor_id=U("vendedor1").id, oc_archivo="oc_prueba.pdf")
     s.commit()
     l = o.lines[0]
     assert l.precio_minimo == pytest.approx(minimo) and l.precio_origen.startswith("POR DEBAJO")
@@ -69,7 +69,7 @@ def test_q11_ov_sin_precio_o_muestra_comercial_queda_detenida(s, U, new_order):
     hasta la confirmación del Coordinador o Jefe Comercial."""
     o = osvc.create_order(U("coord.ventas"), "MC-1", s.query(Customer).filter_by(ruc="20000000001").one().id,
                           date.today() + timedelta(days=3), [{"product_code": "PT-905", "cantidad": 10}],
-                          tipo_venta="Muestra comercial")
+                          tipo_venta="Muestra comercial", oc_archivo="oc_prueba.pdf")
     s.commit()
     assert o.retenida_precio and "sin precio de venta" in o.lines[0].precio_origen
     a = alerts_of(s, "OV_PRECIO_BAJO_MINIMO", o.id)[0]
@@ -95,7 +95,7 @@ def test_q11_productos_o_clientes_sin_precio_alertan_para_completar(s, U):
     s.add(c)
     s.flush()
     o = osvc.create_order(U("coord.ventas"), "P-2", c.id, date.today() + timedelta(days=3),
-                          [{"product_code": "PT-905", "cantidad": 5, "precio_unitario": 999}])
+                          [{"product_code": "PT-905", "cantidad": 5, "precio_unitario": 999}], oc_archivo="oc_prueba.pdf")
     assert o.lines[0].precio_minimo is None and not o.retenida_precio
     assert "canal" in alerts_of(s, "PRECIO_FALTANTE", o.id)[0].mensaje
     from app.services.core import has_perm
@@ -103,7 +103,7 @@ def test_q11_productos_o_clientes_sin_precio_alertan_para_completar(s, U):
     assert has_perm(U("jefe.ventas"), "clientes.canal") and has_perm(U("sistemas"), "clientes.canal")
     assert not has_perm(U("gerente.general"), "clientes.canal") and not has_perm(U("gerente.general"), "config.editar")
     o2 = osvc.create_order(U("coord.ventas"), "P-3", s.query(Customer).filter_by(ruc="20000000001").one().id,
-                           date.today() + timedelta(days=3), [{"product_code": "EN-903", "cantidad": 5, "precio_unitario": 1}])
+                           date.today() + timedelta(days=3), [{"product_code": "EN-903", "cantidad": 5, "precio_unitario": 1}], oc_archivo="oc_prueba.pdf")
     assert "EN-903" in alerts_of(s, "PRECIO_FALTANTE", o2.id)[0].mensaje and not o2.retenida_precio
     prc.add_item(U("jefe.ventas"), "GENERAL", "EN-903", canal="MAYORISTA", precio=0.8, motivo="Completar lista")
     osvc.modify_order(o2, U("coord.ventas"), {"lines": [{"product_code": "EN-903", "cantidad": 5, "precio_unitario": 1}]})
@@ -122,9 +122,9 @@ def test_q11_lista_granel_por_canal_y_compara_kg_y_saco(s, U):
     assert "granel" in origen
     p.um = "KILOGRAMO"
     o = osvc.create_order(U("coord.ventas"), "G-1", mayor.id, date.today() + timedelta(days=3),
-                          [{"product_code": "MP-901", "cantidad": 100, "precio_unitario": 3.5}])
-    assert o.retenida_precio and "por kg: 3.5000 vs mínimo 3.6000" in o.lines[0].precio_origen
-    assert "por saco: 87.5000 vs mínimo 90.0000" in o.lines[0].precio_origen  # compara ambos
+                          [{"product_code": "MP-901", "cantidad": 100, "precio_unitario": 3.5}], oc_archivo="oc_prueba.pdf")
+    assert o.retenida_precio and "por kg: S/ 3.50 vs mínimo S/ 3.60" in o.lines[0].precio_origen
+    assert "por saco: S/ 87.50 vs mínimo S/ 90.00" in o.lines[0].precio_origen  # compara ambos
 
 
 def test_q11_vigencia_de_lista_avisa_sin_bloquear(s, U, new_order, today):

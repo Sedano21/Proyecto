@@ -11,6 +11,8 @@
 {% set criticas = mis_alertas|selectattr('prioridad', 'equalto', 'ALTA')|list %}
 {% set otras = mis_alertas|rejectattr('prioridad', 'equalto', 'ALTA')|list %}
 <div class="grid g2" id="live-dash" data-live>
+{% if arrastre.filas %}<section class="card" style="border-left:4px solid var(--warn)" aria-labelledby="t-arrastre"><div class="card-head"><h3 id="t-arrastre">Pendientes de días anteriores</h3><span class="muted small">{% if arrastre.a_tiempo_pct is not none %}Su indicador (30 días): {{ arrastre.a_tiempo_pct }} % atendidas a tiempo · atención promedio {{ arrastre.atencion_prom }}{% endif %}</span></div>
+<table class="small"><tr><th>Tarea</th><th class="r">Abierta hace</th><th>Plazo</th><th></th></tr>{% for x in arrastre.filas %}<tr><td><a href="{{ url_for('main.alert_detail', aid=x.alerta.id) }}">{{ x.alerta.titulo }}</a></td><td class="r">{{ x.horas }} h</td><td>{{ x.plazo }}</td><td>{% if x.vencida %}<span class="b ALTA">VENCIDA</span>{% endif %}</td></tr>{% endfor %}</table></section>{% endif %}
 <section class="card" aria-labelledby="t-tareas"><div class="card-head"><h3 id="t-tareas">Mis tareas</h3><span class="muted small">designadas a usted o a su cargo</span></div>
 {% if tareas %}<ul class="list-tasks">{% for a in tareas %}<li><span class="prio {{ a.prioridad }}" aria-hidden="true"></span><div class="t"><a href="{{ url_for('main.alert_detail', aid=a.id) }}">{{ a.titulo }}</a>
 <div class="meta">#{{ a.id }} · {{ a.area }} · {{ a.creado_ts|d }}</div></div>{% set ea = estado_alerta(a) %}<span class="b {{ ea[0] }}">{{ ea[1] }}</span></li>{% endfor %}</ul>

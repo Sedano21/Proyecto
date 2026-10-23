@@ -20,7 +20,7 @@ from sqlalchemy import select
 
 from ..db import db
 from ..models import Alert, AlertEvent, AlertIncident, AlertType, EmailOutbox, GGAlertPreference, Role, User, now
-from .core import BusinessError, audit, has_perm, param, users_with_roles
+from .core import BusinessError, audit, has_perm, param, roles_of, users_with_roles
 
 ESTADOS_TAREA = ["PENDIENTE", "EN_EJECUCION", "INCIDENCIA", "COMPLETADA", "DESAPROBADA"]
 ESTADOS_INFO = ["PENDIENTE", "RECONOCIDA"]
@@ -193,8 +193,9 @@ def can_see(user, alert):
         return False
     if sees_all(user):
         return True
-    return (user.role_code in (alert.roles or []) or user.id in (alert.usuarios or []) or alert.asignado_a == user.id
-            or (alert.asignado_rol and alert.asignado_rol == user.role_code))
+    roles = roles_of(user)
+    return (bool(roles & set(alert.roles or [])) or user.id in (alert.usuarios or []) or alert.asignado_a == user.id
+            or (alert.asignado_rol and alert.asignado_rol in roles))
 
 
 def visible_types(user):
@@ -204,7 +205,8 @@ def visible_types(user):
     if sees_all(user):
         return tipos
     area = user_area(user)
-    return [t for t in tipos if t.area == area or user.role_code in (t.roles or [])]
+    roles = roles_of(user)
+    return [t for t in tipos if t.area == area or roles & set(t.roles or [])]
 
 
 def is_task(alert):
@@ -224,7 +226,7 @@ def can_act(user, alert):
             return True
     if has_perm(user, "alertas.gestionar") and user_area(user) == alert.area:
         return True  # designa dentro de su área
-    return has_perm(user, "tareas.ejecutar") and user.role_code in (alert.roles or [])
+    return has_perm(user, "tareas.ejecutar") and bool(roles_of(user) & set(alert.roles or []))
 
 
 def nature_for(user, alert):
@@ -237,7 +239,7 @@ def is_closed(alert):
 
 
 def is_assignee(user, alert):
-    return alert.asignado_a == user.id or (bool(alert.asignado_rol) and alert.asignado_rol == user.role_code)
+    return alert.asignado_a == user.id or (bool(alert.asignado_rol) and alert.asignado_rol in roles_of(user))
 
 
 def assignable(user):

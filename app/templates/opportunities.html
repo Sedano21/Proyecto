@@ -1,0 +1,27 @@
+{% extends "base.html" %}{% from "_m.html" import b, csrf %}
+{% block content %}<h1>Oportunidades</h1>
+<p class="muted small">Registro del trabajo diario del ejecutivo con sus clientes y prospectos: acciones (visita, llamada, reunión virtual, mensajería, carta u oficio), oportunidades con productos de interés y proyección mensual, y cotizaciones. Un prospecto pasa a cliente con al menos una acción y su orden de compra (desde la ficha del cliente).</p>
+<div class="kpis">{% for e, t, n in fun.etapas %}<a class="kpi" href="?estado={{ e }}"><b>{{ n }}</b><span>{{ t }}</span></a>{% endfor %}
+<div class="kpi"><b>{{ fun.conversion if fun.conversion is not none else '-' }} %</b><span>Conversión</span><small>ganadas / cerradas</small></div>
+<div class="kpi"><b>{{ fun.acciones }}</b><span>Acciones registradas</span><small>{{ fun.cotizaciones }} cotizaciones</small></div></div>
+{% if can('oportunidades.registrar') %}<div class="grid g2">
+<form method="post" class="card">{{ csrf() }}<h3>Nueva oportunidad</h3>
+<label class="req">Cliente o prospecto</label><select name="customer_id" required><option value="">Elija…</option>{% for c in clientes %}<option value="{{ c.id }}" {{ 'selected' if sel|string == c.id|string }}>{{ '[Prospecto] ' if c.es_prospecto }}{{ c.nombre }}</option>{% endfor %}</select>
+<label class="req">Título</label><input name="titulo" required style="width:100%" placeholder="p. ej. Ingreso de quinua 5 kg a la cadena">
+<label>Productos de interés</label><input name="productos" style="width:100%">
+<div class="row"><div><label>Proyección S/ por mes</label><input name="proyeccion_mensual" type="number" step="0.01" min="0"></div><div><label>Proyección kg por mes</label><input name="proyeccion_kg" type="number" step="0.01" min="0"></div></div>
+<p><button>Crear oportunidad</button> <a class="small" href="{{ url_for('com.customer_list') }}">registrar un prospecto nuevo</a></p></form>
+<form method="post" class="card">{{ csrf() }}<input type="hidden" name="accion" value="accion"><h3>Registrar acción con el cliente</h3>
+<label class="req">Cliente o prospecto</label><select name="customer_id" required><option value="">Elija…</option>{% for c in clientes %}<option value="{{ c.id }}" {{ 'selected' if sel|string == c.id|string }}>{{ '[Prospecto] ' if c.es_prospecto }}{{ c.nombre }}</option>{% endfor %}</select>
+<div class="row"><div><label class="req">Tipo</label><select name="tipo" required>{% for x in tipos %}<option>{{ x }}</option>{% endfor %}</select></div><div><label>Fecha</label><input type="date" name="fecha" value="{{ today.isoformat() }}"></div><div><label>Gasto S/</label><input name="gasto" type="number" step="0.01" min="0"></div><div><label>Próxima acción</label><input type="date" name="proxima"></div></div>
+<label class="req">Resultado</label><textarea name="resultado" required placeholder="Qué se conversó o acordó"></textarea><p><button>Registrar acción</button></p></form></div>{% endif %}
+<form class="card row" method="get"><div><label>Estado</label><select name="estado"><option value="">(todos)</option>{% for k, v in estados.items() %}<option value="{{ k }}" {{ 'selected' if f.get('estado') == k }}>{{ v }}</option>{% endfor %}</select></div>
+{% if can('oportunidades.ver_todas') %}<div><label>Vendedor</label><select name="vendedor_id"><option value="">(todos)</option>{% for v in vendedores %}<option value="{{ v.id }}" {{ 'selected' if f.get('vendedor_id') == v.id|string }}>{{ v.nombre }}</option>{% endfor %}</select></div>{% endif %}
+<div><label>Desde</label><input type="date" name="desde" value="{{ f.get('desde', '') }}"></div><div><label>Hasta</label><input type="date" name="hasta" value="{{ f.get('hasta', '') }}"></div><div><button>Filtrar</button></div></form>
+<div class="card"><h3>Oportunidades</h3><div class="tw"><table class="small"><tr><th>Oportunidad</th><th>Cliente</th><th>Tipo</th><th>Vendedor</th><th class="r">S/ mes</th><th>Estado</th><th>Creada</th></tr>
+{% for o in rows %}<tr><td><a href="{{ url_for('com.opportunity_detail', oid=o.id) }}">{{ o.titulo }}</a></td><td>{% if o.customer.es_prospecto %}<span class="b MEDIA">PROSPECTO</span> {% endif %}{{ o.customer.nombre }}</td><td>{{ 'Cliente nuevo' if o.tipo == 'NUEVO' else 'Venta adicional' }}</td><td>{{ o.vendedor.nombre if o.vendedor }}</td><td class="r">{{ (o.proyeccion_mensual or 0)|n }}</td><td>{{ b(o.estado) }}</td><td>{{ o.creado_ts|d }}</td></tr>
+{% else %}<tr><td colspan="7" class="muted">Sin oportunidades.</td></tr>{% endfor %}</table></div></div>
+<div class="card"><h3>Desempeño por vendedor</h3><div class="tw"><table class="small"><tr><th>Vendedor</th><th class="r">Acciones</th>{% for t in fun.tipos %}<th class="r">{{ t|capitalize }}</th>{% endfor %}<th class="r">Gasto S/</th><th class="r">Cotizaciones</th><th class="r">Cotizado S/</th><th class="r">Oportunidades</th><th class="r">Ganadas</th><th class="r">Perdidas</th><th class="r">Proyección S/ mes</th></tr>
+{% for n, c, gasto in fun.vendedores %}<tr><td>{{ n }}</td><td class="r">{{ c['acciones'] }}</td>{% for t in fun.tipos %}<td class="r">{{ c['t:' ~ t] }}</td>{% endfor %}<td class="r">{{ gasto|n }}</td><td class="r">{{ c['cotizaciones'] }}</td><td class="r">{{ c['cotizado']|n }}</td><td class="r">{{ c['oportunidades'] }}</td><td class="r">{{ c['ganadas'] }}</td><td class="r">{{ c['perdidas'] }}</td><td class="r">{{ c['proyeccion']|n }}</td></tr>
+{% else %}<tr><td colspan="12" class="muted">Sin registros.</td></tr>{% endfor %}</table></div></div>
+{% endblock %}

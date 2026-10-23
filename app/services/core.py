@@ -82,10 +82,30 @@ def audit(user, accion, entidad, entidad_id="", detalle=None):
 
 
 # ------------------------------- permisos ---------------------------------
+def user_scope(user):
+    """Alcance por usuario (ronda 23-oct-2026): líneas de producción que ve, perfil adicional y si registra asistencia."""
+    if user is None:
+        return {}
+    return (param("produccion_alcance_usuarios", {}) or {}).get(user.username) or {}
+
+
+def roles_of(user):
+    """Rol del usuario más el perfil adicional configurado («permisos_de»: ve y aprueba como ese rol)."""
+    if user is None:
+        return set()
+    extra = user_scope(user).get("permisos_de")
+    return {user.role_code} | ({extra} if extra else set())
+
+
+def can_self_approve(user):
+    """Roles que pueden aprobar sus propias solicitudes (ronda 23-oct-2026, decisión 4)."""
+    return user is not None and bool(roles_of(user) & set(param("roles_autoaprobacion", []) or []))
+
+
 def user_perms(user):
     if user is None:
         return set()
-    rows = db().execute(select(RolePermission.perm_code).where(RolePermission.role_code == user.role_code)).scalars()
+    rows = db().execute(select(RolePermission.perm_code).where(RolePermission.role_code.in_(sorted(roles_of(user))))).scalars()
     return set(rows)
 
 
@@ -126,7 +146,13 @@ def check_warehouse_scope(user, warehouse_code):
 def users_with_roles(roles):
     if not roles:
         return []
-    return list(db().execute(select(User).where(User.role_code.in_(roles), User.activo.is_(True))).scalars())
+    out = list(db().execute(select(User).where(User.role_code.in_(roles), User.activo.is_(True))).scalars())
+    extra = [u for u, sc in (param("produccion_alcance_usuarios", {}) or {}).items() if sc.get("permisos_de") in roles]
+    if extra:  # perfil adicional (ronda 23-oct-2026)
+        ids = {u.id for u in out}
+        out += [u for u in db().execute(select(User).where(User.username.in_(extra), User.activo.is_(True))).scalars()
+                if u.id not in ids]
+    return out
 
 
 def fmt_qty(x):

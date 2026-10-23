@@ -1249,3 +1249,218 @@ ALERT_TYPES += [
      "Se activa o desactiva el registro en contingencia.", False),
 ]
 ALERT_INFORMATIVAS = set(ALERT_INFORMATIVAS) | {"OBSERVACION_REPORTADA", "CONTINGENCIA"}
+
+# ---------------------------------------------------------------------------
+# Ronda del 23-oct-2026: reuniones con Producción y Comercial, modelo OEE y archivo de ventas y margen 2026.
+# Todo entra antes de la marcha blanca (sin fases). Los factores y valores se editan en Configuración.
+# ---------------------------------------------------------------------------
+R23 = "Reuniones con Producción y Comercial y respuestas del 23-oct-2026"
+ROLES.append(("COORD_FINANZAS", "Coordinación de Finanzas", "Finanzas", R23,
+              "Aprueba condiciones de pago, carga facturas y confirma pagos de clientes."))
+
+_CAUSAS_ENVASADO = ["CAMBIO DE BOBINA", "CAMBIO DE RIBBON", "ROTURA DE TORNILLO", "AJUSTE DE EMPAQUE", "AJUSTE DE POLINES",
+                    "AJUSTE DE DOSIFICACIÓN", "AVERÍA DE MOTOR", "DEMORA EN ABASTECIMIENTO", "AJUSTE DE CODIFICADOR",
+                    "LIMPIEZA DE DOSIFICADOR", "VALIDACIÓN DE CALIDAD", "BOBINA DEFECTUOSA", "CARGA DE DATOS (LT, FV Y FP)"]
+_CAUSAS_SELECCION = ["CALIBRACION", "CAMBIO DE MALLA", "CAPACITACION", "FALLA MECANICA", "FALTA DE GRANEL Y/O MP",
+                     "FALTA PERSONAL", "FUMIGACION", "INSPECCION", "LIMPIEZA", "MANTENIMIENTO", "OBSTRUCCION DE GR", "OTROS",
+                     "CAMBIO DE RECETA", "REAJUSTE DE RECETA POR MAL FUNCIONAMIENTO DE SELECTOR", "LIMPIEZA DE OPTICA",
+                     "FALLO DE MOTORES", "FALLO DE ELEVADORES", "VALIDACION DE CALIDAD"]
+_DOCS_CREDITO = {"FICHA_RUC": "Ficha RUC", "REPORTE_TRIBUTARIO": "Reporte tributario (no mayor de 30 días)",
+                 "RESUMEN_EJECUTIVO": "Resumen ejecutivo", "DJ_ANUAL": "DJ anual de los dos años anteriores",
+                 "REFERENCIAS": "Dos referencias comerciales", "EEFF": "Últimos estados financieros"}
+
+PARAMS += [
+    # ---- Comercial: OV
+    ("um_por_prefijo", {"MP": "KG", "GR": "KG", "SER": "KG", "PT": "UND", "AB": "UND", "MQ": "UND"}, "dict", "Comercial",
+     "Unidad de venta según el prefijo del código: KG (cantidad y precio por kilo) o UND (por unidad). No se edita en la OV; "
+     "los kg de las líneas en unidades se calculan con el peso del artículo.", "DEFINIDO",
+     f"{R23}: «todo lo que es granel o MP es en kilos… producto terminado en unidades»"),
+    ("hora_corte_ov_dia_siguiente", "12:00", "str", "Comercial",
+     "Una OV registrada después de esta hora no puede tener despacho para el día siguiente (las demás fechas, sin problema).",
+     "DEFINIDO", f"{R23}: regla acordada con Comercial (corte al mediodía)"),
+    ("exigir_oc_ov_modulo", True, "bool", "Comercial",
+     "Las OV registradas en el módulo necesitan la orden de compra del cliente (o la plantilla del pedido por WhatsApp/correo). "
+     "Sin ella se guardan como BORRADOR y no se evalúan. Las OV cargadas desde SAP no la piden.", "DEFINIDO",
+     f"{R23}: decisión 2"),
+    ("roles_autoaprobacion", ["JEFE_VENTAS", "JEFE_PRODUCCION", "JEFE_LOGISTICA"], "list", "Comercial",
+     "Roles que pueden aprobar sus propias solicitudes (el resto: quien solicita no aprueba).", "DEFINIDO", f"{R23}: decisión 4"),
+    ("plazo_respuesta_cumplimiento_horas", 24, "float", "Comercial",
+     "Horas que tiene Operaciones para responder CUMPLE / NO CUMPLE a una OV registrada; vencido el plazo se alerta a Comercial.",
+     "DEFINIDO", f"{R23}: Comercial debe saber en 24 h (máximo 72 h) si la OV se despacha"),
+    # ---- Comercial: condición de pago y Finanzas
+    ("condicion_pago_requerida", True, "bool", "Finanzas",
+     "Un cliente sin condición de pago aprobada por Finanzas solo puede tener OV de muestra.", "DEFINIDO", R23),
+    ("credito_tramos", {"documentos": _DOCS_CREDITO,
+                        "tramos": [{"hasta": 30000, "dias_max": 30, "docs": ["FICHA_RUC", "REPORTE_TRIBUTARIO", "RESUMEN_EJECUTIVO"]},
+                                   {"hasta": 100000, "dias_max": 60, "docs": ["FICHA_RUC", "REPORTE_TRIBUTARIO", "RESUMEN_EJECUTIVO",
+                                                                             "DJ_ANUAL", "REFERENCIAS"]},
+                                   {"hasta": None, "dias_max": 60, "docs": list(_DOCS_CREDITO)}],
+                        "plazos_todos_los_documentos": [90, 120]}, "dict", "Finanzas",
+     "Documentos para una condición de crédito según el monto (S/) y plazo máximo de cada tramo; los plazos de 90 o 120 días "
+     "piden todos los documentos sin importar el monto. La condición al contado no pide documentos.", "DEFINIDO",
+     f"{R23}: reunión con Comercial"),
+    ("dias_aviso_vencimiento_factura", 3, "int", "Finanzas",
+     "Días antes del vencimiento en que la factura aparece como «por vencer» en el cuadro de cobranza.", "PROPUESTO", R23),
+    # ---- Comercial: margen, oportunidades
+    ("margen_config", {"ir_pct": 29.5,
+                       "defecto": {"rebate_comercial_pct": 0, "logistica_pct": 0, "b2b_pct": 0, "no_devolucion_pct": 0,
+                                   "gasto_adm_pct": 1.5, "gasto_venta_pct": 3.0, "gasto_fin_pct": 1.42},
+                       "canales": {}, "clientes": {}}, "dict", "Comercial",
+     "Cascada de margen: tasas por defecto, por canal y por cliente (el cliente prevalece sobre el canal). Se edita en "
+     "Comercial → Configuración comercial.", "DEFINIDO", f"{R23}: archivo de ventas y margen 2026; decisión 6"),
+    ("tipos_accion_cliente", ["VISITA", "LLAMADA", "REUNIÓN VIRTUAL", "MENSAJERÍA", "CARTA / OFICIO"], "list", "Comercial",
+     "Tipos de acción con el cliente del módulo de oportunidades.", "DEFINIDO", f"{R23}: reunión con Comercial"),
+    ("exigir_accion_cliente_nuevo", True, "bool", "Comercial",
+     "Un prospecto pasa a cliente con al menos una acción registrada y su orden de compra; mientras tanto solo tiene OV de muestra.",
+     "DEFINIDO", f"{R23}: reunión con Comercial"),
+    # ---- Producción
+    ("velocidad_nominal", {"R1": 45, "R2": 45, "R3": 14, "ENFARDADO_500": 3, "ENFARDADO_400": 6}, "dict", "Producción",
+     "Velocidad nominal por máquina (envasado en und/min; selección en kg/h). Para una presentación específica use la clave "
+     "«MÁQUINA|kg», por ejemplo «R2|0.25». Sin velocidad no se calcula el OEE.", "DEFINIDO", f"{R23}: modelo OEE (listas de datos)"),
+    ("oee_calificacion", [{"min": 85, "nombre": "Excelente", "plan": "Kaizen avanzado; cruzar OEE con el retorno financiero."},
+                          {"min": 80, "nombre": "Bueno", "plan": "Mantenimiento predictivo, poka-yokes, análisis de velocidad teórica."},
+                          {"min": 70, "nombre": "Aceptable", "plan": "SMED (cambios rápidos) y equilibrio de líneas."},
+                          {"min": 60, "nombre": "Regular", "plan": "TPM, análisis de microparadas, estandarización de turnos."},
+                          {"min": 0, "nombre": "Inaceptable", "plan": "Digitalizar el conteo, Pareto de causas, auditoría de procesos."}],
+     "list", "Producción", "Rangos de calificación del OEE (%) y plan de acción.", "DEFINIDO", f"{R23}: modelo OEE (calificación)"),
+    ("causas_parada", {"ENVASADO": _CAUSAS_ENVASADO, "SELECCION": _CAUSAS_SELECCION}, "dict", "Producción",
+     "Causas de tiempo muerto por tipo de línea (lista cerrada para pausar la producción).", "DEFINIDO",
+     f"{R23}: modelo OEE y lista de paradas de selección"),
+    ("causas_paro_planificado", ["REFRIGERIO", "MANTENIMIENTO PREVENTIVO", "REUNIÓN"], "list", "Producción",
+     "Paros planificados: se descuentan del tiempo disponible (no son tiempo muerto).", "DEFINIDO", f"{R23}: modelo OEE"),
+    ("causas_defecto", ["MAL SELLADO", "MAL CODIFICADO", "BAJO PESO", "PRODUCTO ROTO"], "list", "Producción",
+     "Causas de unidades defectuosas (calidad del OEE).", "DEFINIDO", f"{R23}: modelo OEE"),
+    ("turnos_produccion", ["1.Mañana", "2.Tarde", "3.Noche"], "list", "Producción", "Turnos del parte de producción.",
+     "DEFINIDO", f"{R23}: modelo OEE"),
+    ("tolerancia_rendimiento", [
+        {"linea": "R*", "presentacion_kg": 5, "min_pct": 97.8, "max_pct": 100.5},
+        {"linea": "R*", "presentacion_kg": 0.5, "min_pct": 96.3, "max_pct": 100.5},
+        {"linea": "R*", "presentacion_kg": 0.4, "min_pct": 96.0, "max_pct": 100.5},
+        {"linea": "R*", "presentacion_kg": 0.25, "min_pct": 93.9, "max_pct": 100.5},
+        {"linea": "ENV_MANUAL", "presentacion_kg": 5, "min_pct": 99.6, "max_pct": 100.5},
+        {"linea": "ENV_MANUAL", "presentacion_kg": 0.5, "min_pct": 98.7, "max_pct": 100.5},
+        {"linea": "CIMBRIA", "presentacion_kg": None, "min_pct": 82.4, "max_pct": 100.0},
+        {"linea": "TRUER", "presentacion_kg": None, "min_pct": 91.8, "max_pct": 100.0},
+        {"linea": "*", "presentacion_kg": None, "min_pct": None, "max_pct": 100.5}],
+     "list", "Producción",
+     "Rango de rendimiento aceptado al liquidar (balance de masa) por línea y presentación; la regla más específica prevalece "
+     "(«R*» = R1, R2 y R3). Fuera del rango la liquidación queda BLOQUEADA y se alerta al Jefe de Producción.", "PROPUESTO",
+     f"{R23}: mínimos = rendimiento que solo el 10 % de los partes ene–oct no alcanza; máximo: no se produce más de lo que entra"),
+    ("tope_horas_of", 150, "float", "Producción", "Horas máximas por OF que acepta SAP; por encima la liquidación se bloquea.",
+     "DEFINIDO", f"{R23}: reunión con Producción"),
+    ("dias_produccion_por_tipo", {"PT": 2, "MP_IMPORTADA": 2, "SEL_MANUAL": 5}, "dict", "Producción",
+     "Días para producir según el tipo (se usan al proponer la fecha de entrega cuando hay que producir).", "DEFINIDO",
+     f"{R23}: reunión con Producción"),
+    ("produccion_alcance_usuarios", {"asist.produccion": {"lineas": ["R1", "R2", "R3", "ENV_MANUAL"], "permisos_de": "JEFE_PRODUCCION",
+                                                          "asistencia": True},
+                                     "asist.produccion2": {"lineas": ["CIMBRIA", "TRUER", "SEL_MANUAL"]}}, "dict", "Producción",
+     "Por usuario: líneas que ve (los partes de las demás no se listan), perfil adicional («permisos_de»: ve y aprueba como ese "
+     "rol) y si registra asistencia. Reemplazar los usuarios demo por los reales.", "DEFINIDO",
+     f"{R23}: asistente 1 envasado y además aprueba todo lo del Jefe y registra asistencia; asistente 2 selección"),
+    ("almacenes_produccion", [], "list", "Producción",
+     "Almacenes propios de Producción (selección manual, producción, suministros). Si se configuran, la validación de materiales "
+     "mira solo esos almacenes y propone el traslado de lo que falte.", "PENDIENTE", f"{R23}: códigos SAP por confirmar"),
+    ("ean_validacion", "ALERTAR", "str", "Producción",
+     "Al iniciar un parte se compara el EAN escaneado con la tabla GS1 ↔ SAP: ALERTAR (avisa y registra) o BLOQUEAR.",
+     "DEFINIDO", f"{R23}: alerta al inicio de la producción"),
+    ("asistencia_estados", ["ASISTENCIA", "FALTA", "VACACIONES", "DESCANSO MÉDICO", "TARDANZA"], "list", "Producción",
+     "Estados de asistencia del personal de Producción.", "DEFINIDO", f"{R23}: reunión con Producción"),
+    # ---- Plazos, horarios y escalamiento
+    ("minutos_antes_fin_turno_por_area", {"*": 60}, "dict", "Turnos",
+     "Minutos antes del fin del turno en que se revisan las tareas pendientes de cada persona; si quedan abiertas se avisa a su "
+     "jefe y al día siguiente la persona las ve primero con su tiempo de atención. Clave «*» = todas las áreas.", "DEFINIDO",
+     f"{R23}: decisión 7 (una hora antes del fin del turno)"),
+]
+
+_R23_PERMS = [
+    # code, nombre, módulo, tipo, roles
+    ("finanzas.gestionar", "Aprobar condiciones de pago, cargar facturas y confirmar pagos", "Finanzas", "aprobacion",
+     ["COORD_FINANZAS"]),
+    ("finanzas.ver", "Ver cuentas por cobrar, deuda y estado de pago de los clientes", "Finanzas", "consulta",
+     ["COORD_FINANZAS", "JEFE_VENTAS", "COORD_VENTAS", "EJECUTIVO_VENTAS", "ASIST_VENTAS", "GERENTE_COMERCIAL", "FACTURACION"]),
+    ("pagos.reportar", "Subir comprobantes de pago de sus clientes", "Finanzas", "edicion",
+     ["EJECUTIVO_VENTAS", "COORD_VENTAS", "JEFE_VENTAS", "COORD_FINANZAS"]),
+    ("facturas.cargar", "Cargar facturas y notas de crédito (Excel, PDF o SAP)", "Finanzas", "edicion",
+     ["COORD_FINANZAS", "FACTURACION"]),
+    ("condicion.solicitar", "Solicitar la condición de pago del cliente a Finanzas", "Comercial", "edicion",
+     ["EJECUTIVO_VENTAS", "COORD_VENTAS", "JEFE_VENTAS", "ASIST_VENTAS"]),
+    ("nc.solicitar", "Solicitar nota de crédito", "Comercial", "edicion", ["EJECUTIVO_VENTAS", "COORD_VENTAS", "JEFE_VENTAS"]),
+    ("comercial.configurar", "Configuración comercial: gastos y rebates por canal y cliente, objetivos e incentivos",
+     "Comercial", "exclusivo", ["JEFE_VENTAS"]),
+    ("margen.ver", "Ver margen por canal, cliente y vendedor", "Comercial", "consulta", ["JEFE_VENTAS", "GERENTE_COMERCIAL"]),
+    ("objetivos.ver", "Ver avance contra objetivos de venta", "Comercial", "consulta",
+     ["JEFE_VENTAS", "COORD_VENTAS", "EJECUTIVO_VENTAS", "GERENTE_COMERCIAL"]),
+    ("incentivos.ver", "Ver el cálculo de incentivos de vendedores", "Comercial", "consulta", ["JEFE_VENTAS", "GERENTE_COMERCIAL"]),
+    ("oportunidades.registrar", "Registrar oportunidades, acciones con el cliente y cotizaciones", "Comercial", "edicion",
+     ["EJECUTIVO_VENTAS", "COORD_VENTAS", "JEFE_VENTAS"]),
+    ("oportunidades.ver_todas", "Ver las oportunidades de todos los vendedores", "Comercial", "consulta",
+     ["COORD_VENTAS", "JEFE_VENTAS", "GERENTE_COMERCIAL"]),
+    ("mercado.registrar", "Registrar precios de mercado (quedan pendientes de aprobación)", "Comercial", "edicion",
+     ["EJECUTIVO_VENTAS", "COORD_VENTAS", "JEFE_VENTAS"]),
+    ("mercado.aprobar", "Aprobar precios de mercado registrados por los vendedores", "Comercial", "exclusivo", ["JEFE_VENTAS"]),
+    ("catalogo.ver", "Ver el catálogo de productos con fotos", "Comercial", "consulta",
+     ["EJECUTIVO_VENTAS", "COORD_VENTAS", "JEFE_VENTAS", "ASIST_VENTAS", "GERENTE_COMERCIAL"]),
+    ("catalogo.fotos", "Subir fotos del catálogo de productos", "Comercial", "edicion", ["JEFE_VENTAS", "SISTEMAS"]),
+    ("ov.compromiso", "Responder CUMPLE / NO CUMPLE a una OV", "Logística", "edicion",
+     ["COORD_ALMACEN", "COORD_ALMACEN_MP", "JEFE_LOGISTICA", "COORD_LOGISTICA", "JEFE_PRODUCCION", "ASIST_PRODUCCION"]),
+    ("ov.solicitar_cambio_fecha", "Solicitar a Comercial el cambio de la fecha de despacho de una OV", "Logística", "edicion",
+     ["JEFE_LOGISTICA", "COORD_LOGISTICA", "COORD_DISTRIBUCION"]),
+    ("produccion.configurar", "Configuración de Producción: velocidades, causas, tolerancias, alcance de asistentes, GS1",
+     "Producción", "exclusivo", ["JEFE_PRODUCCION", "SISTEMAS"]),
+    ("produccion.asistencia", "Registrar la asistencia del personal de Producción", "Producción", "edicion",
+     ["JEFE_PRODUCCION", "ASIST_PRODUCCION"]),
+    ("produccion.plan_validar", "Validar los cambios al programa propuestos por los asistentes", "Producción", "aprobacion",
+     ["JEFE_PRODUCCION"]),
+    ("calidad.bloquear_parte", "Bloquear / liberar un parte de producción por Calidad", "Calidad", "aprobacion",
+     ["JEFE_CALIDAD", "SUPERV_CALIDAD", "ASIST_CALIDAD"]),
+]
+for _code, _n, _m, _t, _roles in _R23_PERMS:
+    if not any(p[0] == _code for p in PERMISSIONS):
+        PERMISSIONS.append((_code, _n, _m, _t))
+    for _r in _roles:
+        ROLE_PERMISSIONS.setdefault(_r, []).append((_code, "DEFINIDO", R23))
+    if _t != "exclusivo" and "GERENCIA_GENERAL" not in _roles:
+        ROLE_PERMISSIONS["GERENCIA_GENERAL"].append((_code, "DEFINIDO", f"{R23}; regla general de Gerencia General"))
+    if _t == "consulta" and "GERENCIA_OPERACIONES" not in _roles and _m not in ("Comercial", "Finanzas"):
+        ROLE_PERMISSIONS["GERENCIA_OPERACIONES"].append((_code, "DEFINIDO", f"{R23}; Gerencias visualizan todas las áreas"))
+# la Coordinación de Finanzas también consulta OV, clientes y el expediente; el Jefe de Logística ya registra el compromiso
+for _code in ("ov.ver", "clientes.ver", "dashboard.ver", "alertas.ver", "alertas.gestionar", "export.datos"):
+    ROLE_PERMISSIONS["COORD_FINANZAS"].append((_code, "DEFINIDO", f"{R23}: Finanzas trabaja sobre el archivo del cliente"))
+
+_FIN = ["COORD_FINANZAS"]
+ALERT_TYPES += [
+    ("CONDICION_PAGO_SOLICITADA", "Condición de pago por aprobar", "Finanzas", "Condición de pago", "ALTA", _FIN, "DEFINIDO",
+     R23, "Comercial envía la condición de pago de un cliente (contado o crédito con sus documentos).", True),
+    ("CONDICION_PAGO_RESUELTA", "Condición de pago aprobada, observada o rechazada", "Comercial", "Condición de pago", "MEDIA",
+     _COM, "DEFINIDO", R23, "Finanzas resuelve la condición de pago del cliente.", False),
+    ("PAGO_REPORTADO", "Comprobante de pago por confirmar", "Finanzas", "Cobranza", "MEDIA", _FIN, "DEFINIDO", R23,
+     "Comercial sube un comprobante de pago de su cliente.", False),
+    ("FACTURA_VENCIDA", "Factura vencida sin pagar", "Finanzas", "Cobranza", "ALTA", _FIN, "DEFINIDO", R23,
+     "Una factura pasa su fecha de vencimiento con saldo pendiente (se avisa también al vendedor).", False),
+    ("NOTA_CREDITO_SOLICITADA", "Nota de crédito solicitada por Comercial", "Facturación", "Notas de crédito", "MEDIA",
+     ["FACTURACION"] + _FIN, "DEFINIDO", R23, "Comercial solicita una nota de crédito para una OV.", True),
+    ("OV_NO_CUMPLE", "Operaciones no cumplirá la OV", "Comercial", "Compromiso de entrega", "ALTA", _COM, "DEFINIDO", R23,
+     "Operaciones responde NO CUMPLE (o Producción avisa que no llegará) para que Comercial negocie con el cliente.", True),
+    ("OV_SIN_COMPROMISO", "OV sin respuesta de Operaciones en el plazo", "Logística", "Compromiso de entrega", "ALTA",
+     _LOG + _ALM, "DEFINIDO", R23, "Pasó el plazo sin que Operaciones responda CUMPLE / NO CUMPLE (también se avisa a Comercial).",
+     True),
+    ("OV_CAMBIO_FECHA_SOLICITUD", "Solicitud de cambio de fecha de despacho", "Comercial", "Cambios de OV", "ALTA", _COM,
+     "DEFINIDO", R23, "Logística o Distribución solicita cambiar la fecha de despacho; Comercial aprueba o desaprueba.", True),
+    ("PRECIO_MERCADO_PENDIENTE", "Precio de mercado por aprobar", "Comercial", "Precios de mercado", "BAJA", ["JEFE_VENTAS"],
+     "DEFINIDO", R23, "Un vendedor registra un precio de mercado; solo el Jefe Comercial lo aprueba.", False),
+    ("LIQUIDACION_BLOQUEADA", "Liquidación bloqueada (balance de masa u horas)", "Producción", "Liquidación", "ALTA",
+     ["JEFE_PRODUCCION"], "DEFINIDO", f"{R23}: decisión 3",
+     "El rendimiento declarado está fuera del rango aceptado o las horas superan el tope de SAP.", True),
+    ("EAN_NO_COINCIDE", "EAN no coincide con el producto en producción", "Producción", "Parte de producción", "ALTA", _PROD,
+     "DEFINIDO", R23, "Al iniciar el parte, el EAN no corresponde al producto según la tabla GS1 ↔ SAP.", False),
+    ("PARTE_BLOQUEADO", "Parte de producción bloqueado por Calidad", "Producción", "Parte de producción", "ALTA", _PROD,
+     "DEFINIDO", R23, "Calidad bloquea un parte (se libera tras fumigación o reproceso).", False),
+    ("PROGRAMA_CAMBIO_POR_VALIDAR", "Cambio al programa de producción por validar", "Producción", "Programa", "MEDIA",
+     ["JEFE_PRODUCCION"], "DEFINIDO", R23, "Un asistente propone cambiar el programa; lo valida el Jefe de Producción.", False),
+    ("BOM_CAMBIO_ASISTENTE", "Receta modificada por un asistente", "Producción", "Lista de materiales", "BAJA",
+     ["JEFE_PRODUCCION"], "DEFINIDO", R23, "Un asistente modifica la receta (aviso informativo al Jefe).", False),
+    ("TAREAS_PENDIENTES_FIN_TURNO", "Tareas pendientes al cierre del turno", "Gerencia", "Cumplimiento", "ALTA", [], "DEFINIDO",
+     f"{R23}: decisión 7", "Una hora antes del fin del turno la persona aún tiene tareas abiertas (aviso a su jefe).", True),
+]
+ALERT_INFORMATIVAS = set(ALERT_INFORMATIVAS) | {"CONDICION_PAGO_RESUELTA", "PARTE_BLOQUEADO", "BOM_CAMBIO_ASISTENTE",
+                                                "EAN_NO_COINCIDE"}

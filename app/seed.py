@@ -55,6 +55,7 @@ DEMO_USERS = [
     ("importaciones", "Importaciones (demo)", "IMPORTACIONES"),
     ("seguridad", "Seguridad (demo)", "SEGURIDAD"),
     ("facturacion", "Facturación (demo)", "FACTURACION"),
+    ("coord.finanzas", "Coordinación de Finanzas (demo)", "COORD_FINANZAS"),
 ]
 
 

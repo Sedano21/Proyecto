@@ -3,13 +3,16 @@
 <h1>Registrar orden de venta</h1>
 {% if can('ov.regularizar') %}<div class="note small">¿Fecha pasada u hora ya transcurrida? No se puede registrar ni reservar aquí: use <a href="{{ url_for('com.regularization') }}">Regularización de OV</a>.</div>{% endif %}
 <div class="note info small">Al guardar, el sistema valida los datos y evalúa stock, reservas, lotes, vencimientos y condiciones del cliente; reserva solo stock físico verificado y utilizable (IF §4.2–4.3). Precio y costo se validan contra la lista de precios mínimos y el costo vigente.</div>
-<form method="post" class="card" id="ovform">{{ csrf() }}
+<div class="note small">Reglas de registro: la <b>unidad</b> la fija el código (MP, GR, SER en kilos; PT, AB, MQ en unidades){% if corte %}; después de las <b>{{ corte }}</b> no se registra una OV para despachar mañana{% endif %}{% if exigir_oc %}; sin la <b>orden de compra</b> del cliente (o la plantilla del pedido por WhatsApp o correo) la OV queda como <b>borrador</b> y no se evalúa{% endif %}. Un prospecto o un cliente sin condición de pago aprobada por Finanzas solo admite <b>OV de muestra</b>.</div>
+<form method="post" class="card" id="ovform" enctype="multipart/form-data">{{ csrf() }}
 <div class="row">
 <div><label>N° de OV / documento</label><input name="numero" required></div>
 <div class="grow"><label>Cliente</label><input name="cliente_txt" id="cliente_txt" list="clientes" required placeholder="Escriba nombre o RUC" autocomplete="off"><input type="hidden" name="customer_id" id="customer_id">
 <datalist id="clientes">{% for c in customers %}<option value="{{ c.nombre }} · {{ c.ruc }}" data-id="{{ c.id }}"></option>{% endfor %}</datalist></div>
 <div><label>Fecha comprometida de despacho</label><input type="date" name="fecha_compromiso" id="fecha_compromiso" min="{{ today.isoformat() }}" required></div>
 <div><label>Canal / grupo de precios</label><select name="canal_precio" id="canal_precio"><option value="">(según ficha del cliente)</option>{% for x in canales %}<option>{{ x }}</option>{% endfor %}</select><small class="muted" id="canal_cli"></small></div>
+<div><label>N° de orden de compra del cliente</label><input name="oc_numero" placeholder="OC / pedido"></div>
+<div><label{{ ' class=req' if exigir_oc }}>Orden de compra (archivo)</label><input type="file" name="oc_archivo" accept=".pdf,.jpg,.jpeg,.png,.webp,.xlsx,.xls,.docx,.msg,.eml"><small class="muted">PDF, imagen, Excel o correo</small></div>
 <div><label>Vendedor responsable</label><select name="vendedor_id"><option value="">(—)</option>{% for v in vendedores %}<option value="{{ v.id }}" {{ 'selected' if v.id==user.id }}>{{ v.nombre }}</option>{% endfor %}</select></div>
 </div>
 <fieldset class="card"><legend>Entrega</legend>
@@ -27,11 +30,12 @@
 <h3>Líneas</h3>
 <div class="tw"><table><tr><th>Producto (código, nombre y presentación)</th><th>Unidad</th><th>Cantidad</th><th>Precio unitario S/ (por la unidad elegida)</th></tr>
 {% for i in range(8) %}<tr><td><input name="product_code" list="prods" class="prod" style="min-width:280px;width:100%" autocomplete="off" placeholder="Escriba o elija"></td>
-<td><select name="um_venta" class="um"><option value="">UND / KG del artículo</option><option value="KG">Kilo</option><option value="SACO">Saco (granel)</option></select></td>
+<td><select name="um_venta" class="um" aria-label="Unidad"><option value="">—</option></select></td>
 <td><input name="cantidad" type="number" step="any" min="0.0001" inputmode="decimal" aria-label="Cantidad"></td><td><input name="precio_unitario" type="number" step="any" min="0.01" inputmode="decimal" aria-label="Precio unitario"></td></tr>{% endfor %}</table></div>
 <p class="small muted">En cada línea con producto, la <b>cantidad</b> y el <b>precio</b> son obligatorios. La primera línea es obligatoria.</p>
 <datalist id="prods">{% for p in products %}<option value="{{ p.code }} · {{ p.descripcion }}{{ ' · ' ~ p.presentacion if p.presentacion }}">{{ p.um }}{{ ' · se vende por kg o por saco' if p.code in granel }}</option>{% endfor %}</datalist>
-<p class="small muted">Granel: elija «Saco» para vender por saco (se convierte a kg con los kg por saco de la lista mayorista granel) o «Kilo».</p>
+<p class="small muted">La unidad se completa al elegir el producto. Granel en kilos: puede elegir «Saco» para vender por saco (se convierte a kg con los kg por saco de la lista mayorista granel).</p>
+<p class="small" id="aviso_cli"></p>
 <p><button>Registrar y evaluar</button></p>
 </form>
 <script>
@@ -69,6 +73,18 @@
     });
   }
   form.addEventListener('input', reglasLinea); form.addEventListener('change', reglasLinea); reglasLinea();
+  // ronda 23-oct-2026: unidad fija por código (no se elige) y aviso de prospecto / condición de pago
+  var UN = {{ unidades|tojson }}, GR = {{ granel|list|tojson }}, EC = {{ estado_cli|tojson }};
+  function unidad(tr){ var p = tr.querySelector('.prod'), s = tr.querySelector('.um'); if (!p || !s) return;
+    var code = p.value.split(' ')[0].trim().toUpperCase(), u = UN[code], prev = s.value;
+    s.innerHTML = ''; if (!u) { s.add(new Option('—', '')); return; }
+    s.add(new Option(u === 'KG' ? 'Kilo' : 'Unidad', u)); if (u === 'KG' && GR.indexOf(code) >= 0) s.add(new Option('Saco (granel)', 'SACO'));
+    if (prev === 'SACO' && s.options.length > 1) s.value = 'SACO'; }
+  form.querySelectorAll('tr').forEach(function(tr){ var p = tr.querySelector('.prod'); if (p) { p.addEventListener('change', function(){ unidad(tr); }); p.addEventListener('input', function(){ unidad(tr); }); } });
+  function avisoCli(){ var e = EC[cid.value], a = document.getElementById('aviso_cli'); if (!e) { a.textContent = ''; return; }
+    a.textContent = e.prospecto ? 'Prospecto: solo admite OV de muestra hasta que pase a cliente (Oportunidades).' :
+      (e.condicion !== 'APROBADA' ? 'Sin condición de pago aprobada por Finanzas: solo admite OV de muestra.' : ''); a.className = a.textContent ? 'small warn' : 'small'; }
+  cli.addEventListener('change', avisoCli); cli.addEventListener('input', avisoCli);
   function horaPasada(){
     var fc = document.getElementById('fecha_compromiso'), hc = document.getElementById('hora_cita');
     var hoy = new Date(); var iso = hoy.getFullYear() + '-' + String(hoy.getMonth()+1).padStart(2,'0') + '-' + String(hoy.getDate()).padStart(2,'0');

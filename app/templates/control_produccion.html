@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="cp-head"><div><h1>CONTROL DE PRODUCCIÓN {{ d.fecha.year }}</h1><div class="sub">Reporte {{ {'DIA': 'diario', 'SEMANA': 'semanal', 'MES': 'mensual'}[d.periodo] }}</div></div>
+<form method="get" class="row"><input type="hidden" name="periodo" value="{{ d.periodo }}"><div><label>Fecha</label><input type="date" name="fecha" value="{{ d.fecha.isoformat() }}" onchange="this.form.submit()"></div></form>
+<nav class="cp-tabs">{% for k, v in [('DIA','Diario'),('SEMANA','Semanal'),('MES','Mensual')] %}<a class="{{ 'on' if d.periodo == k }}" href="?periodo={{ k }}&fecha={{ d.fecha.isoformat() }}">{{ v }}</a>{% endfor %}</nav></div>
+{% if d.desde != d.hasta %}<p class="small muted">Del {{ d.desde|d }} al {{ d.hasta|d }}.</p>{% endif %}
+<div class="cp-kpis"><div class="cp-kpi"><span>Producción total real</span><b>{{ '{:,.2f}'.format(d.total_real) }} kg</b><small>({{ '{:,.2f}'.format(d.total_real / 1000) }} TN)</small></div>
+<div class="cp-kpi"><span>Plan {{ {'DIA': 'diario', 'SEMANA': 'semanal', 'MES': 'mensual'}[d.periodo] }}</span><b>{{ '{:,.0f}'.format(d.total_plan) }} kg</b><small>({{ '{:,.2f}'.format(d.total_plan / 1000) }} TN)</small></div>
+<div class="cp-kpi"><span>Cumplimiento general</span><b>{{ d.cumplimiento if d.cumplimiento is not none else '-' }}%</b><small>vs. plan</small></div>
+<div class="cp-kpi"><span>Horas efectivas</span><b>{{ d.horas }} hr</b><small>registradas en los partes</small></div>
+<div class="cp-kpi"><span>Productividad promedio</span><b>{{ '{:,.0f}'.format(d.productividad) }} kg/hr</b><small>promedio planta</small></div></div>
+<div class="cp-main"><div class="card" style="padding:0;overflow:hidden"><h3 style="margin:0;padding:10px 14px;background:var(--cp-verde-700);color:#fff">DESEMPEÑO POR LÍNEA</h3><div class="tw" style="margin:0"><table class="cp-tabla small"><tr><th>Proceso</th><th>Línea</th><th class="r">Cap. teórica (kg)</th><th class="r">Plan (kg)</th><th class="r">Real (kg)</th><th class="r">% Cumpl.</th><th class="r">Horas efectivas</th><th class="r">Prod. / hr (kg/hr)</th></tr>
+{% for f in d.filas %}<tr>{% if loop.first or f.proceso != d.filas[loop.index0 - 1].proceso %}<td class="proc" rowspan="{{ d.filas|selectattr('proceso', 'equalto', f.proceso)|list|length }}">{{ f.proceso }}</td>{% endif %}<td><b>{{ f.grupo }}</b></td><td class="r">{{ '{:,.0f}'.format(f.capacidad) }}</td><td class="r">{{ '{:,.0f}'.format(f.plan or f.capacidad) }}{% if f.plan_es_capacidad %}<span class="muted" title="Sin plan registrado: se usa la capacidad">*</span>{% endif %}</td><td class="r">{{ '{:,.2f}'.format(f.real) }}</td>
+<td class="r {{ 'cp-ok' if (f.cumplimiento or 0) >= 90 else ('cp-med' if (f.cumplimiento or 0) >= 50 else 'cp-mal') }}">{{ '%.2f'|format(f.cumplimiento) if f.cumplimiento is not none else '-' }}%</td><td class="r">{{ f.horas }}</td><td class="r">{{ '{:,.0f}'.format(f.kg_h) }}</td></tr>{% endfor %}
+<tr class="tot"><td colspan="2">TOTAL PLANTA</td><td class="r">{{ '{:,.0f}'.format(d.filas|sum(attribute='capacidad')) }}</td><td class="r">{{ '{:,.0f}'.format(d.total_plan) }}</td><td class="r">{{ '{:,.2f}'.format(d.total_real) }}</td><td class="r">{{ d.cumplimiento if d.cumplimiento is not none else '-' }}%</td><td class="r">{{ d.horas }}</td><td class="r">{{ '{:,.0f}'.format(d.productividad) }}</td></tr></table></div>
+<p class="small muted" style="padding:0 14px">* Sin plan registrado para la línea: se compara con la capacidad del periodo.</p></div>
+<div class="card"><h3>Producción por línea (kg)</h3>{{ graf.plan_real }}</div></div>
+<div class="grid g3"><div class="card"><h3>kg por línea</h3>{{ graf.kg }}</div><div class="card"><h3>kg / hr — líneas</h3>{{ graf.kgh }}</div>
+<div class="card"><h3>Asistencia</h3><div class="cp-asis">{{ graf.asis }}<ul class="small">{% for k, v in d.asistencia.items() %}<li>{{ k|capitalize }}: <b>{{ v }}</b></li>{% else %}<li class="muted">Sin asistencia registrada.</li>{% endfor %}</ul></div></div></div>
+<div class="grid g3"><div class="card cp-box"><h3>Principales hallazgos</h3><ul class="small">{% for x in d.hallazgos %}<li>{{ x }}</li>{% else %}<li class="muted">Sin producción registrada.</li>{% endfor %}</ul></div>
+<div class="card cp-box"><h3>Situación operativa</h3><ul class="small">{% for x in d.situacion %}<li>{{ x }}</li>{% endfor %}</ul></div>
+<div class="card cp-box"><h3>Conclusión / acciones</h3><ul class="small cp-check">{% for x in d.acciones %}<li>✓ {{ x }}</li>{% endfor %}</ul></div></div>
+{% endblock %}

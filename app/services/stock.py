@@ -292,6 +292,8 @@ def evaluate_order(order, user=None, motivo="CREACION", hoy=None):
     """Evalúa y reserva stock para una OV (IF §4.2-4.4, §6.3). Devuelve resumen por línea. 'hoy' permite a la tarea
     programada evaluar el plazo máximo de reserva con su fecha de referencia."""
     s = db()
+    if order.estado == "BORRADOR":  # ronda 23-oct-2026: el borrador (sin orden de compra) no reserva stock
+        return []
     if order.estado in ORDEN_ESTADOS_CERRADOS:
         raise BusinessError(f"La OV {order.numero} está {order.estado}; no se evalúa.")
     if order.retenida_precio and order.estado in ("REGISTRADA", "EVALUADA"):

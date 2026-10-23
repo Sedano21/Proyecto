@@ -9,8 +9,9 @@ from datetime import date, datetime, timedelta
 from sqlalchemy import select
 
 from ..db import db
-from ..models import (Alert, Incident, PickingTask, ProductionReport, ProductionRequest, PurchaseRequest, Route,
-                      SalesOrder, SalesOrderLine, StockLot)
+from ..models import (Alert, Attendance, Certificate, CustomerAction, CustomerInvoice, CustomerPayment, ImportShipment,
+                      Incident, Liquidation, Opportunity, PickingTask, ProductionReport, ProductionRequest, PurchaseRequest,
+                      QualityRecord, Quote, RepackRequest, Route, SalesOrder, SalesOrderLine, StockLot, Transfer)
 from .core import has_perm
 
 
@@ -87,13 +88,135 @@ FUENTES = {
     "partes": ("Partes de producción", ("produccion.ver",), lambda: select(ProductionReport), ProductionReport.fecha, [
         ("fecha", "Fecha", lambda r: r.fecha, False),
         ("linea", "Línea", lambda r: r.linea, False),
+        ("maquina", "Máquina", lambda r: r.maquina or r.linea, False),
+        ("turno", "Turno", lambda r: r.turno, False),
+        ("of", "OF", lambda r: r.of, False),
         ("producto", "Producto", lambda r: r.product_code, False),
+        ("cliente", "Cliente", lambda r: r.cliente, False),
+        ("estado", "Estado", lambda r: r.estado, False),
         ("entrada", "Entrada kg", lambda r: r.peso_entrada_kg, True),
-        ("granel", "Granel kg", lambda r: r.granel_kg, True),
+        ("granel", "Producido kg", lambda r: r.granel_kg, True),
+        ("unidades", "Unidades", lambda r: r.unidades, True),
         ("desmedro", "Desmedro kg", lambda r: r.desmedro_kg, True),
         ("rendimiento", "Rendimiento %", lambda r: r.rendimiento_pct, True),
+        ("desmedro_pct", "Desmedro %", lambda r: r.desmedro_pct, True),
+        ("horas", "Horas", lambda r: r.horas, True),
+        ("horas_ef", "Horas efectivas", lambda r: (r.indicadores or {}).get("horas_efectivas"), True),
+        ("operarios", "Operarios", lambda r: r.operarios, True),
+        ("kg_h", "kg/h", lambda r: r.ratio_kg_hora, True),
+        ("oee", "OEE %", lambda r: (r.indicadores or {}).get("oee"), True),
+        ("disponibilidad", "Disponibilidad %", lambda r: (r.indicadores or {}).get("disponibilidad"), True),
+        ("rend_oee", "Rendimiento OEE %", lambda r: (r.indicadores or {}).get("rendimiento_oee"), True),
+        ("calidad", "Calidad %", lambda r: (r.indicadores or {}).get("calidad"), True),
+        ("defectos", "Defectuosos", lambda r: sum((r.defectos or {}).values()), True),
+        ("sobrepeso", "kg de más (peso)", lambda r: (r.indicadores or {}).get("kg_sobrepeso"), True),
         ("parada", "Parada min", lambda r: r.parada_min, True),
         ("motivo", "Motivo de parada", lambda r: r.motivo_parada, False)]),
+    "liquidaciones": ("Liquidaciones de producción", ("produccion.ver", "produccion.recibir_pt"), lambda: select(Liquidation),
+                      Liquidation.fecha, [
+        ("documento", "Documento (OF)", lambda l: l.numero_documento, False),
+        ("fecha", "Fecha", lambda l: l.fecha, False),
+        ("producto", "Producto", lambda l: l.product_code, False),
+        ("lote", "Lote", lambda l: l.lote, False),
+        ("planificada", "Planificada", lambda l: l.cantidad_planificada, True),
+        ("completada", "Completada", lambda l: l.cantidad_completada, True),
+        ("recibida", "Recibida", lambda l: l.cantidad_recibida, True),
+        ("diferencia", "Diferencia", lambda l: l.diferencia, True),
+        ("horas", "Horas", lambda l: l.horas, True),
+        ("operarios", "Operarios", lambda l: l.operarios, True),
+        ("estado", "Estado", lambda l: l.estado, False),
+        ("origen", "Origen", lambda l: l.origen, False)]),
+    "asistencia": ("Asistencia del personal de Producción", ("produccion.ver",), lambda: select(Attendance), Attendance.fecha, [
+        ("fecha", "Fecha", lambda a: a.fecha, False),
+        ("colaborador", "Colaborador", lambda a: _v(a, "worker", "nombre"), False),
+        ("linea", "Línea", lambda a: _v(a, "worker", "linea"), False),
+        ("estado", "Estado", lambda a: a.estado, False),
+        ("registros", "Registros", lambda a: 1, True)]),
+    "certificados": ("Certificados de calidad", ("calidad.ver",), lambda: select(Certificate), Certificate.generado_ts, [
+        ("numero", "Número", lambda c: c.numero, False),
+        ("producto", "Producto", lambda c: c.product_code, False),
+        ("ov", "OV", lambda c: _v(c, "order", "numero"), False),
+        ("estado", "Estado", lambda c: c.estado, False),
+        ("generado", "Generado", lambda c: c.generado_ts, False),
+        ("revisado", "Revisado", lambda c: c.revisado_ts, False)]),
+    "registros_calidad": ("Registros de Calidad (formatos)", ("calidad.ver",), lambda: select(QualityRecord), QualityRecord.fecha, [
+        ("fecha", "Fecha", lambda q: q.fecha, False),
+        ("formato", "Formato", lambda q: q.formato, False),
+        ("producto", "Producto", lambda q: q.product_code, False),
+        ("lote", "Lote", lambda q: q.lote, False),
+        ("resultado", "Resultado", lambda q: q.resultado, False),
+        ("estado", "Estado", lambda q: q.estado, False),
+        ("registros", "Registros", lambda q: 1, True)]),
+    "reempaques": ("Reempaques y fumigaciones", ("calidad.ver", "reempaque.ejecutar", "stock.ver"), lambda: select(RepackRequest),
+                   RepackRequest.ts, [
+        ("id", "#", lambda r: r.id, False),
+        ("tipo", "Tipo", lambda r: r.tipo, False),
+        ("destino", "Producto destino", lambda r: r.producto_destino, False),
+        ("cantidad", "Cantidad", lambda r: r.cantidad, True),
+        ("estado", "Estado", lambda r: r.estado, False),
+        ("motivo", "Motivo", lambda r: r.motivo, False),
+        ("fecha", "Solicitado", lambda r: r.ts, False)]),
+    "traslados": ("Traslados entre almacenes", ("stock.ver", "traslado.autorizar"), lambda: select(Transfer), Transfer.ts, [
+        ("id", "#", lambda x: x.id, False),
+        ("producto", "Producto", lambda x: _v(x, "lot", "product_code"), False),
+        ("destino", "Destino", lambda x: x.destino_code, False),
+        ("cantidad", "Cantidad", lambda x: x.cantidad, True),
+        ("recibida", "Recibida", lambda x: x.cantidad_recibida, True),
+        ("estado", "Estado", lambda x: x.estado, False),
+        ("fecha", "Solicitado", lambda x: x.ts, False)]),
+    "importaciones": ("Importaciones", ("importaciones.ver", "importaciones.gestionar", "compras.ver"), lambda: select(ImportShipment),
+                      ImportShipment.fecha_llegada_estimada, [
+        ("referencia", "Referencia", lambda x: x.referencia, False),
+        ("proveedor", "Proveedor", lambda x: x.proveedor, False),
+        ("producto", "Producto", lambda x: x.product_code, False),
+        ("cantidad", "Cantidad", lambda x: x.cantidad, True),
+        ("recibida", "Recibida", lambda x: x.cantidad_recibida, True),
+        ("llegada", "Llegada estimada", lambda x: x.fecha_llegada_estimada, False),
+        ("estado", "Estado", lambda x: x.estado, False)]),
+    "facturas": ("Facturas y notas de crédito", ("finanzas.ver",), lambda: select(CustomerInvoice), CustomerInvoice.fecha, [
+        ("numero", "Número", lambda i: i.numero, False),
+        ("tipo", "Tipo", lambda i: i.tipo, False),
+        ("cliente", "Cliente", lambda i: _v(i, "customer", "nombre"), False),
+        ("vendedor", "Vendedor", lambda i: _v(i, "customer", "vendedor", "nombre"), False),
+        ("ov", "OV", lambda i: _v(i, "order", "numero"), False),
+        ("fecha", "Emisión", lambda i: i.fecha, False),
+        ("vence", "Vencimiento", lambda i: i.vencimiento, False),
+        ("monto", "Monto S/", lambda i: i.monto, True),
+        ("saldo", "Saldo S/", lambda i: i.saldo, True),
+        ("estado", "Estado", lambda i: i.estado, False)]),
+    "pagos": ("Pagos de clientes", ("finanzas.ver",), lambda: select(CustomerPayment), CustomerPayment.fecha, [
+        ("fecha", "Fecha", lambda p: p.fecha, False),
+        ("cliente", "Cliente", lambda p: _v(p, "customer", "nombre"), False),
+        ("factura", "Factura", lambda p: _v(p, "invoice", "numero"), False),
+        ("monto", "Monto S/", lambda p: p.monto, True),
+        ("medio", "Medio", lambda p: p.medio, False),
+        ("estado", "Estado", lambda p: p.estado, False),
+        ("registro", "Registró", lambda p: _v(p, "user", "nombre"), False)]),
+    "acciones": ("Acciones con clientes (oportunidades)", ("oportunidades.registrar", "oportunidades.ver_todas"),
+                 lambda: select(CustomerAction), CustomerAction.fecha, [
+        ("fecha", "Fecha", lambda a: a.fecha, False),
+        ("tipo", "Tipo", lambda a: a.tipo, False),
+        ("cliente", "Cliente", lambda a: _v(a, "customer", "nombre"), False),
+        ("vendedor", "Vendedor", lambda a: _v(a, "user", "nombre"), False),
+        ("oportunidad", "Oportunidad", lambda a: _v(a, "opportunity", "titulo"), False),
+        ("gasto", "Gasto S/", lambda a: a.gasto, True),
+        ("resultado", "Resultado", lambda a: a.resultado, False)]),
+    "oportunidades": ("Oportunidades", ("oportunidades.registrar", "oportunidades.ver_todas"), lambda: select(Opportunity),
+                      Opportunity.creado_ts, [
+        ("titulo", "Oportunidad", lambda o: o.titulo, False),
+        ("cliente", "Cliente", lambda o: _v(o, "customer", "nombre"), False),
+        ("vendedor", "Vendedor", lambda o: _v(o, "vendedor", "nombre"), False),
+        ("tipo", "Tipo", lambda o: o.tipo, False),
+        ("estado", "Estado", lambda o: o.estado, False),
+        ("proyeccion", "Proyección S/ mes", lambda o: o.proyeccion_mensual, True),
+        ("creada", "Creada", lambda o: o.creado_ts, False)]),
+    "cotizaciones": ("Cotizaciones", ("oportunidades.registrar", "oportunidades.ver_todas"), lambda: select(Quote), Quote.fecha, [
+        ("numero", "Número", lambda q: q.numero, False),
+        ("cliente", "Cliente", lambda q: _v(q, "customer", "nombre"), False),
+        ("vendedor", "Vendedor", lambda q: _v(q, "user", "nombre"), False),
+        ("fecha", "Fecha", lambda q: q.fecha, False),
+        ("total", "Total S/", lambda q: q.total, True),
+        ("estado", "Estado", lambda q: q.estado, False)]),
     "compras": ("Compras nacionales", ("compras.ver",), lambda: select(PurchaseRequest), PurchaseRequest.fecha_necesidad, [
         ("id", "#", lambda r: r.id, False),
         ("producto", "Producto", lambda r: r.product_code, False),
@@ -138,6 +261,21 @@ FUENTES = {
         ("horas", "Horas hasta el cierre", lambda a: round((a.cerrado_ts - a.creado_ts).total_seconds() / 3600, 1)
          if a.cerrado_ts and a.creado_ts else None, True)]),
 }
+
+
+AREA_FUENTE = {"ov": "Comercial", "ov_lineas": "Comercial", "acciones": "Comercial", "oportunidades": "Comercial",
+               "cotizaciones": "Comercial", "facturas": "Finanzas", "pagos": "Finanzas", "stock": "Almacén",
+               "picking": "Almacén", "traslados": "Almacén", "produccion": "Producción", "partes": "Producción",
+               "liquidaciones": "Producción", "asistencia": "Producción", "certificados": "Calidad",
+               "registros_calidad": "Calidad", "reempaques": "Calidad", "compras": "Compras", "importaciones": "Compras",
+               "rutas": "Distribución", "incidencias": "Distribución", "alertas": "General"}
+
+
+def sources_by_area(user):
+    out = {}
+    for k, t in sources_for(user).items():
+        out.setdefault(AREA_FUENTE.get(k, "General"), []).append((k, t))
+    return out
 
 
 def sources_for(user):
@@ -189,14 +327,95 @@ def run(user, fuente, cols=None, desde=None, hasta=None, texto="", agrupar="", l
     if agrupar and agrupar in cols:
         i = cols.index(agrupar)
         nums = [j for j, c in enumerate(cols) if defs_map[c][2] and j != i]
+        # los porcentajes se promedian (sin contar vacíos); el resto se suma
+        pct = {j: "%" in defs_map[cols[j]][0] for j in nums}
         grupos = {}
         for f in filas:
-            g = grupos.setdefault(f[i], [0] + [0.0] * len(nums))
+            g = grupos.setdefault(f[i], [0] + [[0.0, 0] for _ in nums])
             g[0] += 1
             for k, j in enumerate(nums):
-                g[k + 1] += float(f[j] or 0)
-        cab = [defs_map[agrupar][0], "Registros"] + [f"Suma de {defs_map[cols[j]][0]}" for j in nums]
-        filas = [[k, v[0]] + [round(s, 2) for s in v[1:]] for k, v in sorted(grupos.items(), key=lambda kv: -kv[1][0])]
+                if f[j] not in (None, ""):
+                    g[k + 1][0] += float(f[j])
+                    g[k + 1][1] += 1
+        cab = [defs_map[agrupar][0], "Registros"] + [("Promedio de " if pct[j] else "Suma de ") + defs_map[cols[j]][0] for j in nums]
+        filas = [[k, v[0]] + [round(s / n, 2) if pct[nums[q]] and n else (None if pct[nums[q]] else round(s, 2))
+                              for q, (s, n) in enumerate(v[1:])]
+                 for k, v in sorted(grupos.items(), key=lambda kv: -kv[1][0])]
         notas.append(f"Agrupado por {defs_map[agrupar][0]}.")
-    return {"titulo": titulo, "columnas": cab, "filas": filas, "total": len(filas), "notas": notas,
-            "desde": desde, "hasta": hasta, "cols": cols}
+    res = {"titulo": titulo, "columnas": cab, "filas": filas, "total": len(filas), "notas": notas,
+           "desde": desde, "hasta": hasta, "cols": cols, "agrupado": bool(agrupar and agrupar in cols)}
+    res["kpis"] = _kpis(res)
+    res["recomendaciones"] = _recommendations(res)
+    return res
+
+
+def _numeric_cols(r):
+    out = []
+    for j, c in enumerate(r["columnas"]):
+        vals = [f[j] for f in r["filas"] if f[j] not in (None, "")]
+        if vals and all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in vals):
+            out.append(j)
+    return out
+
+
+def _kpis(r):
+    k = [("Registros", r["total"] if not r["agrupado"] else sum(f[1] for f in r["filas"]))]
+    for j in _numeric_cols(r)[:4]:
+        if r["agrupado"] and j == 1:
+            continue
+        col = r["columnas"][j]
+        vals = [f[j] for f in r["filas"] if isinstance(f[j], (int, float))]
+        es_pct = "%" in col
+        k.append((("Promedio de " if es_pct else "Total de ") + col.replace("Suma de ", "").replace("Promedio de ", "").lower(),
+                  round(sum(vals) / len(vals), 1) if es_pct and vals else round(sum(vals), 2)))
+    return k
+
+
+def chart(r, tipo="barras", medida=None):
+    """Gráfico del informe: por grupo (si está agrupado) o por la primera columna de texto; medida = índice de columna."""
+    from . import charts
+    nums = _numeric_cols(r)
+    if not r["filas"] or not nums:
+        return None
+    j = medida if medida in nums else (nums[1] if r["agrupado"] and len(nums) > 1 else nums[0])
+    from collections import defaultdict
+    acc = defaultdict(float)
+    for f in r["filas"]:
+        acc[str(f[0])] += float(f[j] or 0)
+    items = sorted(acc.items(), key=lambda x: -x[1])[:15]
+    titulo = f"{r['columnas'][j]} por {r['columnas'][0].lower()}"
+    if tipo == "columnas":
+        return charts.columns([k for k, _ in items], [(r["columnas"][j], [v for _, v in items])], title=titulo)
+    if tipo == "lineas":
+        return charts.line([(r["columnas"][j], sorted(acc.items()))], title=titulo)
+    return charts.bars(items, title=titulo)
+
+
+def _recommendations(r):
+    """Reglas explícitas sobre el informe (sugerencias para revisión, no decisiones)."""
+    out = []
+    nums = _numeric_cols(r)
+    if not r["filas"]:
+        return ["Sin registros en el periodo: revise el filtro o que los datos se estén registrando."]
+    if nums:
+        j = nums[1] if r["agrupado"] and len(nums) > 1 else nums[0]
+        col = r["columnas"][j]
+        from collections import defaultdict
+        acc = defaultdict(float)
+        for f in r["filas"]:
+            acc[str(f[0])] += float(f[j] or 0)
+        total = sum(acc.values())
+        if total and len(acc) > 1:
+            top, v = max(acc.items(), key=lambda x: x[1])
+            low, w = min(acc.items(), key=lambda x: x[1])
+            if "%" not in col and v / total >= 0.5:
+                out.append(f"{top} concentra el {100 * v / total:.0f}% de {col.lower()}: dependencia alta.")
+            if "%" in col:
+                out.append(f"Mayor {col.lower()}: {top} ({v:g}); menor: {low} ({w:g}). Revisar la causa de la diferencia.")
+            else:
+                out.append(f"Mayor {col.lower()}: {top}; menor: {low}.")
+    vacias = [(c, sum(1 for f in r["filas"] if f[j] in (None, ""))) for j, c in enumerate(r["columnas"])]
+    vacias = [(c, n) for c, n in vacias if n and n >= max(1, len(r["filas"]) // 5)]
+    for c, n in vacias[:2]:
+        out.append(f"{n} registro(s) sin «{c}»: completar el dato mejora el análisis.")
+    return out
