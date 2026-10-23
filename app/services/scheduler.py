@@ -1,6 +1,6 @@
 """Verificaciones periódicas que generan alertas automáticas (IF §14).
 Se ejecutan con el botón 'Ejecutar verificaciones', con `python -m app.cli verificar` (para programar con cron /
-Programador de tareas) o con un hilo en segundo plano si CHECK_INTERVAL_MIN > 0."""
+Programador de tareas) o con un hilo en segundo plano cada CHECK_INTERVAL_MIN minutos (1 por defecto; 0 lo desactiva)."""
 import os
 import threading
 import time
@@ -109,10 +109,50 @@ def check_upload_freshness(ahora=None):
     return n
 
 
-def start_background(app_factory_session_commit, interval_min):
+def _lock(path):
+    """Candado de archivo para que, con varios procesos del servidor, solo uno ejecute cada ronda de verificaciones."""
+    if not path:
+        return None
+    try:
+        fh = open(path, "a+")
+    except OSError:
+        return None
+    try:
+        import fcntl
+        fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except ImportError:  # Windows
+        try:
+            import msvcrt
+            msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)
+        except OSError:
+            fh.close()
+            return False
+    except OSError:
+        fh.close()
+        return False
+    return fh
+
+
+def start_background(app_factory_session_commit, interval_min, lock_path=None):
     def loop():
         while True:
             time.sleep(interval_min * 60)
+            fh = _lock(lock_path)
+            if fh is False:  # otro proceso tiene el candado y ejecuta las verificaciones
+                continue
+            if fh:  # otro proceso ya ejecutó esta ronda
+                fh.seek(0)
+                try:
+                    ultima = float(fh.read().strip() or 0)
+                except ValueError:
+                    ultima = 0
+                if time.time() - ultima < interval_min * 60 - 5:
+                    fh.close()
+                    continue
+                fh.seek(0)
+                fh.truncate()
+                fh.write(str(time.time()))
+                fh.flush()
             try:
                 run_checks()
                 SessionLocal().commit()
@@ -120,6 +160,8 @@ def start_background(app_factory_session_commit, interval_min):
                 SessionLocal().rollback()
             finally:
                 SessionLocal.remove()
+                if fh:
+                    fh.close()
     t = threading.Thread(target=loop, daemon=True, name="verificaciones")
     t.start()
     return t

@@ -1,5 +1,12 @@
 {% extends "base.html" %}
 {% block content %}<h1>Auditoría</h1>
-<form class="row" method="get"><div><label>Entidad</label><input name="entidad" value="{{ ent }}"></div><div><label>Acción contiene</label><input name="accion" value="{{ acc }}"></div><div><button class="sec">Filtrar</button> {% if can('export.datos') %}<a class="btn sec" href="{{ url_for('main.export', entidad='auditoria') }}">Exportar</a>{% endif %}</div></form>
-<div class="tbl"><table class="small"><tr><th>#</th><th>Fecha</th><th>Usuario</th><th>Acción</th><th>Entidad</th><th>Id</th><th>Detalle</th></tr>
-{% for a in rows %}<tr><td>{{ a.id }}</td><td>{{ a.ts|d }}</td><td>{{ a.user.nombre if a.user else '—' }}</td><td>{{ a.accion }}</td><td>{{ a.entidad }}</td><td>{{ a.entidad_id }}</td><td class="mono" style="max-width:520px;word-break:break-word">{{ a.detalle|tojson|truncate(400) }}</td></tr>{% endfor %}</table></div>{% endblock %}
+<p class="small muted">Todo cambio que un usuario hace en el sistema queda registrado: las acciones de negocio (aprobaciones, cargas, decisiones) y cada alta, cambio o baja de datos con el valor anterior y el nuevo de cada campo (DATOS_ALTA, DATOS_CAMBIO, DATOS_BAJA). Las cargas masivas se trazan por sus filas y por la confirmación de la carga.</p>
+<form class="card row" method="get"><div><label>Usuario</label><select name="user_id"><option value="">(todos)</option>{% for u in usuarios %}<option value="{{ u.id }}" {{ 'selected' if f.get('user_id') == u.id|string }}>{{ u.nombre }}</option>{% endfor %}</select></div>
+<div><label>Entidad</label><select name="entidad"><option value="">(todas)</option>{% for e in entidades %}<option {{ 'selected' if ent == e }}>{{ e }}</option>{% endfor %}</select></div>
+<div><label>Id</label><input name="entidad_id" value="{{ f.get('entidad_id', '') }}" size="10"></div>
+<div><label>Acción contiene</label><input name="accion" value="{{ acc }}"></div>
+<div><label>Desde</label><input type="date" name="desde" value="{{ f.get('desde', '') }}"></div><div><label>Hasta</label><input type="date" name="hasta" value="{{ f.get('hasta', '') }}"></div>
+<div><button class="sec">Filtrar</button> {% if can('export.datos') %}<a class="btn sec" href="{{ url_for('main.export', entidad='auditoria') }}">Exportar</a>{% endif %}</div></form>
+<div class="tw"><table class="small"><tr><th>#</th><th>Fecha y hora</th><th>Usuario</th><th>Acción</th><th>Entidad</th><th>Id</th><th>Detalle</th></tr>
+{% for a in rows %}<tr><td>{{ a.id }}</td><td>{{ a.ts.strftime('%d/%m/%Y %H:%M:%S') if a.ts }}</td><td>{{ a.user.nombre if a.user else 'Sistema' }}</td><td>{{ a.accion }}</td><td>{{ a.entidad }}</td><td>{{ a.entidad_id }}</td>
+<td style="max-width:560px;min-width:220px;overflow-wrap:anywhere">{% if a.accion == 'DATOS_CAMBIO' and a.detalle.cambios %}{% for k, v in a.detalle.cambios.items() %}<div><b>{{ k }}</b>: <span class="muted">{{ v[0] if v[0] is not none else '—' }}</span> → {{ v[1] if v[1] is not none else '—' }}</div>{% endfor %}{% else %}<span class="mono">{{ a.detalle|tojson|truncate(400) }}</span>{% endif %}</td></tr>{% endfor %}</table></div>{% endblock %}

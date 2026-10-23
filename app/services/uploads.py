@@ -492,7 +492,10 @@ def _v_stock(b):
         if not _txt(d.get("almacen")):
             e.append("Almacén vacío")
         elif _txt(d.get("almacen")) not in whs:
-            w.append(f"Almacén {_txt(d.get('almacen'))} no configurado: se creará con uso 'OTRO' (no reservable)")
+            w.append(f"Almacén {_txt(d.get('almacen'))} no configurado: se registra deshabilitado y la fila no se carga "
+                     "(habilítelo en Configuración → Almacenes y vuelva a cargar)")
+        elif not whs_obj[_txt(d.get("almacen"))].habilitado:
+            w.append(f"Almacén {_txt(d.get('almacen'))} no habilitado en Configuración: la fila no se carga")
         elif whs_obj[_txt(d.get("almacen"))].uso == "NO_UTILIZADO":
             w.append(f"Almacén {_txt(d.get('almacen'))} indicado como no utilizado (Q5): se registra sin reservar")
         elif whs_obj[_txt(d.get("almacen"))].uso == "TRANSITO_PRODUCCION":
@@ -806,10 +809,16 @@ def confirm(b, user, opciones=None):
         raise BusinessError("Corrija o excluya las filas con error antes de autorizar la carga.")
     opciones = opciones or {}
     b.opciones = opciones
-    result = {"STOCK": _c_stock, "BOM": _c_bom, "OV": _c_ov, "LIQUIDACION": _c_liq, "PRODUCTOS": _c_prod,
-              "PRECIOS": _c_precios, "PRECIOS_GRANEL": _c_precios, "CLIENTES_CONDICIONES": _c_condiciones,
-              "COSTOS": _c_costos, "MERCADO": _c_mercado, "CLIENTES": _c_clientes,
-              "SALIDAS": _c_salidas, "DESPACHOS": _c_despachos}[b.tipo](b, user, opciones)
+    # la carga masiva queda trazada por sus filas (UploadRow) y por CARGA_CONFIRMADA; no se audita registro por registro
+    db().info["carga_masiva"] = b.id
+    try:
+        result = {"STOCK": _c_stock, "BOM": _c_bom, "OV": _c_ov, "LIQUIDACION": _c_liq, "PRODUCTOS": _c_prod,
+                  "PRECIOS": _c_precios, "PRECIOS_GRANEL": _c_precios, "CLIENTES_CONDICIONES": _c_condiciones,
+                  "COSTOS": _c_costos, "MERCADO": _c_mercado, "CLIENTES": _c_clientes,
+                  "SALIDAS": _c_salidas, "DESPACHOS": _c_despachos}[b.tipo](b, user, opciones)
+        db().flush()
+    finally:
+        db().info.pop("carga_masiva", None)
     b.estado = "CONFIRMADO"
     b.confirmado_ts = now()
     b.confirmado_por = user.id
@@ -850,8 +859,9 @@ def _ensure_wh(code):
         from .core import wh_in
         virtual = wh_in(code, VIRTUALES)
         w = Warehouse(code=code, nombre=code, uso="VIRTUAL" if virtual else "OTRO", prioridad=95 if virtual else 99,
-                      reservable=False, observacion="Almacén virtual (Q5), creado desde carga SAP." if virtual
-                      else "Creado desde carga SAP; uso pendiente de definir.")
+                      reservable=False, habilitado=False,
+                      observacion="Almacén virtual (Q5), creado desde carga SAP; no habilitado." if virtual
+                      else "Creado desde carga SAP; no habilitado: habilítelo en Configuración para cargar su stock.")
         s.add(w)
         s.flush()
     return w
@@ -875,6 +885,12 @@ def _c_stock(b, user, opciones):
     file_whs = {k[2] for k in sap}
     for code in file_whs:
         _ensure_wh(code)
+    # ronda 23-oct-2026: solo se cargan los almacenes habilitados en Configuración
+    habilitados = {w.code for w in s.execute(select(Warehouse).where(Warehouse.code.in_(file_whs))).scalars() if w.habilitado}
+    omitidos = sorted(file_whs - habilitados)
+    sap = defaultdict(float, {k: v for k, v in sap.items() if k[2] in habilitados})
+    meta = {k: v for k, v in meta.items() if k[2] in habilitados}
+    file_whs = habilitados
     for k, d in meta.items():
         _ensure_product(k[0], _txt(d.get("descripcion")))
     segs = defaultdict(list)
@@ -954,6 +970,8 @@ def _c_stock(b, user, opciones):
         if o.estado not in ORDEN_ESTADOS_CERRADOS:
             evaluate_order(o, user, "REEVALUACION")
     reev = reevaluate_pending(user) if param("reevaluar_tras_carga", True) else 0
+    if omitidos:
+        advertencias.insert(0, "Almacenes no habilitados en Configuración (no se cargaron): " + ", ".join(omitidos))
     return {"lotes_nuevos": nuevos, "lotes_actualizados": actualizados, "puestos_en_cero": puestos_cero,
             "ov_afectadas": len(afectadas), "ov_reevaluadas": reev, "advertencias": advertencias[:50],
             "base_inicial": primera, "diferencias_sap": diferencias}
@@ -1018,7 +1036,7 @@ def _c_ov(b, user, opciones):
         if c is None:
             c = Customer(ruc=_txt(d0["ruc"]), nombre=_txt(d0["cliente"]), grupo=_txt(d0.get("grupo")),
                          direccion=_txt(d0.get("direccion")), distrito=_txt(d0.get("distrito")),
-                         provincia=_txt(d0.get("provincia")))
+                         provincia=_txt(d0.get("provincia")), condicion_estado="APROBADA")  # cliente de SAP: condición aprobada
             s.add(c)
             s.flush()
         cons = {}
@@ -1207,7 +1225,7 @@ def _c_clientes(b, user, opciones):
         ruc = _txt(d.get("ruc"))
         c = s.execute(select(Customer).where(Customer.ruc == ruc)).scalars().first()
         if c is None:
-            c = Customer(ruc=ruc, nombre=_txt(d.get("nombre")))
+            c = Customer(ruc=ruc, nombre=_txt(d.get("nombre")), condicion_estado="APROBADA")  # cliente de SAP: condición aprobada
             s.add(c)
             nuevos += 1
         else:

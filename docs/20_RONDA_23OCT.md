@@ -52,7 +52,7 @@ Rol nuevo **Coordinación de Finanzas** (usuario demo `coord.finanzas`).
 
 - **Parte en línea**: iniciar (línea, máquina, turno, producto, EAN escaneado, lote y vencimiento de MP, peso por saco × sacos + saldo, presentación, unidades por paquete); pausar con causa de la lista y foto opcional; reanudar; finalizar con operarios, pallets por destino, unidades sueltas, defectos por causa y colaboradores (inicio, fin, refrigerio, kg).
 - **Cálculos**: total de unidades, % rendimiento, desmedro, peso promedio, desviación de peso y kg entregados de más, horas, horas efectivas, horas-hombre, velocidad (und/min o kg/h), desviación de selección y **OEE** con el modelo de Producción (TD, TP, CP, PR, PB; disponibilidad × rendimiento × calidad; calificación y plan de acción).
-- **EAN**: se compara con la tabla GS1 ↔ SAP (Configuración de Producción → cargar Excel). `ean_validacion`: ALERTAR o BLOQUEAR.
+- **EAN**: se compara con la tabla GS1 ↔ SAP (la cargan el Jefe Comercial y el Gerente Comercial en Configuración comercial; Producción la consulta). `ean_validacion`: ALERTAR o BLOQUEAR.
 - **Estados** (lista cerrada): programado, en proceso, pausado, pendiente, liquidado, liquidación externa pendiente / liquidada, reproceso, reenvasado, bloqueado, anulado. Calidad bloquea y libera (fumigación o reproceso).
 - **Liquidación**: horas y operarios obligatorios en la manual; se bloquea si las horas pasan de `tope_horas_of` (150) o el rendimiento está fuera de `tolerancia_rendimiento` (por línea y presentación; mínimos tomados del rendimiento que solo el 10 % de los partes ene–oct no alcanza; máximo 100.5 %). La corrección con motivo la libera.
 - **Alcance**: cada asistente ve sus líneas (`produccion_alcance_usuarios`); el asistente 1 tiene el perfil adicional del Jefe y registra asistencia. Los cambios al programa de un asistente sin ese perfil quedan pendientes de validación. Los asistentes modifican la receta (aviso informativo al Jefe); solo el Jefe cambia el código de un componente, con motivo.
@@ -76,8 +76,27 @@ automáticas. Al agrupar, los porcentajes se promedian y el resto se suma. PDF y
 
 ## 7. Pendiente de datos o confirmación
 
-1. Velocidad nominal de las líneas de selección (kg/h) y por presentación en envasado (sin ella no se calcula el OEE de esa línea).
+1. Velocidad nominal de las líneas de selección (kg/h) y por presentación en envasado: la registra el Jefe de Producción en su panel (sin ella no se calcula el OEE de esa línea).
 2. Códigos SAP de los almacenes propios de Producción.
-3. Tabla GS1 ↔ SAP, fotos del catálogo, objetivos de venta, reglas de incentivo, tasas por cliente: se cargan en el sistema.
+3. Tabla GS1 ↔ SAP, fotos del catálogo, objetivos de venta, reglas de incentivo, tasas por cliente: se cargan en Configuración comercial (Jefe y Gerente Comercial).
 4. Encabezados de la exportación de despachos de SAP (la carga acepta Excel; la conexión directa con SAP no está implementada).
-5. Usuarios reales en `produccion_alcance_usuarios` (hoy con los usuarios demo).
+5. Usuarios reales en `produccion_alcance_usuarios` (hoy con las cuentas de ejemplo).
+
+## 8. Respuestas del 23-oct (2)
+
+| Decisión | Dónde |
+|---|---|
+| Almacén: solo se toma información de los almacenes **habilitados** en Configuración (SAP y módulo). La carga de stock omite los no habilitados y lo advierte; un almacén nuevo que llega de SAP se crea **sin habilitar**; los lotes de un almacén deshabilitado no se reservan | `Warehouse.habilitado`, `stock.enabled_warehouses`, `uploads._c_stock`, Configuración → Almacenes |
+| Los clientes existentes y los que llegan desde SAP quedan con la condición de pago **aprobada** (los creados en el módulo, sin solicitar) | `uploads` (clientes y OV de SAP), `customers.save_customer` |
+| Tolerancia de rendimiento: los valores propuestos quedan por defecto (DEFINIDO) y el Jefe de Producción los cambia en su panel con un formulario por línea y presentación | Configuración de Producción → Tolerancia de rendimiento |
+| **Trazabilidad de todo cambio**: cada alta, cambio o baja que hace un usuario queda en la auditoría con el valor anterior y el nuevo de cada campo (`DATOS_ALTA`, `DATOS_CAMBIO`, `DATOS_BAJA`), además de las acciones de negocio. Las contraseñas solo figuran como «modificada». Las cargas masivas se auditan por lote (`CARGA_CONFIRMADA`) para no duplicar miles de filas. La bitácora filtra por usuario, entidad, Id, acción y fechas | `services/audit_trail.py`, Auditoría |
+| Sin «Demo» en los usuarios: cada cuenta lleva el nombre del puesto; `python -m app.cli init` corrige los nombres de las cuentas de ejemplo ya creadas | `seed.DEMO_USERS`, `seed._rename_demo_users` |
+| **Una cuenta por persona** del organigrama de Logística, con nombres de puesto (no se usaron los nombres reales): Jefe y Coordinador de Logística, Coordinador de Almacenes, Supervisor 1560 (Líder Operativo y Líder turno tarde; Auxiliar de Almacén 1–4; Montacarguista 1 y 2 turno tarde), Supervisor 1524 / Externos (Auxiliar 1524, Montacarguista 1524), Coordinador de Distribución (Chofer 1–5, Auxiliar de Despacho 1–5, Asistente de Distribución). En una base de demostración existente, `python -m app.cli demo` agrega las cuentas que falten | `seed.DEMO_USERS`, `seed.add_missing_demo_users` |
+| Sistemas crea usuarios de cualquier perfil (incluido Coordinación de Finanzas) y edita nombre, perfil, almacén, correo, estado y contraseña; la contraseña asignada se cambia en el primer ingreso | Usuarios y permisos |
+| Verificaciones automáticas **cada minuto** por defecto (`CHECK_INTERVAL_MIN=1`; 0 las desactiva). Con varios procesos del servidor, un candado de archivo hace que solo uno ejecute cada ronda | `app/__init__.py`, `scheduler.start_background` |
+| Tabla GS1 ↔ SAP (Excel o fila por fila), fotos del catálogo, objetivos, incentivos y tasas: en **Configuración comercial**; solo los modifican el Jefe Comercial y el Gerente Comercial (`comercial.configurar`, `catalogo.fotos` exclusivos). Sistemas y Gerencia General dejan de subir fotos (en bases existentes se retira una sola vez y queda en la auditoría) | `catalogs.PERMISOS_RETIRADOS`, `seed._retire_permissions` |
+| Velocidad nominal de selección (kg/h) y de envasado por máquina y presentación (und/min): formulario en **Configuración de Producción** (Jefe de Producción y quien tenga su perfil adicional) | Configuración de Producción → Velocidad nominal |
+
+Nota: el organigrama muestra un solo Coordinador de Almacenes sobre ambos supervisores; el sistema mantiene además el perfil
+«Coordinación de Almacén 1524» (cuenta `coord.almacen.mp`) definido en rondas anteriores. Si esa persona no existe, Sistemas
+puede desactivar la cuenta en Usuarios y permisos.

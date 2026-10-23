@@ -129,11 +129,11 @@ def write_ovs(path, today):
                "Descripción de Producto", "Solicitado", "Entregado", "Unidad de medida", "Presentación", "Peso",
                "Comentarios", "P. Unitario SOLES"])
     rows = [
-        (9001, "SAP-9001", "Abierto", today, today + timedelta(days=3), "VENDEDOR DEMO UNO", "20000000001",
+        (9001, "SAP-9001", "Abierto", today, today + timedelta(days=3), "Ejecutivo de Ventas 1", "20000000001",
          "CLIENTE DEMO MAYORISTA S.A.C.", "MAYORISTA", "AV. DEMO 100", "ATE", "LIMA", "PT-905", 400, 0, "UNIDAD", 40, 0.25, "", 3.9),
-        (9001, "SAP-9001", "Abierto", today, today + timedelta(days=3), "VENDEDOR DEMO UNO", "20000000001",
+        (9001, "SAP-9001", "Abierto", today, today + timedelta(days=3), "Ejecutivo de Ventas 1", "20000000001",
          "CLIENTE DEMO MAYORISTA S.A.C.", "MAYORISTA", "AV. DEMO 100", "ATE", "LIMA", "PT-902", 10, 0, "UNIDAD", 1, 5, "", 31.5),
-        (9002, "SAP-9002", "Cerrado", today - timedelta(days=20), today - timedelta(days=10), "VENDEDOR DEMO UNO",
+        (9002, "SAP-9002", "Cerrado", today - timedelta(days=20), today - timedelta(days=10), "Ejecutivo de Ventas 1",
          "20000000002", "CLIENTE DEMO RESTAURANTES S.A.C.", "HOTELES - RESTAURANTES", "JR. DEMO 200", "SURCO", "LIMA",
          "PT-901", 24, 24, "UNIDAD", 24, 0.5, "", 4.5),
     ]
@@ -151,7 +151,7 @@ def write_liquidation(path, today, numero="LQ-DEMO-1", producto="PT-903", cantid
                "Descripción de producto", "Cantidad Planificada", "Cantidad Completada", "Unidad de medida", "Valorizado",
                "Estado", "Realizado por", "Comentarios", "Lote", "Fecha de admisión", "Fecha de vencimiento"])
     ws.append([numero, "Estándar", "ALMACEN CENTRAL", today, producto, _desc(producto), cantidad, cantidad, "UNIDAD", 0,
-               "Cerrado", "Usuario Demo (Producción)", f"Orden fabricación: {producto}", lote, today, today + timedelta(days=365)])
+               "Cerrado", "Asistente de Producción 1", f"Orden fabricación: {producto}", lote, today, today + timedelta(days=365)])
     wb.save(path)
 
 
@@ -211,15 +211,15 @@ def write_customer_conditions(path):
     ws.title = "Hoja1"
     enc = ["EJECUTIVO", "CANAL", "CLIENTE", "SOLICITUD", "LOTE", "VIDA UTIL", "Columna1"]
     ws.append(enc)
-    ws.append(["VENDEDOR DEMO UNO", "INSTITUCIONAL", "CLIENTE DEMO INSTITUCIONAL S.A.C.", "PRODUCTO TERMINADO", "1 LOTE POR SKU",
+    ws.append(["Ejecutivo de Ventas 1", "INSTITUCIONAL", "CLIENTE DEMO INSTITUCIONAL S.A.C.", "PRODUCTO TERMINADO", "1 LOTE POR SKU",
                "6 MESES / 3 MESES HARINAS", "PAE INCLUMPLIMENTO DE FECHA DE ENTREGA - PENALIDAD DE LA INSTIUCION TRANFERIDA A NOSOTROS"])
-    ws.append(["VENDEDOR DEMO DOS", "Catering", "CLIENTE DEMO CATERING E.I.R.L.", "PRODUCTO TERMINADO", "1 LOTE POR SKU",
+    ws.append(["Ejecutivo de Ventas 2", "Catering", "CLIENTE DEMO CATERING E.I.R.L.", "PRODUCTO TERMINADO", "1 LOTE POR SKU",
                "6 MESES", "INCUMPLIMIENTO VENTANA HORARIA - NO SE RECIBE"])
     ws.append(enc)
-    ws.append(["VENDEDOR DEMO DOS", "Restaurantes", "CLIENTE DEMO RESTAURANTES S.A.C.", "PRODUCTO TERMINADO", "2 LOTES POR SKU",
+    ws.append(["Ejecutivo de Ventas 2", "Restaurantes", "CLIENTE DEMO RESTAURANTES S.A.C.", "PRODUCTO TERMINADO", "2 LOTES POR SKU",
                "4 MESES", "FILL RATE <95% - Se Facturara lo no atendido y el margen perdido y rebate\n"
                "INCUMPLIMIENTO VENTANA HORARIA - 100% Gastos logisticos por demoras o incumplimiento, no recepción"])
-    ws.append(["VENDEDOR DEMO UNO", "AUTOSERVICIO", "CLIENTE DEMO NUEVO S.A.C.", "MATERIA PRIMA", "1 LOTE POR SKU", "6 MESES",
+    ws.append(["Ejecutivo de Ventas 1", "AUTOSERVICIO", "CLIENTE DEMO NUEVO S.A.C.", "MATERIA PRIMA", "1 LOTE POR SKU", "6 MESES",
                "INCUMPLIMIENTO VENTANA HORARIA - NO SE RECIBE"])
     wb.save(path)
 

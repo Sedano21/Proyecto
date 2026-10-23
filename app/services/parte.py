@@ -482,12 +482,45 @@ def productivity(user, desde=None, hasta=None):
 
 
 # ------------------------------------------------------------------ GS1
+def _gs1_perm(user):
+    if not has_perm(user, "comercial.configurar"):
+        raise BusinessError("La tabla GS1 ↔ SAP la cargan y modifican el Jefe Comercial y el Gerente Comercial.")
+
+
+def save_gtin(user, datos):
+    """Alta o actualización de un GTIN desde Configuración comercial."""
+    _gs1_perm(user)
+    g = str(datos.get("gtin") or "").strip()
+    code = str(datos.get("product_code") or "").strip().upper()
+    if not g.isdigit() or len(g) not in (8, 12, 13, 14):
+        raise BusinessError("GTIN inválido: debe tener 8, 12, 13 o 14 dígitos.")
+    if not code:
+        raise BusinessError("Indique el código SAP del producto.")
+    x = db().get(ProductGTIN, g) or ProductGTIN(gtin=g)
+    x.product_code, x.tipo = code, f"EAN{len(g)}" if len(g) in (13, 14) else f"GTIN{len(g)}"
+    for f in ("marca", "descripcion", "contenido", "unidad"):
+        setattr(x, f, str(datos.get(f) or "").strip()[:250])
+    db().add(x)
+    db().flush()
+    audit(user, "GS1_GUARDADO", "ProductGTIN", g, {"codigo": code})
+    return x
+
+
+def delete_gtin(user, gtin):
+    _gs1_perm(user)
+    x = db().get(ProductGTIN, str(gtin or "").strip())
+    if x is None:
+        raise BusinessError("GTIN no encontrado.")
+    audit(user, "GS1_RETIRADO", "ProductGTIN", x.gtin, {"codigo": x.product_code})
+    db().delete(x)
+    db().flush()
+
+
 def import_gtins(user, path):
     """Carga la tabla GS1 ↔ SAP desde Excel: columnas GTIN (o EAN), tipo, código SAP, marca, descripción, envase,
     contenido, unidad. Reemplaza las filas con el mismo GTIN."""
     from openpyxl import load_workbook
-    if not has_perm(user, "produccion.configurar"):
-        raise BusinessError("La tabla GS1 la carga el Jefe de Producción o Sistemas.")
+    _gs1_perm(user)
     ws = load_workbook(path, data_only=True, read_only=True).active
     filas = list(ws.iter_rows(values_only=True))
     alias = {"gtin": ("gtin", "ean", "codigo gtin", "código gtin", "gtin13", "gtin14", "ean13", "ean14", "codigo de barras",

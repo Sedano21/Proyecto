@@ -119,6 +119,8 @@ class Warehouse(Base):
     uso: Mapped[str] = mapped_column(String(20), default="OTRO")
     prioridad: Mapped[int] = mapped_column(Integer, default=99)
     reservable: Mapped[bool] = mapped_column(Boolean, default=False)
+    # ronda 23-oct-2026: solo los almacenes habilitados en Configuración se cargan desde SAP y se usan en el módulo
+    habilitado: Mapped[bool] = mapped_column(Boolean, default=True)
     fuente: Mapped[str] = mapped_column(Text, default="")
     observacion: Mapped[str] = mapped_column(Text, default="")
 

@@ -7,9 +7,11 @@ from flask import abort, current_app, g, render_template, request, url_for
 from sqlalchemy import select
 
 from ..db import db
-from ..models import Customer, IncentiveRule, MarginInvestment, Opportunity, Product, Quote, SalesTarget, User
+from ..models import (Customer, IncentiveRule, MarginInvestment, Opportunity, Product, ProductGTIN, Quote, SalesTarget,
+                      User)
 from ..services import margin as msvc
 from ..services import opportunities as opsvc
+from ..services import parte as ptsvc
 from ..services.core import BusinessError, param
 from .comercial import bp
 from .common import act, f_date, perm_required
@@ -108,6 +110,23 @@ def commercial_config():
         if acc == "incentivo":
             r = db().get(IncentiveRule, int(f["id"])) if f.get("id") else None
             return act(lambda: msvc.save_rule(g.user, f, r), "Regla de incentivo guardada.", back + "#incentivos")
+        if acc == "gs1":
+            def _gs1():
+                import os
+                arch = request.files.get("archivo")
+                if not arch or not arch.filename.lower().endswith((".xlsx", ".xlsm")):
+                    raise BusinessError("Suba la tabla GS1 en Excel (.xlsx).")
+                up = current_app.config["UPLOAD_DIR"]
+                os.makedirs(up, exist_ok=True)
+                path = os.path.join(up, f"gs1_{os.urandom(4).hex()}.xlsx")
+                arch.save(path)
+                return ptsvc.import_gtins(g.user, path)
+            return act(_gs1, lambda r: f"{r[0]} código(s) GS1 cargados." + (f" Errores: {' | '.join(r[1][:5])}" if r[1] else ""),
+                       back + "#gs1")
+        if acc == "gtin":
+            return act(lambda: ptsvc.save_gtin(g.user, f), "GTIN guardado.", back + "#gs1")
+        if acc == "gtin_baja":
+            return act(lambda: ptsvc.delete_gtin(g.user, f.get("gtin")), "GTIN retirado.", back + "#gs1")
         abort(400)
     cfg = msvc.config()
     clientes = list(db().execute(select(Customer).order_by(Customer.nombre)).scalars())
@@ -121,6 +140,7 @@ def commercial_config():
                                                                                     SalesTarget.alcance)).scalars()),
                            reglas=list(db().execute(select(IncentiveRule).order_by(IncentiveRule.id)).scalars()),
                            usuarios={str(u.id): u.nombre for u in _vendedores()},
+                           gtins=list(db().execute(select(ProductGTIN).order_by(ProductGTIN.product_code).limit(1000)).scalars()),
                            editable="comercial.configurar" in g.perms)
 
 

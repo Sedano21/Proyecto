@@ -63,8 +63,16 @@ def free_qty(lot):
     return max(base_qty(lot) - reserved_qty(lot) - held_qty(lot), 0.0)
 
 
+def enabled_warehouses():
+    """Códigos de los almacenes habilitados en Configuración (los demás no se cargan ni se usan)."""
+    return [w for w in db().execute(select(Warehouse.code).where(Warehouse.habilitado.is_(True))).scalars()]
+
+
 def lot_usable(lot, fecha_compromiso=None, customer=None):
     """(bool, motivo). Condiciones de reserva (IF §6.3, §22)."""
+    w = db().get(Warehouse, lot.warehouse_code) if lot.warehouse_code else None
+    if w is not None and not w.habilitado:
+        return False, f"Almacén {lot.warehouse_code} no habilitado en Configuración"
     if lot.estado != "DISPONIBLE":
         return False, f"Estado {ESTADOS_LABEL.get(lot.estado, lot.estado)}"
     if not lot.verificado:
@@ -95,12 +103,13 @@ def principal_warehouses(product):
     uso = (param("uso_almacen_por_tipo", {}) or {}).get(product_kind(product))
     if not uso:
         return []
-    return list(db().execute(select(Warehouse).where(Warehouse.uso == uso, Warehouse.reservable.is_(True))
-                             .order_by(Warehouse.prioridad)).scalars())
+    return list(db().execute(select(Warehouse).where(Warehouse.uso == uso, Warehouse.reservable.is_(True),
+                                                     Warehouse.habilitado.is_(True)).order_by(Warehouse.prioridad)).scalars())
 
 
 def alternative_warehouses():
-    return list(db().execute(select(Warehouse).where(Warehouse.uso == "ALTERNATIVO").order_by(Warehouse.prioridad)).scalars())
+    return list(db().execute(select(Warehouse).where(Warehouse.uso == "ALTERNATIVO", Warehouse.habilitado.is_(True))
+                             .order_by(Warehouse.prioridad)).scalars())
 
 
 def lots_of(product_code, warehouse_codes=None):

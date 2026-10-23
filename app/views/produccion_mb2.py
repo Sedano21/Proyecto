@@ -2,7 +2,6 @@
 Calidad, tablero OEE, Control de producción (formato de Producción), asistencia, productividad, receta y configuración.
 Comparten el blueprint de Producción."""
 import json
-import os
 from datetime import date, timedelta
 
 from flask import abort, current_app, g, render_template, request, url_for
@@ -148,10 +147,67 @@ def bom_edit():
                "Receta modificada.", url_for("prod.bom", producto=request.form.get("producto", "")))
 
 
-PARAMS_PRODUCCION = ["velocidad_nominal", "oee_calificacion", "causas_parada", "causas_paro_planificado", "causas_defecto",
-                     "turnos_produccion", "tolerancia_rendimiento", "tope_horas_of", "dias_produccion_por_tipo",
+PARAMS_PRODUCCION = ["oee_calificacion", "causas_parada", "causas_paro_planificado", "causas_defecto",
+                     "turnos_produccion", "tope_horas_of", "dias_produccion_por_tipo",
                      "produccion_alcance_usuarios", "almacenes_produccion", "ean_validacion", "asistencia_estados",
                      "umbral_merma_pct"]
+
+
+def _num(v, campo):
+    v = (v or "").replace(",", ".").strip()
+    if not v:
+        return None
+    try:
+        return float(v)
+    except ValueError:
+        raise BusinessError(f"{campo}: «{v}» no es un número.")
+
+
+def _save_speeds(user, f):
+    """Velocidad nominal por máquina y, opcionalmente, por presentación (clave «MÁQUINA|kg»)."""
+    out = {}
+    for maq, pres, val in zip(f.getlist("maquina"), f.getlist("presentacion"), f.getlist("valor")):
+        maq = (maq or "").strip().upper()
+        v = _num(val, f"Velocidad de {maq or 'la fila'}")
+        if not maq and v is None:
+            continue
+        if not maq:
+            raise BusinessError("Indique la máquina o línea de cada velocidad.")
+        if v is None:
+            continue  # valor vacío = se retira la fila
+        if v <= 0:
+            raise BusinessError(f"{maq}: la velocidad debe ser mayor que cero.")
+        pk = _num(pres, f"Presentación de {maq}")
+        out[f"{maq}|{pk:g}" if pk else maq] = v
+    return set_param("velocidad_nominal", out, user)
+
+
+def _save_tolerances(user, f):
+    reglas = []
+    for lin, pres, mn, mx in zip(f.getlist("linea"), f.getlist("presentacion"), f.getlist("min_pct"), f.getlist("max_pct")):
+        lin = (lin or "").strip().upper()
+        mn, mx = _num(mn, f"Mínimo de {lin}"), _num(mx, f"Máximo de {lin}")
+        if not lin:
+            if mn is not None or mx is not None:
+                raise BusinessError("Indique la línea de cada tolerancia («*» = todas, «R*» = R1, R2 y R3).")
+            continue
+        if mn is None and mx is None:
+            continue
+        if mn is not None and mx is not None and mn > mx:
+            raise BusinessError(f"{lin}: el mínimo no puede ser mayor que el máximo.")
+        reglas.append({"linea": lin, "presentacion_kg": _num(pres, f"Presentación de {lin}"), "min_pct": mn, "max_pct": mx})
+    return set_param("tolerancia_rendimiento", reglas, user)
+
+
+def _speed_rows():
+    from .. import catalogs as C
+    seleccion = {c for c, *_ in C.PRODUCTION_LINES if ptsvc.tipo_linea(c) == "SELECCION"}
+    rows = []
+    for k, v in sorted((param("velocidad_nominal", {}) or {}).items()):
+        maq, _, pres = k.partition("|")
+        rows.append({"maquina": maq, "presentacion": pres, "valor": v,
+                     "um": "kg/h" if maq in seleccion else "und/min"})
+    return rows, sorted(seleccion)
 
 
 @bp.route("/configuracion", methods=["GET", "POST"])
@@ -161,22 +217,19 @@ def prod_config():
     back = url_for("prod.prod_config")
     if request.method == "POST":
         f = request.form
-        if f.get("accion") == "gs1":
-            def _gs1():
-                arch = request.files.get("archivo")
-                if not arch or not arch.filename.lower().endswith((".xlsx", ".xlsm")):
-                    raise BusinessError("Suba la tabla GS1 en Excel (.xlsx).")
-                up = current_app.config["UPLOAD_DIR"]
-                os.makedirs(up, exist_ok=True)
-                path = os.path.join(up, f"gs1_{os.urandom(4).hex()}.xlsx")
-                arch.save(path)
-                return ptsvc.import_gtins(g.user, path)
-            return act(_gs1, lambda r: f"{r[0]} código(s) GS1 cargados." + (f" Errores: {' | '.join(r[1][:5])}" if r[1] else ""), back + "#gs1")
+        if f.get("accion") == "velocidades":
+            return act(lambda: _save_speeds(g.user, f), "Velocidades nominales guardadas.", back + "#velocidad_nominal")
+        if f.get("accion") == "tolerancias":
+            return act(lambda: _save_tolerances(g.user, f), "Tolerancias guardadas.", back + "#tolerancia_rendimiento")
         key = f.get("key")
         if key not in PARAMS_PRODUCCION:
             abort(400)
         p = db().get(Param, key) or abort(404)
         return act(lambda: set_param(key, coerce_param(p.tipo, f.get("valor", "")), g.user), "Parámetro guardado.", back + f"#{key}")
     params = [db().get(Param, k) for k in PARAMS_PRODUCCION]
-    return render_template("prod_config.html", params=[p for p in params if p], json=json,
+    from ..catalogs import PRODUCTION_LINES
+    vel, seleccion = _speed_rows()
+    return render_template("prod_config.html", params=[p for p in params if p], json=json, velocidades=vel, seleccion=seleccion,
+                           tolerancias=param("tolerancia_rendimiento", []) or [], lineas=PRODUCTION_LINES,
+                           pv=db().get(Param, "velocidad_nominal"), pt=db().get(Param, "tolerancia_rendimiento"),
                            gtins=list(db().execute(select(ProductGTIN).order_by(ProductGTIN.product_code).limit(500)).scalars()))

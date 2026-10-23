@@ -37,11 +37,14 @@ def create_app(config=None):
 
     from .views import register_views
     register_views(app)
+    from .services.audit_trail import install as install_audit_trail
+    install_audit_trail()  # trazabilidad de todo cambio hecho por un usuario (ronda 23-oct-2026)
 
-    interval = int(os.environ.get("CHECK_INTERVAL_MIN", "0") or 0)
+    # verificaciones automáticas cada minuto por defecto (ronda 23-oct-2026); CHECK_INTERVAL_MIN=0 las desactiva
+    interval = int(os.environ.get("CHECK_INTERVAL_MIN", "1") or 0)
     if interval > 0 and not app.config.get("TESTING"):
         from .services.scheduler import start_background
-        start_background(None, interval)
+        start_background(None, interval, os.path.join(app.instance_path, "verificaciones.lock"))
     return app
 
 

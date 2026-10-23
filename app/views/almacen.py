@@ -27,7 +27,8 @@ def stock():
     q = (request.args.get("q") or "").strip().upper()
     wh = request.args.get("almacen") or ""
     est = request.args.get("estado") or ""
-    stmt = select(StockLot).where(StockLot.cantidad > 0)
+    from ..services.stock import enabled_warehouses
+    stmt = select(StockLot).where(StockLot.cantidad > 0, StockLot.warehouse_code.in_(enabled_warehouses()))
     if q:
         stmt = stmt.join(Product).where((StockLot.product_code.like(f"%{q}%")) | (Product.descripcion.like(f"%{q}%")))
     if wh:
@@ -37,7 +38,7 @@ def stock():
     lots = list(db().execute(stmt.order_by(StockLot.product_code, StockLot.fecha_venc).limit(800)).scalars())
     codes = sorted({l.product_code for l in lots})
     resumen = {c: product_stock_summary(c) for c in codes[:300]}
-    whs = list(db().execute(select(Warehouse).order_by(Warehouse.prioridad, Warehouse.code)).scalars())
+    whs = list(db().execute(select(Warehouse).where(Warehouse.habilitado.is_(True)).order_by(Warehouse.prioridad, Warehouse.code)).scalars())
     productos = list(db().execute(select(Product).where(Product.code.in_(select(StockLot.product_code).where(StockLot.cantidad > 0)))
                                   .order_by(Product.code)).scalars())
     return render_template("stock.html", lots=lots, resumen=resumen, q=q, wh=wh, est=est, whs=whs, estados=ESTADOS_FISICOS,

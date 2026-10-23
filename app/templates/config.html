@@ -13,13 +13,14 @@
 <td>{{ b(p.estado) }}</td><td class="small">{{ p.descripcion }}<br><span class="muted">Fuente: {{ p.fuente }}</span></td></tr>{% endfor %}</table></div>
 
 <h2 id="almacenes">Almacenes</h2>
-<p class="small muted">Uso: PT (producto terminado, 1560), MP_INSUMOS (1524), ALTERNATIVO (Ext-001/005/010/014: solo se muestran como opción), OTRO (no reservable).</p>
-<div class="ftable"><div class="frow fh"><div class="fcell">Código SAP</div><div class="fcell">Nombre</div><div class="fcell">Uso</div><div class="fcell">Prioridad</div><div class="fcell">Reservable</div><div class="fcell">Observación</div><div class="fcell"></div></div>
+<p class="small muted"><b>Habilitado:</b> solo los almacenes habilitados se cargan desde SAP (las filas de los demás se omiten con aviso) y se usan en el módulo (stock, reservas, picking). Un almacén nuevo que llega en una carga se registra deshabilitado. Uso: PT (producto terminado, 1560), MP_INSUMOS (1524), ALTERNATIVO (Ext-001/005/010/014: solo se muestran como opción), OTRO (no reservable).</p>
+<div class="ftable"><div class="frow fh"><div class="fcell">Código SAP</div><div class="fcell">Nombre</div><div class="fcell">Uso</div><div class="fcell">Prioridad</div><div class="fcell">Reservable</div><div class="fcell">Habilitado</div><div class="fcell">Observación</div><div class="fcell"></div></div>
 {% for w in warehouses %}<form class="frow" method="post" action="{{ url_for('main.warehouse_edit') }}">{{ csrf() }}<input type="hidden" name="code" value="{{ w.code }}">
 <div class="fcell mono">{{ w.code }}</div><div class="fcell"><input name="nombre" value="{{ w.nombre }}" size="12"></div>
 <div class="fcell"><select name="uso">{% for u in ['PT','MP_INSUMOS','ALTERNATIVO','OTRO'] %}<option {{ 'selected' if w.uso==u }}>{{ u }}</option>{% endfor %}</select></div>
 <div class="fcell"><input type="number" name="prioridad" value="{{ w.prioridad }}" style="width:60px"></div>
 <div class="fcell"><select name="reservable"><option value="1" {{ 'selected' if w.reservable }}>Sí</option><option value="0" {{ 'selected' if not w.reservable }}>No</option></select></div>
+<div class="fcell"><select name="habilitado" aria-label="Habilitado {{ w.code }}"><option value="1" {{ 'selected' if w.habilitado }}>Sí</option><option value="0" {{ 'selected' if not w.habilitado }}>No</option></select></div>
 <div class="fcell"><input name="observacion" value="{{ w.observacion }}" size="40"><br><span class="small muted">{{ w.fuente }}</span></div>
 <div class="fcell">{% if can('config.editar') %}<button class="small">Guardar</button>{% endif %}</div></form>{% endfor %}</div>
 

@@ -1344,8 +1344,8 @@ PARAMS += [
         {"linea": "*", "presentacion_kg": None, "min_pct": None, "max_pct": 100.5}],
      "list", "Producción",
      "Rango de rendimiento aceptado al liquidar (balance de masa) por línea y presentación; la regla más específica prevalece "
-     "(«R*» = R1, R2 y R3). Fuera del rango la liquidación queda BLOQUEADA y se alerta al Jefe de Producción.", "PROPUESTO",
-     f"{R23}: mínimos = rendimiento que solo el 10 % de los partes ene–oct no alcanza; máximo: no se produce más de lo que entra"),
+     "(«R*» = R1, R2 y R3). Fuera del rango la liquidación queda BLOQUEADA y se alerta al Jefe de Producción.", "DEFINIDO",
+     f"{R23}: valores por defecto aprobados por el usuario, editables por el Jefe de Producción; mínimos = rendimiento que solo el 10 % de los partes ene–oct no alcanza; máximo: no se produce más de lo que entra"),
     ("tope_horas_of", 150, "float", "Producción", "Horas máximas por OF que acepta SAP; por encima la liquidación se bloquea.",
      "DEFINIDO", f"{R23}: reunión con Producción"),
     ("dias_produccion_por_tipo", {"PT": 2, "MP_IMPORTADA": 2, "SEL_MANUAL": 5}, "dict", "Producción",
@@ -1385,8 +1385,8 @@ _R23_PERMS = [
     ("condicion.solicitar", "Solicitar la condición de pago del cliente a Finanzas", "Comercial", "edicion",
      ["EJECUTIVO_VENTAS", "COORD_VENTAS", "JEFE_VENTAS", "ASIST_VENTAS"]),
     ("nc.solicitar", "Solicitar nota de crédito", "Comercial", "edicion", ["EJECUTIVO_VENTAS", "COORD_VENTAS", "JEFE_VENTAS"]),
-    ("comercial.configurar", "Configuración comercial: gastos y rebates por canal y cliente, objetivos e incentivos",
-     "Comercial", "exclusivo", ["JEFE_VENTAS"]),
+    ("comercial.configurar", "Configuración comercial: gastos y rebates por canal y cliente, objetivos, incentivos, tabla GS1 ↔ SAP"
+     " (solo Jefe y Gerente Comercial)", "Comercial", "exclusivo", ["JEFE_VENTAS", "GERENTE_COMERCIAL"]),
     ("margen.ver", "Ver margen por canal, cliente y vendedor", "Comercial", "consulta", ["JEFE_VENTAS", "GERENTE_COMERCIAL"]),
     ("objetivos.ver", "Ver avance contra objetivos de venta", "Comercial", "consulta",
      ["JEFE_VENTAS", "COORD_VENTAS", "EJECUTIVO_VENTAS", "GERENTE_COMERCIAL"]),
@@ -1400,12 +1400,13 @@ _R23_PERMS = [
     ("mercado.aprobar", "Aprobar precios de mercado registrados por los vendedores", "Comercial", "exclusivo", ["JEFE_VENTAS"]),
     ("catalogo.ver", "Ver el catálogo de productos con fotos", "Comercial", "consulta",
      ["EJECUTIVO_VENTAS", "COORD_VENTAS", "JEFE_VENTAS", "ASIST_VENTAS", "GERENTE_COMERCIAL"]),
-    ("catalogo.fotos", "Subir fotos del catálogo de productos", "Comercial", "edicion", ["JEFE_VENTAS", "SISTEMAS"]),
+    ("catalogo.fotos", "Subir fotos del catálogo de productos (solo Jefe y Gerente Comercial)", "Comercial", "exclusivo",
+     ["JEFE_VENTAS", "GERENTE_COMERCIAL"]),
     ("ov.compromiso", "Responder CUMPLE / NO CUMPLE a una OV", "Logística", "edicion",
      ["COORD_ALMACEN", "COORD_ALMACEN_MP", "JEFE_LOGISTICA", "COORD_LOGISTICA", "JEFE_PRODUCCION", "ASIST_PRODUCCION"]),
     ("ov.solicitar_cambio_fecha", "Solicitar a Comercial el cambio de la fecha de despacho de una OV", "Logística", "edicion",
      ["JEFE_LOGISTICA", "COORD_LOGISTICA", "COORD_DISTRIBUCION"]),
-    ("produccion.configurar", "Configuración de Producción: velocidades, causas, tolerancias, alcance de asistentes, GS1",
+    ("produccion.configurar", "Configuración de Producción: velocidades nominales, causas, tolerancias, alcance de asistentes",
      "Producción", "exclusivo", ["JEFE_PRODUCCION", "SISTEMAS"]),
     ("produccion.asistencia", "Registrar la asistencia del personal de Producción", "Producción", "edicion",
      ["JEFE_PRODUCCION", "ASIST_PRODUCCION"]),
@@ -1464,3 +1465,14 @@ ALERT_TYPES += [
 ]
 ALERT_INFORMATIVAS = set(ALERT_INFORMATIVAS) | {"CONDICION_PAGO_RESUELTA", "PARTE_BLOQUEADO", "BOM_CAMBIO_ASISTENTE",
                                                 "EAN_NO_COINCIDE"}
+
+
+# Ronda 23-oct-2026 (2): la tabla GS1 ↔ SAP, las fotos del catálogo, objetivos, incentivos y tasas se configuran en el panel
+# comercial y solo los modifican el Jefe Comercial y el Gerente Comercial. En bases existentes se retiran una sola vez las
+# asignaciones anteriores (queda en la auditoría; si Sistemas vuelve a asignarlas no se retiran de nuevo).
+R23B = "Respuestas del usuario del 23-oct-2026 (2)"
+PERMISOS_RETIRADOS = [
+    ("SISTEMAS", "catalogo.fotos", R23B),
+    ("GERENCIA_GENERAL", "catalogo.fotos", R23B),
+]
+PERMISOS_TIPO = {"catalogo.fotos": "exclusivo"}

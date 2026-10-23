@@ -14,48 +14,56 @@ from .models import (AlertType, Customer, Driver, GGAlertPreference, ImportPhase
 DEMO_PASSWORD = "Demo2026!"
 
 DEMO_USERS = [
-    # username, nombre, rol
-    ("gerente.general", "Gerencia General (demo)", "GERENCIA_GENERAL"),
-    ("gerente.operaciones", "Gerencia de Operaciones (demo)", "GERENCIA_OPERACIONES"),
-    ("sistemas", "Administrador de Sistemas (demo)", "SISTEMAS"),
-    ("gerente.comercial", "Gerente Comercial (demo)", "GERENTE_COMERCIAL"),
-    ("jefe.ventas", "Jefe de Ventas (demo)", "JEFE_VENTAS"),
-    ("coord.ventas", "Coordinador de Ventas (demo)", "COORD_VENTAS"),
-    ("asist.ventas", "Asistente de Ventas (demo)", "ASIST_VENTAS"),
-    ("vendedor1", "VENDEDOR DEMO UNO", "EJECUTIVO_VENTAS"),
-    ("vendedor2", "VENDEDOR DEMO DOS", "EJECUTIVO_VENTAS"),
-    ("coord.almacen", "Coordinación de Almacén 1560 (demo)", "COORD_ALMACEN"),
-    ("coord.almacen.mp", "Coordinación de Almacén 1524 (demo)", "COORD_ALMACEN_MP"),
-    ("superv.almacen", "Supervisión de Almacén (demo)", "SUPERV_ALMACEN"),
-    ("lider.almacen", "Líder Operativo (demo)", "LIDER_ALMACEN"),
-    ("aux.almacen", "Auxiliar de Almacén (demo)", "AUX_ALMACEN"),
-    ("montacarguista", "Montacarguista (demo)", "MONTACARGUISTA"),
-    # dotación por almacén (observaciones al demo v0.6): 1560 con 4 auxiliares, 2 líderes y 2 montacarguistas;
-    # 1524 con 1 auxiliar y 1 montacarguista. Nombres ficticios.
-    ("lider.almacen2", "Líder Operativo 2 (demo)", "LIDER_ALMACEN"),
-    ("aux.almacen2", "Auxiliar de Almacén 2 (demo)", "AUX_ALMACEN"),
-    ("aux.almacen3", "Auxiliar de Almacén 3 (demo)", "AUX_ALMACEN"),
-    ("aux.almacen4", "Auxiliar de Almacén 4 (demo)", "AUX_ALMACEN"),
-    ("montacarguista2", "Montacarguista 2 (demo)", "MONTACARGUISTA"),
-    ("aux.almacen.mp", "Auxiliar de Almacén 1524 (demo)", "AUX_ALMACEN"),
-    ("montacarguista.mp", "Montacarguista 1524 (demo)", "MONTACARGUISTA"),
-    ("coord.distribucion", "Coordinador de Distribución (demo)", "COORD_DISTRIBUCION"),
-    ("asist.distribucion", "Asistente de Distribución (demo)", "ASIST_DISTRIBUCION"),
-    ("conductor1", "Conductor Demo Uno", "CONDUCTOR"),
-    ("aux.despacho", "Auxiliar de Despacho (demo)", "AUX_DESPACHO"),
-    ("jefe.logistica", "Jefatura de Logística (demo)", "JEFE_LOGISTICA"),
-    ("coord.logistica", "Coordinación de Logística (demo)", "COORD_LOGISTICA"),
-    ("jefe.produccion", "Jefatura de Producción (demo)", "JEFE_PRODUCCION"),
-    ("asist.produccion", "Asistente de Producción (demo)", "ASIST_PRODUCCION"),
-    ("asist.produccion2", "Asistente de Producción 2 (demo)", "ASIST_PRODUCCION"),
-    ("jefe.calidad", "Jefatura de Calidad (demo)", "JEFE_CALIDAD"),
-    ("superv.calidad", "Supervisor de Calidad (demo)", "SUPERV_CALIDAD"),
-    ("asist.calidad", "Asistente de Calidad (demo)", "ASIST_CALIDAD"),
-    ("compras", "Coordinador de Compras (demo)", "COMPRAS"),
-    ("importaciones", "Importaciones (demo)", "IMPORTACIONES"),
-    ("seguridad", "Seguridad (demo)", "SEGURIDAD"),
-    ("facturacion", "Facturación (demo)", "FACTURACION"),
-    ("coord.finanzas", "Coordinación de Finanzas (demo)", "COORD_FINANZAS"),
+    # username, nombre, rol. Una cuenta por persona según los organigramas, con el nombre del puesto (sin nombres reales).
+    ("gerente.general", "Gerencia General", "GERENCIA_GENERAL"),
+    ("gerente.operaciones", "Gerencia de Operaciones", "GERENCIA_OPERACIONES"),
+    ("sistemas", "Administrador de Sistemas", "SISTEMAS"),
+    ("gerente.comercial", "Gerente Comercial", "GERENTE_COMERCIAL"),
+    ("jefe.ventas", "Jefe Comercial", "JEFE_VENTAS"),
+    ("coord.ventas", "Coordinador de Ventas", "COORD_VENTAS"),
+    ("asist.ventas", "Asistente de Ventas", "ASIST_VENTAS"),
+    ("vendedor1", "Ejecutivo de Ventas 1", "EJECUTIVO_VENTAS"),
+    ("vendedor2", "Ejecutivo de Ventas 2", "EJECUTIVO_VENTAS"),
+    # Logística (organigrama del 23-oct-2026)
+    ("jefe.logistica", "Jefe de Logística", "JEFE_LOGISTICA"),
+    ("coord.logistica", "Coordinador de Logística", "COORD_LOGISTICA"),
+    ("coord.almacen", "Coordinador de Almacenes", "COORD_ALMACEN"),
+    ("coord.almacen.mp", "Coordinación de Almacén 1524", "COORD_ALMACEN_MP"),
+    ("superv.almacen", "Supervisor de Almacén 1560", "SUPERV_ALMACEN"),
+    ("lider.almacen", "Líder Operativo 1560", "LIDER_ALMACEN"),
+    ("aux.almacen", "Auxiliar de Almacén 1", "AUX_ALMACEN"),
+    ("aux.almacen2", "Auxiliar de Almacén 2", "AUX_ALMACEN"),
+    ("aux.almacen3", "Auxiliar de Almacén 3", "AUX_ALMACEN"),
+    ("aux.almacen4", "Auxiliar de Almacén 4", "AUX_ALMACEN"),
+    ("montacarguista", "Montacarguista 1", "MONTACARGUISTA"),
+    ("lider.almacen2", "Líder Operativo 1560 turno tarde", "LIDER_ALMACEN"),
+    ("montacarguista2", "Montacarguista 2 turno tarde", "MONTACARGUISTA"),
+    ("superv.almacen.mp", "Supervisor de Almacenes 1524 / Externos", "SUPERV_ALMACEN"),
+    ("aux.almacen.mp", "Auxiliar de Almacén 1524", "AUX_ALMACEN"),
+    ("montacarguista.mp", "Montacarguista 1524", "MONTACARGUISTA"),
+    ("coord.distribucion", "Coordinador de Distribución", "COORD_DISTRIBUCION"),
+    ("asist.distribucion", "Asistente de Distribución", "ASIST_DISTRIBUCION"),
+    ("conductor1", "Chofer 1", "CONDUCTOR"),
+    ("conductor2", "Chofer 2", "CONDUCTOR"),
+    ("conductor3", "Chofer 3", "CONDUCTOR"),
+    ("conductor4", "Chofer 4", "CONDUCTOR"),
+    ("conductor5", "Chofer 5", "CONDUCTOR"),
+    ("aux.despacho", "Auxiliar de Despacho 1", "AUX_DESPACHO"),
+    ("aux.despacho2", "Auxiliar de Despacho 2", "AUX_DESPACHO"),
+    ("aux.despacho3", "Auxiliar de Despacho 3", "AUX_DESPACHO"),
+    ("aux.despacho4", "Auxiliar de Despacho 4", "AUX_DESPACHO"),
+    ("aux.despacho5", "Auxiliar de Despacho 5", "AUX_DESPACHO"),
+    ("jefe.produccion", "Jefe de Producción", "JEFE_PRODUCCION"),
+    ("asist.produccion", "Asistente de Producción 1", "ASIST_PRODUCCION"),
+    ("asist.produccion2", "Asistente de Producción 2", "ASIST_PRODUCCION"),
+    ("jefe.calidad", "Jefe de Calidad", "JEFE_CALIDAD"),
+    ("superv.calidad", "Supervisor de Calidad", "SUPERV_CALIDAD"),
+    ("asist.calidad", "Asistente de Calidad", "ASIST_CALIDAD"),
+    ("compras", "Coordinador de Compras", "COMPRAS"),
+    ("importaciones", "Importaciones", "IMPORTACIONES"),
+    ("seguridad", "Seguridad", "SEGURIDAD"),
+    ("facturacion", "Facturación", "FACTURACION"),
+    ("coord.finanzas", "Coordinación de Finanzas", "COORD_FINANZAS"),
 ]
 
 
@@ -132,7 +140,65 @@ def sync_catalogs():
             s.add(Param(key=key, valor={"v": valor}, tipo=tipo, grupo=grupo, descripcion=desc, estado=estado, fuente=fuente))
             n += 1
     s.flush()
+    n += _retire_permissions()
+    n += _rename_demo_users()
     return n
+
+
+def _retire_permissions():
+    """Retira una sola vez las asignaciones que el usuario decidió quitar (C.PERMISOS_RETIRADOS); queda en la auditoría."""
+    from .models import AuditLog
+    s = db()
+    n = 0
+    for code, tipo in C.PERMISOS_TIPO.items():
+        p = s.get(Permission, code)
+        if p is not None and p.tipo != tipo:
+            p.tipo = tipo
+    for role, perm, fuente in C.PERMISOS_RETIRADOS:
+        clave = f"{role}:{perm}"
+        if s.execute(select(AuditLog).where(AuditLog.accion == "PERMISO_RETIRADO_CATALOGO",
+                                            AuditLog.entidad_id == clave)).first():
+            continue
+        rp = s.execute(select(RolePermission).where(RolePermission.role_code == role,
+                                                    RolePermission.perm_code == perm)).scalars().first()
+        if rp is not None:
+            s.delete(rp)
+            n += 1
+        s.add(AuditLog(user_id=None, accion="PERMISO_RETIRADO_CATALOGO", entidad="RolePermission", entidad_id=clave,
+                       detalle={"fuente": fuente, "existia": rp is not None}))
+    s.flush()
+    return n
+
+
+def _rename_demo_users():
+    """Quita «demo» del nombre de las cuentas de ejemplo ya creadas (usa el nombre del puesto). No toca otros usuarios."""
+    s = db()
+    n = 0
+    nombres = {u: nm for u, nm, _ in DEMO_USERS}
+    for u in s.execute(select(User).where(User.username.in_(list(nombres)))).scalars():
+        if "demo" in (u.nombre or "").lower() and u.nombre != nombres[u.username]:
+            u.nombre = nombres[u.username]
+            n += 1
+    return n
+
+
+def add_missing_demo_users():
+    """Solo para la base de demostración: crea las cuentas de ejemplo que falten (una por puesto del organigrama)."""
+    s = db()
+    from .services.core import param as _param
+    existentes = set(s.execute(select(User.username)).scalars())
+    nuevos = []
+    for username, nombre, rol in DEMO_USERS:
+        if username in existentes or s.get(Role, rol) is None:
+            continue
+        u = create_user(username, nombre, rol)
+        u.aviso_aceptado = {"version": _param("aviso_datos_version", ""), "ts": "demo", "ip": ""}
+        u.clave_ts = datetime.now()
+        if rol in ("AUX_ALMACEN", "AUX_DESPACHO", "LIDER_ALMACEN", "MONTACARGUISTA", "SUPERV_ALMACEN"):
+            u.almacen = "EXT-002" if username.endswith(".mp") else "ALM-001"
+        nuevos.append(username)
+    return nuevos
+
 
 def _hash_opts():
     m = os.environ.get("PASSWORD_HASH_METHOD")  # solo para acelerar pruebas automatizadas
@@ -165,7 +231,7 @@ def seed_demo(upload_dir=None, today=None):
         _u.aviso_aceptado = {"version": _param("aviso_datos_version", ""), "ts": "demo", "ip": ""}
         _u.clave_ts = datetime.now()
     for u in users.values():  # almacén del personal operativo (para programar el picking)
-        if u.role_code in ("AUX_ALMACEN", "AUX_DESPACHO", "LIDER_ALMACEN", "MONTACARGUISTA"):
+        if u.role_code in ("AUX_ALMACEN", "AUX_DESPACHO", "LIDER_ALMACEN", "MONTACARGUISTA", "SUPERV_ALMACEN"):
             u.almacen = "EXT-002" if u.username.endswith(".mp") else "ALM-001"
     admin = users["sistemas"]
     # parámetros de demostración (marcados DEMO; no son valores aprobados)
@@ -185,10 +251,9 @@ def seed_demo(upload_dir=None, today=None):
         s.add(Customer(ruc=ruc, nombre=nombre, grupo=grupo, direccion=dirc, distrito=dist, provincia="LIMA",
                        horario_recepcion=hor, requiere_cita=cita, vida_util_min_dias=vida))
     # flota ficticia (capacidades tomadas de la tabla de transportes; placas y nombres inventados)
-    drivers = [Driver(nombre="Conductor Demo Uno", licencia="Q00000001", user_id=users["conductor1"].id),
-               Driver(nombre="Conductor Demo Dos", licencia="Q00000002"),
-               Driver(nombre="Conductor Demo Tres", licencia="Q00000003"),
-               Driver(nombre="Conductor Externo Demo", licencia="Q00000004", externo=True)]
+    drivers = [Driver(nombre=f"Chofer {i}", licencia=f"Q0000000{i}", user_id=users[f"conductor{i}"].id) for i in (1, 2, 3)]
+    drivers.append(Driver(nombre="Chofer externo", licencia="Q00000009", externo=True))
+    drivers += [Driver(nombre=f"Chofer {i}", licencia=f"Q0000000{i}", user_id=users[f"conductor{i}"].id) for i in (4, 5)]
     s.add_all(drivers)
     s.flush()
     s.add_all([

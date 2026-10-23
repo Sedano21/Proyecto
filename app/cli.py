@@ -21,6 +21,7 @@ def main(argv):
         print(__doc__)
         return 1
     cmd = argv[0]
+    os.environ["CHECK_INTERVAL_MIN"] = "0"  # los comandos de consola no arrancan el hilo de verificaciones
     app = create_app()
     with app.app_context():
         s = SessionLocal()
@@ -43,7 +44,14 @@ def main(argv):
                 create_all()
             seed_catalogs()
             r = seed_demo(os.path.join(app.instance_path, "demo_files"))
-            print("Demostración creada" if r else "Ya existían usuarios; no se modificó nada")
+            if r:
+                print("Demostración creada")
+            else:
+                from .seed import _rename_demo_users, add_missing_demo_users
+                nuevos = add_missing_demo_users()
+                ren = _rename_demo_users()
+                s.commit()
+                print(f"Ya existía la demostración; cuentas agregadas: {', '.join(nuevos) or 'ninguna'}; nombres actualizados: {ren}")
         elif cmd == "depurar":
             from .services.retention import purge_photos
             r = purge_photos(app.config["UPLOAD_DIR"], aplicar="--aplicar" in argv)

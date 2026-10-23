@@ -361,7 +361,7 @@ def alert_config():
                            plazo_general=param("horas_plazo_tarea", {}) or {},
                            plazo_area=param("minutos_plazo_tarea_por_area", {}) or {},
                            fin_turno=param("minutos_antes_fin_turno_por_area", {}) or {},
-                           intervalo=int(os.environ.get("CHECK_INTERVAL_MIN", "0") or 0))
+                           intervalo=int(os.environ.get("CHECK_INTERVAL_MIN", "1") or 0))
 
 
 @bp.route("/alertas/preferencias", methods=["GET", "POST"])
@@ -483,14 +483,16 @@ def warehouse_edit():
         if w is None:
             w = Warehouse(code=code, nombre=code)
             db().add(w)
-        antes = {"nombre": w.nombre, "uso": w.uso, "prioridad": w.prioridad, "reservable": w.reservable}
+        antes = {"nombre": w.nombre, "uso": w.uso, "prioridad": w.prioridad, "reservable": w.reservable, "habilitado": w.habilitado}
         w.nombre = request.form.get("nombre", w.nombre)
         w.uso = request.form.get("uso", w.uso)
         w.prioridad = int(request.form.get("prioridad") or 99)
         w.reservable = request.form.get("reservable") == "1"
+        if "habilitado" in request.form:
+            w.habilitado = request.form.get("habilitado") == "1"
         w.observacion = request.form.get("observacion", w.observacion)
         audit(g.user, "ALMACEN_EDITADO", "Warehouse", code, {"antes": antes, "despues": {
-            "nombre": w.nombre, "uso": w.uso, "prioridad": w.prioridad, "reservable": w.reservable}})
+            "nombre": w.nombre, "uso": w.uso, "prioridad": w.prioridad, "reservable": w.reservable, "habilitado": w.habilitado}})
     return act(_do, "Almacén guardado.", url_for("main.config") + "#almacenes")
 
 
@@ -732,8 +734,12 @@ def users():
                     u.bloqueado_hasta, u.intentos_fallidos = None, 0
                     audit(g.user, "USUARIO_DESBLOQUEADO", "User", u.username)
                     return
-                antes = {"rol": u.role_code, "activo": u.activo}
+                antes = {"rol": u.role_code, "activo": u.activo, "nombre": u.nombre, "almacen": u.almacen}
+                if s.get(Role, request.form.get("role_code", u.role_code)) is None:
+                    raise BusinessError("Perfil inexistente.")
                 u.role_code = request.form.get("role_code", u.role_code)
+                u.nombre = (request.form.get("nombre") or u.nombre).strip()
+                u.almacen = request.form.get("almacen", u.almacen) or ""
                 u.activo = request.form.get("activo") == "1"
                 u.email = request.form.get("email", u.email)
                 if request.form.get("password"):
@@ -749,13 +755,19 @@ def users():
                 check_new_password(None, pwd)
                 if not un or s.execute(select(User).where(User.username == un)).first():
                     raise BusinessError("Usuario vacío o existente.")
-                u = create_user(un, request.form.get("nombre", un), request.form["role_code"], pwd, request.form.get("email"))
+                if s.get(Role, request.form.get("role_code", "")) is None:
+                    raise BusinessError("Elija el perfil del usuario.")
+                u = create_user(un, (request.form.get("nombre") or un).strip(), request.form["role_code"], pwd,
+                                request.form.get("email") or None)
+                u.almacen = request.form.get("almacen", "")
                 u.debe_cambiar_clave = True
                 audit(g.user, "USUARIO_CREADO", "User", un, {"rol": u.role_code})
         return act(_do, "Usuario guardado.", url_for("main.users"))
     roles = list(s.execute(select(Role).order_by(Role.area, Role.nombre)).scalars())
     from ..services.core import param
-    return render_template("users.html", users=list(s.execute(select(User).order_by(User.role_code)).scalars()), roles=roles,
+    from ..models import Warehouse
+    return render_template("users.html", users=list(s.execute(select(User).order_by(User.role_code, User.username)).scalars()), roles=roles,
+                           almacenes=list(s.execute(select(Warehouse).order_by(Warehouse.code)).scalars()),
                            now_=datetime.now(), minimo=int(param("clave_longitud_minima", 8) or 8))
 
 
@@ -810,8 +822,22 @@ def audit_view():
         q = q.where(AuditLog.entidad == ent)
     if acc:
         q = q.where(AuditLog.accion.like(f"%{acc.upper()}%"))
-    rows = list(db().execute(q.limit(500)).scalars())
-    return render_template("audit.html", rows=rows, ent=ent or "", acc=acc or "")
+    uid = request.args.get("user_id")
+    if uid and uid.isdigit():
+        q = q.where(AuditLog.user_id == int(uid))
+    eid = (request.args.get("entidad_id") or "").strip()
+    if eid:
+        q = q.where(AuditLog.entidad_id == eid)
+    d1, d2 = request.args.get("desde"), request.args.get("hasta")
+    if d1:
+        q = q.where(AuditLog.ts >= datetime.combine(date.fromisoformat(d1), datetime.min.time()))
+    if d2:
+        q = q.where(AuditLog.ts <= datetime.combine(date.fromisoformat(d2), datetime.max.time()))
+    rows = list(db().execute(q.limit(1000)).scalars())
+    usuarios = list(db().execute(select(User).order_by(User.nombre)).scalars())
+    entidades = sorted({e for e in db().execute(select(AuditLog.entidad).distinct()).scalars() if e})
+    return render_template("audit.html", rows=rows, ent=ent or "", acc=acc or "", usuarios=usuarios, entidades=entidades,
+                           f=request.args)
 
 
 # ------------------------------- exportación -------------------------------
