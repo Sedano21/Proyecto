@@ -36,6 +36,24 @@ def approve_certs(s, U, o):
         qual.review_certificate(c, U("superv.calidad"), cambios, aprobar=True)
 
 
+def chofer(stop):
+    """Usuario del chofer de la ruta: la conformidad de entrega la registra él (ronda UX 24-oct-2026)."""
+    return stop.route.driver.user if stop.route.driver and stop.route.driver.user_id else None
+
+
+def _user_chofer(s, U, stop):
+    """El chofer de la ruta; si la ruta tiene un conductor sin usuario, se le asigna el Chofer 1 para la prueba."""
+    u = chofer(stop)
+    if u is None:
+        stop.route.driver.user_id = U("conductor1").id
+        s.flush()
+        u = U("conductor1")
+    return u
+
+
+RECEPTOR = {"receptor_nombre": "Persona Ficticia", "receptor_dni": "12345678", "firma_path": "firma.png"}
+
+
 def dispatch(s, U, o, today):
     """Secuencia TO-BE: plan de picking → picking → ruta aprobada → fotos y validación de carga → guía y factura →
     certificados aprobados → Seguridad (carga vs guía, documentos) → salida."""
@@ -79,9 +97,18 @@ def test_pedido_completo_flujo_hasta_entrega(s, U, new_order, today):
     assert s.query(Certificate).filter_by(order_id=o.id).count() == 1  # certificado autogenerado
     assert o.estado == "DESPACHADA" and l905.cantidad == 900
     # entrega exige foto y guía firmada
+    with pytest.raises(BusinessError):  # ya no la registra el auxiliar
+        dist.register_delivery(stop, U("aux.despacho"), "foto.jpg", "guia.jpg", **RECEPTOR)
+    ch = _user_chofer(s, U, stop)
     with pytest.raises(BusinessError):
-        dist.register_delivery(stop, U("aux.despacho"), "", "guia.jpg")
-    dist.register_delivery(stop, U("aux.despacho"), "foto.jpg", "guia.jpg")
+        dist.register_delivery(stop, ch, "", "guia.jpg", **RECEPTOR)
+    with pytest.raises(BusinessError, match="DNI"):
+        dist.register_delivery(stop, ch, "foto.jpg", "guia.jpg", receptor_nombre="Persona Ficticia", receptor_dni="123",
+                               firma_path="firma.png")
+    with pytest.raises(BusinessError, match="firma"):
+        dist.register_delivery(stop, ch, "foto.jpg", "guia.jpg", receptor_nombre="Persona Ficticia", receptor_dni="12345678")
+    dist.register_delivery(stop, ch, "foto.jpg", "guia.jpg", **RECEPTOR)
+    assert stop.receptor_dni == "12345678" and stop.firma_path == "firma.png"
     s.commit()
     assert o.estado == "ENTREGADA" and stop.route.estado == "CERRADA"
     from app.services.kpis import compute
@@ -403,7 +430,7 @@ def test_rechazo_por_calidad_alerta_gerencia_general(s, U, new_order, today):
     stop = dispatch(s, U, o, today)
     with pytest.raises(BusinessError):
         dist.register_incident(U("vendedor1"), "RECHAZO_CALIDAD", "x", stop=stop)
-    dist.register_incident(U("aux.despacho"), "RECHAZO_CALIDAD", "Cliente rechaza por grano partido", stop=stop)
+    dist.register_incident(U("asist.distribucion"), "RECHAZO_CALIDAD", "Cliente rechaza por grano partido", stop=stop)
     s.commit()
     a = alerts_of(s, "INC_RECHAZO_CALIDAD")[0]
     assert {"GERENCIA_GENERAL", "GERENCIA_OPERACIONES", "JEFE_LOGISTICA", "COORD_ALMACEN", "JEFE_VENTAS"} <= set(a.roles)
@@ -419,14 +446,14 @@ def test_rechazo_por_calidad_alerta_gerencia_general(s, U, new_order, today):
 def test_devolucion_y_entrega_parcial(s, U, new_order, today):
     o = new_order([("PT-905", 30)])
     stop = dispatch(s, U, o, today)
-    dist.register_incident(U("aux.despacho"), "DEVOLUCION", "Devuelve todo", stop=stop)
+    dist.register_incident(U("asist.distribucion"), "DEVOLUCION", "Devuelve todo", stop=stop)
     s.commit()
     a = alerts_of(s, "INC_GENERAL")[0]
     assert "GERENCIA_GENERAL" not in a.roles and "GERENCIA_OPERACIONES" in a.roles
     assert o.estado == "DEVUELTA"
     o2 = new_order([("PT-905", 20)])
     stop2 = dispatch(s, U, o2, today)
-    dist.register_delivery(stop2, U("aux.despacho"), "f.jpg", "g.jpg", {str(o2.lines[0].id): 15})
+    dist.register_delivery(stop2, _user_chofer(s, U, stop2), "f.jpg", "g.jpg", {str(o2.lines[0].id): 15}, **RECEPTOR)
     s.commit()
     assert o2.estado == "ENTREGA_PARCIAL"
     from app.models import Incident

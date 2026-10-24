@@ -287,9 +287,9 @@ def test_incidencias_por_tipo_y_subtipo(s, U, new_order):
     assert not any("TO-BE" in n for _, n in INCIDENT_TYPES)
     assert "RECHAZO_CITA" not in dict(INCIDENT_TYPES)  # llegada tarde y rechazo por cita son lo mismo
     o = new_order([("PT-905", 5)])
-    i = dist.register_incident(U("aux.despacho"), "INFESTACION_EXTERNA", "Gorgojo en sacos", order=o)
+    i = dist.register_incident(U("asist.distribucion"), "INFESTACION_EXTERNA", "Gorgojo en sacos", order=o)
     assert i.grupo == "CALIDAD" and alerts_of(s, "INC_RECHAZO_CALIDAD", i.id)
-    j = dist.register_incident(U("aux.despacho"), "RECHAZO_CITA", "Llegó tarde", order=o)  # alias anterior
+    j = dist.register_incident(U("asist.distribucion"), "RECHAZO_CITA", "Llegó tarde", order=o)  # alias anterior
     assert j.tipo == "LLEGADA_TARDE" and j.grupo == "LOGISTICA"
 
 

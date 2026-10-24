@@ -9,14 +9,21 @@ from . import alerts
 from .core import BusinessError, audit, check_warehouse_scope, has_perm
 
 
-def open_count(user, warehouse_code, product_prefix="", observacion=""):
+def open_count(user, warehouse_code, product_prefix="", observacion="", base=None, codigos=None):
+    """base: conteo anterior cuya lista de productos se repite; codigos: lista de productos preexistente (ronda UX)."""
     if not has_perm(user, "stock.conteo"):
         raise BusinessError("Su rol no registra conteos.")
+    if base is not None:
+        warehouse_code = warehouse_code or base.warehouse_code
+        codigos = sorted({l.product_code for l in base.lines})
+        observacion = observacion or f"Sobre la lista del conteo #{base.id}"
     check_warehouse_scope(user, warehouse_code)
     c = PhysicalCount(warehouse_code=warehouse_code, user_id=user.id, observacion=observacion)
     q = select(StockLot).where(StockLot.warehouse_code == warehouse_code, StockLot.cantidad > 0)
     if product_prefix:
         q = q.where(StockLot.product_code.like(f"{product_prefix}%"))
+    if codigos:
+        q = q.where(StockLot.product_code.in_([x.strip().upper() for x in codigos if x.strip()]))
     for lot in db().execute(q.order_by(StockLot.product_code, StockLot.lote)).scalars():
         c.lines.append(PhysicalCountLine(lot_id=lot.id, product_code=lot.product_code, lote=lot.lote, sap=lot.cantidad))
     if not c.lines:

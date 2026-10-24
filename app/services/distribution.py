@@ -143,7 +143,9 @@ def propose_routes(fecha, user, orders=None, require_prepared=True, automatico=F
     for o in sorted(candidates, key=priority_key):
         groups.setdefault(_zone(o), []).append(o)
     busy_v, busy_d = _busy(fecha)
-    vehicles = [v for v in s.execute(select(Vehicle).where(Vehicle.disponible.is_(True))).scalars() if v.id not in busy_v]
+    from .fleet import soat_status
+    vehicles = [v for v in s.execute(select(Vehicle).where(Vehicle.disponible.is_(True))).scalars() if v.id not in busy_v
+                and (not param("exigir_soat_vigente", True) or soat_status(v, fecha)[0])]  # sin SOAT vigente no se asigna
     drivers = [d for d in s.execute(select(Driver).where(Driver.disponible.is_(True))).scalars() if d.id not in busy_d]
     rutas = []
     # zonas en orden de la mejor prioridad que contienen
@@ -234,6 +236,8 @@ def update_route(route, user, vehicle_id=None, driver_id=None):
         v = db().get(Vehicle, int(vehicle_id))
         if v is None:
             raise BusinessError("Unidad no válida.")
+        from .fleet import check_soat
+        check_soat(v, route.fecha)
         if route.peso_total > v.capacidad_kg + 1e-9:
             raise BusinessError(f"La carga ({route.peso_total:,.0f} kg) supera la capacidad de {v.placa} ({v.capacidad_kg:,.0f} kg).")
         busy_v, _ = _busy(route.fecha)
@@ -295,6 +299,8 @@ def confirm_route(route, user):
         raise BusinessError("La ruta no tiene paradas.")
     if route.vehicle_id is None:
         raise BusinessError("Asigne una unidad (propia o tercera registrada) antes de confirmar.")
+    from .fleet import check_soat
+    check_soat(route.vehicle, route.fecha)
     if route.driver_id is None:
         raise BusinessError("Asigne un conductor antes de confirmar.")
     if route.requiere_externo and not (route.externo_validacion or {}).get("validado"):
@@ -443,13 +449,27 @@ def save_upload(file_storage, upload_dir, prefix):
     return name
 
 
-def register_delivery(stop, user, foto_path, guia_path, entregas=None, observacion=""):
-    """Entrega respaldada con fotografía y guía firmada (IF §12.3). entregas: {order_line_id: cantidad}."""
-    _req(user, "distribucion.entrega")
+def register_delivery(stop, user, foto_path, guia_path, entregas=None, observacion="", receptor_nombre="", receptor_dni="",
+                      firma_path=""):
+    """Conformidad de entrega digital (ronda UX 24-oct-2026): la valida el chofer de la ruta con el nombre y DNI de quien
+    recibe, su firma en pantalla, la fotografía de la entrega y la guía de remisión firmada. entregas: {order_line_id: cantidad}."""
+    _req(user, "distribucion.conformidad")
     if stop.estado not in ("EN_CAMINO", "LLEGADA"):
         raise BusinessError("La parada no está en ruta.")
+    drv = stop.route.driver
+    if drv is not None and drv.user_id and drv.user_id != user.id:
+        raise BusinessError(f"La conformidad la registra el chofer de la ruta ({drv.nombre}).")
+    nombre = " ".join((receptor_nombre or "").split())
+    dni = (receptor_dni or "").strip().upper()
+    if len(nombre) < 3:
+        raise BusinessError("Indique el nombre de quien recibe.")
+    if not (dni.isdigit() and len(dni) == 8) and not (dni.isalnum() and 9 <= len(dni) <= 12):
+        raise BusinessError("DNI inválido: 8 dígitos (o carné de extranjería de 9 a 12 caracteres).")
+    if not firma_path:
+        raise BusinessError("Falta la firma de quien recibe.")
     if not foto_path or not guia_path:
-        raise BusinessError("La evidencia de entrega requiere fotografía y guía firmada (IF §12.3).")
+        raise BusinessError("La conformidad requiere la fotografía de la entrega y la guía de remisión firmada.")
+    stop.receptor_nombre, stop.receptor_dni, stop.firma_path = nombre.upper(), dni, firma_path
     order = stop.order
     parcial = False
     for l in order.lines:
@@ -471,8 +491,10 @@ def register_delivery(stop, user, foto_path, guia_path, entregas=None, observaci
     if parcial:
         _incident(user, "ENTREGA_PARCIAL", stop, f"Entrega parcial registrada. {observacion}")
     alerts.emit("DIST_ENTREGADO", f"OV {order.numero} {'entregada parcialmente' if parcial else 'entregada con conformidad'}",
-                f"{order.customer.nombre}. Evidencia: foto y guía firmada.", "Route", stop.route_id, creado_por=user)
-    audit(user, "ENTREGA_REGISTRADA", "SalesOrder", order.numero, {"parcial": parcial})
+                f"{order.customer.nombre}. Recibió {stop.receptor_nombre} (DNI {stop.receptor_dni}). Evidencia: firma, foto y "
+                "guía firmada.", "Route", stop.route_id, creado_por=user)
+    audit(user, "ENTREGA_REGISTRADA", "SalesOrder", order.numero, {"parcial": parcial, "receptor": stop.receptor_nombre,
+                                                                    "dni": stop.receptor_dni})
     _maybe_close_route(stop.route)
 
 
@@ -499,6 +521,44 @@ def _incident(user, tipo, stop=None, descripcion="", order=None, route=None, can
     return inc
 
 
+def save_signature(data_url, upload_dir, prefix):
+    """Guarda la firma dibujada en pantalla (data URL PNG) y devuelve el nombre del archivo."""
+    import base64
+    import os
+    import uuid
+    data_url = (data_url or "").strip()
+    if not data_url.startswith("data:image/png;base64,"):
+        return ""
+    raw = base64.b64decode(data_url.split(",", 1)[1], validate=True)
+    if len(raw) < 200 or len(raw) > 2_000_000 or not raw.startswith(b"\x89PNG"):
+        raise BusinessError("La firma no es válida; vuelva a firmar.")
+    os.makedirs(upload_dir, exist_ok=True)
+    name = f"{prefix}_firma_{uuid.uuid4().hex[:10]}.png"
+    with open(os.path.join(upload_dir, name), "wb") as fh:
+        fh.write(raw)
+    return name
+
+
+def orders_on_route():
+    """OV en ruta ahora (ruta EN_RUTA y parada sin cerrar) para la incidencia del Asistente de Distribución."""
+    out = []
+    for r in db().execute(select(Route).where(Route.estado == "EN_RUTA").order_by(Route.fecha, Route.id)).scalars():
+        out += [st for st in r.stops if st.estado in ("PENDIENTE", "EN_CAMINO", "LLEGADA")]
+    return out
+
+
+def driver_stops(user, fecha=None):
+    """Paradas del chofer (usuario vinculado al conductor) en rutas confirmadas o en ruta."""
+    from ..models import Driver as _D
+    ids = [d.id for d in db().execute(select(_D).where(_D.user_id == user.id)).scalars()]
+    if not ids:
+        return []
+    q = select(Route).where(Route.driver_id.in_(ids), Route.estado.in_(("CONFIRMADA", "EN_RUTA")))
+    if fecha:
+        q = q.where(Route.fecha == fecha)
+    return [(r, list(r.stops)) for r in db().execute(q.order_by(Route.fecha, Route.id)).scalars()]
+
+
 def todays_orders(fecha=None):
     """OV llevadas en rutas del día (para elegirlas en la incidencia)."""
     fecha = fecha or date.today()
@@ -516,7 +576,8 @@ def register_incident(user, tipo, descripcion, stop=None, order=None, route=None
     entrega = (entrega or "").upper()
     if entrega and entrega not in ("TOTAL", "PARCIAL", "NINGUNA"):
         raise BusinessError("Indique si la entrega fue total, parcial o no se entregó.")
-    lineas = [x for x in (lineas or []) if (x.get("devuelto") or 0) > 0]
+    novedades = [x for x in (lineas or []) if (x.get("devuelto") or 0) > 0 or (x.get("novedad") or "").strip()]
+    lineas = [x for x in novedades if (x.get("devuelto") or 0) > 0]
     if entrega == "PARCIAL":
         if not lineas:
             raise BusinessError("En una entrega parcial seleccione los productos devueltos y su cantidad.")
@@ -533,7 +594,7 @@ def register_incident(user, tipo, descripcion, stop=None, order=None, route=None
                                                    .order_by(RouteStop.id.desc())).scalars().first()
     inc = _incident(user, tipo, stop, descripcion, order, route, cantidad)
     inc.entrega = entrega
-    inc.lineas = lineas
+    inc.lineas = novedades
     o = inc.order
     if entrega == "PARCIAL" and o is not None:
         _return_lines(o, user, lineas, incident_type_name(tipo))

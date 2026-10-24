@@ -10,7 +10,25 @@ from ..models import Attendance, Worker
 from .core import BusinessError, audit, has_perm, param, user_scope
 
 
+def area_of(user):
+    """Área cuyo personal ve y registra el usuario: Producción, o la propia (p. ej. el Jefe de Logística, sección 5)."""
+    if has_perm(user, "produccion.asistencia"):
+        return "Producción"
+    from .alerts import user_area
+    return user_area(user) if has_perm(user, "asistencia.area") else None
+
+
+def workers_of(user, activos=False):
+    area = area_of(user)
+    q = select(Worker).order_by(Worker.linea, Worker.nombre)
+    if activos:
+        q = q.where(Worker.activo.is_(True))
+    return [w for w in db().execute(q).scalars() if (w.area or "Producción") == area] if area else []
+
+
 def can_register(user):
+    if has_perm(user, "asistencia.area") and not has_perm(user, "produccion.asistencia"):
+        return True
     if not has_perm(user, "produccion.asistencia"):
         return False
     if user.role_code == "ASIST_PRODUCCION":
@@ -40,6 +58,7 @@ def save_worker(user, datos, w=None):
         w = Worker(nombre=nombre)
         db().add(w)
     w.nombre, w.documento = nombre, doc
+    w.area = area_of(user) or "Producción"
     w.linea = (datos.get("linea") or "").strip()
     w.sublinea = (datos.get("sublinea") or "").strip()
     w.externo = str(datos.get("externo", "")) in ("1", "on", "true")
@@ -64,7 +83,7 @@ def register_day(user, fecha, marcas, observaciones=None):
         if estado not in validos:
             raise BusinessError(f"Estado de asistencia no válido: {estado}.")
         w = db().get(Worker, int(wid))
-        if w is None:
+        if w is None or (w.area or "Producción") != area_of(user):
             continue
         a = db().execute(select(Attendance).where(Attendance.worker_id == w.id, Attendance.fecha == fecha)).scalars().first()
         if a is None:
@@ -82,10 +101,11 @@ def day(fecha):
     return {a.worker_id: a for a in db().execute(select(Attendance).where(Attendance.fecha == fecha)).scalars()}
 
 
-def summary(desde=None, hasta=None, linea=""):
+def summary(desde=None, hasta=None, linea="", area="Producción"):
     hasta = hasta or date.today()
     desde = desde or hasta - timedelta(days=29)
-    rows = list(db().execute(select(Attendance).where(Attendance.fecha >= desde, Attendance.fecha <= hasta)).scalars())
+    rows = [a for a in db().execute(select(Attendance).where(Attendance.fecha >= desde, Attendance.fecha <= hasta)).scalars()
+            if (a.worker.area or "Producción") == area]
     por = defaultdict(Counter)
     for a in rows:
         if linea and a.worker.linea != linea:

@@ -1,15 +1,18 @@
-{% extends "base.html" %}{% from "_m.html" import csrf, b, empty %}
+{% extends "base.html" %}{% from "_m.html" import csrf, b, empty, ic %}
 {% block content %}<h1>Planeamiento de producción</h1>
 <p class="small"><a href="{{ url_for('main.holidays') }}">Feriados del año (marcar los que se trabajan)</a></p>
 <p class="muted small">Producción ingresa lo que producirá en el día, la semana o el mes; el sistema lo contrasta con lo liquidado y calcula la tasa de cumplimiento (Σ mín(real, plan) / Σ plan).</p>
 <p class="tabs">{% for p, t in [('DIA','Diario'),('SEMANA','Semanal'),('MES','Mensual')] %}<a class="btn {{ '' if d.periodo == p else 'sec' }}" href="{{ url_for('prod.plan', periodo=p) }}">{{ t }}</a> {% endfor %}</p>
-{% if can('produccion.programar') or can('produccion.liquidar') %}<form method="post" class="card">{{ csrf() }}<h3>Registrar plan</h3><div class="row">
-<div><label>Periodo</label><select name="periodo">{% for p, t in [('DIA','Día'),('SEMANA','Semana'),('MES','Mes')] %}<option value="{{ p }}" {{ 'selected' if d.periodo == p }}>{{ t }}</option>{% endfor %}</select></div>
-<div><label>Fecha (día; la semana o el mes se toman de esta fecha)</label><input type="date" name="fecha" value="{{ hoy.isoformat() }}" required></div>
-<div class="grow"><label>Producto (código, nombre y presentación)</label><input name="product_code" list="pp" required autocomplete="off"><datalist id="pp">{% for p in products %}<option value="{{ p.code }} · {{ p.descripcion }}{{ ' · ' ~ p.presentacion if p.presentacion }}"></option>{% endfor %}</datalist></div>
-<div><label>Cantidad (UM del artículo)</label><input type="number" step="any" min="0" name="cantidad" required></div>
-<div><label>Línea</label><select name="line_code"><option value="">(—)</option>{% for c, n, _ in lineas %}<option value="{{ c }}">{{ n }}</option>{% endfor %}</select></div>
-<div class="grow"><label>Comentario</label><input name="comentario"></div><div><button>Agregar</button></div></div></form>{% endif %}
+{% if can('produccion.programar') or can('produccion.liquidar') %}<p><button class="btn" data-open="dlg-plan">{{ ic('plus') }} Registrar plan {{ nombre_periodo }}</button></p>
+<dialog class="modal" id="dlg-plan" aria-labelledby="dlg-plan-t"><form method="post">{{ csrf() }}<input type="hidden" name="periodo" value="{{ d.periodo }}">
+<div class="dlg-head"><h3 id="dlg-plan-t">Registrar plan {{ nombre_periodo }}</h3><button class="ibtn" data-close aria-label="Cerrar">{{ ic('x') }}</button></div>
+<div class="dlg-body"><p class="small muted">Periodicidad: la elegida arriba ({{ nombre_periodo }}). {{ 'La semana se toma de la fecha.' if d.periodo == 'SEMANA' else ('El mes se toma de la fecha.' if d.periodo == 'MES' else '') }}</p>
+<label class="req">Fecha</label><input type="date" name="fecha" value="{{ hoy.isoformat() }}" required>
+<label class="req">Producto</label><input name="product_code" list="pp" required autocomplete="off" style="width:100%"><datalist id="pp">{% for p in products %}<option value="{{ p.code }} · {{ p.descripcion }}{{ ' · ' ~ p.presentacion if p.presentacion }}"></option>{% endfor %}</datalist>
+<div class="row"><div><label class="req">Cantidad (UM del artículo)</label><input type="number" step="any" min="0" name="cantidad" required style="width:130px"></div>
+<div><label>Línea</label><select name="line_code"><option value="">(—)</option>{% for c, n, _ in lineas %}<option value="{{ c }}">{{ n }}</option>{% endfor %}</select></div></div>
+<label>Comentario</label><input name="comentario" style="width:100%"></div>
+<div class="dlg-foot"><button class="btn sec" data-close>Cancelar</button><button class="btn">Agregar</button></div></form></dialog>{% endif %}
 <div class="card"><div class="card-head"><h3>Requerimientos consolidados ({{ {'DIA':'por día','SEMANA':'por semana','MES':'por mes'}[req.periodo] }})</h3>
 {% if can('produccion.programar') or can('produccion.liquidar') %}<form method="post" class="inline" data-confirm="¿Preprogramar el planeamiento con lo que falta planificar? El Jefe de Producción puede editarlo.">{{ csrf() }}<input type="hidden" name="accion" value="preprogramar"><input type="hidden" name="periodo" value="{{ req.periodo }}"><button class="small">Preprogramar con estos requerimientos</button></form>{% endif %}</div>
 <p class="small muted">Lo que Producción debe tener por producto, fecha y cantidad: solicitudes de producción abiertas y faltantes de OV de productos con lista de materiales ({{ req.desde|d }} – {{ req.hasta|d }}). El sistema preprograma lo que falta planificar y el Jefe de Producción lo edita.</p>
@@ -26,11 +29,21 @@
 <div class="card"><h3>Plan vs real por periodo</h3>{{ graf }}</div>
 <div class="card"><div class="tw"><table class="small"><tr><th>Periodo</th><th>Producto</th><th class="r">Plan</th><th class="r">Real (liquidado)</th><th class="r">Cumplimiento</th></tr>
 {% for f in d.filas %}<tr><td>{{ f.inicio|d }}{{ ' – ' ~ f.fin.strftime('%d/%m/%Y') if f.fin != f.inicio }}</td><td>{{ f.producto }}</td><td class="r">{{ f.plan|n if f.plan else '—' }}</td><td class="r">{{ f.real|n }}</td><td class="r">{% if f.cumplimiento is not none %}{{ f.cumplimiento }} %{% else %}<span class="muted">sin plan</span>{% endif %}</td></tr>{% else %}<tr><td colspan="5" class="muted">Sin plan ni producción en el periodo</td></tr>{% endfor %}</table></div></div>
-<div class="card"><h3>Programación registrada (modificable)</h3><p class="small muted">Si surge una variable no contemplada, modifique la cantidad indicando el motivo (0 elimina la línea de programación). Queda en auditoría.</p>
-<div class="tw"><table class="small"><tr><th>Periodo</th><th>Producto</th><th>Línea</th><th class="r">Cantidad</th><th>Historial / comentario</th><th>Modificar</th></tr>
-{% for e in entradas %}<tr><td>{{ e.fecha|d }}{% if e.origen == 'SISTEMA' %}<br><span class="b info">preprogramado</span>{% endif %}</td><td>{{ e.product_code }} {{ pd(e.product_code) }}</td><td>{{ e.line_code or '—' }}</td><td class="r">{{ e.cantidad|n }}</td><td class="small" style="white-space:pre-line">{{ e.comentario }}</td>
-<td>{% if can('produccion.programar') or (can('produccion.liquidar') and e.origen != 'SISTEMA') %}<form method="post" class="row">{{ csrf() }}<input type="hidden" name="accion" value="modificar"><input type="hidden" name="plan_id" value="{{ e.id }}"><input type="number" step="any" min="0" name="cantidad" value="{{ e.cantidad }}" style="width:90px" aria-label="Nueva cantidad"><input name="comentario" required placeholder="motivo" aria-label="Motivo"><button class="small sec">{{ 'Guardar' if can('produccion.plan_validar') else 'Proponer cambio' }}</button></form>{% endif %}
-{% if e.cambio_pendiente %}<div class="note small">Cambio propuesto por {{ e.cambio_pendiente.user }}: {{ e.cambio_pendiente.antes|n }} → <b>{{ e.cambio_pendiente.cantidad|n }}</b> ({{ e.cambio_pendiente.motivo }}).
-{% if can('produccion.plan_validar') %}<form method="post" class="row">{{ csrf() }}<input type="hidden" name="accion" value="validar_cambio"><input type="hidden" name="plan_id" value="{{ e.id }}"><input name="comentario" placeholder="comentario (obligatorio si rechaza)"><button class="small" name="aprobar" value="1">Validar</button><button class="small sec" name="aprobar" value="0">Rechazar</button></form>{% else %}Pendiente de validación del Jefe de Producción.{% endif %}</div>{% endif %}</td></tr>
-{% else %}<tr><td colspan="6" class="muted">Sin programación registrada en el periodo.</td></tr>{% endfor %}</table></div></div>
+<h2>Programación registrada</h2><p class="small muted">Se edita (fecha y cantidad, con motivo) mientras no esté liquidada; 0 elimina la entrada. El cambio de un asistente queda pendiente de validación del Jefe de Producción. Todo queda en auditoría.</p>
+{% if entradas %}<div class="cards">{% for e in entradas %}{% set st, motivo, real = estados[e.id] %}
+<article class="xcard st-{{ st }}"><div class="xcard-head"><b>{{ e.product_code }}</b>{{ b(st) }}{% if e.origen == 'SISTEMA' %}<span class="b info">preprogramado</span>{% endif %}
+{% if st != 'LIQUIDADO' and (can('produccion.programar') or (can('produccion.liquidar') and e.origen != 'SISTEMA')) %}<button class="ibtn" data-open="dlg-edplan" data-set-plan-id="{{ e.id }}" data-set-fecha="{{ e.fecha.isoformat() }}" data-set-cantidad="{{ e.cantidad }}" data-set-titulo="{{ e.product_code }}" aria-label="Editar fecha y cantidad" title="Editar fecha y cantidad">{{ ic('edit') }}</button>{% endif %}</div>
+<div class="small">{{ pd(e.product_code) }}</div>
+<div class="meta"><span>{{ ic('calendar') }} {{ e.fecha|d }}</span><span>{{ e.line_code or 'sin línea' }}</span></div>
+<div class="meta"><span class="big">{{ e.cantidad|n }}</span><span>liquidado {{ real|n }}</span></div>
+<div class="meter"><i style="width:{{ [100 * real / e.cantidad if e.cantidad else 0, 100]|min }}%"></i></div>
+{% if st == 'PENDIENTE' %}<div class="pending-why">Pendiente de: {{ motivo }}</div>
+{% if can('produccion.plan_validar') %}<form method="post" class="row">{{ csrf() }}<input type="hidden" name="accion" value="validar_cambio"><input type="hidden" name="plan_id" value="{{ e.id }}"><input name="comentario" placeholder="comentario (obligatorio si rechaza)" aria-label="Comentario"><button class="small" name="aprobar" value="1">Validar</button><button class="small sec" name="aprobar" value="0">Rechazar</button></form>{% endif %}{% endif %}
+{% if e.comentario %}<details class="small"><summary>Historial</summary><div style="white-space:pre-line">{{ e.comentario }}</div></details>{% endif %}</article>{% endfor %}</div>
+{% else %}{{ empty('Sin programación registrada en el periodo.', 'calendar') }}{% endif %}
+<dialog class="modal" id="dlg-edplan" aria-labelledby="dlg-edplan-t"><form method="post">{{ csrf() }}<input type="hidden" name="accion" value="modificar"><input type="hidden" name="plan_id">
+<div class="dlg-head"><h3 id="dlg-edplan-t">Editar programación · <span data-show="titulo"></span></h3><button class="ibtn" data-close aria-label="Cerrar">{{ ic('x') }}</button></div>
+<div class="dlg-body"><div class="row"><div><label class="req">Fecha</label><input type="date" name="fecha" required></div><div><label class="req">Cantidad</label><input type="number" step="any" min="0" name="cantidad" required style="width:120px"></div></div>
+<label class="req">Motivo</label><input name="comentario" required style="width:100%"></div>
+<div class="dlg-foot"><button class="btn sec" data-close>Cancelar</button><button class="btn">{{ 'Guardar' if can('produccion.plan_validar') else 'Proponer cambio' }}</button></div></form></dialog>
 {% endblock %}

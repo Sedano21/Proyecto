@@ -1,0 +1,7 @@
+{% extends "base.html" %}{% from "_m.html" import empty, ic %}
+{% block content %}<h1>Stock sin rotación</h1>
+<p class="small muted">Productos con stock y sin salidas (despachos, consumos o ventas cargadas) en los últimos {{ d.dias }} días. Comercial, Almacén y Gerencia reciben el resumen cada mes.</p>
+<form class="row card" method="get"><div><label>Días sin salida</label><input type="number" name="dias" min="1" value="{{ d.dias }}" style="width:90px"></div><div><button class="sec">Ver</button></div><div class="small muted">{{ d.filas|length }} producto(s)</div></form>
+{% if d.filas %}<div class="cards">{% for x in d.filas %}<article class="xcard {{ 'alerta' if x.dias is none or x.dias > d.dias * 2 else 'st-PENDIENTE' }}"><div class="xcard-head"><b>{{ x.code }}</b><span class="small muted">{{ x.tipo }}</span></div>
+<div class="small">{{ x.descripcion }}</div><div class="meta"><span class="big">{{ x.stock|n }}</span><span>{{ 'última salida ' ~ x.ultima_salida.strftime('%d/%m/%Y') ~ ' (' ~ x.dias ~ ' días)' if x.ultima_salida else 'sin salidas registradas' }}</span></div></article>{% endfor %}</div>
+{% else %}{{ empty('Todos los productos con stock tuvieron salidas en el periodo.', 'check') }}{% endif %}{% endblock %}

@@ -38,6 +38,9 @@ def register_views(app):
     app.register_blueprint(m365.bp)
     app.register_blueprint(informes.bp)
     app.register_blueprint(marcha.bp)
+    from . import mantenimiento, suministro
+    app.register_blueprint(mantenimiento.bp)
+    app.register_blueprint(suministro.bp)
 
     @app.errorhandler(403)
     def _403(e):

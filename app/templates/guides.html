@@ -1,0 +1,15 @@
+{% extends "base.html" %}{% from "_m.html" import b, csrf, ic, empty %}
+{% block content %}<h1>Guías de remisión</h1>
+<form class="row card" method="get"><div><label>Fecha de ruta</label><input type="date" name="fecha" value="{{ fecha.isoformat() }}"></div><div class="grow"><label>Buscar</label><input type="search" name="q" value="{{ q }}" placeholder="guía, OV o cliente"></div><div><button class="sec">Ver</button></div></form>
+{% if paradas %}<div class="cards">{% for st in paradas %}<article class="xcard {{ 'alerta' if st.guia_estado in ['OBSERVADA','DEVUELTA'] else ('st-LIQUIDADO' if st.guia_estado == 'FIRMADA' else '') }}">
+<div class="xcard-head"><b>{{ st.guia_numero or 'Guía pendiente' }}</b>{{ b(st.guia_estado) if st.guia_estado }}
+<button class="ibtn" data-open="dlg-guia" data-set-stop-id="{{ st.id }}" data-set-titulo="{{ st.guia_numero or ('OV ' ~ st.order.numero) }}" aria-label="Reportar estado" title="Reportar estado">{{ ic('edit') }}</button></div>
+<div class="meta"><span>OV {{ st.order.numero }}</span><span>{{ st.order.customer.nombre }}</span><span>ruta #{{ st.route_id }}</span><span>entrega: {{ st.estado|replace('_',' ')|lower }}</span></div>
+{% if st.guia_path %}<a class="small" href="{{ url_for('main.evidence', name=st.guia_path) }}">Ver guía</a>{% endif %}{% if st.guia_firmada_path %} · <a class="small" href="{{ url_for('main.evidence', name=st.guia_firmada_path) }}">guía firmada</a>{% endif %}
+{% if st.guia_estado_hist %}<details class="small"><summary>Historial</summary>{% for h in st.guia_estado_hist %}<div>{{ h.ts|replace('T',' ') }} · {{ estados.get(h.estado, h.estado) }} · {{ h.user }}{{ ': ' ~ h.nota if h.nota }}</div>{% endfor %}</details>{% endif %}</article>{% endfor %}</div>
+{% else %}{{ empty('No hay guías para la fecha y búsqueda elegidas.', 'file') }}{% endif %}
+<dialog class="modal" id="dlg-guia"><form method="post">{{ csrf() }}<input type="hidden" name="stop_id"><input type="hidden" name="fecha" value="{{ fecha.isoformat() }}">
+<div class="dlg-head"><h3>Estado de la guía · <span data-show="titulo"></span></h3><button class="ibtn" data-close aria-label="Cerrar">{{ ic('x') }}</button></div>
+<div class="dlg-body"><label class="req">Estado</label><select name="estado">{% for k, v in estados.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select>
+<label>Nota (obligatoria si queda observada, devuelta o anulada)</label><input name="nota" style="width:100%"></div>
+<div class="dlg-foot"><button class="btn sec" data-close>Cancelar</button><button class="btn">Reportar</button></div></form></dialog>{% endblock %}

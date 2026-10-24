@@ -1,42 +1,68 @@
-{% extends "base.html" %}{% from "_m.html" import b, csrf %}
-{% block content %}<h1>Partes de producción (rendimiento y desmedro)</h1>
-<p><a class="btn sec" href="{{ url_for('rep.show', nombre='produccion') }}">Informe de producción (cuánto se produjo, gráficos)</a> <a class="btn sec" href="{{ url_for('prod.plan') }}">Planeamiento</a></p>
-<p class="small muted">Registro con los formatos actuales: LÍNEA TRUER, LÍNEA CIMBRIA, ENVASADOS R1 R2 Y R3 y SELECCIÓN MANUAL. El <b>desmedro</b> es la merma;
-se liga a la liquidación por el número de <b>OF</b> y alimenta la merma real del tablero. Selección: % rendimiento = granel / peso; % desmedro = desmedro / peso.
-Envasado: unidades teóricas = peso MP / presentación; % rendimiento = unidades / teóricas.</p>
-<p><a class="btn sec" href="{{ url_for('prod.control') }}">Control de producción (diario / semanal / mensual)</a> <a class="btn sec" href="{{ url_for('prod.oee_dashboard') }}">Tablero OEE</a> <a class="btn sec" href="{{ url_for('prod.productivity') }}">Productividad por persona</a> <a class="btn sec" href="{{ url_for('prod.attendance') }}">Asistencia</a></p>
-{% if can('produccion.liquidar') %}<form method="post" action="{{ url_for('prod.part_new') }}" class="card">{{ csrf() }}<h3>Iniciar parte en línea</h3>
-<p class="small muted">Se registra al empezar: línea, producto, EAN escaneado, lote y kg de MP. Durante la producción se pausa y reanuda con la causa; al finalizar se registran pallets, defectos y colaboradores y el sistema calcula rendimiento, desviación de peso, horas efectivas, velocidad y OEE.</p>
-<div class="row"><div><label>Línea</label><select name="linea">{% for c, n, _ in lineas %}<option value="{{ c }}">{{ n }}</option>{% endfor %}</select></div>
-<div><label>Máquina</label><input name="maquina" size="12" placeholder="= línea (p. ej. ENFARDADO_500)"></div>
-<div><label>Turno</label><select name="turno">{% for x in turnos %}<option>{{ x }}</option>{% endfor %}</select></div>
-<div><label>Fecha</label><input type="date" name="fecha" value="{{ hoy.isoformat() }}"></div><div><label>OF</label><input name="of" size="10"></div><div><label>Cliente</label><input name="cliente" size="12"></div></div>
-<div class="row"><div class="grow"><label class="req">Producto</label><input name="product_code" required list="pp2" autocomplete="off"><datalist id="pp2">{% for p in products %}<option value="{{ p.code }} · {{ p.descripcion }}{{ ' · ' ~ p.presentacion if p.presentacion }}"></option>{% endfor %}</datalist></div>
-<div><label>EAN escaneado</label><input name="ean" inputmode="numeric" size="14"></div><div><label>Lote PT</label><input name="lote_pt" size="10"></div><div><label>F.V. PT</label><input type="date" name="fv_pt"></div></div>
-<div class="row"><div><label>MP (código)</label><input name="mp_codigo" size="10"></div><div><label>Lote MP</label><input name="lote" size="10"></div><div><label>F.V. MP</label><input type="date" name="fv_mp"></div>
-<div><label>Peso por saco (kg)</label><input type="number" step="any" name="peso_saco_kg" style="width:80px"></div><div><label># sacos</label><input type="number" step="any" name="sacos" style="width:70px"></div><div><label>Saldo MP (kg)</label><input type="number" step="any" name="saldo_mp_kg" style="width:80px"></div>
-<div><label>o total MP (kg)</label><input type="number" step="any" name="peso_entrada_kg" style="width:90px"></div>
-<div><label>Presentación (kg)</label><input type="number" step="any" name="presentacion_kg" style="width:70px"></div><div><label>Und. por paquete</label><input type="number" step="any" name="und_paquete" style="width:70px"></div>
-<div><label>Maquinista</label><input name="maquinista" size="12"></div></div><p><button>Iniciar parte</button></p></form>
-{% if programados %}<div class="card"><h3>Partes programados por iniciar</h3><table class="small">{% for r in programados %}<tr><td>{{ r.fecha|d }}</td><td>{{ r.linea }}</td><td>{{ r.product_code }}</td><td class="r">{{ r.peso_entrada_kg|n }} kg</td><td><form method="post" action="{{ url_for('prod.part_new') }}" class="row">{{ csrf() }}<input type="hidden" name="parte_id" value="{{ r.id }}"><input name="ean" placeholder="EAN" size="14"><input name="lote" placeholder="Lote MP" size="10"><button class="small">Iniciar</button></form></td></tr>{% endfor %}</table></div>{% endif %}
-<details class="card"><summary>{{ 'Completar parte programado #' ~ comp.id if comp else 'Registrar o programar parte' }}</summary><form method="post">{{ csrf() }}{% if comp %}<input type="hidden" name="parte_id" value="{{ comp.id }}">{% endif %}
-<div class="row"><div><label>Línea</label><select name="linea">{% for c, n, _ in lineas %}<option value="{{ c }}">{{ n }}</option>{% endfor %}</select></div>
-<div><label>Fecha</label><input type="date" name="fecha" value="{{ (comp.fecha if comp else hoy).isoformat() }}"></div><div><label>OF (documento de liquidación)</label><input name="of" size="10" value="{{ comp.of if comp }}"></div>
-<div><label># OP</label><input name="op" size="4"></div><div><label>Turno</label><input name="turno" size="8"></div>
-<div><label>Hora inicio / fin</label><input name="hora_inicio" size="5" placeholder="07:00"> <input name="hora_fin" size="5" placeholder="15:00"></div>
-<div><label>Horas de operación</label><input type="number" step="any" name="horas" style="width:70px"></div><div><label>Operarios</label><input type="number" name="operarios" style="width:60px"></div></div>
-<div class="row"><div class="grow"><label>Producto (código, nombre y presentación)</label><input name="product_code" required list="pp" autocomplete="off" value="{{ comp.product_code if comp }}"><datalist id="pp">{% for p in products %}<option value="{{ p.code }} · {{ p.descripcion }}{{ ' · ' ~ p.presentacion if p.presentacion }}"></option>{% endfor %}</datalist></div><div><label>MP (código)</label><input name="mp_codigo" size="10"></div>
-<div><label>Lote</label><input name="lote" size="10"></div><div><label>Cliente</label><input name="cliente" size="12"></div>
-<div><label>Peso de entrada (kg; en programado: kg previstos)</label><input type="number" step="any" name="peso_entrada_kg" required style="width:100px" value="{{ comp.peso_entrada_kg if comp }}"></div></div>
-<div class="row"><div><label>Selección: granel (kg)</label><input type="number" step="any" name="granel_kg" style="width:90px"></div>
-<div><label>MP recuperada (kg)</label><input type="number" step="any" name="mp_kg" style="width:80px"></div><div><label>CAL3 (kg)</label><input type="number" step="any" name="cal3_kg" style="width:80px"></div>
-<div><label>Desmedro (kg)</label><input type="number" step="any" name="desmedro_kg" style="width:80px"></div>
-<div><label>Envasado: presentación (kg)</label><input type="number" step="any" name="presentacion_kg" style="width:70px"></div><div><label>Unidades producidas</label><input type="number" step="any" name="unidades" style="width:80px"></div>
-<div><label>Sobrante (kg)</label><input type="number" step="any" name="sobrante_kg" style="width:70px"></div>
-<div><label>Estado</label><select name="estado">{% if not comp %}<option>PROGRAMADO</option>{% endif %}<option {{ 'selected' if comp }}>EN PROCESO</option><option>PENDIENTE</option><option>LIQUIDADO</option></select></div></div>
-<p class="small muted">PROGRAMADO: registra lo que se producirá (línea, fecha, producto, kg previstos); los resultados se completan después con «Completar».</p>
-<div class="row"><div><label>Parada de línea (min)</label><input name="parada_min" type="number" min="0" step="1"></div><div class="grow"><label>Motivo de la parada</label><input name="motivo_parada" placeholder="falta de material, mantenimiento, cambio de formato…"></div></div>
-<label>Observación</label><input name="observacion" style="width:100%"><p><button>Registrar parte</button></p></form></details>{% endif %}
-<div class="tbl"><table class="small"><tr><th>Fecha</th><th>Línea</th><th>OF</th><th>Producto / lote</th><th class="r">Entrada kg</th><th class="r">Salida kg</th><th class="r">Unid.</th><th class="r">CAL3</th><th class="r">Desmedro kg</th><th class="r">% Rend.</th><th class="r">% Desm.</th><th class="r">Dif. kg</th><th class="r">kg/h</th><th class="r">OEE</th><th>Estado</th></tr>
-{% for r in rows %}<tr><td>{{ r.fecha|d }}{% if r.estado == 'PROGRAMADO' %}<br>{{ b('PROGRAMADO') }}{% if can('produccion.liquidar') %} <a class="small" href="{{ url_for('prod.reports', completar=r.id) }}">Completar</a>{% endif %}{% endif %}</td><td>{{ r.linea }}</td><td>{{ r.of }}</td><td>{{ r.product_code }} {{ r.product.descripcion if r.product }} · {{ r.lote }}</td><td class="r">{{ r.peso_entrada_kg|n }}</td><td class="r">{{ r.granel_kg|n }}</td><td class="r">{{ r.unidades|n if r.unidades is not none else '' }}</td><td class="r">{{ r.cal3_kg|n }}</td><td class="r">{{ r.desmedro_kg|n }}</td><td class="r">{{ r.rendimiento_pct }}%</td><td class="r"><b>{{ r.desmedro_pct }}%</b></td><td class="r">{{ r.diferencia_kg|n }}</td><td class="r">{{ r.ratio_kg_hora|n if r.ratio_kg_hora else '' }}</td><td class="r">{{ (r.indicadores or {}).get('oee', '') }}</td><td>{{ b(r.estado|replace(' ', '_')) }} <a class="small" href="{{ url_for('prod.part_detail', pid=r.id) }}">ver parte</a></td></tr>
-{% else %}<tr><td colspan="15" class="muted">Sin partes registrados</td></tr>{% endfor %}</table></div>{% endblock %}
+{% extends "base.html" %}{% from "_m.html" import b, csrf, ic, empty %}
+{% block content %}<div class="card-head"><h1 style="flex:1">Partes de producción</h1>
+{% if can('produccion.liquidar') %}<button class="btn" data-open="dlg-parte">{{ ic('plus') }} Nuevo parte</button>{% endif %}</div>
+<p class="seg small"><a class="on" href="{{ url_for('prod.reports') }}">Partes</a><a href="{{ url_for('prod.monitor') }}">Monitoreo en tiempo real</a><a href="{{ url_for('prod.plan') }}">Planeamiento</a><a href="{{ url_for('prod.liquidations') }}">Liquidaciones</a></p>
+<details class="small muted"><summary>Cómo se calculan el rendimiento y el desmedro</summary><p>Selección: % rendimiento = granel / kg de entrada; % desmedro = desmedro / kg de entrada. Envasado: % rendimiento = unidades × presentación / kg de MP; el desmedro es lo que no se convirtió en unidades. El desmedro es la merma y se liga a la liquidación por la OF.</p></details>
+
+{% if can('produccion.liquidar') %}
+<dialog class="drawer" id="dlg-parte" aria-labelledby="dlg-parte-t">
+<form method="post" action="{{ url_for('prod.part_new') }}" class="wizard" data-product-info="{{ url_for('prod.product_api') }}" data-envasado="{{ envasado }}">{{ csrf() }}
+<div class="dlg-head"><h3 id="dlg-parte-t">Nuevo parte de producción</h3><button class="ibtn" data-close aria-label="Cerrar">{{ ic('x') }}</button></div>
+<div class="dlg-body"><ol class="steps"><li>1. Línea y producto</li><li>2. Materia prima</li><li>3. Registrar o programar</li></ol>
+<section class="wz-step">
+<label class="req">Línea</label><select name="linea" required>{% for c, n, _ in lineas %}<option value="{{ c }}">{{ n }}</option>{% endfor %}</select>
+<label class="req">Producto</label><input name="product_code" required list="pp2" autocomplete="off" placeholder="código o nombre"><datalist id="pp2">{% for p in products %}<option value="{{ p.code }} · {{ p.descripcion }}{{ ' · ' ~ p.presentacion if p.presentacion }}"></option>{% endfor %}</datalist>
+<div class="row"><div><label>Turno</label><select name="turno">{% for x in turnos %}<option>{{ x }}</option>{% endfor %}</select></div><div><label>OF</label><input name="of" size="10"></div><div><label>Máquina</label><input name="maquina" size="12" placeholder="= línea"></div></div>
+<div class="row"><div><label>EAN escaneado</label><input name="ean" inputmode="numeric" size="16"></div><div><label>Presentación (kg)</label><input type="number" step="any" min="0" name="presentacion_kg" style="width:90px"></div><div><label>Und. por paquete</label><input type="number" step="1" min="1" name="und_paquete" style="width:80px"></div></div>
+<div class="live-check" aria-live="polite"></div>
+<div class="wz-nav"><span></span><button class="btn" data-next>Siguiente</button></div></section>
+<section class="wz-step" hidden>
+<div class="row"><div><label>Peso por saco (kg)</label><input type="number" step="any" min="0" name="peso_saco_kg" style="width:90px"></div><div><label># sacos</label><input type="number" step="1" min="0" name="sacos" style="width:80px"></div><div><label>Saldo (kg)</label><input type="number" step="any" min="0" name="saldo_mp_kg" style="width:80px"></div></div>
+<label>o total de MP (kg)</label><input type="number" step="any" min="0" name="peso_entrada_kg" style="width:120px">
+<div class="row"><div><label>MP (código)</label><input name="mp_codigo" size="10"></div><div><label>Lote MP</label><input name="lote" size="12"></div><div><label>F.V. MP</label><input type="date" name="fv_mp"></div></div>
+<div class="row"><div><label>Lote PT</label><input name="lote_pt" size="12"></div><div><label>F.V. PT</label><input type="date" name="fv_pt"></div><div><label>Cliente</label><input name="cliente" size="14"></div></div>
+<div class="live-check" aria-live="polite"></div>
+<div class="wz-nav"><button class="btn sec" data-prev>Atrás</button><button class="btn" data-next>Siguiente</button></div></section>
+<section class="wz-step" hidden>
+<p class="small"><b>Registrar</b> inicia el parte ahora (fecha de hoy). <b>Programar</b> lo deja para la fecha y horario que indique; se inicia después desde su tarjeta.</p>
+<div class="row"><div><label>Fecha (para programar)</label><input type="date" name="fecha" id="np-fecha" value="{{ hoy.isoformat() }}" min="{{ hoy.isoformat() }}"></div>
+<div><label>Inicio previsto</label><input name="hora_inicio" id="np-ini" data-hora="{{ formato_hora }}" size="8" placeholder="{{ '7:00 am' if formato_hora == '12H' else '07:00' }}"></div>
+<div><label>Fin previsto</label><input name="hora_fin" data-hora="{{ formato_hora }}" data-min-hora="#np-ini" data-fecha="#np-fecha" data-no-pasada size="8" placeholder="{{ '3:00 pm' if formato_hora == '12H' else '15:00' }}"></div></div>
+<div class="wz-nav"><button class="btn sec" data-prev>Atrás</button><span><button class="btn sec" name="accion" value="programar">{{ ic('calendar') }} Programar</button> <button class="btn" name="accion" value="registrar">{{ ic('check') }} Registrar</button></span></div></section>
+</div></form></dialog>
+
+<dialog class="modal" id="dlg-editar" aria-labelledby="dlg-editar-t"><form method="post">{{ csrf() }}<input type="hidden" name="accion" value="editar"><input type="hidden" name="parte_id">
+<div class="dlg-head"><h3 id="dlg-editar-t">Editar programación · <span data-show="titulo"></span></h3><button class="ibtn" data-close aria-label="Cerrar">{{ ic('x') }}</button></div>
+<div class="dlg-body"><div class="row"><div><label class="req">Fecha</label><input type="date" name="fecha" id="ed-fecha" required></div><div><label class="req">Cantidad (kg de MP)</label><input type="number" step="any" min="0.001" name="cantidad" required style="width:120px"></div></div>
+<div class="row"><div><label>Inicio previsto</label><input name="hora_inicio" id="ed-ini" data-hora="{{ formato_hora }}" size="8"></div><div><label>Fin previsto</label><input name="hora_fin" data-hora="{{ formato_hora }}" data-min-hora="#ed-ini" data-fecha="#ed-fecha" data-no-pasada size="8"></div></div>
+<label class="req">Motivo del cambio</label><input name="motivo" required style="width:100%"></div>
+<div class="dlg-foot"><button class="btn sec" data-close>Cancelar</button><button class="btn">Guardar</button></div></form></dialog>
+
+<dialog class="modal" id="dlg-iniciar" aria-labelledby="dlg-iniciar-t"><form method="post" action="{{ url_for('prod.part_new') }}">{{ csrf() }}<input type="hidden" name="parte_id"><input type="hidden" name="accion" value="registrar">
+<div class="dlg-head"><h3 id="dlg-iniciar-t">Iniciar · <span data-show="titulo"></span></h3><button class="ibtn" data-close aria-label="Cerrar">{{ ic('x') }}</button></div>
+<div class="dlg-body"><div class="row"><div><label>EAN escaneado</label><input name="ean" inputmode="numeric" size="16"></div><div><label>Lote MP</label><input name="lote" size="12"></div></div></div>
+<div class="dlg-foot"><button class="btn sec" data-close>Cancelar</button><button class="btn">Iniciar ahora</button></div></form></dialog>
+{% endif %}
+
+<h2 id="programados">Programación</h2>
+{% if programados %}<div class="cards">{% for r in programados %}{% set pg = r.programa or {} %}
+<article class="xcard st-PROGRAMADO"><div class="xcard-head"><b>{{ r.linea }} · {{ r.product_code }}</b>{{ b('PROGRAMADO') }}
+{% if can('produccion.liquidar') %}<button class="ibtn" data-open="dlg-editar" data-set-parte-id="{{ r.id }}" data-set-fecha="{{ r.fecha.isoformat() }}" data-set-cantidad="{{ r.peso_entrada_kg }}" data-set-hora-inicio="{{ fmt_hora(pg.hora_inicio) }}" data-set-hora-fin="{{ fmt_hora(pg.hora_fin) }}" data-set-titulo="{{ r.linea }} {{ r.product_code }}" aria-label="Editar fecha y cantidad" title="Editar fecha y cantidad">{{ ic('edit') }}</button>{% endif %}</div>
+<div class="small">{{ r.product.descripcion if r.product }}</div>
+<div class="meta"><span>{{ ic('calendar') }} {{ r.fecha|d }}{% if pg.hora_inicio %} · {{ fmt_hora(pg.hora_inicio) }}–{{ fmt_hora(pg.hora_fin) or '…' }}{% endif %}</span><span class="big">{{ r.peso_entrada_kg|n }} kg</span></div>
+{% if can('produccion.liquidar') and r.fecha <= hoy %}<div><button class="btn small" data-open="dlg-iniciar" data-set-parte-id="{{ r.id }}" data-set-titulo="{{ r.linea }} {{ r.product_code }}">Iniciar</button></div>{% endif %}</article>{% endfor %}</div>
+{% else %}{{ empty('Sin partes programados.', 'calendar') }}{% endif %}
+
+<h2>Partes registrados</h2>
+<form class="row card" method="get"><div><label>Desde</label><input type="date" name="desde" value="{{ desde.isoformat() }}"></div><div><label>Hasta</label><input type="date" name="hasta" value="{{ f.get('hasta','') }}"></div>
+<div><label>Línea</label><select name="linea"><option value="">(todas)</option>{% for c, n, _ in lineas %}<option value="{{ c }}" {{ 'selected' if f.get('linea') == c }}>{{ c }}</option>{% endfor %}</select></div>
+<div><label>Estado</label><select name="estado"><option value="">(todos)</option>{% for e in estados if e != 'PROGRAMADO' %}<option {{ 'selected' if f.get('estado') == e }}>{{ e }}</option>{% endfor %}</select></div><div><button class="sec">Filtrar</button></div></form>
+{% if rows %}<div class="cards">{% for r in rows %}{% set ind = r.indicadores or {} %}
+<article class="xcard st-{{ r.estado|replace(' ','_')|replace('.','') }}"><div class="xcard-head"><b><a href="{{ url_for('prod.part_detail', pid=r.id) }}">{{ r.linea }} · {{ r.product_code }}</a></b>{{ b(r.estado|replace(' ','_')) }}
+{% if can('produccion.liquidar') and r.estado not in no_editables and r.estado != 'BLOQUEADO' %}<button class="ibtn" data-open="dlg-editar" data-set-parte-id="{{ r.id }}" data-set-fecha="{{ r.fecha.isoformat() }}" data-set-cantidad="{{ r.peso_entrada_kg }}" data-set-titulo="{{ r.linea }} {{ r.product_code }}" aria-label="Editar fecha y cantidad" title="Editar fecha y cantidad">{{ ic('edit') }}</button>{% endif %}</div>
+<div class="meta"><span>{{ r.fecha|d }}</span><span>OF {{ r.of or '-' }}</span><span>lote {{ r.lote or '-' }}</span><span>{{ r.peso_entrada_kg|n }} kg MP</span></div>
+{% if r.estado == 'PENDIENTE' %}<div class="pending-why">Pendiente de: {{ r.motivo_estado or 'sin motivo registrado' }}</div>{% endif %}
+<div class="meta"><span>Rend. <b>{{ r.rendimiento_pct if r.rendimiento_pct is not none else '—' }} %</b></span><span>Desm. <b>{{ r.desmedro_pct if r.desmedro_pct is not none else '—' }} %</b></span>{% if ind.oee is defined %}<span>OEE <b>{{ ind.oee }} %</b></span>{% endif %}{% if r.ratio_kg_hora %}<span>{{ r.ratio_kg_hora|n }} kg/h</span>{% endif %}</div></article>{% endfor %}</div>
+{% else %}{{ empty('Sin partes en el periodo y filtros elegidos.') }}{% endif %}
+<p class="small"><a href="{{ url_for('prod.control') }}">Control de producción</a> · <a href="{{ url_for('prod.oee_dashboard') }}">Tablero OEE</a> · <a href="{{ url_for('prod.productivity') }}">Productividad por persona</a> · <a href="{{ url_for('prod.attendance') }}">Asistencia</a> · <a href="{{ url_for('rep.show', nombre='produccion') }}">Informe de producción</a></p>
+{% endblock %}

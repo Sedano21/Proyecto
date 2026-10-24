@@ -5,7 +5,7 @@
 <meta name="theme-color" content="#ffffff">
 <title>{% block title %}Módulo de Operaciones{% endblock %} · Corporación Productiva</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23007a3d'/%3E%3Cpath d='M10 23V9h6.5a4.5 4.5 0 0 1 0 9H10' fill='none' stroke='%23fff' stroke-width='3'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=1.0.0-mb">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=1.1.0">
 <script>try{if(localStorage.getItem('cp-nav')==='min')document.documentElement.classList.add('nav-min')}catch(e){}</script>
 </head>
 <body{% if user %} data-alertas="{{ url_for('main.alerts_status') }}"{% endif %}>
@@ -34,6 +34,7 @@
       {% if ve('oportunidades.registrar') or ve('oportunidades.ver_todas') %}{{ nl(url_for('com.opportunities'), 'users', 'Oportunidades') }}{% endif %}
       {% if ve('catalogo.ver') or ve('catalogo.fotos') %}{{ nl(url_for('com.catalog'), 'box', 'Catálogo') }}{% endif %}
       {% if ve('objetivos.ver') %}{{ nl(url_for('com.targets'), 'gauge', 'Objetivos de venta') }}{% endif %}
+      {% if ve('demanda.cargar') %}{{ nl(url_for('sup.demand'), 'trend', 'Proyección de demanda') }}{% endif %}
       {% if ve('margen.ver') %}{{ nl(url_for('com.margin_report'), 'chart', 'Margen') }}{% endif %}
       {% if ve('incentivos.ver') %}{{ nl(url_for('com.incentives'), 'tag', 'Incentivos') }}{% endif %}
       {% if ve('mercado.aprobar') %}{{ nl(url_for('com.market_approve'), 'check', 'Precios de mercado por aprobar') }}{% endif %}
@@ -44,13 +45,18 @@
       {{ nl(url_for('fin.board'), 'scale', 'Cobranza y condiciones') }}
       {% if ve('clientes.ver') and not ve('ov.ver') %}{{ nl(url_for('com.customer_list'), 'users', 'Clientes') }}{% endif %}
     </div>{% endif %}
-    {% if ve('stock.ver') or ve('traslados.ver') or ve('reempaque.ver') or ve('tareas.ejecutar') %}<div class="grp" data-grupo="Almacén"><h4><span class="lbl">Almacén</span></h4>
+    {% if ve('stock.ver') or ve('traslados.ver') or ve('reempaque.ver') or ve('tareas.ejecutar') or ve('movimiento.solicitar') or ve('movimiento.ejecutar') or ve('demanda.ver') or ve('ingresos.ver') or ve('asistencia.area') %}<div class="grp" data-grupo="Almacén"><h4><span class="lbl">Almacén</span></h4>
       {% if ve('stock.ver') %}{{ nl(url_for('alm.stock'), 'box', 'Stock y reservas') }}{% endif %}
       {% if ve('preparacion.registrar') or ve('ov.ver') %}{{ nl(url_for('com.preparation'), 'clipboard', 'Preparación (picking)') }}{% endif %}
       {% if ve('picking.asignar') or ve('tareas.ejecutar') or ve('preparacion.registrar') %}{{ nl(url_for('alm.picking_schedule'), 'calendar', 'Programación de picking') }}{% endif %}
       {% if ve('traslados.ver') %}{{ nl(url_for('alm.transfers'), 'swap', 'Traslados') }}{% endif %}
       {% if ve('reempaque.ver') %}{{ nl(url_for('alm.repacks'), 'refresh', 'Reempaque') }}{% endif %}
       {% if ve('stock.conteo') %}{{ nl(url_for('alm.counts'), 'count', 'Conteos físicos') }}{% endif %}
+      {% if ve('movimiento.solicitar') or ve('movimiento.ejecutar') or ve('movimiento.ver_todos') %}{{ nl(url_for('sup.moves'), 'swap', 'Movimientos punto a punto') }}{% endif %}
+      {% if ve('rotacion.ver') %}{{ nl(url_for('sup.rotation'), 'history', 'Stock sin rotación') }}{% endif %}
+      {% if ve('ingresos.ver') %}{{ nl(url_for('alm.entries'), 'download', 'Ingresos a almacén') }}{% endif %}
+      {% if ve('asistencia.area') and not ve('produccion.ver') %}{{ nl(url_for('prod.attendance'), 'users', 'Asistencia de mi personal') }}{% endif %}
+      {% if ve('demanda.ver') and not ve('demanda.cargar') %}{{ nl(url_for('sup.demand'), 'trend', 'Proyección de demanda') }}{% endif %}
       {% if ve('stock.cargar') %}{{ nl(url_for('alm.uploads', area='Almacén'), 'upload', 'Cargas de archivos') }}{% endif %}
     </div>{% endif %}
     {% if ve('produccion.ver') %}<div class="grp" data-grupo="Producción"><h4><span class="lbl">Producción</span></h4>
@@ -58,11 +64,12 @@
       {{ nl(url_for('prod.plan'), 'calendar', 'Planeamiento') }}
       {{ nl(url_for('prod.bom'), 'layers', 'Lista de materiales') }}
       {{ nl(url_for('prod.liquidations'), 'file', 'Liquidaciones') }}
-      {{ nl(url_for('prod.reports'), 'gauge', 'Partes de producción') }}
+      {% if ve('produccion.partes_ver') %}{{ nl(url_for('prod.reports'), 'gauge', 'Partes de producción') }}
+      {{ nl(url_for('prod.monitor'), 'trend', 'Monitoreo en tiempo real') }}
       {{ nl(url_for('prod.control'), 'chart', 'Control de producción') }}
       {{ nl(url_for('prod.oee_dashboard'), 'gauge', 'Tablero OEE') }}
+      {{ nl(url_for('prod.productivity'), 'chart', 'Productividad por persona') }}{% endif %}
       {{ nl(url_for('prod.attendance'), 'users', 'Asistencia') }}
-      {{ nl(url_for('prod.productivity'), 'chart', 'Productividad por persona') }}
       {% if ve('produccion.configurar') %}{{ nl(url_for('prod.prod_config'), 'layers', 'Configuración de Producción') }}{% endif %}
       {% if ve('produccion.bom_cargar') or ve('produccion.liquidar') %}{{ nl(url_for('alm.uploads', area='Producción'), 'upload', 'Cargas de archivos') }}{% endif %}
     </div>{% endif %}
@@ -77,12 +84,23 @@
       {{ nl(url_for('buy.replenishment'), 'trend', 'Análisis de reposición') }}{% endif %}
       {% if ve('importaciones.ver') %}{{ nl(url_for('buy.imports'), 'ship', 'Importaciones') }}{% endif %}
     </div>{% endif %}
+    {% if ve('guias.estado') and not ve('distribucion.ver') %}<div class="grp" data-grupo="Distribución"><h4><span class="lbl">Distribución</span></h4>
+      {{ nl(url_for('dist.guides'), 'file', 'Guías de remisión') }}</div>{% endif %}
     {% if ve('distribucion.ver') %}<div class="grp" data-grupo="Distribución"><h4><span class="lbl">Distribución</span></h4>
+      {% if ve('guias.estado') %}{{ nl(url_for('dist.guides'), 'file', 'Guías de remisión') }}{% endif %}
+      {% if ve('distribucion.conformidad') %}{{ nl(url_for('dist.my_deliveries'), 'check', 'Mis entregas') }}{% endif %}
       {{ nl(url_for('dist.routes'), 'route', 'Programación y rutas') }}
       {{ nl(url_for('dist.incidents'), 'alert', 'Incidencias') }}
+      {% if ve('distribucion.rastreo') %}{{ nl(url_for('dist.tracking'), 'route', 'Rastreo GEOSATELITAL') }}{% endif %}
       {% if ve('distribucion.documentos') %}{{ nl(url_for('alm.uploads', area='Distribución'), 'upload', 'Cargas de SAP (despachos)') }}{% endif %}
       {% if ve('distribucion.flota') %}{{ nl(url_for('dist.fleet'), 'truck', 'Flota y conductores') }}{% endif %}
       {% if ve('flota.ver') or ve('distribucion.flota') %}{{ nl(url_for('dist.fleet_tracking'), 'wrench', 'Seguimiento de flota') }}{% endif %}
+    </div>{% endif %}
+    {% if ve('mantenimiento.ver') or ve('mantenimiento.flota') or ve('saneamiento.registrar') %}<div class="grp" data-grupo="Mantenimiento"><h4><span class="lbl">Mantenimiento</span></h4>
+      {% if ve('mantenimiento.ver') or ve('mantenimiento.flota') %}{{ nl(url_for('mant.home', tab='flota'), 'wrench', 'Flota: preventivo') }}
+      {{ nl(url_for('mant.home', tab='correctivo'), 'alert', 'Flota: correctivo') }}{% endif %}
+      {{ nl(url_for('mant.home', tab='saneamiento'), 'shield', 'Saneamiento de zonas') }}
+      {{ nl(url_for('mant.home', tab='unidades'), 'truck', 'Fumigación de unidades') }}
     </div>{% endif %}
     {% if ve('config.ver') or ve('auditoria.ver') or ve('usuarios.administrar') or ve('alertas.configurar') or can('canales.gestionar') %}<div class="grp" data-grupo="Administración"><h4><span class="lbl">Administración</span></h4>
       {% if ve('config.ver') %}{{ nl(url_for('main.config'), 'settings', 'Configuración') }}{% endif %}
@@ -199,5 +217,6 @@
 })();
 </script>
 <script src="{{ url_for('static', filename='app.js') }}?v=1.0.0-mb"></script>
+<script src="{{ url_for('static', filename='ux.js') }}?v=1.1.0"></script>
 </body>
 </html>

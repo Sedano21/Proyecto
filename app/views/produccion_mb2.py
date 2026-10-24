@@ -17,19 +17,44 @@ from .common import act, f_date, f_float, perm_required
 from .produccion import bp
 
 
+def _err(msg):
+    raise BusinessError(msg)
+
+
 @bp.route("/parte/nuevo", methods=["POST"])
 @perm_required("produccion.liquidar")
 def part_new():
+    """Formato único del parte: «Registrar» lo inicia ahora; «Programar» lo deja para la fecha y horario indicados."""
     f = request.form.to_dict()
+    if f.get("accion") == "programar":
+        return act(lambda: ptsvc.program(g.user, f), "Parte programado.", url_for("prod.reports") + "#programados")
     f["fecha"] = f_date("fecha") or date.today()
     pid = f.get("parte_id")
     r = db().get(ProductionReport, int(pid)) if pid else None
+    if r is None and f["fecha"] != date.today():
+        return act(lambda: _err("«Registrar» inicia el parte hoy; para otra fecha use «Programar»."),
+                   "", url_for("prod.reports"))
     return act(lambda: ptsvc.start(g.user, f, r), "Parte iniciado.", url_for("prod.reports"),
                redirect_fn=lambda x: url_for("prod.part_detail", pid=x.id))
 
 
+@bp.route("/api/producto")
+@perm_required("produccion.ver")
+def product_api():
+    """Datos del producto para validar en pantalla (presentación, tipo, GTIN)."""
+    from flask import jsonify
+    return jsonify(ptsvc.product_info(request.args.get("code", "")) or {})
+
+
+@bp.route("/monitoreo")
+@perm_required("produccion.partes_ver")
+def monitor():
+    """Monitoreo en tiempo real: partes en curso y del día con rendimiento y desmedro (se actualiza cada minuto)."""
+    return render_template("prod_monitor.html", items=ptsvc.monitor(g.user), hoy=date.today())
+
+
 @bp.route("/parte/<int:pid>", methods=["GET", "POST"])
-@perm_required("produccion.ver", "calidad.bloquear_parte")
+@perm_required("produccion.partes_ver", "calidad.bloquear_parte")
 def part_detail(pid):
     r = db().get(ProductionReport, pid) or abort(404)
     if not ptsvc.can_see_line(g.user, r.linea) and "calidad.bloquear_parte" not in g.perms:
@@ -50,9 +75,11 @@ def part_detail(pid):
             pallets = [{"destino": d, "cantidad": float(q)} for d, q in zip(f.getlist("pallet_destino"), f.getlist("pallet_cantidad"))
                        if (q or "").strip()]
             defectos = {c: v for c, v in zip(f.getlist("defecto_causa"), f.getlist("defecto_und")) if (v or "").strip()}
-            colab = [{"nombre": n, "inicio": i, "fin": fi, "refrigerio_min": rf, "kg": kg} for n, i, fi, rf, kg in
-                     zip(f.getlist("col_nombre"), f.getlist("col_inicio"), f.getlist("col_fin"), f.getlist("col_refrigerio"),
-                         f.getlist("col_kg")) if n.strip()]
+            colab = [{"worker_id": w, "inicio": i, "fin": fi, "refrigerio_min": rf, "kg": kg} for w, i, fi, rf, kg in
+                     zip(f.getlist("col_worker"), f.getlist("col_inicio"), f.getlist("col_fin"), f.getlist("col_refrigerio"),
+                         f.getlist("col_kg"))]
+            if len([c for c in colab if c["worker_id"]]) < len(colab):
+                return act(lambda: _err("Elija el colaborador de cada tarjeta."), "", back)
             datos = {k: f.get(k) for k in ("hora_fin", "refrigerio_min", "operarios", "unidades", "unidades_sueltas", "granel_kg",
                                            "mp_kg", "cal3_kg", "desmedro_kg", "sobrante_kg", "observacion")}
             datos.update(pallets=pallets, defectos=defectos, colaboradores=colab)
@@ -60,6 +87,11 @@ def part_detail(pid):
                        lambda x: f"Parte finalizado: rendimiento {x.rendimiento_pct}%"
                        + (f", OEE {x.indicadores['oee']}% ({x.indicadores['calificacion']})" if (x.indicadores or {}).get("oee") is not None else "")
                        + ".", back)
+        if acc == "avance":
+            return act(lambda: ptsvc.add_progress(g.user, r, f.get("destino"), f.get("cantidad")), "Avance registrado.", back)
+        if acc == "editar":
+            return act(lambda: ptsvc.edit_program(g.user, r, f_date("fecha"), f_float("cantidad"), f.get("motivo", "")),
+                       "Parte actualizado.", back)
         if acc == "estado":
             return act(lambda: ptsvc.set_state(g.user, r, f.get("estado"), f.get("motivo", "")), "Estado actualizado.", back)
         if acc == "bloquear":
@@ -72,12 +104,15 @@ def part_detail(pid):
                            estados=ptsvc.ESTADOS_PARTE, ideal=ideal,
                            destinos=["DESPACHO", "ENVASADO", "PRODUCCION", "ALMACÉN PT", "ALMACÉN MP", "SERV. EXTERNO",
                                      "OBSERVADO", "SEL. MANUAL", "CALIDAD 3", "DESMEDRO"],
-                           workers=list(db().execute(select(Worker).where(Worker.activo.is_(True)).order_by(Worker.nombre)).scalars()),
-                           gtin=db().get(ProductGTIN, r.ean) if r.ean else None)
+                           workers=list(db().execute(select(Worker).where(Worker.activo.is_(True), Worker.area == "Producción")
+                                                     .order_by(Worker.nombre)).scalars()),
+                           gtin=db().get(ProductGTIN, r.ean) if r.ean else None, live=ptsvc.live(r),
+                           tol=ptsvc.tolerance_for(r.linea, r.presentacion_kg) or {}, no_editables=ptsvc.NO_EDITABLES,
+                           formato_hora=(param("formato_hora", "24H") or "24H").upper(), fmt_hora=ptsvc.fmt_hora)
 
 
 @bp.route("/tablero")
-@perm_required("produccion.ver")
+@perm_required("produccion.partes_ver")
 def oee_dashboard():
     a = request.args
     d = ptsvc.dashboard(g.user, f_date("desde"), f_date("hasta"), a.get("linea", ""), a.get("turno", ""), a.get("maquina", ""))
@@ -93,7 +128,7 @@ def oee_dashboard():
 
 
 @bp.route("/control")
-@perm_required("produccion.ver", "informes.produccion")
+@perm_required("produccion.partes_ver")
 def control():
     periodo = request.args.get("periodo", "DIA")
     d = ptsvc.control_report(periodo, f_date("fecha") or date.today())
@@ -112,7 +147,7 @@ def control():
 
 
 @bp.route("/asistencia", methods=["GET", "POST"])
-@perm_required("produccion.ver", "produccion.asistencia")
+@perm_required("produccion.ver", "produccion.asistencia", "asistencia.area")
 def attendance():
     fecha = f_date("fecha") or date.today()
     back = url_for("prod.attendance", fecha=fecha.isoformat())
@@ -125,13 +160,15 @@ def attendance():
         obs = {k[4:]: v for k, v in f.items() if k.startswith("obs_")}
         return act(lambda: asvc.register_day(g.user, fecha, marcas, obs), lambda n: f"Asistencia registrada ({n}).", back)
     from ..catalogs import PRODUCTION_LINES
-    return render_template("attendance.html", fecha=fecha, workers=list(db().execute(select(Worker).order_by(Worker.linea, Worker.nombre)).scalars()),
-                           dia=asvc.day(fecha), estados=asvc.states(), puede=asvc.can_register(g.user),
-                           resumen=asvc.summary(fecha - timedelta(days=29), fecha), lineas=PRODUCTION_LINES)
+    area = asvc.area_of(g.user) or "Producción"
+    return render_template("attendance.html", fecha=fecha, workers=asvc.workers_of(g.user) if asvc.area_of(g.user) else
+                           list(db().execute(select(Worker).where(Worker.area == "Producción").order_by(Worker.linea, Worker.nombre)).scalars()),
+                           dia=asvc.day(fecha), estados=asvc.states(), puede=asvc.can_register(g.user), area=area,
+                           resumen=asvc.summary(fecha - timedelta(days=29), fecha, area=area), lineas=PRODUCTION_LINES)
 
 
 @bp.route("/productividad")
-@perm_required("produccion.ver")
+@perm_required("produccion.partes_ver")
 def productivity():
     d = ptsvc.productivity(g.user, f_date("desde"), f_date("hasta"))
     from ..services import charts
@@ -147,7 +184,7 @@ def bom_edit():
                "Receta modificada.", url_for("prod.bom", producto=request.form.get("producto", "")))
 
 
-PARAMS_PRODUCCION = ["oee_calificacion", "causas_parada", "causas_paro_planificado", "causas_defecto",
+PARAMS_PRODUCCION = ["formato_hora", "oee_calificacion", "causas_parada", "causas_paro_planificado", "causas_defecto",
                      "turnos_produccion", "tope_horas_of", "dias_produccion_por_tipo",
                      "produccion_alcance_usuarios", "almacenes_produccion", "ean_validacion", "asistencia_estados",
                      "umbral_merma_pct"]

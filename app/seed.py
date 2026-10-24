@@ -27,7 +27,7 @@ DEMO_USERS = [
     # Logística (organigrama del 23-oct-2026)
     ("jefe.logistica", "Jefe de Logística", "JEFE_LOGISTICA"),
     ("coord.logistica", "Coordinador de Logística", "COORD_LOGISTICA"),
-    ("coord.almacen", "Coordinador de Almacenes", "COORD_ALMACEN"),
+    ("coord.almacen", "Supervisor de 1524 y 1560", "COORD_ALMACEN"),
     ("coord.almacen.mp", "Coordinación de Almacén 1524", "COORD_ALMACEN_MP"),
     ("superv.almacen", "Supervisor de Almacén 1560", "SUPERV_ALMACEN"),
     ("lider.almacen", "Líder Operativo 1560", "LIDER_ALMACEN"),
@@ -141,7 +141,46 @@ def sync_catalogs():
             n += 1
     s.flush()
     n += _retire_permissions()
+    n += _apply_alert_role_changes()
+    n += _rename_roles()
     n += _rename_demo_users()
+    return n
+
+
+def _apply_alert_role_changes():
+    """Cambios de destinatarios de alertas decididos por el usuario (una sola vez; queda en la auditoría)."""
+    from .models import AuditLog
+    s = db()
+    n = 0
+    for code, quitar, agregar in getattr(C, "ALERTAS_ROLES_CAMBIO", []):
+        clave = f"{code}:-{','.join(quitar)}:+{','.join(agregar)}"[:60]
+        if s.execute(select(AuditLog).where(AuditLog.accion == "ALERTA_ROLES_CATALOGO", AuditLog.entidad_id == clave)).first():
+            continue
+        t = s.get(AlertType, code)
+        if t is not None:
+            roles = [r for r in (t.roles or []) if r not in quitar] + [r for r in agregar if r not in (t.roles or [])]
+            if roles != list(t.roles or []):
+                t.roles = roles
+                n += 1
+        s.add(AuditLog(user_id=None, accion="ALERTA_ROLES_CATALOGO", entidad="AlertType", entidad_id=clave,
+                       detalle={"quitar": quitar, "agregar": agregar}))
+    s.flush()
+    return n
+
+
+def _rename_roles():
+    """Nomenclatura de puestos decidida por el usuario (p. ej. «Supervisor de 1524 y 1560»)."""
+    s = db()
+    n = 0
+    for code, nombre in getattr(C, "ROLES_RENOMBRE", {}).items():
+        r = s.get(Role, code)
+        if r is not None and r.nombre != nombre:
+            r.nombre = nombre
+            n += 1
+    for u in s.execute(select(User).where(User.username == "coord.almacen")).scalars():
+        if u.nombre in ("Coordinador de Almacenes", "Coordinación de Almacén 1560 (demo)"):
+            u.nombre = "Supervisor de 1524 y 1560"
+            n += 1
     return n
 
 
@@ -264,6 +303,11 @@ def seed_demo(upload_dir=None, today=None):
         Vehicle(placa="DEM-25T", descripcion="Camión 25 TN (demo)", propio=True, capacidad_kg=25000, conductor_habitual_id=drivers[2].id),
         Vehicle(placa="TER-2T", descripcion="Transporte externo 2 TN (demo)", propio=False, capacidad_kg=2000, disponible=True),
     ])
+    s.flush()
+    from .models import VehicleDocument
+    for i, v in enumerate(s.execute(select(Vehicle)).scalars()):  # SOAT ficticio vigente: sin él la unidad no se asigna
+        s.add(VehicleDocument(vehicle_id=v.id, tipo="SOAT", numero=f"SOAT-DEMO-{i + 1:03d}", fecha=today - timedelta(days=60),
+                              vencimiento=today + timedelta(days=300), estado="VIGENTE", observacion="Dato ficticio"))
     s.flush()
     # archivos ficticios procesados por el mismo flujo de validación/autorización
     folder = upload_dir or tempfile.mkdtemp(prefix="demo_")

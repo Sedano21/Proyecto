@@ -33,7 +33,7 @@ def _prepare_and_confirm(s, U, o):
 def test_ov_completa_avisa_certifica_y_programa_ruta(s, U, new_order):
     o = new_order([("PT-905", 100)])
     a = alerts_of(s, "OV_COMPLETA", o.id)[0]
-    assert set(a.roles) == {"JEFE_LOGISTICA", "JEFE_VENTAS", "COORD_ALMACEN"}
+    assert set(a.roles) == {"JEFE_LOGISTICA", "JEFE_VENTAS", "COORD_ALMACEN", "AUX_ALMACEN"}  # ronda UX: Auxiliar de Almacén
     # obs. demo v0.7: el precertificado solo se emite después del picking
     assert s.query(Certificate).filter_by(order_id=o.id).count() == 0
     osvc.finish_preparation(o, U("lider.almacen"))
@@ -106,9 +106,9 @@ def test_carga_incongruente_y_documentos_faltantes(s, U, new_order):
     s.commit()
     assert o.estado == "DESPACHADA"
     assert alerts_of(s, "RUTA_ASIGNADA") and alerts_of(s, "MONTACARGUISTA_DESPACHO")
-    dist.register_arrival(st, U("aux.despacho"))
+    dist.register_arrival(st, U("conductor1"))  # ronda UX: lo registra el chofer
     assert set(alerts_of(s, "DIST_LLEGADA")[0].roles) == {"COORD_DISTRIBUCION", "JEFE_LOGISTICA", "GERENCIA_OPERACIONES"}
-    dist.register_incident(U("aux.despacho"), "RECHAZO_CITA", "Llegó fuera de la ventana horaria", stop=st)
+    dist.register_incident(U("asist.distribucion"), "RECHAZO_CITA", "Llegó fuera de la ventana horaria", stop=st)
     s.commit()
     assert st.estado == "NO_ENTREGADO" and o.estado == "DEVUELTA"
 

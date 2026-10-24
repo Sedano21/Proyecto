@@ -48,6 +48,7 @@ python -m pytest tests -v
 | `MAX_UPLOAD_MB` | Tamaño máximo de archivo | 40 |
 | `DEMO_MODE` | `1` muestra aviso de demo y lista de usuarios demo en el ingreso; **`0` en producción** | 1 |
 | `SESSION_COOKIE_SECURE` | `1` cuando se publica por HTTPS | 0 |
+| `GEOSAT_API_URL` / `GEOSAT_TOKEN` | Servicio de posiciones de GEOSATELITAL (rastreo de unidades). Sin valor no se conecta | vacío |
 | `CHECK_INTERVAL_MIN` | Ejecuta verificaciones automáticas (retrasos, fases, vencimientos, reposición, correo) cada N minutos (0 las desactiva) | 1 (cada minuto) |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`, `SMTP_TLS` | Envío de correo de alertas | Sin SMTP → correos quedan como SIN_SMTP |
 | `HOST`, `PORT` | Dirección del servidor de desarrollo | 127.0.0.1:5000 |

@@ -1,0 +1,22 @@
+{% from "_m.html" import csrf, ic %}
+{# Conformidad de entrega digital del chofer (ronda UX 24-oct-2026): receptor → firma → evidencias. #}
+{% macro conformidad(s, action='') %}
+<button class="btn small" data-open="dlg-conf-{{ s.id }}">{{ ic('check') }} Registrar conformidad</button>
+<dialog class="drawer" id="dlg-conf-{{ s.id }}" aria-labelledby="dlg-conf-t{{ s.id }}"><form method="post" enctype="multipart/form-data" class="wizard"{% if action %} action="{{ action }}"{% endif %}>{{ csrf() }}<input type="hidden" name="stop_id" value="{{ s.id }}"><input type="hidden" name="accion" value="entrega"><input type="hidden" name="firma" required>
+<div class="dlg-head"><h3 id="dlg-conf-t{{ s.id }}">Conformidad · OV {{ s.order.numero }}</h3><button class="ibtn" data-close aria-label="Cerrar">{{ ic('x') }}</button></div>
+<div class="dlg-body"><p class="small muted">{{ s.order.customer.nombre }} · {{ s.order.direccion }} {{ s.order.distrito }}</p>
+<ol class="steps"><li>1. Quién recibe</li><li>2. Firma</li><li>3. Foto y guía</li></ol>
+<section class="wz-step"><label class="req">Nombre de quien recibe</label><input name="receptor_nombre" required minlength="3" autocomplete="off" style="width:100%">
+<label class="req">DNI</label><input name="receptor_dni" required inputmode="numeric" pattern="[0-9]{8}|[A-Za-z0-9]{9,12}" title="8 dígitos (o carné de extranjería)" size="14">
+<div class="wz-nav"><span></span><button class="btn" data-next>Siguiente</button></div></section>
+<section class="wz-step" hidden><label class="req">Firma de quien recibe</label><canvas class="sig" data-signature="firma" aria-label="Área de firma"></canvas>
+<p><button class="btn sec small" data-clear-signature>Limpiar firma</button></p>
+<div class="wz-nav"><button class="btn sec" data-prev>Atrás</button><button class="btn" data-next>Siguiente</button></div></section>
+<section class="wz-step" hidden><label class="req">Fotografía de la entrega</label><input type="file" name="foto" accept="image/*" capture="environment" required>
+<label class="req">Guía de remisión firmada</label><input type="file" name="guia" accept="image/*,.pdf" capture="environment" required>
+<details><summary class="small">¿Entrega incompleta? Indique lo entregado por producto</summary>{% for l in s.order.lines if l.activa %}<div class="person"><h4>{{ l.product_code }} <span class="muted small">{{ pd(l.product_code) }}</span></h4><label>Entregado (despachado {{ l.despachado|n }})</label><input type="number" step="any" min="0" max="{{ l.despachado }}" name="ent_{{ l.id }}" value="{{ l.despachado }}" style="width:110px"></div>{% endfor %}</details>
+<label>Observación</label><input name="observacion" style="width:100%">
+<div class="wz-nav"><button class="btn sec" data-prev>Atrás</button><button class="btn">{{ ic('check') }} Confirmar entrega</button></div></section>
+</div></form></dialog>
+{% endmacro %}
+{% macro evidencia(s) %}{% if s.foto_path %}<span class="small">Recibió <b>{{ s.receptor_nombre or '—' }}</b>{{ ' · DNI ' ~ s.receptor_dni if s.receptor_dni }} · <a href="{{ url_for('main.evidence', name=s.foto_path) }}">foto</a> · <a href="{{ url_for('main.evidence', name=s.guia_firmada_path) }}">guía firmada</a>{% if s.firma_path %} · <a href="{{ url_for('main.evidence', name=s.firma_path) }}">firma</a>{% endif %}</span>{% endif %}{% endmacro %}

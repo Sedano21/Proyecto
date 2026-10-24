@@ -1,5 +1,5 @@
 {% extends "base.html" %}{% from "_m.html" import b, csrf %}
-{% block content %}<h1>Ruta #{{ r.id }} · {{ r.fecha|d }} · {{ r.zona }} {{ b(r.estado) }}</h1>
+{% import "_entrega.html" as ent with context %}{% block content %}<h1>Ruta #{{ r.id }} · {{ r.fecha|d }} · {{ r.zona }} {{ b(r.estado) }}</h1>
 <div class="card"><p>Unidad: <b>{{ r.vehicle.placa if r.vehicle else '—' }}</b> {% if r.vehicle %}({{ r.vehicle.descripcion }}, {{ r.vehicle.capacidad_kg|n }} kg, {{ 'propia' if r.vehicle.propio else 'tercero' }}){% endif %} · Conductor: <b>{{ r.driver.nombre if r.driver else '—' }}</b> · Carga {{ r.peso_total|n }} kg {% if r.requiere_externo %}<span class="b warn">transporte externo</span>{% endif %}</p>
 {% for a in r.advertencias %}<div class="note small">{{ a }}</div>{% endfor %}
 {% if r.estado in ['PROPUESTA','CONFIRMADA'] and can('distribucion.programar') %}<form method="post" class="row">{{ csrf() }}<input type="hidden" name="accion" value="ajustar">
@@ -21,13 +21,10 @@
 <table><tr><th>#</th><th>OV</th><th>Cliente / dirección</th><th>Cita</th><th class="r">Kg</th><th>Estado</th><th>Evidencia</th><th>Acciones</th></tr>
 {% for s in r.stops %}<tr><td>{{ s.orden }}</td><td><a href="{{ url_for('com.order_detail', oid=s.order_id) }}">{{ s.order.numero }}</a> {{ b(s.order.estado) }}</td><td>{{ s.order.customer.nombre }}<br><span class="small muted">{{ s.order.direccion }} · {{ s.order.distrito }} · horario {{ s.order.customer.horario_recepcion }}</span>{% set cc = cond_cliente(s.order.customer) %}{% if cc %}<br><span class="small" style="color:var(--warn)">{{ cc }}</span>{% endif %}</td>
 <td>{{ s.order.hora_cita }} {{ '✓' if s.order.cita_confirmada }}</td><td class="r">{{ s.peso_kg|n }}</td><td>{{ b(s.estado) }}<br><span class="small">{{ s.llegada_ts|d }} {{ s.entrega_ts|d }}</span></td>
-<td class="small">{% if s.foto_path %}<a href="{{ url_for('main.evidence', name=s.foto_path) }}">foto</a> · <a href="{{ url_for('main.evidence', name=s.guia_firmada_path) }}">guía firmada</a>{% endif %}</td>
+<td class="small">{{ ent.evidencia(s) }}</td>
 <td>{% if r.estado in ['PROPUESTA','CONFIRMADA'] and others and can('distribucion.programar') %}<form method="post" class="inline">{{ csrf() }}<input type="hidden" name="stop_id" value="{{ s.id }}"><select name="target">{% for o in others %}<option value="{{ o.id }}">→ ruta #{{ o.id }} {{ o.zona }}</option>{% endfor %}</select><button class="small sec" name="accion" value="mover">Mover</button></form>{% endif %}
 {% if s.estado=='EN_CAMINO' and can('distribucion.entrega') %}<form method="post" class="inline">{{ csrf() }}<input type="hidden" name="stop_id" value="{{ s.id }}"><button class="small" name="accion" value="llegada">Llegada</button></form>{% endif %}
-{% if s.estado in ['EN_CAMINO','LLEGADA'] and can('distribucion.entrega') %}<details><summary>Registrar entrega</summary><form method="post" enctype="multipart/form-data">{{ csrf() }}<input type="hidden" name="stop_id" value="{{ s.id }}">
-<label>Fotografía (obligatoria)</label><input type="file" name="foto" accept="image/*,.pdf" required><label>Guía firmada (obligatoria)</label><input type="file" name="guia" accept="image/*,.pdf" required>
-{% for l in s.order.lines if l.activa %}<label>Entregado {{ l.product_code }} {{ pd(l.product_code) }} (despachado {{ l.despachado|n }})</label><input type="number" step="any" name="ent_{{ l.id }}" value="{{ l.despachado }}">{% endfor %}
-<label>Observación</label><input name="observacion"><p><button class="small" name="accion" value="entrega">Registrar entrega</button></p></form></details>{% endif %}
+{% if s.estado in ['EN_CAMINO','LLEGADA'] and can('distribucion.conformidad') %}{{ ent.conformidad(s) }}{% endif %}
 {% if r.estado in ['CONFIRMADA','EN_RUTA','CERRADA'] and can('distribucion.incidencia') %}<details><summary>Incidencia</summary><form method="post">{{ csrf() }}<input type="hidden" name="stop_id" value="{{ s.id }}"><select name="tipo">{% for g, gn in grupos %}<optgroup label="{{ gn }}">{% for c, nn, gg in subtipos if gg == g %}<option value="{{ c }}">{{ nn }}</option>{% endfor %}</optgroup>{% endfor %}</select>
 <input name="descripcion" placeholder="descripción" required><input type="number" step="any" name="cantidad" placeholder="cant." style="width:70px"><button class="small" name="accion" value="incidencia">Registrar</button></form></details>{% endif %}</td></tr>{% endfor %}</table>
 

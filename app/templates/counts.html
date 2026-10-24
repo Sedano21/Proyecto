@@ -1,6 +1,15 @@
-{% extends "base.html" %}{% from "_m.html" import b, csrf %}
+{% extends "base.html" %}{% from "_m.html" import b, csrf, ic, empty %}
 {% block content %}<h1>Conteos físicos</h1>
 <p class="muted small">Contraste periódico del inventario físico; Faltante = MAX(SAP − físico, 0), Sobrante = MAX(físico − SAP, 0); físico = conteo × peso unitario cuando se cuenta por unidades de peso (formato "Inven. bobinas"). Las diferencias alertan a Sistemas y limitan lo reservable.</p>
-<form method="post" class="card row">{{ csrf() }}<div><label>Almacén</label><select name="warehouse_code">{% for w in whs %}<option value="{{ w.code }}">{{ w.code }} {{ w.nombre }}</option>{% endfor %}</select></div>
-<div><label>Prefijo de artículo (opcional, p.ej. EN-)</label><input name="prefijo"></div><div><label>Observación</label><input name="observacion"></div><div><button>Abrir conteo</button></div></form>
+{% if can('stock.conteo') %}<p><button class="btn" data-open="dlg-conteo">{{ ic('plus') }} Abrir conteo</button></p>
+<dialog class="drawer" id="dlg-conteo"><form method="post" class="wizard">{{ csrf() }}
+<div class="dlg-head"><h3>Abrir conteo físico</h3><button class="ibtn" data-close aria-label="Cerrar">{{ ic('x') }}</button></div>
+<div class="dlg-body"><ol class="steps"><li>1. Almacén</li><li>2. Lista a contar</li></ol>
+<section class="wz-step"><label class="req">Almacén</label><select name="warehouse_code">{% for w in whs %}<option value="{{ w.code }}">{{ w.code }} {{ w.nombre }}</option>{% endfor %}</select><label>Observación</label><input name="observacion" style="width:100%">
+<div class="wz-nav"><span></span><button class="btn" data-next>Siguiente</button></div></section>
+<section class="wz-step" hidden><p class="small muted">Elija <b>una</b> forma de armar la lista (si no elige ninguna se cuenta todo el almacén).</p>
+<label>Repetir la lista de un conteo anterior</label><select name="base_id"><option value="">—</option>{% for c in rows[:30] %}<option value="{{ c.id }}">#{{ c.id }} · {{ c.fecha|d }} · {{ c.warehouse_code }} · {{ c.lines|length }} líneas</option>{% endfor %}</select>
+<label>o pegar una lista de productos (un código por línea)</label><textarea name="lista" rows="4" style="width:100%" placeholder="PT-901&#10;PT-902"></textarea>
+<label>o prefijo de artículo</label><input name="prefijo" placeholder="EN-">
+<div class="wz-nav"><button class="btn sec" data-prev>Atrás</button><button class="btn">Abrir conteo</button></div></section></div></form></dialog>{% endif %}
 <table><tr><th>#</th><th>Fecha</th><th>Almacén</th><th>Líneas</th><th>Estado</th></tr>{% for c in rows %}<tr><td><a href="{{ url_for('alm.count_detail', cid=c.id) }}">{{ c.id }}</a></td><td>{{ c.fecha|d }}</td><td>{{ c.warehouse_code }}</td><td>{{ c.lines|length }}</td><td>{{ b(c.estado) }}</td></tr>{% endfor %}</table>{% endblock %}

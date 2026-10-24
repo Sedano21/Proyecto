@@ -99,8 +99,8 @@ def test_q2_otif_por_salida_y_fill_rate(s, U, new_order, today):
     dist.confirm_departure(_ready_route(s, U, o2), U("lider.almacen"), CHECK)
     from app.models import RouteStop
     st = s.query(RouteStop).filter_by(order_id=o1.id).one()
-    dist.register_arrival(st, U("aux.despacho"))
-    dist.register_incident(U("aux.despacho"), "RECHAZO_CALIDAD", "Humedad observada por el cliente", stop=st)
+    dist.register_arrival(st, U("conductor1"))  # ronda UX: lo registra el chofer
+    dist.register_incident(U("asist.distribucion"), "RECHAZO_CALIDAD", "Humedad observada por el cliente", stop=st)
     s.commit()
     k = kpis.compute()
     assert k["otif_definicion"] == "SALIDA" and k["otif_salida"][1:] == (1, 2)

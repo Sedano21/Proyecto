@@ -150,8 +150,11 @@ def counts():
         holder = {}
 
         def _do():
-            holder["c"] = isvc.open_count(g.user, request.form["warehouse_code"], request.form.get("prefijo", "").strip().upper(),
-                                          request.form.get("observacion", ""))
+            f = request.form
+            base = db().get(PhysicalCount, int(f["base_id"])) if f.get("base_id") else None
+            codigos = [x for x in f.get("lista", "").replace(",", "\n").splitlines() if x.strip()]
+            holder["c"] = isvc.open_count(g.user, f.get("warehouse_code") or (base.warehouse_code if base else ""),
+                                          f.get("prefijo", "").strip().upper(), f.get("observacion", ""), base, codigos or None)
         resp = act(_do, "Conteo abierto.", url_for("alm.counts"))
         if "c" in holder and holder["c"].id:
             return redirect(url_for("alm.count_detail", cid=holder["c"].id))
@@ -226,6 +229,20 @@ def transfer_action(tid, accion):
 @bp.route("/reempaques", methods=["GET", "POST"])
 @perm_required("reempaque.ver")
 def repacks():
+    if request.method == "POST" and request.form.get("accion") == "excel":
+        def _x():
+            import os
+            from flask import current_app
+            arch = request.files.get("archivo")
+            if not arch or not arch.filename.lower().endswith((".xlsx", ".xlsm")):
+                raise BusinessError("Suba la solicitud de reempaque en Excel (.xlsx).")
+            up = current_app.config["UPLOAD_DIR"]
+            os.makedirs(up, exist_ok=True)
+            path = os.path.join(up, f"reempaque_{os.urandom(4).hex()}.xlsx")
+            arch.save(path)
+            return rsvc.import_requests(g.user, path)
+        return act(_x, lambda r: f"{len(r[0])} solicitud(es) enviadas a Calidad." + (f" Errores: {' | '.join(r[1][:5])}" if r[1] else ""),
+                   url_for("alm.repacks"))
     if request.method == "POST":
         return act(lambda: rsvc.request(g.user, request.form.get("tipo"), request.form.get("lot_id"), f_float("cantidad", True),
                                         (request.form.get("producto_destino") or "").strip().upper() or None, None, None,
@@ -279,8 +296,16 @@ def picking_schedule():
     asigna = "picking.asignar" in g.perms
     wh = request.args.get("almacen") or ""
     rows = pk.schedule(g.user, desde, hasta, wh or None, solo_mios=not asigna)
+    clientes = sorted({t.order.customer for t in rows if t.order.customer}, key=lambda c: c.nombre)
+    cli = request.args.get("cliente", "")
+    if cli.isdigit():  # filtro opcional por cliente
+        rows = [t for t in rows if t.order.customer_id == int(cli)]
+    grupos = {}
+    for t in rows:  # programación organizada por cliente
+        grupos.setdefault(t.order.customer, []).append(t)
     personal = {w: pk.staff(w) for w in sorted({t.warehouse_code for t in rows} | ({wh} if wh else set()))}
     return render_template("picking_schedule.html", rows=rows, vista=vista, ref=ref, desde=desde, hasta=hasta, asigna=asigna,
+                           clientes=clientes, cliente=cli, grupos=sorted(grupos.items(), key=lambda kv: kv[0].nombre if kv[0] else ""),
                            usuarios=pk.users_by_id(), almacen=wh, personal=personal,
                            almacenes=list(db().execute(select(Warehouse).order_by(Warehouse.prioridad)).scalars()),
                            timedelta=timedelta)
@@ -349,3 +374,19 @@ def picking_format():
     encargados = sorted({usuarios[i].nombre for t in tareas for i in (t.asignados or []) if i in usuarios})
     return render_template("picking_format.html", filas=pk.format_rows(tareas), fecha=fecha, encargados=encargados, tareas=tareas,
                            almacenes=sorted({t.warehouse_code for t in tareas}), generado=datetime.now())
+
+
+# ------------------- ingresos a almacén (ronda UX 24-oct-2026, sección 5) -------------------
+@bp.route("/ingresos")
+@perm_required("ingresos.ver")
+def entries():
+    """Ingresos de producto a almacén (liquidaciones de PT recibidas o por recibir) con su estado y motivo de observación."""
+    from datetime import date, timedelta
+    from ..models import Liquidation
+    from .common import f_date
+    desde = f_date("desde") or date.today() - timedelta(days=15)
+    q = select(Liquidation).where(Liquidation.fecha >= desde).order_by(Liquidation.fecha.desc(), Liquidation.id.desc())
+    estado = request.args.get("estado", "")
+    rows = [l for l in db().execute(q.limit(300)).scalars() if not estado or l.estado == estado]
+    return render_template("entries.html", rows=rows, desde=desde, estado=estado,
+                           estados=["REGISTRADA", "BLOQUEADA", "RECIBIDA_COMPLETA", "RECIBIDA_FALTANTE", "RECIBIDA_SOBRANTE"])

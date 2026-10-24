@@ -1,0 +1,9 @@
+{% extends "base.html" %}{% from "_m.html" import b, csrf, ic, empty %}{% import "_entrega.html" as ent with context %}
+{% block content %}<h1>Mis entregas</h1>
+<p class="small muted">Al llegar, toque «Llegué». Para cerrar cada entrega registre la conformidad: nombre y DNI de quien recibe, su firma en pantalla, la foto de la entrega y la guía firmada.</p>
+{% for r, stops in rutas %}<h2>Ruta #{{ r.id }} · {{ r.fecha|d }} · {{ r.vehicle.placa if r.vehicle else '' }} {{ b(r.estado) }}</h2>
+<div class="cards">{% for s in stops|sort(attribute='orden') %}<article class="xcard st-{{ s.estado }}"><div class="xcard-head"><b>{{ s.orden }}. {{ s.order.customer.nombre }}</b>{{ b(s.estado) }}</div>
+<div class="meta"><span>OV {{ s.order.numero }}</span><span>{{ s.order.direccion }} · {{ s.order.distrito }}</span>{% if s.order.hora_cita %}<span>cita {{ s.order.hora_cita }}</span>{% endif %}</div>
+{% if r.estado == 'EN_RUTA' %}{% if s.estado == 'EN_CAMINO' %}<form method="post">{{ csrf() }}<input type="hidden" name="stop_id" value="{{ s.id }}"><button class="btn sec small" name="accion" value="llegada">{{ ic('flag') }} Llegué</button></form>{% endif %}
+{% if s.estado in ['EN_CAMINO','LLEGADA'] %}{{ ent.conformidad(s, url_for('dist.my_deliveries')) }}{% endif %}{% endif %}
+{{ ent.evidencia(s) }}</article>{% endfor %}</div>{% else %}{{ empty('No tiene rutas confirmadas ni en curso.', 'truck') }}{% endfor %}{% endblock %}

@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% from "_m.html" import b, errs, csrf %}
+{% extends "base.html" %}{% from "_m.html" import b, errs, csrf, ic %}
 {% block content %}<h1>Lista de materiales</h1>
 <p class="muted small">Se carga desde Excel (Cargas de archivos → Lista de materiales) con validación de estructura, productos, presentaciones, materiales, duplicados y obligatorios; cada carga crea una versión con registro de cambios (IF §8.1). {% if can('produccion.bom_cargar') %}<a href="{{ url_for('alm.upload_new', tipo='BOM') }}">Cargar nueva versión</a>{% endif %}</p>
 <h2>Versiones</h2><table><tr><th>Versión</th><th>Archivo</th><th>Fecha</th><th>Activa</th><th>¿Excel incluye merma?</th><th>Cambios vs anterior</th><th>Líneas</th></tr>
@@ -6,13 +6,17 @@
 <h2>Calculadora de materiales</h2>
 <form class="row card" method="get"><div><label>Producto (padre)</label><input name="producto" value="{{ code }}" list="bomp"></div><div><label>Cantidad a producir</label><input name="cantidad" value="{{ qty }}" type="number" step="any"></div><div><button>Calcular</button></div>
 <datalist id="bomp">{% for p, d in prods %}<option value="{{ p }}">{{ d }}</option>{% endfor %}</datalist></form>
-{% if lines %}<h3>Componentes de {{ code }}</h3><table><tr><th>Orden</th><th>Componente</th><th class="r">Cantidad por {{ lines[0].cantidad_bom|n }} unidad</th><th>Almacén</th><th>Método</th></tr>{% for l in lines %}<tr><td>{{ l.orden if l.orden is not none else 'principal' }}</td><td>{{ l.componente }} {{ l.componente_desc }}</td><td class="r">{{ l.cantidad|n(6) }}</td><td>{{ l.almacen_comp }}</td><td>{{ l.metodo_emision }}</td></tr>{% endfor %}</table>
-{% if can('produccion.bom_aprobar') %}<details class="card"><summary><b>Modificar la receta</b> (el asistente avisa al Jefe; solo el Jefe cambia el código de un componente)</summary>
-<form method="post" action="{{ url_for('prod.bom_edit') }}" class="row">{{ csrf() }}<input type="hidden" name="producto" value="{{ code }}">
-<div><label>Componente</label><select name="line_id">{% for l in lines %}<option value="{{ l.id }}">{{ l.componente }} {{ l.componente_desc[:30] }}</option>{% endfor %}</select></div>
-<div><label>Nueva cantidad</label><input name="cantidad" type="number" step="any" min="0"></div>
-{% if can('produccion.plan_validar') %}<div><label>Nuevo código de componente</label><input name="componente" placeholder="p. ej. granel alternativo"></div>{% endif %}
-<div class="grow"><label class="req">Motivo</label><input name="motivo" required></div><div><button>Guardar cambio</button></div></form></details>{% endif %}{% endif %}
+{% if lines %}<h3>Componentes de {{ code }}</h3>
+<div class="cards">{% for l in lines %}<article class="xcard"><div class="xcard-head"><b>{{ l.componente }}</b><span class="muted small">{{ 'principal' if l.orden is none else 'orden ' ~ l.orden }}</span>
+{% if can('produccion.bom_aprobar') %}<button class="ibtn" data-open="dlg-bom-{{ l.id }}" aria-label="Editar {{ l.componente }}" title="Editar componente">{{ ic('edit') }}</button>{% endif %}</div>
+<div class="small">{{ l.componente_desc }}</div><div class="meta"><span class="big">{{ l.cantidad|n(6) }}</span><span>por {{ l.cantidad_bom|n }} und</span><span>{{ l.almacen_comp }}</span></div></article>
+{% if can('produccion.bom_aprobar') %}<dialog class="modal" id="dlg-bom-{{ l.id }}" aria-labelledby="dlg-bom-t{{ l.id }}"><form method="post" action="{{ url_for('prod.bom_edit') }}">{{ csrf() }}<input type="hidden" name="producto" value="{{ code }}"><input type="hidden" name="line_id" value="{{ l.id }}">
+<div class="dlg-head"><h3 id="dlg-bom-t{{ l.id }}">{{ l.componente }} · {{ l.componente_desc[:40] }}</h3><button class="ibtn" data-close aria-label="Cerrar">{{ ic('x') }}</button></div>
+<div class="dlg-body"><label>Nueva cantidad</label><input name="cantidad" type="number" step="any" min="0" value="{{ l.cantidad }}" style="width:140px">
+{% if can('produccion.plan_validar') %}<label>Reemplazar por (solo componentes de la misma categoría)</label><select name="componente"><option value="">(mantener {{ l.componente }})</option>{% for p in subs.get(l.id, []) %}<option value="{{ p.code }}">{{ p.code }} · {{ p.descripcion }}</option>{% endfor %}</select>
+{% if not subs.get(l.id) %}<p class="small muted">No hay componentes alternativos de la misma categoría.</p>{% endif %}{% else %}<p class="small muted">Solo el Jefe de Producción cambia el código del componente; su cambio de cantidad se avisa al Jefe.</p>{% endif %}
+<label class="req">Motivo</label><input name="motivo" required style="width:100%"></div>
+<div class="dlg-foot"><button class="btn sec" data-close>Cancelar</button><button class="btn">Guardar cambio</button></div></form></dialog>{% endif %}{% endfor %}</div>{% endif %}
 {% if calc %}<h3>Requerimiento para {{ calc.cantidad|n }} unidades</h3>{{ errs(calc.avisos, 'warn-list') }}
 <table><tr><th>Componente</th><th class="r">Base</th><th class="r">Merma %</th><th class="r">Requerido</th><th class="r">Disponible</th><th class="r">Faltante</th></tr>{% for m in calc.materiales %}<tr><td>{{ m.componente }} {{ m.descripcion }}</td><td class="r">{{ m.requerido_base|n(4) }}</td><td class="r">{{ m.merma_pct|n }}</td><td class="r">{{ m.requerido|n(4) }}</td><td class="r">{{ m.disponible_almacen|n }}</td><td class="r">{{ m.faltante|n(4) }}</td></tr>{% endfor %}</table>{% endif %}
 <p class="small muted">Excepciones a la proporcionalidad lineal: pendientes de confirmar (IF §20). Merma configurable por material, producto o global (Configuración).</p>

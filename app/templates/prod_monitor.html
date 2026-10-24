@@ -1,0 +1,13 @@
+{% extends "base.html" %}{% from "_m.html" import b, empty, ic %}
+{% block content %}<h1>Monitoreo de producción en tiempo real</h1>
+<p class="seg small"><a href="{{ url_for('prod.reports') }}">Partes</a><a class="on" href="{{ url_for('prod.monitor') }}">Monitoreo en tiempo real</a><a href="{{ url_for('prod.plan') }}">Planeamiento</a><a href="{{ url_for('prod.liquidations') }}">Liquidaciones</a></p>
+<p class="small muted">Partes en curso y del día ({{ hoy|d }}). Se actualiza cada minuto. En curso, el rendimiento es parcial: lo producido (pallets registrados) sobre los kg de MP del parte.</p>
+<div id="mon" data-refresh="60">{% if items %}<div class="cards">{% for r, l in items %}
+<article class="xcard st-{{ r.estado|replace(' ','_')|replace('.','') }} {{ 'alerta' if l.alerta }}"><div class="xcard-head"><b><a href="{{ url_for('prod.part_detail', pid=r.id) }}">{{ r.linea }} · {{ r.product_code }}</a></b>{{ b(r.estado|replace(' ','_')) }}</div>
+<div class="meta"><span>OF {{ r.of or '-' }}</span><span>{{ r.peso_entrada_kg|n }} kg MP</span>{% if not l.final %}<span>{{ ic('history') }} {{ l.minutos }} min</span>{% endif %}</div>
+<div class="meta"><span>Rendimiento{{ ' parcial' if not l.final }}</span><span class="big">{{ l.rend if l.rend is not none else '—' }} %</span></div>
+<div class="meter {{ 'bad' if l.alerta }}"><i style="width:{{ [l.rend or 0, 100]|min }}%"></i></div>
+<div class="meta"><span>{{ 'MP por convertir' if not l.final else 'Desmedro' }} <b>{{ l.desm if l.desm is not none else '—' }} %</b></span><span>{{ l.salida_kg|n }} kg producidos</span></div>
+{% if r.estado == 'PENDIENTE' %}<div class="pending-why">Pendiente de: {{ r.motivo_estado or 'sin motivo registrado' }}</div>{% endif %}
+{% if l.alerta %}<div class="chk bad">Avance muy por debajo del mínimo esperado ({{ l.min_pct }} %).</div>{% endif %}</article>{% endfor %}</div>
+{% else %}{{ empty('No hay partes en curso ni del día.', 'factory') }}{% endif %}</div>{% endblock %}

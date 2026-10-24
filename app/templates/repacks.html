@@ -1,7 +1,12 @@
-{% extends "base.html" %}{% from "_m.html" import b, csrf %}
+{% extends "base.html" %}{% from "_m.html" import b, csrf, ic %}
 {% block content %}<h1>Reempaque</h1> <p><a class="btn sec" href="{{ url_for('rep.show', nombre='reempaque') }}">Ver informe de reempaque (gráficos y tasas)</a></p>
 <p class="muted small">Almacén inicia → Calidad evalúa y aprueba/desaprueba → se notifica a Almacén y se envía a Producción → Producción ejecuta y registra (IF §9). Criterios de conversión de calidad, SKU, lote y disposición pendientes de validación por Calidad.</p>
-{% if can('reempaque.solicitar') %}<form method="post" class="card">{{ csrf() }}<h3>Nueva solicitud</h3><div class="row">
+{% if can('reempaque.solicitar') %}<p><button class="btn sec" data-open="dlg-rep-xls">{{ ic('upload') }} Cargar solicitudes (Excel)</button></p>
+<dialog class="modal" id="dlg-rep-xls"><form method="post" enctype="multipart/form-data">{{ csrf() }}<input type="hidden" name="accion" value="excel">
+<div class="dlg-head"><h3>Cargar solicitudes de reempaque</h3><button class="ibtn" data-close aria-label="Cerrar">{{ ic('x') }}</button></div>
+<div class="dlg-body"><p class="small">Columnas: <b>tipo</b> (actualización de fecha, cambio de presentación o conversión de calidad), <b>producto</b>, <b>lote</b>, <b>almacén</b>, <b>cantidad</b>, <b>producto destino</b> (si cambia la presentación o la calidad) y <b>motivo</b>. Cada fila válida se envía a Calidad.</p><input type="file" name="archivo" accept=".xlsx,.xlsm" required></div>
+<div class="dlg-foot"><button class="btn sec" data-close>Cancelar</button><button class="btn">Cargar</button></div></form></dialog>
+<form method="post" class="card">{{ csrf() }}<h3>Nueva solicitud</h3><div class="row">
 <div><label>Tipo</label><select name="tipo">{% for c, n, d in tipos %}<option value="{{ c }}" title="{{ d }}">{{ n }}</option>{% endfor %}</select></div>
 <div><label>Lote origen</label><select name="lot_id">{% for l in lots %}<option value="{{ l.id }}">{{ l.product_code }} {{ pd(l.product_code) }} · {{ l.lote }} · {{ l.warehouse_code }} · {{ l.estado }} · libre {{ free(l)|n }} · vence {{ l.fecha_venc|d }}</option>{% endfor %}</select></div>
 <div><label>Cantidad</label><input type="number" step="any" name="cantidad" required></div>

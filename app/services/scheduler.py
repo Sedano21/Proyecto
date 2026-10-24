@@ -73,6 +73,11 @@ def run_checks(user=None, today=None):
     out["variacion_compra_clientes"] = check_purchase_variations(user, today)
     from .fleet import check_alerts as fleet_alerts
     out["flota"] = fleet_alerts(today)
+    from .supply import check_no_rotation, check_order_risk
+    out["ov_riesgo_48_24h"] = check_order_risk()
+    out["stock_sin_rotacion_mensual"] = check_no_rotation(today)
+    from .maintenance import check_alerts as mant_alerts
+    out["mantenimiento_saneamiento"] = mant_alerts(today)
     from .shifts import check_overdue
     out["tareas_incumplidas_aviso_jefe"] = check_overdue()
     from .shifts import check_end_of_shift

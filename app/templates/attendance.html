@@ -1,6 +1,6 @@
 {% extends "base.html" %}{% from "_m.html" import csrf %}
-{% block content %}<h1>Asistencia del personal de Producción</h1>
-<p class="small muted">Registran el Jefe de Producción y el asistente designado. La marcación de entrada y salida está en el marcador; aquí se registra el estado del día.</p>
+{% block content %}<h1>Asistencia del personal de {{ area }}</h1>
+<p class="small muted">{{ "Registran el Jefe de Producción y el asistente designado." if area == "Producción" else "Cada jefe ve y registra solo la asistencia de su propio personal." }} La marcación de entrada y salida está en el marcador; aquí se registra el estado del día.</p>
 <form class="card row" method="get"><div><label>Fecha</label><input type="date" name="fecha" value="{{ fecha.isoformat() }}"></div><div><button>Ver</button></div></form>
 <form method="post" class="card">{{ csrf() }}<h3>{{ fecha|d }}</h3><div class="tw"><table class="small"><tr><th>Colaborador</th><th>Línea</th>{% for e in estados %}<th>{{ e|capitalize }}</th>{% endfor %}<th>Observación</th></tr>
 {% for w in workers if w.activo %}{% set a = dia.get(w.id) %}<tr><td>{{ w.nombre }}{{ ' (externo)' if w.externo }}</td><td>{{ w.linea }} {{ w.sublinea }}</td>{% for e in estados %}<td><input type="radio" name="estado_{{ w.id }}" value="{{ e }}" {{ 'checked' if a and a.estado == e }} {{ 'disabled' if not puede }} aria-label="{{ e }}"></td>{% endfor %}<td><input name="obs_{{ w.id }}" value="{{ a.observacion if a }}" {{ 'disabled' if not puede }}></td></tr>
@@ -9,6 +9,6 @@
 {% if puede %}<form method="post" class="card row">{{ csrf() }}<input type="hidden" name="accion" value="colaborador"><h3 style="width:100%">Colaboradores</h3>
 <div><label>Editar</label><select name="id"><option value="">(nuevo)</option>{% for w in workers %}<option value="{{ w.id }}">{{ w.nombre }}</option>{% endfor %}</select></div>
 <div class="grow"><label class="req">Nombre</label><input name="nombre" required></div><div><label>Documento</label><input name="documento" maxlength="15"></div>
-<div><label>Línea</label><select name="linea"><option value="">—</option>{% for c, n, _ in lineas %}<option value="{{ c }}">{{ n }}</option>{% endfor %}</select></div><div><label>Sublínea</label><input name="sublinea"></div>
+{% if area == 'Producción' %}<div><label>Línea</label><select name="linea"><option value="">—</option>{% for c, n, _ in lineas %}<option value="{{ c }}">{{ n }}</option>{% endfor %}</select></div><div><label>Sublínea</label><input name="sublinea"></div>{% else %}<div><label>Puesto</label><input name="sublinea"></div>{% endif %}
 <div><label><input type="checkbox" name="externo" value="1"> Externo</label></div><div><label>Activo</label><select name="activo"><option value="1">Sí</option><option value="0">No</option></select></div><div><button>Guardar</button></div></form>{% endif %}
 {% endblock %}

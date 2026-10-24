@@ -9,7 +9,14 @@
 <p class="sub">{{ o.customer.nombre }} · comprometida <b>{{ o.fecha_compromiso|d }}</b> · {{ b(o.estado) }} {{ b(o.estado_stock) }} {% if o.urgente %}<span class="b ALTA">URGENTE</span>{% endif %}{% if o.regularizacion %} <span class="b MEDIA">REGULARIZACIÓN</span>{% endif %}</p></div>
 <div class="row">{% if puede_editar %}<a class="btn" href="#editar">{{ ic('edit') }}{{ 'Editar' if can('ov.modificar') else 'Solicitar modificación' }}</a>{% endif %}
 <a class="btn sec" href="{{ url_for('com.order_print', oid=o.id) }}">{{ ic('file') }}Imprimir OV</a>
-<a class="btn sec" href="#expediente">{{ ic('folder') }}Expediente</a></div></div>
+<a class="btn sec" href="#expediente">{{ ic('folder') }}Expediente</a>
+{% if can('ov.reportar_atraso') and gestionable and not o.aviso_atraso %}<button class="btn sec" data-open="dlg-atraso">{{ ic('alert') }}Avisar atraso</button>{% endif %}</div></div>
+{% if o.aviso_atraso %}<div class="note warn"><b>Logística avisó que no llegará a tiempo</b> ({{ o.aviso_atraso.user }}, {{ o.aviso_atraso.ts|replace('T',' ') }}): {{ o.aviso_atraso.motivo }}{% if o.aviso_atraso.nueva_fecha %} · fecha estimada {{ o.aviso_atraso.nueva_fecha }}{% endif %}</div>{% endif %}
+{% if can('ov.reportar_atraso') and gestionable and not o.aviso_atraso %}<dialog class="modal" id="dlg-atraso"><form method="post" action="{{ url_for('sup.order_delay', oid=o.id) }}">{{ csrf() }}
+<div class="dlg-head"><h3>Avisar a Comercial: la OV no llegará a tiempo</h3><button class="ibtn" data-close aria-label="Cerrar">{{ ic('x') }}</button></div>
+<div class="dlg-body"><p class="small muted">Se registra el día de creación de la OV o el siguiente. Comercial y el vendedor reciben una alerta para coordinar con el cliente.</p>
+<label class="req">Motivo</label><input name="motivo" required style="width:100%"><label>Fecha estimada (opcional)</label><input type="date" name="nueva_fecha"></div>
+<div class="dlg-foot"><button class="btn sec" data-close>Cancelar</button><button class="btn">Enviar aviso</button></div></form></dialog>{% endif %}
 {% set pasos = ['REGISTRADA','EVALUADA','EN_PREPARACION','PREPARADA','PROGRAMADA','EN_RUTA','ENTREGADA'] %}
 {% if o.estado in pasos %}{% set idx = pasos.index(o.estado) %}<ol class="steps" aria-label="Avance de la OV">{% for p in pasos %}<li class="{{ 'done' if loop.index0 < idx else ('now' if loop.index0 == idx else '') }}">{{ p|replace('_',' ')|capitalize }}</li>{% endfor %}</ol>{% endif %}
 

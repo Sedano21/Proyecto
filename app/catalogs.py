@@ -1476,3 +1476,140 @@ PERMISOS_RETIRADOS = [
     ("GERENCIA_GENERAL", "catalogo.fotos", R23B),
 ]
 PERMISOS_TIPO = {"catalogo.fotos": "exclusivo"}
+
+# Ronda UX (24-oct-2026)
+RUX = "Requerimientos UX/UI del usuario del 24-oct-2026"
+PARAMS += [
+    ("formato_hora", "24H", "str", "Producción",
+     "Formato de las horas en los partes: 24H (15:30) o 12H (3:30 p. m.). Se aceptan ambos al escribir.", "DEFINIDO",
+     f"{RUX}: soportar formato de 12 h y 24 h"),
+]
+PARAMS += [
+    ("exigir_soat_vigente", True, "bool", "Distribución",
+     "No se asigna a rutas una unidad sin SOAT vigente (se alerta a Distribución).", "DEFINIDO", f"{RUX}: validación de flota y SOAT"),
+    ("geosatelital_url_panel", "", "str", "Distribución",
+     "Dirección del panel web de GEOSATELITAL para verlo dentro del sistema (si el proveedor lo permite). El servicio de "
+     "posiciones se configura en el servidor (GEOSAT_API_URL y GEOSAT_TOKEN).", "PENDIENTE", f"{RUX}: integración GEOSATELITAL"),
+]
+PARAMS += [
+    ("dias_aviso_mantenimiento", 7, "int", "Mantenimiento",
+     "Días de anticipación con que se avisa un mantenimiento preventivo por fecha (por kilometraje se usa margen_km_mantenimiento).",
+     "PROPUESTO", f"{RUX}: plan de mantenimiento preventivo con alertas por tiempo o kilometraje"),
+    ("dias_aviso_saneamiento", 3, "int", "Mantenimiento",
+     "Días de anticipación con que se avisa la limpieza o fumigación de una zona o unidad.", "PROPUESTO",
+     f"{RUX}: saneamiento y bioseguridad"),
+    ("vigencia_fumigacion_unidad_dias", None, "int", "Mantenimiento",
+     "Vigencia (días) de la fumigación de una unidad vehicular para el control fitosanitario (gorgojo). Sin valor, se indica la "
+     "vigencia en cada registro.", "PENDIENTE", f"{RUX}: control fitosanitario de unidades"),
+]
+_MANT = ["COORD_DISTRIBUCION", "ASIST_DISTRIBUCION", "JEFE_LOGISTICA", "COORD_LOGISTICA"]
+ALERT_TYPES += [
+    ("MANT_PREVENTIVO", "Mantenimiento preventivo próximo o vencido", "Distribución", "Mantenimiento", "MEDIA", _MANT, "DEFINIDO",
+     RUX, "Una tarea del plan preventivo llega a su kilometraje o fecha.", True),
+    ("MANT_CORRECTIVO", "Avería reportada en una unidad", "Distribución", "Mantenimiento", "ALTA", _MANT, "DEFINIDO", RUX,
+     "Se reportó una avería (mantenimiento correctivo).", True),
+    ("SANEAMIENTO_VENCIDO", "Limpieza o fumigación de zona próxima o vencida", "Calidad", "Saneamiento", "MEDIA",
+     _CAL + ["ASIST_CALIDAD"], "DEFINIDO", RUX, "La zona no tiene su limpieza o fumigación al día.", True),
+    ("FUMIGACION_UNIDAD", "Fumigación de unidad vehicular por vencer o vencida", "Calidad", "Saneamiento", "ALTA",
+     _CAL + ["ASIST_CALIDAD"] + _DIST, "DEFINIDO", RUX, "Control fitosanitario de la unidad (prevención de gorgojo).", True),
+]
+PARAMS += [
+    ("horas_aviso_riesgo_ov", [48, 24], "list", "Comercial",
+     "Horas antes de la fecha comprometida en que se avisa a Comercial si la OV corre riesgo de no completarse.", "DEFINIDO",
+     f"{RUX}: notificación con 48 h o 24 h de anticipación"),
+    ("dias_sin_rotacion", 90, "int", "Almacén",
+     "Días sin salidas a partir de los cuales un producto con stock se considera sin rotación (aviso mensual).", "PROPUESTO",
+     f"{RUX}: gestión de stock sin rotación"),
+    ("dia_aviso_sin_rotacion", 1, "int", "Almacén", "Día del mes en que se envía el aviso de stock sin rotación.", "PROPUESTO",
+     f"{RUX}: alerta mensual automática"),
+]
+ALERT_TYPES += [
+    ("OV_RIESGO_DESPACHO", "OV en riesgo de no completarse (48 h / 24 h)", "Comercial", "OV", "ALTA", _COM + ["GERENTE_COMERCIAL"],
+     "DEFINIDO", RUX, "La fecha comprometida está a 48 o 24 horas y la OV no tiene stock completo o Operaciones no cumple.", True),
+    ("OV_ATRASO_LOGISTICA", "Logística avisa que la OV no llegará a tiempo", "Comercial", "OV", "ALTA", _COM + ["GERENTE_COMERCIAL"],
+     "DEFINIDO", RUX, "El Jefe de Logística registró el aviso de atraso con su motivo.", True),
+    ("STOCK_SIN_ROTACION", "Productos sin rotación (aviso mensual)", "Almacén", "Inventario", "MEDIA",
+     _COM + ["GERENTE_COMERCIAL"] + _ALM + _LOG + ["GERENCIA_OPERACIONES", "GERENCIA_GENERAL"], "DEFINIDO", RUX,
+     "Productos con stock y sin salidas en el periodo configurado.", True),
+    ("MOVIMIENTO_SOLICITADO", "Movimiento punto a punto solicitado al montacarguista", "Almacén", "Movimientos", "MEDIA",
+     ["MONTACARGUISTA"], "DEFINIDO", RUX, "Un área solicitó mover carga de un punto a otro.", False),
+    ("MOVIMIENTO_COMPLETADO", "Movimiento punto a punto completado", "Almacén", "Movimientos", "BAJA", [], "DEFINIDO", RUX,
+     "El montacarguista completó el movimiento con foto de validación.", False),
+]
+ALERT_INFORMATIVAS = set(ALERT_INFORMATIVAS) | {"MOVIMIENTO_COMPLETADO", "STOCK_SIN_ROTACION"}
+_SOLICITAN_MOV = ["JEFE_PRODUCCION", "ASIST_PRODUCCION", "COORD_ALMACEN", "COORD_ALMACEN_MP", "SUPERV_ALMACEN", "LIDER_ALMACEN",
+                  "AUX_ALMACEN", "AUX_DESPACHO", "JEFE_CALIDAD", "SUPERV_CALIDAD", "ASIST_CALIDAD", "COORD_DISTRIBUCION",
+                  "ASIST_DISTRIBUCION", "JEFE_LOGISTICA", "COORD_LOGISTICA", "MONTACARGUISTA"]
+_RUX_PERMS = [
+    ("ov.reportar_atraso", "Avisar a Comercial que la OV no llegará a tiempo (día de creación o siguiente, con motivo)",
+     "Logística", "edicion", ["JEFE_LOGISTICA"]),
+    ("demanda.cargar", "Cargar la proyección de demanda", "Comercial", "edicion", ["JEFE_VENTAS", "COORD_VENTAS", "GERENTE_COMERCIAL"]),
+    ("demanda.ver", "Consultar la proyección de demanda", "Logística", "consulta",
+     _COMERCIAL_ROLES + _LOG + _ALM + ["COMPRAS", "JEFE_PRODUCCION", "GERENCIA_OPERACIONES"]),
+    ("rotacion.ver", "Consultar el stock sin rotación", "Almacén", "consulta",
+     _COMERCIAL_ROLES + _LOG + _ALM + ["SUPERV_ALMACEN", "AUX_ALMACEN", "GERENCIA_OPERACIONES"]),
+    ("movimiento.solicitar", "Solicitar un movimiento punto a punto al montacarguista", "Almacén", "edicion", _SOLICITAN_MOV),
+    ("movimiento.ejecutar", "Ejecutar movimientos punto a punto con foto de validación", "Almacén", "edicion", ["MONTACARGUISTA"]),
+    ("movimiento.ver_todos", "Ver las solicitudes de movimiento de todas las áreas", "Almacén", "consulta",
+     _ALM + _LOG + ["SUPERV_ALMACEN", "LIDER_ALMACEN"]),
+    ("mantenimiento.ver", "Ver mantenimiento de flota y saneamiento", "Mantenimiento", "consulta",
+     _MANT + ["GERENCIA_OPERACIONES", "JEFE_CALIDAD", "SUPERV_CALIDAD", "ASIST_CALIDAD", "COORD_ALMACEN", "COORD_ALMACEN_MP"]),
+    ("mantenimiento.flota", "Registrar el plan preventivo y las averías (correctivo) de la flota", "Mantenimiento", "edicion",
+     _MANT),
+    ("saneamiento.registrar", "Registrar limpieza, desinfección y fumigación de zonas y unidades", "Mantenimiento", "edicion",
+     ["JEFE_CALIDAD", "SUPERV_CALIDAD", "ASIST_CALIDAD"]),
+    ("distribucion.conformidad", "Registrar la conformidad de entrega (nombre, DNI, firma, foto y guía firmada)", "Distribución",
+     "edicion", ["CONDUCTOR"]),
+    ("distribucion.rastreo", "Ver el rastreo de unidades (GEOSATELITAL)", "Distribución", "consulta",
+     ["COORD_DISTRIBUCION", "ASIST_DISTRIBUCION", "JEFE_LOGISTICA", "COORD_LOGISTICA", "GERENCIA_OPERACIONES"]),
+]
+# --- matriz de accesos por área (ronda UX 24-oct-2026, sección 5) ---
+_AREA_ROL = {r[0]: r[2] for r in ROLES}
+_LOGISTICA_AREAS = ("Logística", "Almacén", "Distribución")
+# Partes, control de producción y tablero OEE: quien ve Producción, salvo Logística (almacenes y distribución)
+_PARTES_ROLES = sorted({r for r, ps in ROLE_PERMISSIONS.items() if any(p[0] == "produccion.ver" for p in ps)
+                        and _AREA_ROL.get(r) not in _LOGISTICA_AREAS} | {"JEFE_PRODUCCION", "ASIST_PRODUCCION"})
+_RUX_PERMS += [
+    ("produccion.partes_ver", "Ver partes de producción, control de producción, monitoreo y tablero OEE", "Producción", "consulta",
+     _PARTES_ROLES),
+    ("ingresos.ver", "Ver los ingresos de producto a almacén con su estado y motivo de observación", "Almacén", "consulta",
+     ["JEFE_LOGISTICA", "COORD_LOGISTICA", "COORD_ALMACEN", "COORD_ALMACEN_MP", "SUPERV_ALMACEN", "GERENCIA_OPERACIONES"]),
+    ("asistencia.area", "Ver y registrar la asistencia del personal de su propia área", "General", "edicion", ["JEFE_LOGISTICA"]),
+    ("guias.estado", "Consultar y reportar el estado de las guías de remisión", "Distribución", "edicion",
+     ["AUX_DESPACHO", "COORD_DISTRIBUCION", "ASIST_DISTRIBUCION"]),
+]
+# Producción no recibe las alertas de quiebre de stock (sección 5)
+ALERT_TYPES = [(c, n, a, g, pr, [r for r in rs if r not in _PROD] if c == "QUIEBRE_STOCK" else rs, *rest)
+               for c, n, a, g, pr, rs, *rest in ALERT_TYPES]
+# Auxiliar de Almacén: alertas operativas de OV, rotación de inventario y estados de lote
+ALERT_TYPES = [(c, n, a, g, pr, (rs + ["AUX_ALMACEN"]) if ((c.startswith("OV_") and a == "Almacén") or c == "STOCK_SIN_ROTACION")
+                and "AUX_ALMACEN" not in rs else rs, *rest) for c, n, a, g, pr, rs, *rest in ALERT_TYPES]
+ROLE_PERMISSIONS["AUX_ALMACEN"] += [(p, "DEFINIDO", f"{RUX}: Auxiliar de Almacén") for p in
+                                    ("alertas.gestionar", "stock.cambiar_estado")]
+# Logística: sin el módulo de Producción (solo asistencia de su personal, ingresos a almacén y estado de las OV)
+_LOG_SIN_PROD = ("JEFE_LOGISTICA", "COORD_LOGISTICA")
+for _r in _LOG_SIN_PROD:
+    ROLE_PERMISSIONS[_r] = [x for x in ROLE_PERMISSIONS[_r] if x[0] != "produccion.ver"]
+# Auxiliar de Despacho: acceso limitado a consultar y reportar el estado de las guías de remisión (conserva el visto bueno
+# de salida y la validación de carga de la decisión Q16, que se hacen sobre la guía)
+_AUX_DESP_QUITA = ("distribucion.ver", "distribucion.entrega", "distribucion.incidencia", "alertas.gestionar")
+ROLE_PERMISSIONS["AUX_DESPACHO"] = [x for x in ROLE_PERMISSIONS["AUX_DESPACHO"] if x[0] not in _AUX_DESP_QUITA]
+# el montacarguista vuelve a ver las solicitudes de traslado de las demás áreas
+ROLE_PERMISSIONS["MONTACARGUISTA"].append(("traslados.ver", "DEFINIDO", f"{RUX}: vista de solicitudes de las demás áreas"))
+PERMISOS_RETIRADOS += [(r, "produccion.ver", RUX) for r in _LOG_SIN_PROD] + [
+    ("AUX_DESPACHO", p, RUX) for p in _AUX_DESP_QUITA]
+# cambios de destinatarios en bases existentes (una sola vez): (tipo, quitar, agregar)
+ALERTAS_ROLES_CAMBIO = [("QUIEBRE_STOCK", list(_PROD), [])] + [
+    (c, [], ["AUX_ALMACEN"]) for c, n, a, *_ in ALERT_TYPES if (c.startswith("OV_") and a == "Almacén") or c == "STOCK_SIN_ROTACION"]
+# nomenclatura de puestos (sección 5): «Coordinador» de almacenes → «Supervisor de 1524 y 1560»
+ROLES = [(c, "Supervisor de 1524 y 1560" if c == "COORD_ALMACEN" else n, *rest) for c, n, *rest in ROLES]
+ROLES_RENOMBRE = {"COORD_ALMACEN": "Supervisor de 1524 y 1560"}
+
+# --- registro de los permisos de la ronda UX (al final: GG y Sistemas según la regla general) ---
+for _code, _n, _m, _t, _roles in _RUX_PERMS:
+    if not any(p[0] == _code for p in PERMISSIONS):
+        PERMISSIONS.append((_code, _n, _m, _t))
+    for _r in _roles:
+        ROLE_PERMISSIONS.setdefault(_r, []).append((_code, "DEFINIDO", RUX))
+    if _t != "exclusivo" and "GERENCIA_GENERAL" not in _roles:
+        ROLE_PERMISSIONS["GERENCIA_GENERAL"].append((_code, "DEFINIDO", f"{RUX}; regla general de Gerencia General"))

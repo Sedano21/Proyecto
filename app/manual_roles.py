@@ -132,8 +132,11 @@ ROLES = {
                       "Si picó otro lote: «Cambiar lote», elija el lote picado, el motivo (rotura o dañado, infestación, "
                       "contaminación o difícil acceso) y la observación. El formato y el stock se actualizan al instante.",
                       "3. Al terminar, suba la foto de la mercadería lista para el despacho.")]},
-    "MONTACARGUISTA": {"resumen": "Traslada la mercadería a la zona de despacho: inicia y termina sus tareas con foto.",
-                       "tareas": [_t("Atender un traslado", "Alertas", "Abra la tarea, inicie con foto y termínela con foto.")]},
+    "MONTACARGUISTA": {"resumen": "Traslada la mercadería a la zona de despacho y atiende los movimientos punto a punto que "
+                                  "solicitan las áreas: inicia y termina con foto.",
+                       "tareas": [_t("Atender un traslado", "Alertas", "Abra la tarea, inicie con foto y termínela con foto."),
+                                  _t("Atender un movimiento punto a punto", "Almacén · Movimientos punto a punto",
+                                     "Tome la solicitud con la foto del origen y termínela con la foto de validación en el destino.")]},
     "COORD_DISTRIBUCION": {
         "resumen": "Programa rutas, ve la pre-guía, aprueba la guía y consulta el expediente completo de cada OV "
                    "(OV, certificado, guía y factura). No ve líneas, reservas ni lotes de la OV.",
@@ -143,13 +146,16 @@ ROLES = {
                    _t("Ver el expediente de una OV", "OV → Expediente", "Pulse «Ver expediente completo» para ver o imprimir todo junto.")]},
     "ASIST_DISTRIBUCION": {"resumen": "Apoya la programación de rutas, la flota y los documentos; aprueba la guía como el Coordinador.",
                            "tareas": [ALERTA]},
-    "CONDUCTOR": {"resumen": "Registra las fotos del vehículo al salir y al retornar, las llegadas y las entregas con guía firmada.",
+    "CONDUCTOR": {"resumen": "Registra las fotos del vehículo al salir y al retornar, las llegadas y la conformidad digital de "
+                             "cada entrega.",
                   "no_hace": "Dar conformidad del estado del producto (compete a Calidad, Distribución y Almacén).",
-                  "tareas": [_t("Registrar una entrega", "Distribución · Ruta → Paradas",
-                                "Marque la llegada; en «Registrar entrega» suba la foto y la guía firmada e indique lo entregado.")]},
-    "AUX_DESPACHO": {"resumen": "Valida la carga contra la pre-guía, da conformidad del producto y su visto bueno a la salida. "
-                                "También puede recibir picking del almacén al que está asignado.",
-                     "tareas": [ALERTA]},
+                  "tareas": [_t("Registrar la conformidad de una entrega", "Distribución · Mis entregas",
+                                "Toque «Llegué»; en «Registrar conformidad» anote nombre y DNI de quien recibe, pida su firma en "
+                                "pantalla y suba la foto de la entrega y la guía firmada.")]},
+    "AUX_DESPACHO": {"resumen": "Consulta y reporta el estado de las guías de remisión; valida la carga y da su visto bueno a "
+                                "la salida (Q16).",
+                     "tareas": [_t("Reportar el estado de una guía", "Distribución · Guías de remisión",
+                                   "Busque la guía y con el lápiz indique su estado (firmada, observada, devuelta…)."), ALERTA]},
     "JEFE_LOGISTICA": {
         "resumen": "Autoriza presolicitudes de compra y traslados, decide alternativas ante faltantes y aprueba salidas con discrepancia.",
         "tareas": [ALERTA,

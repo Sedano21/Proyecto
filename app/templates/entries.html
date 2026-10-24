@@ -1,0 +1,9 @@
+{% extends "base.html" %}{% from "_m.html" import b, empty %}
+{% block content %}<h1>Ingresos de producto a almacén</h1>
+<p class="small muted">Producto terminado liquidado por Producción y su recepción en almacén: estado y motivo de observación (faltante, sobrante, presentación, bloqueo).</p>
+<form class="row card" method="get"><div><label>Desde</label><input type="date" name="desde" value="{{ desde.isoformat() }}"></div><div><label>Estado</label><select name="estado"><option value="">(todos)</option>{% for e in estados %}<option value="{{ e }}" {{ 'selected' if estado == e }}>{{ e|replace('_',' ')|capitalize }}</option>{% endfor %}</select></div><div><button class="sec">Ver</button></div></form>
+{% if rows %}<div class="cards">{% for l in rows %}<article class="xcard {{ 'alerta' if l.estado in ['BLOQUEADA','RECIBIDA_FALTANTE'] else ('st-PENDIENTE' if l.estado == 'REGISTRADA' or l.presentacion_ok == false or l.estado == 'RECIBIDA_SOBRANTE' else 'st-LIQUIDADO') }}">
+<div class="xcard-head"><b>{{ l.product_code }} · lote {{ l.lote }}</b>{{ b(l.estado) }}</div><div class="small">{{ pd(l.product_code) }}</div>
+<div class="meta"><span>{{ l.fecha|d }}</span><span>OF {{ l.numero_documento }}</span><span>liquidado <b>{{ l.cantidad_completada|n }}</b></span>{% if l.cantidad_recibida is not none %}<span>recibido <b>{{ l.cantidad_recibida|n }}</b>{{ ' (dif. ' ~ (l.diferencia|n) ~ ')' if l.diferencia }}</span>{% endif %}{% if l.warehouse_code %}<span>{{ l.warehouse_code }}</span>{% endif %}</div>
+{% if l.estado == 'BLOQUEADA' %}<div class="pending-why">Observación: {{ (l.bloqueo or {}).get('motivos', [])|join(' ') }}</div>{% elif l.observacion or l.presentacion_ok == false %}<div class="pending-why">Observación: {{ 'presentación no conforme. ' if l.presentacion_ok == false }}{{ l.observacion }}</div>{% endif %}</article>{% endfor %}</div>
+{% else %}{{ empty('Sin ingresos en el periodo.', 'box') }}{% endif %}{% endblock %}

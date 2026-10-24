@@ -1,0 +1,105 @@
+{% extends "base.html" %}{% from "_m.html" import b, csrf, ic, empty %}
+{% set cls = {'VENCIDO': 'ALTA', 'PROXIMO': 'MEDIA', 'AL_DIA': 'ok', 'SIN_REGISTRO': 'MEDIA', 'NO_APLICA': ''} %}
+{% macro est(e) %}{% if e and e != 'NO_APLICA' %}<span class="b {{ cls.get(e, '') }}">{{ {'VENCIDO':'vencido','PROXIMO':'próximo','AL_DIA':'al día','SIN_REGISTRO':'sin registro'}.get(e, e) }}</span>{% endif %}{% endmacro %}
+{% block content %}<h1>Mantenimiento</h1>
+<p class="seg small">{% for k, t in tabs %}<a class="{{ 'on' if tab == k }}" href="{{ url_for('mant.home', tab=k) }}">{{ t }}</a>{% endfor %}</p>
+
+{% if tab == 'flota' %}
+<div class="card-head"><p class="small muted" style="flex:1">Plan preventivo por unidad: cada tarea vence por kilometraje o por fecha, lo que llegue primero. Se alerta antes del vencimiento.</p>
+{% if can('mantenimiento.flota') %}<button class="btn" data-open="dlg-plan">{{ ic('plus') }} Nueva tarea preventiva</button>{% endif %}</div>
+{% if d.planes %}<div class="cards">{% for p, x in d.planes %}<article class="xcard {{ 'alerta' if x.estado == 'VENCIDO' else ('st-PENDIENTE' if x.estado == 'PROXIMO' else '') }}">
+<div class="xcard-head"><b>{{ p.vehicle.placa }} · {{ p.tarea }}</b>{{ est(x.estado) }}
+{% if can('mantenimiento.flota') %}<button class="ibtn" data-open="dlg-plan-{{ p.id }}" aria-label="Editar tarea" title="Editar">{{ ic('edit') }}</button>{% endif %}</div>
+<div class="meta">{% if p.cada_km %}<span>cada {{ p.cada_km|n }} km</span>{% endif %}{% if p.cada_dias %}<span>cada {{ p.cada_dias }} días</span>{% endif %}</div>
+<div class="meta">{% if x.prox_km is not none %}<span>próximo a los <b>{{ x.prox_km|n }} km</b>{{ ' (faltan ' ~ (x.km_rest|n) ~ ' km)' if x.km_rest is not none }}</span>{% endif %}{% if x.prox_fecha %}<span>o el <b>{{ x.prox_fecha|d }}</b></span>{% endif %}</div>
+<div class="small muted">Último: {{ p.ultima_fecha|d if p.ultima_fecha else '—' }}{{ ' · ' ~ (p.ultimo_km|n) ~ ' km' if p.ultimo_km is not none }}</div>
+{% if can('mantenimiento.flota') %}<div><button class="btn small sec" data-open="dlg-hecho" data-set-plan-id="{{ p.id }}" data-set-titulo="{{ p.vehicle.placa }} · {{ p.tarea }}" data-set-km="{{ p.vehicle.km_actual or '' }}">{{ ic('check') }} Registrar realizado</button></div>
+<dialog class="modal" id="dlg-plan-{{ p.id }}"><form method="post">{{ csrf() }}<input type="hidden" name="accion" value="plan"><input type="hidden" name="plan_id" value="{{ p.id }}"><input type="hidden" name="vehicle_id" value="{{ p.vehicle_id }}">
+<div class="dlg-head"><h3>{{ p.vehicle.placa }} · tarea preventiva</h3><button class="ibtn" data-close aria-label="Cerrar">{{ ic('x') }}</button></div>
+<div class="dlg-body"><label class="req">Tarea</label><input name="tarea" value="{{ p.tarea }}" required style="width:100%">
+<div class="row"><div><label>Cada (km)</label><input name="cada_km" type="number" step="any" min="1" value="{{ p.cada_km or '' }}" style="width:110px"></div><div><label>Cada (días)</label><input name="cada_dias" type="number" step="1" min="1" value="{{ p.cada_dias or '' }}" style="width:90px"></div><div><label>Activa</label><select name="activo"><option value="1">Sí</option><option value="0">No</option></select></div></div></div>
+<div class="dlg-foot"><button class="btn sec" data-close>Cancelar</button><button class="btn">Guardar</button></div></form></dialog>{% endif %}</article>{% endfor %}</div>
+{% else %}{{ empty('Aún no hay tareas preventivas. Agregue la primera con «Nueva tarea preventiva».', 'wrench') }}{% endif %}
+{% if can('mantenimiento.flota') %}
+<dialog class="modal" id="dlg-plan"><form method="post">{{ csrf() }}<input type="hidden" name="accion" value="plan">
+<div class="dlg-head"><h3>Nueva tarea preventiva</h3><button class="ibtn" data-close aria-label="Cerrar">{{ ic('x') }}</button></div>
+<div class="dlg-body"><label class="req">Unidad</label><select name="vehicle_id" required>{% for v in d.vehiculos %}<option value="{{ v.id }}">{{ v.placa }} · {{ v.descripcion }}</option>{% endfor %}</select>
+<label class="req">Tarea</label><input name="tarea" required placeholder="cambio de aceite, revisión de frenos…" style="width:100%">
+<div class="row"><div><label>Cada (km)</label><input name="cada_km" type="number" step="any" min="1" style="width:110px"></div><div><label>Cada (días)</label><input name="cada_dias" type="number" step="1" min="1" style="width:90px"></div></div>
+<div class="row"><div><label>Último realizado</label><input type="date" name="ultima_fecha"></div><div><label>a los (km)</label><input name="ultimo_km" type="number" step="any" min="0" style="width:110px"></div></div>
+<p class="small muted">Indique al menos una frecuencia.</p></div>
+<div class="dlg-foot"><button class="btn sec" data-close>Cancelar</button><button class="btn">Guardar</button></div></form></dialog>
+<dialog class="modal" id="dlg-hecho"><form method="post">{{ csrf() }}<input type="hidden" name="accion" value="realizado"><input type="hidden" name="plan_id">
+<div class="dlg-head"><h3>Realizado · <span data-show="titulo"></span></h3><button class="ibtn" data-close aria-label="Cerrar">{{ ic('x') }}</button></div>
+<div class="dlg-body"><div class="row"><div><label class="req">Fecha</label><input type="date" name="fecha" required></div><div><label>Kilometraje</label><input name="km" type="number" step="any" min="0" style="width:110px"></div><div><label>Costo (S/)</label><input name="costo" type="number" step="any" min="0" style="width:100px"></div></div>
+<label>Nota</label><input name="nota" style="width:100%"></div>
+<div class="dlg-foot"><button class="btn sec" data-close>Cancelar</button><button class="btn">Registrar</button></div></form></dialog>{% endif %}
+
+{% elif tab == 'correctivo' %}
+<div class="card-head"><p class="small muted" style="flex:1">Averías: reportada → programada → en reparación → cerrada. Una avería grave saca la unidad de servicio hasta cerrarla.</p>
+{% if can('mantenimiento.flota') %}<button class="btn" data-open="dlg-averia">{{ ic('alert') }} Reportar avería</button>{% endif %}</div>
+{% if d.averias %}<div class="cards">{% for a in d.averias %}<article class="xcard {{ 'alerta' if a.severidad == 'ALTA' and a.estado != 'CERRADA' else ('st-LIQUIDADO' if a.estado == 'CERRADA' else 'st-PENDIENTE') }}">
+<div class="xcard-head"><b>{{ a.vehicle.placa }}</b>{{ b(a.estado) }}{{ b(a.severidad) }}
+{% if can('mantenimiento.flota') and a.estado != 'CERRADA' %}<button class="ibtn" data-open="dlg-av-{{ a.id }}" aria-label="Actualizar estado" title="Actualizar">{{ ic('edit') }}</button>{% endif %}</div>
+<div class="small">{{ a.descripcion }}</div><div class="meta"><span>{{ a.ts|d }}</span>{% if a.fecha_programada %}<span>programada {{ a.fecha_programada|d }}</span>{% endif %}{% if a.taller %}<span>{{ a.taller }}</span>{% endif %}{% if a.costo %}<span>S/ {{ a.costo|n }}</span>{% endif %}</div>
+{% if a.solucion %}<div class="chk good">{{ a.solucion }}</div>{% endif %}
+<details class="small"><summary>Seguimiento</summary>{% for h in a.historial %}<div>{{ h.ts[:16]|replace('T',' ') }} · {{ h.estado|replace('_',' ')|lower }} · {{ h.user }}{{ ': ' ~ h.nota if h.nota }}</div>{% endfor %}</details>
+{% if can('mantenimiento.flota') and a.estado != 'CERRADA' %}<dialog class="modal" id="dlg-av-{{ a.id }}"><form method="post">{{ csrf() }}<input type="hidden" name="accion" value="averia_estado"><input type="hidden" name="breakdown_id" value="{{ a.id }}">
+<div class="dlg-head"><h3>{{ a.vehicle.placa }} · avería</h3><button class="ibtn" data-close aria-label="Cerrar">{{ ic('x') }}</button></div>
+<div class="dlg-body"><label>Nuevo estado</label><select name="estado">{% for e in estados if loop.index0 >= estados.index(a.estado) %}<option value="{{ e }}">{{ e|replace('_',' ')|capitalize }}</option>{% endfor %}</select>
+<div class="row"><div><label>Fecha programada</label><input type="date" name="fecha_programada" value="{{ a.fecha_programada.isoformat() if a.fecha_programada }}"></div><div><label>Taller</label><input name="taller" value="{{ a.taller }}"></div><div><label>Costo (S/)</label><input name="costo" type="number" step="any" min="0" value="{{ a.costo or '' }}" style="width:100px"></div></div>
+<label>Nota (al cerrar: reparación realizada)</label><input name="nota" style="width:100%"></div>
+<div class="dlg-foot"><button class="btn sec" data-close>Cancelar</button><button class="btn">Guardar</button></div></form></dialog>{% endif %}</article>{% endfor %}</div>
+{% else %}{{ empty('Sin averías reportadas.', 'wrench') }}{% endif %}
+{% if can('mantenimiento.flota') %}<dialog class="modal" id="dlg-averia"><form method="post" enctype="multipart/form-data">{{ csrf() }}<input type="hidden" name="accion" value="averia">
+<div class="dlg-head"><h3>Reportar avería</h3><button class="ibtn" data-close aria-label="Cerrar">{{ ic('x') }}</button></div>
+<div class="dlg-body"><label class="req">Unidad</label><select name="vehicle_id" required>{% for v in d.vehiculos %}<option value="{{ v.id }}">{{ v.placa }} · {{ v.descripcion }}</option>{% endfor %}</select>
+<label class="req">Descripción</label><input name="descripcion" required style="width:100%">
+<div class="row"><div><label>Severidad</label><select name="severidad"><option value="MEDIA">Media</option><option value="ALTA">Alta (sale de servicio)</option><option value="BAJA">Baja</option></select></div><div><label>Kilometraje</label><input name="km" type="number" step="any" min="0" style="width:110px"></div></div>
+<label>Foto (opcional)</label><input type="file" name="foto" accept="image/*" capture="environment"></div>
+<div class="dlg-foot"><button class="btn sec" data-close>Cancelar</button><button class="btn">Reportar</button></div></form></dialog>{% endif %}
+
+{% elif tab == 'saneamiento' %}
+<div class="card-head"><p class="small muted" style="flex:1">Zonas físicas con su frecuencia de limpieza y de fumigación. Cada registro queda en la bitácora con quién lo hizo, el producto y la evidencia.</p>
+{% if can('saneamiento.registrar') %}<button class="btn sec" data-open="dlg-zona">{{ ic('plus') }} Nueva zona</button> <button class="btn" data-open="dlg-san">{{ ic('clipboard') }} Registrar en bitácora</button>{% endif %}</div>
+{% if d.zonas %}<div class="cards">{% for z, st in d.zonas %}<article class="xcard {{ 'alerta' if 'VENCIDO' in [st.limpieza.estado, st.fumigacion.estado] }}">
+<div class="xcard-head"><b>{{ z.nombre }}</b><span class="muted small">{{ z.area }}{{ ' · ' ~ z.almacen if z.almacen }}</span>
+{% if can('saneamiento.registrar') %}<button class="ibtn" data-open="dlg-zona-{{ z.id }}" aria-label="Editar zona" title="Editar">{{ ic('edit') }}</button>{% endif %}</div>
+{% for k, t in [('limpieza', 'Limpieza'), ('fumigacion', 'Fumigación')] %}{% set x = st[k] %}{% if x.estado != 'NO_APLICA' %}<div class="meta"><span>{{ t }} {{ est(x.estado) }}</span><span>{{ 'último ' ~ x.ultimo.fecha.strftime('%d/%m/%Y') if x.ultimo else 'sin registro' }}</span>{% if x.vence %}<span>vence {{ x.vence|d }}</span>{% endif %}</div>{% endif %}{% endfor %}
+{% if can('saneamiento.registrar') %}<div><button class="btn small sec" data-open="dlg-san" data-set-zone-id="{{ z.id }}">{{ ic('clipboard') }} Registrar</button></div>
+<dialog class="modal" id="dlg-zona-{{ z.id }}"><form method="post">{{ csrf() }}<input type="hidden" name="accion" value="zona"><input type="hidden" name="zone_id" value="{{ z.id }}">
+<div class="dlg-head"><h3>Zona · {{ z.nombre }}</h3><button class="ibtn" data-close aria-label="Cerrar">{{ ic('x') }}</button></div>
+<div class="dlg-body"><label class="req">Nombre</label><input name="nombre" value="{{ z.nombre }}" required style="width:100%"><div class="row"><div><label>Área</label><input name="area" value="{{ z.area }}"></div><div><label>Almacén</label><select name="almacen"><option value="">—</option>{% for w in almacenes %}<option {{ 'selected' if w.code == z.almacen }}>{{ w.code }}</option>{% endfor %}</select></div></div>
+<div class="row"><div><label>Limpieza cada (días)</label><input name="frecuencia_limpieza_dias" type="number" min="1" value="{{ z.frecuencia_limpieza_dias or '' }}" style="width:90px"></div><div><label>Fumigación cada (días)</label><input name="frecuencia_fumigacion_dias" type="number" min="1" value="{{ z.frecuencia_fumigacion_dias or '' }}" style="width:90px"></div><div><label>Activa</label><select name="activo"><option value="1">Sí</option><option value="0">No</option></select></div></div></div>
+<div class="dlg-foot"><button class="btn sec" data-close>Cancelar</button><button class="btn">Guardar</button></div></form></dialog>{% endif %}</article>{% endfor %}</div>
+{% else %}{{ empty('Aún no hay zonas. Agregue las zonas de almacén, producción y otras áreas con su frecuencia.', 'shield') }}{% endif %}
+<h2>Bitácora reciente</h2>{% if d.bitacora %}<div class="cards">{% for l in d.bitacora %}<article class="xcard"><div class="xcard-head"><b>{{ tipos[l.tipo] }} · {{ l.zone.nombre if l.zone else 'Unidad ' ~ l.vehicle.placa }}</b><span class="small muted">{{ l.fecha|d }}</span></div>
+<div class="meta"><span>{{ l.responsable }}</span>{% if l.producto %}<span>{{ l.producto }}</span>{% endif %}{% if l.certificado %}<span>cert. {{ l.certificado }}</span>{% endif %}{% if l.vence %}<span>vigente hasta {{ l.vence|d }}</span>{% endif %}{% if l.evidencia %}<a href="{{ url_for('main.evidence', name=l.evidencia) }}">evidencia</a>{% endif %}</div>{% if l.observacion %}<div class="small">{{ l.observacion }}</div>{% endif %}</article>{% endfor %}</div>{% else %}{{ empty('Sin registros.') }}{% endif %}
+{% if can('saneamiento.registrar') %}<dialog class="modal" id="dlg-zona"><form method="post">{{ csrf() }}<input type="hidden" name="accion" value="zona">
+<div class="dlg-head"><h3>Nueva zona</h3><button class="ibtn" data-close aria-label="Cerrar">{{ ic('x') }}</button></div>
+<div class="dlg-body"><label class="req">Nombre</label><input name="nombre" required style="width:100%"><div class="row"><div><label>Área</label><input name="area" placeholder="Almacén, Producción…"></div><div><label>Almacén</label><select name="almacen"><option value="">—</option>{% for w in almacenes %}<option>{{ w.code }}</option>{% endfor %}</select></div></div>
+<div class="row"><div><label>Limpieza cada (días)</label><input name="frecuencia_limpieza_dias" type="number" min="1" style="width:90px"></div><div><label>Fumigación cada (días)</label><input name="frecuencia_fumigacion_dias" type="number" min="1" style="width:90px"></div></div></div>
+<div class="dlg-foot"><button class="btn sec" data-close>Cancelar</button><button class="btn">Guardar</button></div></form></dialog>
+<dialog class="drawer" id="dlg-san"><form method="post" enctype="multipart/form-data">{{ csrf() }}<input type="hidden" name="accion" value="saneamiento">
+<div class="dlg-head"><h3>Registrar en la bitácora</h3><button class="ibtn" data-close aria-label="Cerrar">{{ ic('x') }}</button></div>
+<div class="dlg-body"><label class="req">Zona</label><select name="zone_id" required>{% for z, st in d.zonas %}<option value="{{ z.id }}">{{ z.nombre }}</option>{% endfor %}</select>
+<div class="row"><div><label class="req">Tipo</label><select name="tipo">{% for k, t in tipos.items() %}<option value="{{ k }}">{{ t }}</option>{% endfor %}</select></div><div><label class="req">Fecha</label><input type="date" name="fecha" required></div></div>
+<label class="req">Realizado por (persona o empresa)</label><input name="responsable" required style="width:100%">
+<div class="row"><div><label>Producto utilizado</label><input name="producto"></div><div><label>N° de certificado</label><input name="certificado" size="12"></div></div>
+<label>Vigente hasta (vacío: según la frecuencia de la zona)</label><input type="date" name="vence">
+<label>Evidencia (foto o PDF)</label><input type="file" name="evidencia" accept="image/*,.pdf"><label>Observación</label><input name="observacion" style="width:100%"></div>
+<div class="dlg-foot"><button class="btn sec" data-close>Cancelar</button><button class="btn">Registrar</button></div></form></dialog>{% endif %}
+
+{% else %}
+<p class="small muted">Control fitosanitario de las unidades que transportan producto: fumigación para prevenir plagas (p. ej. gorgojo), con su vigencia y alerta de vencimiento.</p>
+<div class="cards">{% for v, x in d.fumigacion %}<article class="xcard {{ 'alerta' if x.estado == 'VENCIDO' else ('st-PENDIENTE' if x.estado in ['PROXIMO','SIN_REGISTRO'] else '') }}">
+<div class="xcard-head"><b class="mono">{{ v.placa }}</b>{{ est(x.estado) }}</div><div class="small">{{ v.descripcion }}</div>
+<div class="meta">{% if x.ultimo %}<span>fumigada el {{ x.ultimo.fecha|d }} · {{ x.ultimo.producto }}</span><span>vigente hasta <b>{{ x.vence|d }}</b></span>{% else %}<span>sin fumigación registrada</span>{% endif %}</div>
+{% if can('saneamiento.registrar') %}<div><button class="btn small sec" data-open="dlg-fum" data-set-vehicle-id="{{ v.id }}" data-set-titulo="{{ v.placa }}">{{ ic('shield') }} Registrar fumigación</button></div>{% endif %}</article>{% else %}{{ empty('Sin unidades.', 'truck') }}{% endfor %}</div>
+{% if can('saneamiento.registrar') %}<dialog class="modal" id="dlg-fum"><form method="post" enctype="multipart/form-data">{{ csrf() }}<input type="hidden" name="accion" value="saneamiento"><input type="hidden" name="tipo" value="FUMIGACION"><input type="hidden" name="vehicle_id">
+<div class="dlg-head"><h3>Fumigación · <span data-show="titulo"></span></h3><button class="ibtn" data-close aria-label="Cerrar">{{ ic('x') }}</button></div>
+<div class="dlg-body"><div class="row"><div><label class="req">Fecha</label><input type="date" name="fecha" required></div><div><label>Vigente hasta</label><input type="date" name="vence"></div></div>
+<label class="req">Realizado por</label><input name="responsable" required style="width:100%"><div class="row"><div><label class="req">Producto</label><input name="producto" required></div><div><label>N° de certificado</label><input name="certificado" size="12"></div></div>
+<label>Evidencia</label><input type="file" name="evidencia" accept="image/*,.pdf"></div>
+<div class="dlg-foot"><button class="btn sec" data-close>Cancelar</button><button class="btn">Registrar</button></div></form></dialog>{% endif %}
+{% endif %}{% endblock %}

@@ -64,6 +64,100 @@ def _dt(fecha, hhmm):
         return None
 
 
+# ------------------------------------------------------------------ horas en formato 12 h o 24 h
+def parse_hora(txt, campo="Hora"):
+    """Acepta «15:30», «7:05», «3:30 pm», «3 pm», «03:30 p. m.» y devuelve «HH:MM» (24 h). Vacío → ""."""
+    t = " ".join(str(txt or "").strip().lower().replace(".", "").split())
+    if not t:
+        return ""
+    sufijo = None
+    for suf in ("am", "pm", "a m", "p m"):
+        if t.endswith(suf):
+            sufijo, t = suf.replace(" ", ""), t[: -len(suf)].strip()
+            break
+    try:
+        h, m = (t.split(":") + ["0"])[:2] if ":" in t else (t, "0")
+        h, m = int(h), int(m)
+    except ValueError:
+        raise BusinessError(f"{campo}: «{txt}» no es una hora válida (use 15:30 o 3:30 pm).")
+    if sufijo:
+        if not 1 <= h <= 12:
+            raise BusinessError(f"{campo}: en formato de 12 horas la hora va de 1 a 12.")
+        h = (0 if h == 12 else h) + (12 if sufijo == "pm" else 0)
+    if not (0 <= h <= 23 and 0 <= m <= 59):
+        raise BusinessError(f"{campo}: «{txt}» no es una hora válida.")
+    return f"{h:02d}:{m:02d}"
+
+
+def fmt_hora(hhmm):
+    """Muestra la hora según el parámetro formato_hora (24H o 12H)."""
+    if not hhmm:
+        return ""
+    try:
+        h, m = [int(x) for x in str(hhmm)[:5].split(":")]
+    except ValueError:
+        return str(hhmm)
+    if (param("formato_hora", "24H") or "24H").upper() == "12H":
+        return f"{(h % 12) or 12}:{m:02d} {'p. m.' if h >= 12 else 'a. m.'}"
+    return f"{h:02d}:{m:02d}"
+
+
+# ------------------------------------------------------------------ validaciones por producto y paquete
+def check_product_for_line(linea, product, presentacion_kg=None, und_paquete=None):
+    """Envasado: el producto es PT, la presentación coincide con la del artículo y las unidades por paquete son un entero
+    positivo. Devuelve la presentación a usar."""
+    if tipo_linea(linea) == "ENVASADO":
+        if product.tipo and product.tipo != "PT":
+            raise BusinessError(f"En envasado se registra producto terminado; {product.code} es {product.tipo}.")
+        if product.peso_kg and presentacion_kg and abs(float(presentacion_kg) - float(product.peso_kg)) > 1e-6:
+            raise BusinessError(f"La presentación {float(presentacion_kg):g} kg no corresponde a {product.code} "
+                                f"({product.peso_kg:g} kg).")
+        presentacion_kg = presentacion_kg or product.peso_kg
+    if und_paquete not in (None, ""):
+        u = float(und_paquete)
+        if u <= 0 or u != int(u):
+            raise BusinessError("Las unidades por paquete deben ser un número entero mayor que cero.")
+    return presentacion_kg
+
+
+def product_info(code):
+    """Datos para validar en pantalla (tiempo real): presentación, tipo, GTIN registrados y tolerancia."""
+    p = db().get(Product, (code or "").strip().upper().split(" ")[0])
+    if p is None:
+        return None
+    gt = [g for g in db().execute(select(ProductGTIN.gtin).where(ProductGTIN.product_code == p.code)).scalars()]
+    return {"code": p.code, "descripcion": p.descripcion, "tipo": p.tipo, "presentacion_kg": p.peso_kg,
+            "und_bulto": p.unidades_por_bulto, "gtins": gt}
+
+
+# ------------------------------------------------------------------ colaboradores registrados
+def validate_workers(colaboradores, operarios=None, fecha=None):
+    """Solo colaboradores registrados y activos; sin repetir; no más que los operarios; horas válidas."""
+    from ..models import Worker
+    activos = {w.id: w for w in db().execute(select(Worker).where(Worker.activo.is_(True))).scalars()}
+    por_nombre = {w.nombre.upper(): w for w in activos.values()}
+    out, vistos = [], set()
+    for c in colaboradores or []:
+        wid, nombre = c.get("worker_id"), (c.get("nombre") or "").strip()
+        if not wid and not nombre:
+            continue
+        w = activos.get(int(wid)) if str(wid or "").isdigit() else por_nombre.get(nombre.upper())
+        if w is None:
+            raise BusinessError(f"«{nombre or wid}» no es un colaborador registrado y activo. Regístrelo primero en Asistencia.")
+        if w.id in vistos:
+            raise BusinessError(f"{w.nombre} está repetido.")
+        vistos.add(w.id)
+        ini, fin = parse_hora(c.get("inicio"), f"Inicio de {w.nombre}"), parse_hora(c.get("fin"), f"Fin de {w.nombre}")
+        if ini and fin and fin < ini:
+            raise BusinessError(f"{w.nombre}: la hora de fin no puede ser menor que la de inicio.")
+        kg = c.get("kg")
+        out.append({"worker_id": w.id, "nombre": w.nombre, "inicio": ini, "fin": fin,
+                    "refrigerio_min": c.get("refrigerio_min") or "", "kg": kg if kg not in (None, "") else ""})
+    if operarios and len(out) > int(operarios):
+        raise BusinessError(f"Registró {len(out)} colaboradores para {int(operarios)} operarios.")
+    return out
+
+
 # ------------------------------------------------------------------ EAN
 def check_ean(r, user):
     """Compara el EAN escaneado con la tabla GS1 ↔ SAP. ALERTAR (avisa y registra) o BLOQUEAR."""
@@ -147,12 +241,16 @@ def start(user, datos, r=None):
         r.peso_entrada_kg = round(r.sacos * r.peso_saco_kg + (r.saldo_mp_kg or 0), 3)
     if not r.peso_entrada_kg or r.peso_entrada_kg <= 0:
         raise BusinessError("Indique los kg de MP (peso por saco y número de sacos, o el total).")
+    prod = db().get(Product, r.product_code)
+    if prod is not None:
+        r.presentacion_kg = check_product_for_line(r.linea, prod, r.presentacion_kg, r.und_paquete)
     if r.tipo == "ENVASADO" and not r.presentacion_kg:
         raise BusinessError("Indique la presentación (kg) para envasado.")
     r.maquina = r.maquina or r.linea
     r.estado = "EN PROCESO"
     r.inicio_ts = now()
-    r.hora_inicio = r.hora_inicio or f"{r.inicio_ts:%H:%M}"
+    r.hora_inicio = f"{r.inicio_ts:%H:%M}"
+    r.motivo_estado = ""
     db().flush()
     check_ean(r, user)
     audit(user, "PARTE_INICIADO", "ProductionReport", r.id, {"linea": r.linea, "of": r.of, "ean": r.ean, "ean_ok": r.ean_ok})
@@ -199,7 +297,13 @@ def finish(user, r, datos):
     if r.estado == "PAUSADO":
         resume(user, r)
     r.fin_ts = now()
-    r.hora_fin = (datos.get("hora_fin") or f"{r.fin_ts:%H:%M}")[:5]
+    # la hora de fin es la del cierre: no puede ser menor que la hora actual ni que la de inicio
+    hf = parse_hora(datos.get("hora_fin"), "Hora de fin") if datos.get("hora_fin") else ""
+    if hf and hf < f"{r.fin_ts:%H:%M}" and r.inicio_ts and r.inicio_ts.date() == r.fin_ts.date():
+        raise BusinessError("La hora de fin no puede ser menor que la hora actual.")
+    r.hora_fin = f"{r.fin_ts:%H:%M}"
+    if r.inicio_ts and r.fin_ts < r.inicio_ts:
+        raise BusinessError("La hora de fin no puede ser menor que la de inicio.")
     if datos.get("refrigerio_min") not in (None, ""):
         r.refrigerio_min = int(float(datos["refrigerio_min"]))
     if datos.get("operarios") not in (None, ""):
@@ -212,13 +316,20 @@ def finish(user, r, datos):
     if malas:
         raise BusinessError("Causa de defecto no válida: " + ", ".join(malas))
     r.defectos = defectos
-    r.colaboradores = [c for c in (datos.get("colaboradores") or []) if (c.get("nombre") or "").strip()]
+    r.colaboradores = validate_workers(datos.get("colaboradores"), r.operarios)
     for k in ("granel_kg", "mp_kg", "cal3_kg", "desmedro_kg", "sobrante_kg"):
         if datos.get(k) not in (None, ""):
             setattr(r, k, float(datos[k]))
     if r.tipo == "ENVASADO":
+        sueltas = float(datos.get("unidades_sueltas") or 0)
+        if r.und_paquete and r.pallets:
+            if sueltas >= r.und_paquete:
+                raise BusinessError(f"Las unidades sueltas ({sueltas:g}) completan un paquete de {r.und_paquete:g}: "
+                                    "regístrelo en el pallet.")
+            if any(float(p.get("cantidad") or 0) != int(float(p.get("cantidad") or 0)) for p in r.pallets):
+                raise BusinessError("En envasado cada pallet se registra en paquetes enteros.")
         if r.pallets:
-            r.unidades = _total_pallets(r) * (r.und_paquete or 1) + float(datos.get("unidades_sueltas") or 0)
+            r.unidades = _total_pallets(r) * (r.und_paquete or 1) + sueltas
         elif datos.get("unidades") not in (None, ""):
             r.unidades = float(datos["unidades"])
         if r.unidades is None:
@@ -228,6 +339,7 @@ def finish(user, r, datos):
     r.observacion = ((r.observacion + "\n") if r.observacion else "") + (datos.get("observacion") or "").strip()
     compute(r)
     r.estado = "PENDIENTE"
+    r.motivo_estado = "liquidación de la OF en SAP"
     db().flush()
     _alert_merma(r, user)
     audit(user, "PARTE_FINALIZADO", "ProductionReport", r.id, {"oee": (r.indicadores or {}).get("oee"),
@@ -362,10 +474,146 @@ def set_state(user, r, estado, motivo=""):
         raise BusinessError("El bloqueo y la liberación los registra Calidad.")
     if not has_perm(user, "produccion.liquidar"):
         raise BusinessError("Actualiza el estado Producción.")
+    if estado == "PENDIENTE" and not (motivo or "").strip():
+        raise BusinessError("Indique de qué está pendiente el parte (p. ej. «material de empaque», «liquidación en SAP»).")
     antes = r.estado
     r.estado = estado
+    r.motivo_estado = (motivo or "").strip()[:200]
     audit(user, "PARTE_ESTADO", "ProductionReport", r.id, {"antes": antes, "despues": estado, "motivo": motivo})
     return r
+
+
+# ------------------------------------------------------------------ programación (formato único: Registrar / Programar)
+NO_EDITABLES = ("LIQUIDADO", "LIQ. EXT. LIQUIDADO", "ANULADO")
+
+
+def program(user, datos):
+    """Programa un parte a futuro con el mismo formato del registro: línea, producto, fecha, kg previstos y horario."""
+    from ..catalogs import PRODUCTION_LINES
+    if not has_perm(user, "produccion.liquidar"):
+        raise BusinessError("Programa los partes Producción.")
+    linea = datos.get("linea")
+    if linea not in {c for c, _, _ in PRODUCTION_LINES}:
+        raise BusinessError("Línea de producción no válida.")
+    if not can_see_line(user, linea):
+        raise BusinessError(f"La línea {linea} no está en su alcance.")
+    code = (datos.get("product_code") or "").strip().upper().split(" ")[0]
+    prod = db().get(Product, code) if code else None
+    if prod is None:
+        raise BusinessError("Producto no existe.")
+    fecha = datos.get("fecha")
+    if isinstance(fecha, str):
+        fecha = date.fromisoformat(fecha) if fecha else None
+    if fecha is None or fecha < date.today():
+        raise BusinessError("Programe para hoy o una fecha futura.")
+    kg = _kg(datos)
+    if not kg or kg <= 0:
+        raise BusinessError("Indique los kg de MP previstos.")
+    pres = check_product_for_line(linea, prod, _f(datos.get("presentacion_kg")), datos.get("und_paquete"))
+    ini, fin = _horario(fecha, datos.get("hora_inicio"), datos.get("hora_fin"))
+    r = ProductionReport(linea=linea, tipo=tipo_linea(linea), fecha=fecha, product_code=code, peso_entrada_kg=kg,
+                         presentacion_kg=pres, und_paquete=_f(datos.get("und_paquete")), estado="PROGRAMADO",
+                         turno=(datos.get("turno") or "").strip(), of=(datos.get("of") or "").strip(),
+                         cliente=(datos.get("cliente") or "").strip(), maquina=(datos.get("maquina") or linea).strip().upper(),
+                         programa={"hora_inicio": ini, "hora_fin": fin, "kg": kg, "fecha": fecha.isoformat()},
+                         user_id=user.id)
+    db().add(r)
+    db().flush()
+    audit(user, "PARTE_PROGRAMADO", "ProductionReport", r.id, {"linea": linea, "fecha": fecha.isoformat(), "kg": kg})
+    return r
+
+
+def _f(v):
+    v = str(v if v is not None else "").replace(",", ".").strip()
+    return float(v) if v else None
+
+
+def _kg(datos):
+    sacos, peso = _f(datos.get("sacos")), _f(datos.get("peso_saco_kg"))
+    if sacos and peso:
+        return round(sacos * peso + (_f(datos.get("saldo_mp_kg")) or 0), 3)
+    return _f(datos.get("peso_entrada_kg"))
+
+
+def _horario(fecha, hora_inicio, hora_fin):
+    ini, fin = parse_hora(hora_inicio, "Hora de inicio"), parse_hora(hora_fin, "Hora de fin")
+    if ini and fin and fin <= ini:
+        raise BusinessError("La hora de fin no puede ser menor ni igual a la de inicio.")
+    if fin and fecha == date.today() and fin < f"{now():%H:%M}":
+        raise BusinessError("La hora de fin no puede ser menor que la hora actual.")
+    return ini, fin
+
+
+def edit_program(user, r, fecha=None, cantidad=None, motivo="", hora_inicio=None, hora_fin=None):
+    """Editar fecha y cantidad (kg de MP) de un parte mientras no esté liquidado o anulado."""
+    _check_line(user, r)
+    if not has_perm(user, "produccion.liquidar"):
+        raise BusinessError("Modifica la programación Producción.")
+    if r.estado in NO_EDITABLES:
+        raise BusinessError(f"El parte está {r.estado.lower()}: ya no se modifica.")
+    if not (motivo or "").strip():
+        raise BusinessError("Indique el motivo del cambio.")
+    if isinstance(fecha, str):
+        fecha = date.fromisoformat(fecha) if fecha else None
+    antes = {"fecha": r.fecha.isoformat(), "kg": r.peso_entrada_kg}
+    if fecha is not None and fecha != r.fecha:
+        if r.estado == "PROGRAMADO" and fecha < date.today():
+            raise BusinessError("La nueva fecha no puede ser pasada.")
+        r.fecha = fecha
+    if cantidad is not None:
+        if cantidad <= 0:
+            raise BusinessError("La cantidad debe ser mayor que cero.")
+        r.peso_entrada_kg = cantidad
+    if r.estado == "PROGRAMADO":
+        ini, fin = _horario(r.fecha, hora_inicio if hora_inicio is not None else (r.programa or {}).get("hora_inicio"),
+                            hora_fin if hora_fin is not None else (r.programa or {}).get("hora_fin"))
+        r.programa = dict(r.programa or {}, fecha=r.fecha.isoformat(), kg=r.peso_entrada_kg, hora_inicio=ini, hora_fin=fin)
+    elif r.estado not in ("EN PROCESO", "PAUSADO"):
+        compute(r)  # con resultados: se recalculan rendimiento y desmedro
+    db().flush()
+    audit(user, "PROGRAMACION_EDITADA", "ProductionReport", r.id,
+          {"antes": antes, "despues": {"fecha": r.fecha.isoformat(), "kg": r.peso_entrada_kg}, "motivo": motivo.strip()})
+    return r
+
+
+def add_progress(user, r, destino, cantidad):
+    """Avance en línea: registra un pallet mientras produce; el monitoreo muestra rendimiento y desmedro parciales."""
+    _check_line(user, r)
+    if r.estado not in ("EN PROCESO", "PAUSADO"):
+        raise BusinessError("El avance se registra con el parte en proceso.")
+    q = _f(cantidad)
+    if not q or q <= 0:
+        raise BusinessError("Indique la cantidad del pallet.")
+    if r.tipo == "ENVASADO" and q != int(q):
+        raise BusinessError("En envasado el pallet se registra en paquetes enteros.")
+    r.pallets = list(r.pallets or []) + [{"destino": destino or "DESPACHO", "cantidad": q,
+                                          "ts": now().isoformat(timespec="minutes")}]
+    audit(user, "PARTE_AVANCE", "ProductionReport", r.id, {"destino": destino, "cantidad": q})
+    return r
+
+
+def live(r):
+    """Rendimiento y desmedro parciales (en curso) o finales."""
+    if r.estado not in ("EN PROCESO", "PAUSADO"):
+        return {"rend": r.rendimiento_pct, "desm": r.desmedro_pct, "salida_kg": r.granel_kg, "final": True}
+    entrada = r.peso_entrada_kg or 0
+    paq = _total_pallets(r)
+    salida = paq * (r.und_paquete or 1) * (r.presentacion_kg or 0) if r.tipo == "ENVASADO" else paq
+    rend = round(100 * salida / entrada, 1) if entrada else None
+    t = tolerance_for(r.linea, r.presentacion_kg) or {}
+    minutos = _min(r.inicio_ts, now()) if r.inicio_ts else 0
+    return {"rend": rend, "desm": round(100 - rend, 1) if rend is not None else None, "salida_kg": round(salida, 1),
+            "final": False, "min_pct": t.get("min_pct"), "minutos": round(minutos),
+            "alerta": t.get("min_pct") is not None and rend is not None and minutos > 30 and rend < float(t["min_pct"]) * 0.5}
+
+
+def monitor(user):
+    """Partes del día y en curso de las líneas del usuario para el monitoreo en tiempo real."""
+    vis = lines_for(user)
+    rows = [r for r in db().execute(select(ProductionReport).where(
+        (ProductionReport.estado.in_(["EN PROCESO", "PAUSADO"])) | (ProductionReport.fecha == date.today()))
+        .order_by(ProductionReport.linea)).scalars() if r.linea in vis]
+    return [(r, live(r)) for r in rows]
 
 
 def block(user, r, motivo):

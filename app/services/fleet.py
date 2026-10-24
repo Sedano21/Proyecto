@@ -145,5 +145,29 @@ def check_alerts(hoy=None):
     return n
 
 
+def soat_status(vehicle, fecha=None):
+    """Estado de la placa por su SOAT: (vigente, texto). Sin SOAT registrado o vencido a la fecha → no vigente."""
+    fecha = fecha or date.today()
+    d = db().execute(select(VehicleDocument).where(VehicleDocument.vehicle_id == vehicle.id, VehicleDocument.tipo == "SOAT")
+                     .order_by(VehicleDocument.vencimiento.desc().nullslast())).scalars().first()
+    if d is None or d.vencimiento is None:
+        return False, "sin SOAT registrado"
+    if d.vencimiento < fecha:
+        return False, f"SOAT vencido el {d.vencimiento:%d/%m/%Y}"
+    return True, f"SOAT vigente hasta el {d.vencimiento:%d/%m/%Y}"
+
+
+def check_soat(vehicle, fecha=None):
+    """Impide asignar una unidad sin SOAT vigente (parámetro exigir_soat_vigente)."""
+    if not param("exigir_soat_vigente", True):
+        return
+    ok, txt = soat_status(vehicle, fecha)
+    if not ok:
+        alerts.emit("FLOTA_DOCUMENTO", f"Unidad {vehicle.placa} sin SOAT vigente: no se asigna a rutas",
+                    f"{txt[0].upper() + txt[1:]}. Registre el SOAT en Flota → {vehicle.placa}.", "Vehicle", vehicle.id,
+                    prioridad="ALTA", dedup_key=f"SOAT_BLOQUEO:{vehicle.id}")
+        raise BusinessError(f"La unidad {vehicle.placa} no tiene SOAT vigente ({txt}): no se puede asignar.")
+
+
 def drivers():
     return list(db().execute(select(Driver).order_by(Driver.nombre)).scalars())

@@ -1,0 +1,15 @@
+{% extends "base.html" %}{% from "_m.html" import b, ic, empty %}
+{% block content %}<h1>Rastreo de unidades</h1>
+<p class="seg small"><a href="{{ url_for('dist.fleet') }}">Unidades</a><a href="{{ url_for('dist.fleet_tracking') }}">Documentos y mantenimiento</a><a class="on" href="{{ url_for('dist.tracking') }}">Rastreo GEOSATELITAL</a></p>
+{% if not t.configurado %}<div class="note warn"><b>GEOSATELITAL no está conectado.</b> Para ver las unidades en movimiento, Sistemas configura en el servidor el servicio de posiciones del proveedor (<span class="mono">GEOSAT_API_URL</span> y <span class="mono">GEOSAT_TOKEN</span>) y, si el proveedor lo permite, la dirección de su panel (parámetro <span class="mono">geosatelital_url_panel</span>). Mientras tanto se muestran las unidades y sus rutas del sistema.</div>{% endif %}
+{% if t.error %}<div class="note warn">{{ t.error }}</div>{% endif %}
+{% if t.panel %}<div class="card"><h3>Panel GEOSATELITAL</h3><iframe src="{{ t.panel }}" title="Panel GEOSATELITAL" style="width:100%;height:60vh;border:0;border-radius:var(--r)" loading="lazy" referrerpolicy="no-referrer"></iframe></div>{% endif %}
+<div id="trk" data-refresh="60"><p class="small muted">Actualizado {{ t.consulta.strftime('%H:%M') }} · se actualiza cada minuto.</p>
+<div class="cards">{% for x in t.filas %}{% set v, p = x.v, x.pos %}{% set ok, txt = soat(v) %}{% set r = en_ruta.get(v.id) %}
+<article class="xcard {{ 'st-EN_PROCESO' if p and p.en_movimiento else '' }} {{ '' if ok else 'alerta' }}"><div class="xcard-head"><b class="mono">{{ v.placa }}</b>{% if p %}{{ b('EN_MOVIMIENTO') if p.en_movimiento else b('DETENIDA', 'MEDIA') }}{% elif r %}{{ b('EN_RUTA') }}{% endif %}</div>
+<div class="meta"><span>{{ v.descripcion }}</span>{% if r %}<a href="{{ url_for('dist.route_detail', rid=r.id) }}">Ruta #{{ r.id }} · {{ r.driver.nombre if r.driver else '' }}</a>{% endif %}</div>
+{% if p %}<div class="meta"><span class="big">{{ p.velocidad|n if p.velocidad is not none else '—' }} km/h</span><span>{{ p.fecha }}</span></div>
+<div class="meta"><span>{{ p.direccion }}</span><a href="https://www.openstreetmap.org/?mlat={{ p.lat }}&mlon={{ p.lng }}#map=15/{{ p.lat }}/{{ p.lng }}" target="_blank" rel="noopener">Ver en mapa {{ ic('route') }}</a></div>
+{% elif t.api %}<div class="small muted">Sin posición informada por el proveedor.</div>{% endif %}
+{% if not ok %}<div class="chk bad">{{ txt }}: no se asigna a rutas.</div>{% endif %}</article>{% else %}{{ empty('Sin unidades registradas.', 'truck') }}{% endfor %}</div>
+{% if t.sin_flota %}<p class="small muted">Unidades informadas por GEOSATELITAL que no están en la flota del sistema: {{ t.sin_flota|map(attribute='placa')|join(', ') }}.</p>{% endif %}</div>{% endblock %}

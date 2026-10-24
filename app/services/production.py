@@ -355,7 +355,7 @@ def finish(req, user):
 def register_liquidation(user, numero_documento, product_code, cantidad_completada, lote, fecha_fab=None, fecha_venc=None,
                          cantidad_planificada=None, request=None, origen="MANUAL", almacen="", valorizado=None,
                          realizado_por="", merma_mp_kg=None, merma_granel_kg=None, merma_insumos=None, fecha=None,
-                         horas=None, operarios=None, mp_kg=None):
+                         horas=None, operarios=None, mp_kg=None, parcial=False):
     s = db()
     if not numero_documento:
         raise BusinessError("Número de documento obligatorio.")
@@ -373,7 +373,8 @@ def register_liquidation(user, numero_documento, product_code, cantidad_completa
                       cantidad_completada=cantidad_completada, lote=lote, fecha_fab=fecha_fab, fecha_venc=fecha_venc,
                       origen=origen, almacen=almacen, valorizado=valorizado, realizado_por=realizado_por,
                       merma_mp_kg=merma_mp_kg, merma_granel_kg=merma_granel_kg, merma_insumos=merma_insumos or {},
-                      fecha=fecha or date.today(), horas=horas, operarios=operarios, mp_kg=mp_kg)
+                      fecha=fecha or date.today(), horas=horas, operarios=operarios, mp_kg=mp_kg,
+                      parcial=bool(parcial and request is not None))
     s.add(liq)
     s.flush()
     if origen == "MANUAL":
@@ -387,6 +388,28 @@ def register_liquidation(user, numero_documento, product_code, cantidad_completa
     return _liquidation_effects(liq, user, request)
 
 
+def liquidated_qty(request):
+    """Cantidad liquidada (no bloqueada) de una solicitud, sumando sus liquidaciones parciales."""
+    return sum(l.cantidad_completada or 0 for l in db().execute(select(Liquidation).where(
+        Liquidation.request_id == request.id, Liquidation.estado != "BLOQUEADA")).scalars())
+
+
+def liquidations_list(desde=None, hasta=None, tipo="", producto=""):
+    """Liquidaciones filtradas por fecha, tipo (PARCIAL / TOTAL) y producto."""
+    q = select(Liquidation).order_by(Liquidation.fecha.desc(), Liquidation.id.desc())
+    if desde:
+        q = q.where(Liquidation.fecha >= desde)
+    if hasta:
+        q = q.where(Liquidation.fecha <= hasta)
+    if tipo == "PARCIAL":
+        q = q.where(Liquidation.parcial.is_(True))
+    elif tipo == "TOTAL":
+        q = q.where(Liquidation.parcial.is_(False))
+    if producto:
+        q = q.where(Liquidation.product_code == producto.strip().upper())
+    return list(db().execute(q.limit(500)).scalars())
+
+
 def _liquidation_effects(liq, user, request=None):
     """Efectos de una liquidación válida: estado de la solicitud, consumo, PT en tránsito y alertas."""
     s = db()
@@ -394,9 +417,15 @@ def _liquidation_effects(liq, user, request=None):
     request = request if request is not None else liq.request
     origen = liq.origen
     if request is not None:
-        if request.estado in ("PROGRAMADA", "EN_PROCESO"):
-            request.fin_ts = request.fin_ts or now()
-        request.estado = "LIQUIDADA"
+        liquidado = liquidated_qty(request)
+        if liq.parcial and liquidado < (request.cantidad or 0) - 1e-9:
+            # ronda UX: liquidación parcial; la solicitud sigue en proceso hasta completar la cantidad
+            request.estado = "EN_PROCESO"
+            request.inicio_ts = request.inicio_ts or now()
+        else:
+            if request.estado in ("PROGRAMADA", "EN_PROCESO"):
+                request.fin_ts = request.fin_ts or now()
+            request.estado = "LIQUIDADA"
     # consumo de materiales (para historial de reposición). El stock de materiales se actualiza con la carga SAP.
     req_mat = material_requirements(product_code, cantidad_completada)
     for m in req_mat.get("materiales", []):
@@ -749,7 +778,25 @@ def add_plan(user, periodo, fecha, product_code, cantidad, line_code=None, comen
     return pl
 
 
-def update_plan(user, pl, cantidad, comentario):
+def plan_status(pl, real=None):
+    """Estado de una entrada del programa: LIQUIDADO (lo liquidado del periodo cubre lo planificado), PENDIENTE (con su
+    motivo) o PROGRAMADO. Lo liquidado no se edita."""
+    if real is None:
+        real = sum(l.cantidad_completada or 0 for l in db().execute(select(Liquidation).where(
+            Liquidation.product_code == pl.product_code, Liquidation.estado != "BLOQUEADA",
+            Liquidation.fecha >= pl.fecha, Liquidation.fecha <= _fin(pl.periodo, pl.fecha))).scalars())
+    if pl.cantidad and real >= pl.cantidad - 1e-9:
+        return "LIQUIDADO", "", real
+    if pl.cambio_pendiente:
+        c = pl.cambio_pendiente
+        detalle = f"cantidad {c.get('antes', 0):g} → {float(c.get('cantidad') or 0):g}"
+        if c.get("fecha"):
+            detalle += f", fecha {c['fecha']}"
+        return "PENDIENTE", f"validación del Jefe de Producción ({detalle}; {c.get('motivo', '')})", real
+    return "PROGRAMADO", "", real
+
+
+def update_plan(user, pl, cantidad, comentario, fecha=None):
     """La programación puede variar manualmente por una variable no contemplada (observaciones al demo v0.6). La
     preprogramada por el sistema la edita el Jefe de Producción (obs. demo v0.7)."""
     from .core import has_perm
@@ -762,10 +809,16 @@ def update_plan(user, pl, cantidad, comentario):
     antes = pl.cantidad
     if cantidad is None or cantidad < 0:
         raise BusinessError("Cantidad inválida.")
+    if plan_status(pl)[0] == "LIQUIDADO":
+        raise BusinessError("La programación ya está liquidada: no se modifica.")
+    nueva_fecha = _inicio(pl.periodo, fecha) if fecha else None
+    if nueva_fecha == pl.fecha:
+        nueva_fecha = None
     if not has_perm(user, "produccion.plan_validar"):
         # ronda 23-oct-2026: el cambio del asistente queda pendiente hasta que lo valida el Jefe de Producción
         pl.cambio_pendiente = {"cantidad": cantidad, "motivo": comentario.strip(), "user": user.nombre, "user_id": user.id,
-                               "ts": now().isoformat(timespec="minutes"), "antes": antes}
+                               "ts": now().isoformat(timespec="minutes"), "antes": antes,
+                               "fecha": nueva_fecha.isoformat() if nueva_fecha else ""}
         alerts.emit("PROGRAMA_CAMBIO_POR_VALIDAR", f"Validar cambio de programa: {pl.product_code} {antes:g} → {cantidad:g}",
                     f"{pl.periodo} {pl.fecha:%d/%m/%Y}. Propuesto por {user.nombre}: {comentario.strip()}", "ProductionPlan", pl.id,
                     dedup_key=f"PLAN_CAMBIO:{pl.id}:{pl.cambio_pendiente['ts']}", creado_por=user)
@@ -775,6 +828,9 @@ def update_plan(user, pl, cantidad, comentario):
         db().delete(pl)
     else:
         pl.cantidad = cantidad
+        if nueva_fecha:
+            pl.comentario = (pl.comentario + "\n" if pl.comentario else "") + f"{user.nombre}: fecha {pl.fecha:%d/%m/%Y} → {nueva_fecha:%d/%m/%Y}"
+            pl.fecha = nueva_fecha
         pl.comentario = (pl.comentario + "\n" if pl.comentario else "") + f"{user.nombre}: {antes:g} → {cantidad:g} ({comentario.strip()})"
     audit(user, "PLAN_PRODUCCION_MODIFICADO", "ProductionPlan", pl.id, {"antes": antes, "despues": cantidad,
                                                                          "motivo": comentario.strip()})
@@ -948,9 +1004,56 @@ def validate_plan_change(user, pl, aprobar, comentario=""):
         db().delete(pl)
         return None
     pl.cantidad = float(c["cantidad"])
+    if c.get("fecha"):
+        pl.fecha = date.fromisoformat(c["fecha"])
     pl.comentario = (pl.comentario + "\n" if pl.comentario else "") + (f"{c['user']}: {antes:g} → {pl.cantidad:g} "
                                                                        f"({c['motivo']}); validado por {user.nombre}")
     return pl
+
+
+GRANOS = ("MP", "GR", "C3")
+
+
+def _tipo(p, code=""):
+    return (p.tipo if p is not None and p.tipo else (code.split("-")[0] if "-" in code else "")).upper()
+
+
+def _especie(p):
+    """Grano de un artículo: producto base o la primera palabra de la descripción (ARVEJA, FRIJOL, QUINUA…)."""
+    base = (p.producto_base or p.descripcion or "").upper().replace("*", " ").split()
+    return base[0] if base else ""
+
+
+def check_substitute(orig, nuevo, orig_code=""):
+    """Validación por categoría al cambiar un componente: un grano solo por el mismo grano (MP o granel), un envase o
+    insumo solo por otro de su misma categoría."""
+    t0, t1 = _tipo(orig, orig_code), _tipo(nuevo, nuevo.code)
+    if t0 in GRANOS:
+        if t1 not in GRANOS:
+            raise BusinessError(f"{nuevo.code} no es materia prima ni granel: no reemplaza a {orig_code}.")
+        if orig is not None and _especie(orig) and _especie(nuevo) != _especie(orig):
+            raise BusinessError(f"No se puede reemplazar {_especie(orig).lower()} por {_especie(nuevo).lower()}: "
+                                "el componente alternativo debe ser el mismo grano.")
+    elif t0 and t1 != t0:
+        raise BusinessError(f"{nuevo.code} ({t1 or 'sin tipo'}) no es de la misma categoría que {orig_code} ({t0}).")
+    elif orig is not None and orig.categoria_reposicion and nuevo.categoria_reposicion \
+            and orig.categoria_reposicion != nuevo.categoria_reposicion:
+        raise BusinessError(f"{nuevo.code} es «{nuevo.categoria_reposicion}» y {orig_code} es «{orig.categoria_reposicion}».")
+
+
+def substitutes(line):
+    """Componentes válidos para reemplazar el de una línea de la receta (para el selector del lápiz)."""
+    orig = db().get(Product, line.componente)
+    out = []
+    for p in db().execute(select(Product).order_by(Product.code)).scalars():
+        if p.code == line.componente:
+            continue
+        try:
+            check_substitute(orig, p, line.componente)
+        except BusinessError:
+            continue
+        out.append(p)
+    return out
 
 
 def edit_bom_line(user, line, cantidad=None, componente=None, motivo=""):
@@ -970,6 +1073,7 @@ def edit_bom_line(user, line, cantidad=None, componente=None, motivo=""):
         comp = db().get(Product, componente)
         if comp is None:
             raise BusinessError(f"El componente {componente} no existe en el catálogo.")
+        check_substitute(db().get(Product, line.componente), comp, line.componente)
         line.componente, line.componente_desc = componente, comp.descripcion
     if cantidad is not None:
         if cantidad <= 0:

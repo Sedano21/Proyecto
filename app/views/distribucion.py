@@ -33,7 +33,7 @@ def routes():
 
 
 @bp.route("/ruta/<int:rid>", methods=["GET", "POST"])
-@perm_required("distribucion.ver")
+@perm_required("distribucion.ver", "distribucion.carga")
 def route_detail(rid):
     r = db().get(Route, rid) or abort(404)
     back = url_for("dist.route_detail", rid=rid)
@@ -80,13 +80,7 @@ def route_detail(rid):
             fn = lambda: dsvc.register_arrival(db().get(RouteStop, int(f["stop_id"])), u)  # noqa: E731
         elif acc == "entrega":
             stop = db().get(RouteStop, int(f["stop_id"]))
-
-            def fn():
-                updir = current_app.config["UPLOAD_DIR"]
-                foto = dsvc.save_upload(request.files.get("foto"), updir, f"foto_{stop.order.numero}")
-                guia = dsvc.save_upload(request.files.get("guia"), updir, f"guia_{stop.order.numero}")
-                entregas = {k[4:]: v for k, v in f.items() if k.startswith("ent_") and v != ""}
-                dsvc.register_delivery(stop, u, foto, guia, entregas, f.get("observacion", ""))
+            fn = lambda: _conformidad(stop, u)  # noqa: E731
         elif acc == "foto":
             def fn():
                 arch = dsvc.save_upload(request.files.get("archivo"), current_app.config["UPLOAD_DIR"], f"ruta{r.id}_{f.get('etapa')}")
@@ -182,6 +176,45 @@ def route_detail(rid):
                            horas_seg=dsvc.HORAS_SEGURIDAD)
 
 
+def _conformidad(stop, u):
+    """Conformidad digital del chofer: nombre y DNI de quien recibe, firma en pantalla, foto y guía firmada."""
+    f = request.form
+    updir = current_app.config["UPLOAD_DIR"]
+    firma = dsvc.save_signature(f.get("firma", ""), updir, f"ov{stop.order.numero}")
+    foto = dsvc.save_upload(request.files.get("foto"), updir, f"foto_{stop.order.numero}")
+    guia = dsvc.save_upload(request.files.get("guia"), updir, f"guia_{stop.order.numero}")
+    entregas = {k[4:]: v for k, v in f.items() if k.startswith("ent_") and v != ""}
+    dsvc.register_delivery(stop, u, foto, guia, entregas, f.get("observacion", ""), f.get("receptor_nombre", ""),
+                           f.get("receptor_dni", ""), firma)
+
+
+@bp.route("/mis-entregas", methods=["GET", "POST"])
+@perm_required("distribucion.conformidad")
+def my_deliveries():
+    """Vista simple del chofer: sus paradas en tarjetas, «Llegué» y la conformidad digital (sin reportes manuales)."""
+    back = url_for("dist.my_deliveries")
+    if request.method == "POST":
+        stop = db().get(RouteStop, int(request.form.get("stop_id") or 0)) or abort(404)
+        drv = stop.route.driver
+        if drv is None or drv.user_id != g.user.id:
+            abort(403)
+        if request.form.get("accion") == "llegada":
+            return act(lambda: dsvc.register_arrival(stop, g.user), "Llegada registrada.", back)
+        return act(lambda: _conformidad(stop, g.user), "Conformidad registrada.", back)
+    return render_template("my_deliveries.html", rutas=dsvc.driver_stops(g.user))
+
+
+@bp.route("/rastreo")
+@perm_required("distribucion.rastreo")
+def tracking():
+    """Rastreo de unidades en movimiento (GEOSATELITAL)."""
+    from ..services import geosat
+    from ..services.fleet import soat_status
+    vehs = list(db().execute(select(Vehicle).order_by(Vehicle.propio.desc(), Vehicle.placa)).scalars())
+    en_ruta = {r.vehicle_id: r for r in db().execute(select(Route).where(Route.estado == "EN_RUTA")).scalars()}
+    return render_template("tracking.html", t=geosat.tracking_board(vehs), en_ruta=en_ruta, soat=soat_status)
+
+
 @bp.route("/ruta/<int:rid>/folio")
 @perm_required("distribucion.ver")
 def folio(rid):
@@ -233,11 +266,13 @@ def incidents():
         f = request.form
         o = db().execute(select(SalesOrder).where(SalesOrder.numero == f.get("ov", "").strip())).scalars().first()
         lineas = []
-        if o is not None and f.get("entrega") == "PARCIAL":
+        if o is not None:  # novedades por ítem de la OV elegida (devuelto y/o novedad)
             for l in o.lines:
                 dev = f_float(f"dev_{l.id}")
-                if dev:
-                    lineas.append({"line_id": l.id, "devuelto": dev, "motivo": f.get(f"mot_{l.id}", "").strip()})
+                nov = f.get(f"nov_{l.id}", "").strip()
+                if dev or nov:
+                    lineas.append({"line_id": l.id, "producto": l.product_code, "devuelto": dev or 0,
+                                   "motivo": f.get(f"mot_{l.id}", "").strip() or nov, "novedad": nov})
         return act(lambda: dsvc.register_incident(g.user, f.get("tipo"), f.get("descripcion", ""), order=o,
                                                   cantidad=f_float("cantidad"), entrega=f.get("entrega", ""), lineas=lineas),
                    "Incidencia registrada y alertada.", url_for("dist.incidents"))
@@ -245,12 +280,13 @@ def incidents():
         dia = _date.fromisoformat(request.args.get("fecha") or _date.today().isoformat())
     except ValueError:
         dia = _date.today()
-    paradas = dsvc.todays_orders(dia)
-    rows = list(db().execute(select(Incident).order_by(Incident.id.desc())).scalars())
+    paradas = dsvc.orders_on_route() if not request.args.get("fecha") else dsvc.todays_orders(dia)
+    rows = list(db().execute(select(Incident).order_by(Incident.id.desc()).limit(200)).scalars())
     from ..catalogs import INCIDENT_GROUPS, INCIDENT_SUBTYPES
     from ..services.catalogs_helpers import incident_group_name, incident_type_name
     return render_template("incidents.html", rows=rows, tipos=INCIDENT_TYPES, grupos=INCIDENT_GROUPS, subtipos=INCIDENT_SUBTYPES,
-                           nombre=incident_type_name, grupo_nombre=incident_group_name, paradas=paradas, dia=dia)
+                           nombre=incident_type_name, grupo_nombre=incident_group_name, paradas=paradas, dia=dia,
+                           por_dia=bool(request.args.get("fecha")))
 
 
 @bp.route("/flota", methods=["GET", "POST"])
@@ -283,8 +319,9 @@ def fleet():
                 d.disponible = f.get("disponible") == "1"
                 audit(g.user, "CONDUCTOR_GUARDADO", "Driver", d.nombre, {"disponible": d.disponible})
         return act(_do, "Guardado.", url_for("dist.fleet"))
+    from ..services.fleet import soat_status
     return render_template("fleet.html", vehicles=list(s.execute(select(Vehicle).order_by(Vehicle.capacidad_kg)).scalars()),
-                           drivers=list(s.execute(select(Driver).order_by(Driver.nombre)).scalars()))
+                           drivers=list(s.execute(select(Driver).order_by(Driver.nombre)).scalars()), soat=soat_status)
 
 
 # ------------------- seguimiento de flota (obs. demo v0.6) -------------------
@@ -328,3 +365,38 @@ def vehicle_detail(vid):
                            consulta=consulta, fecha_consulta=request.args.get("fecha", ""),
                            rutas=list(db().execute(select(Route).where(Route.vehicle_id == v.id).order_by(Route.fecha.desc())
                                                    .limit(15)).scalars()))
+
+
+# ------------------- guías de remisión (ronda UX 24-oct-2026, sección 5) -------------------
+GUIA_ESTADOS = {"EMITIDA": "Emitida", "IMPRESA": "Impresa", "EN_RUTA": "En ruta", "FIRMADA": "Firmada por el cliente",
+                "OBSERVADA": "Observada", "DEVUELTA": "Devuelta", "ANULADA": "Anulada"}
+
+
+@bp.route("/guias", methods=["GET", "POST"])
+@perm_required("guias.estado")
+def guides():
+    """El Auxiliar de Despacho consulta las guías de remisión y reporta su estado."""
+    from ..services.core import audit as _audit
+    from ..models import now as _now
+    if request.method == "POST":
+        f = request.form
+        st = db().get(RouteStop, int(f.get("stop_id") or 0)) or abort(404)
+
+        def _do():
+            e = f.get("estado", "")
+            if e not in GUIA_ESTADOS:
+                raise BusinessError("Estado de guía no válido.")
+            if e in ("OBSERVADA", "DEVUELTA", "ANULADA") and not f.get("nota", "").strip():
+                raise BusinessError("Indique el motivo.")
+            st.guia_estado = e
+            st.guia_estado_hist = list(st.guia_estado_hist or []) + [{"estado": e, "nota": f.get("nota", "").strip(),
+                                                                       "user": g.user.nombre,
+                                                                       "ts": _now().isoformat(timespec="minutes")}]
+            _audit(g.user, "GUIA_ESTADO", "RouteStop", st.id, {"guia": st.guia_numero, "estado": e, "nota": f.get("nota", "")})
+        return act(_do, "Estado de la guía reportado.", url_for("dist.guides", fecha=f.get("fecha", "")))
+    fecha = f_date("fecha") or date.today()
+    rutas = list(db().execute(select(Route).where(Route.fecha == fecha, Route.estado != "ANULADA").order_by(Route.id)).scalars())
+    q = (request.args.get("q") or "").strip().upper()
+    paradas = [st for r in rutas for st in r.stops
+               if not q or q in (st.guia_numero or "").upper() or q in st.order.numero.upper() or q in st.order.customer.nombre.upper()]
+    return render_template("guides.html", paradas=paradas, fecha=fecha, estados=GUIA_ESTADOS, q=q)

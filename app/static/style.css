@@ -382,3 +382,32 @@ html.bare .content{padding:0;max-width:none}html.bare body{background:#fff}
 .chart.donut{width:150px;max-width:150px;flex-shrink:0}.chart.donut .ax{font-size:9px}
 .cp-asis{display:flex;align-items:center;gap:16px;flex-wrap:wrap}.cp-asis ul{list-style:none;padding:0;margin:0}
 ul.cp-check{list-style:none;padding-left:0}ul.cp-check li{margin:4px 0}
+
+/* ---------- Ronda UX (24-oct-2026): modales, paneles laterales, asistente, tarjetas ---------- */
+dialog.modal,dialog.drawer{border:none;padding:0;box-shadow:var(--sh-pop);color:var(--ink);background:var(--panel)}
+dialog.modal{border-radius:var(--r-lg);max-width:560px;width:calc(100% - 32px)}
+dialog.drawer{margin:0 0 0 auto;height:100vh;max-height:100vh;width:min(520px,100vw);border-radius:var(--r-lg) 0 0 var(--r-lg)}
+dialog.modal::backdrop,dialog.drawer::backdrop{background:rgba(16,24,20,.45)}
+.dlg-head{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--panel);z-index:2}
+.dlg-head h3{margin:0;flex:1}.dlg-body{padding:16px 18px}.dlg-foot{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;padding:12px 18px;border-top:1px solid var(--line);position:sticky;bottom:0;background:var(--panel)}
+.ibtn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-width:34px;min-height:34px;padding:4px 8px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--panel);color:var(--ink-2);cursor:pointer;font-size:12.5px}
+.ibtn:hover{border-color:var(--cp-verde-700);color:var(--cp-verde-700)}.ibtn .ic{width:16px;height:16px}
+.cards{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(min(100%,280px),1fr))}
+.xcard{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-lg);padding:12px 14px;box-shadow:var(--sh);display:flex;flex-direction:column;gap:6px;min-width:0}
+.xcard-head{display:flex;align-items:flex-start;gap:8px}.xcard-head b{flex:1;min-width:0;overflow-wrap:anywhere}
+.xcard .meta{font-size:12.5px;color:var(--muted);display:flex;flex-wrap:wrap;gap:4px 12px}
+.xcard .big{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums}
+.xcard.st-PENDIENTE{box-shadow:inset 3px 0 0 #d08a00,var(--sh)}.xcard.st-LIQUIDADO{opacity:.85;box-shadow:inset 3px 0 0 var(--ok),var(--sh)}
+.xcard.st-BLOQUEADO,.xcard.alerta{box-shadow:inset 3px 0 0 var(--err),var(--sh)}.xcard.st-EN_PROCESO{box-shadow:inset 3px 0 0 var(--cp-verde),var(--sh)}
+.pending-why{font-size:12.5px;background:#fff7e6;border:1px solid #f1d9a6;color:#7a5200;border-radius:var(--r-sm);padding:4px 8px}
+.person{border:1px dashed var(--line);border-radius:var(--r);padding:10px;background:var(--surface)}
+.person h4{margin:0 0 6px}
+.wz-step[hidden]{display:none}.wz-nav{display:flex;gap:8px;justify-content:space-between;flex-wrap:wrap;margin-top:12px}
+.live-check{display:flex;flex-direction:column;gap:4px;margin:8px 0}.chk{font-size:12.5px;padding:4px 8px;border-radius:var(--r-sm);background:var(--surface)}
+.chk.good{background:var(--okbg);color:var(--ok)}.chk.bad{background:#fdecec;color:var(--err)}
+.select-search{display:block;width:100%;margin-bottom:4px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden}.seg a{padding:6px 14px;color:var(--ink-2)}.seg a.on{background:var(--cp-verde-700);color:#fff}
+.meter{height:8px;border-radius:4px;background:var(--surface);overflow:hidden}.meter i{display:block;height:100%;background:var(--cp-verde)}
+.meter.bad i{background:var(--err)}
+.sig{border:1px dashed var(--line);border-radius:var(--r);background:#fff;touch-action:none;width:100%;height:160px}
+@media (max-width:600px){dialog.drawer{width:100vw;border-radius:0}}

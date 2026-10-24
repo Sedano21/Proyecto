@@ -164,3 +164,49 @@ def finish(r, user, lote_resultante, cantidad_resultante, nueva_fecha_fab=None, 
                 f"{r.producto_destino} × {cantidad_resultante:g} (reempaque #{r.id}).", "StockLot", nuevo.id, creado_por=user)
     audit(user, "REEMPAQUE_EJECUTADO", "RepackRequest", r.id, {"lote": lote_resultante, "cantidad": cantidad_resultante})
     return nuevo
+
+
+def import_requests(user, path):
+    """Carga de solicitudes de reempaque desde Excel (ronda UX 24-oct-2026). Columnas: tipo, producto, lote, almacén,
+    cantidad y, según el tipo, producto destino; motivo opcional. Cada fila válida se envía a Calidad como una solicitud."""
+    from openpyxl import load_workbook
+    if not has_perm(user, "reempaque.solicitar"):
+        raise BusinessError("La solicitud de reempaque la inicia Almacén (IF §9.1).")
+    ws = load_workbook(path, data_only=True, read_only=True).active
+    filas = list(ws.iter_rows(values_only=True))
+    if not filas:
+        raise BusinessError("El archivo está vacío.")
+    cab = [" ".join(str(c or "").strip().lower().split()) for c in filas[0]]
+
+    def col(*n):
+        return next((i for i, c in enumerate(cab) if c in n), None)
+    it, ip, il, ia = col("tipo"), col("producto", "codigo", "código", "articulo", "artículo"), col("lote"), col("almacen", "almacén")
+    iq, idest, im = col("cantidad"), col("producto destino", "destino", "sku destino"), col("motivo", "observacion", "observación")
+    if None in (it, ip, il, iq):
+        raise BusinessError("Faltan columnas: tipo, producto, lote y cantidad.")
+    alias = {"ACTUALIZACION DE FECHA": "ACTUALIZACION_FECHA", "ACTUALIZACIÓN DE FECHA": "ACTUALIZACION_FECHA",
+             "CAMBIO DE PRESENTACION": "CAMBIO_PRESENTACION", "CAMBIO DE PRESENTACIÓN": "CAMBIO_PRESENTACION",
+             "CONVERSION DE CALIDAD": "CONVERSION_CALIDAD", "CONVERSIÓN DE CALIDAD": "CONVERSION_CALIDAD"}
+    creadas, errores = [], []
+    for k, r in enumerate(filas[1:], start=2):
+        if not any(r):
+            continue
+        try:
+            tipo = str(r[it] or "").strip().upper()
+            tipo = alias.get(tipo, tipo.replace(" ", "_"))
+            code, lote = str(r[ip] or "").strip().upper(), str(r[il] or "").strip()
+            q = select(StockLot).where(StockLot.product_code == code, StockLot.lote == lote, StockLot.cantidad > 0)
+            if ia is not None and r[ia]:
+                q = q.where(StockLot.warehouse_code == str(r[ia]).strip().upper())
+            lots = list(db().execute(q).scalars())
+            if not lots:
+                raise BusinessError(f"no hay stock del lote {lote} de {code}")
+            if len(lots) > 1:
+                raise BusinessError(f"el lote {lote} está en varios almacenes; indique el almacén")
+            dest = str(r[idest] or "").strip().upper() if idest is not None else ""
+            creadas.append(request(user, tipo, lots[0].id, float(r[iq]), dest or None, None, None,
+                                   str(r[im] or "").strip() if im is not None else ""))
+        except (BusinessError, TypeError, ValueError) as e:
+            errores.append(f"Fila {k}: {e}")
+    audit(user, "REEMPAQUE_CARGA", "RepackRequest", "", {"creadas": len(creadas), "errores": len(errores)})
+    return creadas, errores

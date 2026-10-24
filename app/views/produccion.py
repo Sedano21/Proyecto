@@ -71,7 +71,7 @@ def request_detail(rid):
                                                            f_float("cantidad_completada", True), request.form.get("lote", "").strip(),
                                                            f_date("fecha_fab"), f_date("fecha_venc"), r.cantidad, r, "MANUAL",
                                                            merma_mp_kg=f_float("merma_mp_kg"), merma_granel_kg=f_float("merma_granel_kg"),
-                                                           merma_insumos=_insumos(), **_horas()),
+                                                           merma_insumos=_insumos(), parcial=f_bool("parcial"), **_horas()),
                          _liq_msg, "produccion.liquidar"),
         }
         if acc not in fns:
@@ -83,7 +83,8 @@ def request_detail(rid):
     lines = list(db().execute(select(ProductionLine).where(ProductionLine.activa.is_(True))).scalars())
     liqs = list(db().execute(select(Liquidation).where(Liquidation.request_id == r.id)).scalars())
     seguimiento = psvc.missing_materials_tracking(r) if r.estado in psvc.OPEN_REQ + ("EN_PROCESO",) else []
-    return render_template("prod_detail.html", r=r, a=r.analisis or {}, lines=lines, liqs=liqs, seguimiento=seguimiento)
+    return render_template("prod_detail.html", r=r, a=r.analisis or {}, lines=lines, liqs=liqs, seguimiento=seguimiento,
+                           liquidado=psvc.liquidated_qty(r))
 
 
 def _horas():
@@ -123,7 +124,8 @@ def bom():
             except ValueError:
                 calc = None
     prods = psvc.bom_products()
-    return render_template("bom.html", versions=versions, code=code, qty=qty or "", calc=calc, lines=lines, prods=prods)
+    subs = {l.id: psvc.substitutes(l) for l in lines} if "produccion.plan_validar" in g.perms else {}
+    return render_template("bom.html", versions=versions, code=code, qty=qty or "", calc=calc, lines=lines, prods=prods, subs=subs)
 
 
 @bp.route("/liquidaciones", methods=["GET", "POST"])
@@ -152,10 +154,14 @@ def liquidations():
                                                      f_float("cantidad_planificada"), None, "MANUAL", merma_mp_kg=f_float("merma_mp_kg"),
                                                      merma_granel_kg=f_float("merma_granel_kg"), merma_insumos=_insumos(), **_horas()),
                    _liq_msg, url_for("prod.liquidations"))
-    rows = list(db().execute(select(Liquidation).order_by(Liquidation.id.desc())).scalars())
+    a = request.args
+    desde = f_date("desde") or date.today() - timedelta(days=30)
+    hasta = f_date("hasta")
+    rows = psvc.liquidations_list(desde, hasta, a.get("tipo", ""), a.get("producto", ""))
     whs = list(db().execute(select(Warehouse).where(Warehouse.uso == "PT")).scalars())
     from ..services.quality import lot_entries_vs_liquidation
-    return render_template("liquidations.html", rows=rows, whs=whs, merma=psvc.merma_real_pct, vs_calidad=lot_entries_vs_liquidation)
+    return render_template("liquidations.html", rows=rows, whs=whs, merma=psvc.merma_real_pct, vs_calidad=lot_entries_vs_liquidation,
+                           f=a, desde=desde, total=sum(l.cantidad_completada or 0 for l in rows))
 
 
 @bp.route("/plan", methods=["GET", "POST"])
@@ -176,11 +182,12 @@ def plan():
     if request.method == "POST" and request.form.get("accion") == "modificar":
         f = request.form
         pl = db().get(ProductionPlan, int(f.get("plan_id") or 0)) or abort(404)
-        return act(lambda: psvc.update_plan(g.user, pl, f_float("cantidad", True), f.get("comentario", "")),
+        return act(lambda: psvc.update_plan(g.user, pl, f_float("cantidad", True), f.get("comentario", ""), f_date("fecha")),
                    lambda r: ("Cambio propuesto: lo valida el Jefe de Producción." if r is not None
                                else "Programación modificada."), url_for("prod.plan", periodo=pl.periodo))
     if request.method == "POST":
         f = request.form
+        # la periodicidad es la del selector superior de la pantalla (no se repite en el formulario)
         return act(lambda: psvc.add_plan(g.user, f.get("periodo"), f_date("fecha", True), f.get("product_code", "").strip().upper().split(" ")[0],
                                          f_float("cantidad", True), f.get("line_code") or None, f.get("comentario", "")),
                    "Plan registrado.", url_for("prod.plan", periodo=f.get("periodo", "DIA")))
@@ -198,46 +205,49 @@ def plan():
     faltan = [(r, psvc.missing_materials_tracking(r)) for r in db().execute(
         select(ProductionRequest).where(ProductionRequest.estado.in_(psvc.OPEN_REQ)).order_by(ProductionRequest.id)).scalars()]
     faltan = [(r, m) for r, m in faltan if m]
+    estados = {e.id: psvc.plan_status(e) for e in entradas}
     return render_template("prod_plan.html", d=d, graf=graf, products=products, lineas=PRODUCTION_LINES, hoy=date.today(),
-                           entradas=entradas, req=req, faltan=faltan)
+                           entradas=entradas, req=req, faltan=faltan, estados=estados,
+                           nombre_periodo={"DIA": "diario", "SEMANA": "semanal", "MES": "mensual"}[d["periodo"]])
 
 
 @bp.route("/partes", methods=["GET", "POST"])
-@perm_required("produccion.ver")
+@perm_required("produccion.partes_ver")
 def reports():
-    """Partes de producción por línea con rendimiento y desmedro (= merma)."""
+    """Partes de producción: un solo formato (Registrar ahora / Programar), programación en tarjetas editables y
+    partes recientes con rendimiento y desmedro."""
     from ..catalogs import PRODUCTION_LINES
     from ..models import ProductionReport
+    from ..services import parte as ptsvc
+    from ..services.core import param
     if request.method == "POST":
         if "produccion.liquidar" not in g.perms:
             abort(403)
         f = request.form
-        ops = f.get("operarios", "").strip()
-        if f.get("parte_id"):
-            prog = db().get(ProductionReport, int(f["parte_id"])) or abort(404)
-            return act(lambda: psvc.complete_report(
-                prog, g.user, granel_kg=f_float("granel_kg"), mp_kg=f_float("mp_kg"), cal3_kg=f_float("cal3_kg"),
-                desmedro_kg=f_float("desmedro_kg"), presentacion_kg=f_float("presentacion_kg"), unidades=f_float("unidades"),
-                sobrante_kg=f_float("sobrante_kg"), hora_inicio=f.get("hora_inicio", ""), hora_fin=f.get("hora_fin", ""),
-                horas=f_float("horas"), operarios=int(ops) if ops else None, estado=f.get("estado"),
-                peso_entrada_kg=f_float("peso_entrada_kg"), lote=f.get("lote", "").strip() or None),
-                lambda r: f"Parte completado: rendimiento {r.rendimiento_pct}%, desmedro {r.desmedro_pct}%.", url_for("prod.reports"))
-        return act(lambda: psvc.register_report(
-            g.user, f.get("linea"), f_date("fecha"), f.get("product_code", "").strip().upper().split(" ")[0], f_float("peso_entrada_kg"),
-            f_float("granel_kg") or 0, f_float("mp_kg") or 0, f_float("cal3_kg") or 0, f_float("desmedro_kg") or 0,
-            f_float("presentacion_kg"), f_float("unidades"), f_float("sobrante_kg") or 0, f.get("of", ""), f.get("op", ""),
-            f.get("turno", ""), f.get("hora_inicio", ""), f.get("hora_fin", ""), f_float("horas"), int(ops) if ops else None,
-            f.get("cliente", ""), f.get("mp_codigo", "").strip().upper(), f.get("lote", "").strip(), f.get("estado", "EN PROCESO"),
-            f.get("observacion", ""), int(f["parada_min"]) if (f.get("parada_min") or "").strip().isdigit() else None,
-            f.get("motivo_parada", "")), lambda r: f"Parte registrado: rendimiento {r.rendimiento_pct}%, desmedro {r.desmedro_pct}%.",
-            url_for("prod.reports"))
-    from ..services import parte as ptsvc
-    from ..services.core import param
+        r = db().get(ProductionReport, int(f.get("parte_id") or 0)) or abort(404)
+        if f.get("accion") == "editar":
+            return act(lambda: ptsvc.edit_program(g.user, r, f_date("fecha"), f_float("cantidad"), f.get("motivo", ""),
+                                                  f.get("hora_inicio"), f.get("hora_fin")),
+                       "Programación actualizada.", url_for("prod.reports"))
+        abort(400)
+    a = request.args
     visibles = ptsvc.lines_for(g.user)  # ronda 23-oct-2026: cada asistente ve sus líneas
-    rows = [r for r in db().execute(select(ProductionReport).order_by(ProductionReport.fecha.desc(), ProductionReport.id.desc())
-                                    .limit(500)).scalars() if r.linea in visibles][:300]
-    programados = [r for r in rows if r.estado == "PROGRAMADO"]
-    comp = db().get(ProductionReport, int(request.args["completar"])) if request.args.get("completar", "").isdigit() else None
+    q = select(ProductionReport).where(ProductionReport.linea.in_(visibles), ProductionReport.estado != "PROGRAMADO")
+    desde, hasta = f_date("desde") or date.today() - timedelta(days=7), f_date("hasta")
+    q = q.where(ProductionReport.fecha >= desde)
+    if hasta:
+        q = q.where(ProductionReport.fecha <= hasta)
+    if a.get("linea") in visibles:
+        q = q.where(ProductionReport.linea == a["linea"])
+    if a.get("estado"):
+        q = q.where(ProductionReport.estado == a["estado"])
+    rows = list(db().execute(q.order_by(ProductionReport.fecha.desc(), ProductionReport.id.desc()).limit(120)).scalars())
+    programados = list(db().execute(select(ProductionReport).where(ProductionReport.linea.in_(visibles),
+                                                                   ProductionReport.estado == "PROGRAMADO")
+                                    .order_by(ProductionReport.fecha, ProductionReport.id)).scalars())
     products = list(db().execute(select(Product).where(Product.tipo.in_(["PT", "GR", "MP", "C3"])).order_by(Product.code)).scalars())
     return render_template("prod_reports.html", rows=rows, lineas=[x for x in PRODUCTION_LINES if x[0] in visibles], hoy=date.today(),
-                           comp=comp, products=products, programados=programados, turnos=param("turnos_produccion", []) or [])
+                           products=products, programados=programados, turnos=param("turnos_produccion", []) or [],
+                           estados=ptsvc.ESTADOS_PARTE, no_editables=ptsvc.NO_EDITABLES, f=a, desde=desde,
+                           formato_hora=(param("formato_hora", "24H") or "24H").upper(), fmt_hora=ptsvc.fmt_hora,
+                           envasado=",".join(ptsvc.LINEAS_ENVASADO))

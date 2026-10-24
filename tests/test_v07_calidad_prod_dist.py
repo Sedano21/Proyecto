@@ -52,7 +52,9 @@ def test_capacidad_vs_producido_y_programado(s, U):
 
 def test_flota_soat_multa_combustible_y_mantenimiento(s, U):
     from app.services import fleet
+    from app.models import VehicleDocument
     v = s.query(Vehicle).filter_by(propio=True).first()
+    s.query(VehicleDocument).filter_by(vehicle_id=v.id).delete()  # sin el SOAT ficticio de la demostración
     u = U("coord.distribucion")
     fleet.add_document(u, v, "SOAT", "SOAT-1", vencimiento=date.today() + timedelta(days=5))
     fleet.add_fuel(u, v, date.today() - timedelta(days=7), 10000, 20, 300)
@@ -76,8 +78,8 @@ def test_incidencia_con_entrega_parcial_por_producto(s, U, new_order):
     o.estado = "DESPACHADA"
     s.flush()
     with pytest.raises(BusinessError, match="productos devueltos"):
-        dist.register_incident(U("aux.despacho"), "PRODUCTO_ROTO", "Bolsas rotas", order=o, entrega="PARCIAL")
-    inc = dist.register_incident(U("aux.despacho"), "PRODUCTO_ROTO", "Bolsas rotas", order=o, entrega="PARCIAL",
+        dist.register_incident(U("asist.distribucion"), "PRODUCTO_ROTO", "Bolsas rotas", order=o, entrega="PARCIAL")
+    inc = dist.register_incident(U("asist.distribucion"), "PRODUCTO_ROTO", "Bolsas rotas", order=o, entrega="PARCIAL",
                                  lineas=[{"line_id": l.id, "devuelto": 3, "motivo": "rotas"}])
     assert inc.entrega == "PARCIAL" and inc.lineas[0]["recibido"] == 7 and l.entregado == 7
     assert o.estado == "ENTREGA_PARCIAL"

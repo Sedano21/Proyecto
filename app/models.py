@@ -366,6 +366,8 @@ class SalesOrder(Base):
     vendedor_nombre: Mapped[str] = mapped_column(String(120), default="")
     fecha_emision: Mapped[date] = mapped_column(Date, default=date.today)
     fecha_compromiso: Mapped[date] = mapped_column(Date)  # fecha comprometida de despacho
+    # ronda UX 24-oct-2026: aviso de Logística de que la OV no llegará a tiempo {motivo, user, ts, nueva_fecha}
+    aviso_atraso: Mapped[dict] = mapped_column(JSON, default=dict)
     urgente: Mapped[bool] = mapped_column(Boolean, default=False)
     direccion: Mapped[str] = mapped_column(String(250), default="")
     distrito: Mapped[str] = mapped_column(String(80), default="")
@@ -657,6 +659,7 @@ class Liquidation(Base):
     recibido_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     observacion: Mapped[str] = mapped_column(Text, default="")
     lot_id: Mapped[int | None] = mapped_column(ForeignKey("stock_lots.id"), nullable=True)
+    parcial: Mapped[bool] = mapped_column(Boolean, default=False)  # liquidación parcial de la solicitud (ronda UX)
     ts: Mapped[datetime] = mapped_column(DateTime, default=now)
     product = relationship("Product")
     request = relationship("ProductionRequest")
@@ -959,6 +962,12 @@ class RouteStop(Base):
     # obs. demo v0.7: la guía la aprueba el Coordinador o el Asistente de Distribución {user, rol, ts, comentario}
     guia_aprobada: Mapped[dict] = mapped_column(JSON, default=dict)
     observacion: Mapped[str] = mapped_column(Text, default="")
+    # ronda UX 24-oct-2026: conformidad digital registrada por el chofer
+    guia_estado: Mapped[str] = mapped_column(String(20), default="")  # estado reportado de la guía de remisión
+    guia_estado_hist: Mapped[list] = mapped_column(JSON, default=list)  # [{estado, nota, user, ts}]
+    receptor_nombre: Mapped[str] = mapped_column(String(120), default="")
+    receptor_dni: Mapped[str] = mapped_column(String(15), default="")
+    firma_path: Mapped[str] = mapped_column(String(250), default="")
     route = relationship("Route", back_populates="stops")
     order = relationship("SalesOrder")
 
@@ -1337,6 +1346,9 @@ class ProductionReport(Base):
     inicio_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     fin_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     bloqueo: Mapped[dict] = mapped_column(JSON, default=dict)  # BLOQUEADO por Calidad: {motivo, user, ts}
+    # ronda UX 24-oct-2026: «Pendiente de: motivo» y horario previsto del parte programado
+    motivo_estado: Mapped[str] = mapped_column(String(200), default="")
+    programa: Mapped[dict] = mapped_column(JSON, default=dict)  # {fecha, kg, hora_inicio, hora_fin}
     product = relationship("Product", primaryjoin="foreign(ProductionReport.product_code) == Product.code", viewonly=True)
 
 
@@ -1658,6 +1670,7 @@ class Worker(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     nombre: Mapped[str] = mapped_column(String(160))
     documento: Mapped[str] = mapped_column(String(20), default="")
+    area: Mapped[str] = mapped_column(String(40), default="Producción")  # área a la que pertenece (asistencia por área)
     linea: Mapped[str] = mapped_column(String(20), default="")
     sublinea: Mapped[str] = mapped_column(String(40), default="")
     externo: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -1676,3 +1689,120 @@ class Attendance(Base):
     ts: Mapped[datetime] = mapped_column(DateTime, default=now)
     worker = relationship("Worker")
     __table_args__ = (UniqueConstraint("worker_id", "fecha", name="uq_attendance"),)
+
+
+# ---------------------------------------------------------------------------
+# Mantenimiento integral (ronda UX 24-oct-2026)
+# ---------------------------------------------------------------------------
+class MaintenancePlan(Base):
+    """Plan de mantenimiento preventivo de una unidad: tarea con frecuencia por kilometraje y/o por días."""
+    __tablename__ = "maintenance_plans"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    vehicle_id: Mapped[int] = mapped_column(ForeignKey("vehicles.id"), index=True)
+    tarea: Mapped[str] = mapped_column(String(120))
+    cada_km: Mapped[float | None] = mapped_column(Float, nullable=True)
+    cada_dias: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    ultimo_km: Mapped[float | None] = mapped_column(Float, nullable=True)
+    ultima_fecha: Mapped[date | None] = mapped_column(Date, nullable=True)
+    activo: Mapped[bool] = mapped_column(Boolean, default=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    vehicle = relationship("Vehicle")
+
+
+class Breakdown(Base):
+    """Mantenimiento correctivo: avería reportada, programada, en reparación y cerrada."""
+    __tablename__ = "breakdowns"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    vehicle_id: Mapped[int] = mapped_column(ForeignKey("vehicles.id"), index=True)
+    descripcion: Mapped[str] = mapped_column(Text)
+    severidad: Mapped[str] = mapped_column(String(10), default="MEDIA")  # ALTA / MEDIA / BAJA
+    estado: Mapped[str] = mapped_column(String(15), default="REPORTADA")  # REPORTADA / PROGRAMADA / EN_REPARACION / CERRADA
+    km: Mapped[float | None] = mapped_column(Float, nullable=True)
+    fecha_programada: Mapped[date | None] = mapped_column(Date, nullable=True)
+    taller: Mapped[str] = mapped_column(String(120), default="")
+    costo: Mapped[float | None] = mapped_column(Float, nullable=True)
+    solucion: Mapped[str] = mapped_column(Text, default="")
+    historial: Mapped[list] = mapped_column(JSON, default=list)  # [{estado, user, ts, nota}]
+    foto: Mapped[str] = mapped_column(String(250), default="")
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    cierre_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    vehicle = relationship("Vehicle")
+
+
+class SanitationZone(Base):
+    """Zona física para limpieza, desinfección y fumigación periódicas."""
+    __tablename__ = "sanitation_zones"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    nombre: Mapped[str] = mapped_column(String(120))
+    area: Mapped[str] = mapped_column(String(40), default="")  # Almacén, Producción, Oficinas…
+    almacen: Mapped[str] = mapped_column(String(20), default="")
+    frecuencia_limpieza_dias: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    frecuencia_fumigacion_dias: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    activo: Mapped[bool] = mapped_column(Boolean, default=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+
+class SanitationLog(Base):
+    """Bitácora de saneamiento: limpieza, desinfección, fumigación o mantenimiento de una zona, o fumigación de una
+    unidad vehicular (control fitosanitario de plagas, p. ej. gorgojo)."""
+    __tablename__ = "sanitation_logs"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    zone_id: Mapped[int | None] = mapped_column(ForeignKey("sanitation_zones.id"), nullable=True, index=True)
+    vehicle_id: Mapped[int | None] = mapped_column(ForeignKey("vehicles.id"), nullable=True, index=True)
+    tipo: Mapped[str] = mapped_column(String(20))  # LIMPIEZA / DESINFECCION / FUMIGACION / MANTENIMIENTO
+    fecha: Mapped[date] = mapped_column(Date)
+    responsable: Mapped[str] = mapped_column(String(120), default="")  # persona o empresa que lo realizó
+    producto: Mapped[str] = mapped_column(String(120), default="")
+    certificado: Mapped[str] = mapped_column(String(60), default="")
+    vence: Mapped[date | None] = mapped_column(Date, nullable=True)  # próxima fecha / vigencia
+    observacion: Mapped[str] = mapped_column(Text, default="")
+    evidencia: Mapped[str] = mapped_column(String(250), default="")
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    zone = relationship("SanitationZone")
+    vehicle = relationship("Vehicle")
+
+
+# ---------------------------------------------------------------------------
+# Cadena de suministro (ronda UX 24-oct-2026)
+# ---------------------------------------------------------------------------
+class DemandForecast(Base):
+    """Proyección de demanda cargada por Comercial (por producto y mes; opcionalmente por canal o cliente)."""
+    __tablename__ = "demand_forecasts"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    mes: Mapped[str] = mapped_column(String(7), index=True)  # AAAA-MM
+    product_code: Mapped[str] = mapped_column(ForeignKey("products.code"), index=True)
+    cantidad: Mapped[float] = mapped_column(Float)
+    canal: Mapped[str] = mapped_column(String(60), default="")
+    customer_id: Mapped[int | None] = mapped_column(ForeignKey("customers.id"), nullable=True)
+    observacion: Mapped[str] = mapped_column(String(250), default="")
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    product = relationship("Product")
+    customer = relationship("Customer")
+
+
+class MoveRequest(Base):
+    """Solicitud de movimiento punto a punto para el montacarguista (de cualquier área), con foto de validación."""
+    __tablename__ = "move_requests"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    area: Mapped[str] = mapped_column(String(40), default="")  # área que solicita
+    almacen: Mapped[str] = mapped_column(String(20), default="")
+    origen: Mapped[str] = mapped_column(String(120))
+    destino: Mapped[str] = mapped_column(String(120))
+    detalle: Mapped[str] = mapped_column(String(250), default="")  # producto / lote / pallets
+    cantidad: Mapped[str] = mapped_column(String(40), default="")
+    prioridad: Mapped[str] = mapped_column(String(10), default="MEDIA")
+    estado: Mapped[str] = mapped_column(String(15), default="SOLICITADA")  # SOLICITADA / EN_CURSO / COMPLETADA / ANULADA
+    solicitado_por: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    asignado_a: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    foto_inicio: Mapped[str] = mapped_column(String(250), default="")
+    foto_fin: Mapped[str] = mapped_column(String(250), default="")
+    observacion: Mapped[str] = mapped_column(Text, default="")
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    inicio_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    fin_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    solicitante = relationship("User", foreign_keys=[solicitado_por])
+    operador = relationship("User", foreign_keys=[asignado_a])
