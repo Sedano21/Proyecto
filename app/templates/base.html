@@ -31,7 +31,7 @@
       {% if ve('clientes.ver') %}{{ nl(url_for('com.customer_list'), 'users', 'Clientes') }}{% endif %}
       {% if ve('precios.ver') %}{{ nl(url_for('com.prices'), 'tag', 'Listas de precios') }}{% endif %}
       {% if ve('costos.ver') %}{{ nl(url_for('com.costs'), 'scale', 'Costos vs mercado') }}{% endif %}
-      {% if ve('oportunidades.registrar') or ve('oportunidades.ver_todas') %}{{ nl(url_for('com.opportunities'), 'users', 'Oportunidades') }}{% endif %}
+      {% if ve('oportunidades.registrar') or ve('oportunidades.ver_todas') %}{{ nl(url_for('com.opportunities'), 'users', 'Oportunidades') }}{{ nl(url_for('com.quotes'), 'file', 'Cotizaciones') }}{% endif %}
       {% if ve('catalogo.ver') or ve('catalogo.fotos') %}{{ nl(url_for('com.catalog'), 'box', 'Catálogo') }}{% endif %}
       {% if ve('objetivos.ver') %}{{ nl(url_for('com.targets'), 'gauge', 'Objetivos de venta') }}{% endif %}
       {% if ve('demanda.cargar') %}{{ nl(url_for('sup.demand'), 'trend', 'Proyección de demanda') }}{% endif %}

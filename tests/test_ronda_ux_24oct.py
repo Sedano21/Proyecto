@@ -310,7 +310,12 @@ def test_proyeccion_de_demanda(s, U, tmp_path):
     with pytest.raises(BusinessError):
         supply.save_forecast(U("jefe.logistica"), mes, "PT-905", 100)
     supply.save_forecast(U("jefe.ventas"), mes, "PT-905", 100)
-    supply.save_forecast(U("jefe.ventas"), mes, "PT-905", 120)  # reemplaza
+    # V7: modificar una proyección registrada requiere justificación y la autorización de Gerencia General
+    with pytest.raises(BusinessError, match="justificación"):
+        supply.save_forecast(U("jefe.ventas"), mes, "PT-905", 120)
+    f0 = supply.save_forecast(U("jefe.ventas"), mes, "PT-905", 120, observacion="Nuevo cliente mayorista")
+    assert f0.cantidad == 100 and f0.cambio["estado"] == "PENDIENTE"
+    supply.decide_change(f0, U("gerente.general"), True)
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.append(["Mes", "Producto", "Cantidad", "Canal"])

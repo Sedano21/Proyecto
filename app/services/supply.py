@@ -114,12 +114,92 @@ def save_forecast(user, mes, product_code, cantidad, canal="", customer_id=None,
                                      DemandForecast.canal == canal, DemandForecast.customer_id.is_(customer_id) if customer_id
                                      is None else DemandForecast.customer_id == customer_id)
     f = db().execute(q).scalars().first()
+    obs = (observacion or "").strip()[:250]
+    if f is not None and param("demanda_cambio_requiere_gg", True) and abs(f.cantidad - cantidad) > 1e-9:
+        # V7: modificar una proyección ya registrada requiere la autorización de Gerencia General (con justificación)
+        if not obs:
+            raise BusinessError(f"{code} ({mes}): para modificar una proyección registrada indique la justificación.")
+        f.cambio = {"estado": "PENDIENTE", "cantidad": cantidad, "anterior": f.cantidad, "observacion": obs,
+                    "user": user.nombre, "user_id": user.id, "ts": now().isoformat(timespec="minutes")}
+        db().flush()
+        alerts.emit("DEMANDA_CAMBIO", f"Cambio de proyección {code} {mes}: {f.cantidad:g} → {cantidad:g}",
+                    f"Solicitado por {user.nombre}. Justificación: {obs}", "DemandForecast", f.id,
+                    dedup_key=f"DEMANDA_CAMBIO:{f.id}", creado_por=user)
+        audit(user, "DEMANDA_CAMBIO_SOLICITADO", "DemandForecast", f.id, f.cambio)
+        return f
     if f is None:
         f = DemandForecast(mes=mes, product_code=code, canal=canal, customer_id=customer_id, cantidad=cantidad)
         db().add(f)
-    f.cantidad, f.observacion, f.user_id = cantidad, (observacion or "").strip()[:250], user.id
+    f.cantidad, f.observacion, f.user_id = cantidad, obs, user.id
     db().flush()
     return f
+
+
+def save_forecast_group(user, mes, filas):
+    """V7: registro por grupo («+» filas) y envío completo de una sola vez. Se valida todo antes de guardar: si una fila
+    tiene error no se guarda ninguna. filas: [{product_code, cantidad, canal, customer_id, observacion}]."""
+    if not has_perm(user, "demanda.cargar"):
+        raise BusinessError("La proyección de demanda la carga Comercial.")
+    mes = _mes(mes)
+    validas, errores, vistos = [], [], set()
+    for i, r in enumerate(filas, start=1):
+        code = (r.get("product_code") or "").strip().upper().split(" ")[0]
+        if not code and not str(r.get("cantidad") or "").strip():
+            continue
+        if db().get(Product, code) is None:
+            errores.append(f"Fila {i}: producto {code or '(vacío)'} no existe.")
+            continue
+        try:
+            q = float(str(r.get("cantidad")).replace(",", ""))
+            if q < 0:
+                raise ValueError
+        except (TypeError, ValueError):
+            errores.append(f"Fila {i}: cantidad inválida.")
+            continue
+        cid = int(r["customer_id"]) if str(r.get("customer_id") or "").isdigit() else None
+        clave = (code, (r.get("canal") or "").strip().upper(), cid)
+        if clave in vistos:
+            errores.append(f"Fila {i}: {code} repetido con el mismo canal y cliente.")
+            continue
+        vistos.add(clave)
+        validas.append(dict(r, product_code=code, cantidad=q, customer_id=cid))
+    if errores:
+        raise BusinessError(" ".join(errores[:8]))
+    if not validas:
+        raise BusinessError("Agregue al menos un producto con su cantidad.")
+    res = {"nuevas": 0, "cambios": 0}
+    for r in validas:
+        f = save_forecast(user, mes, r["product_code"], r["cantidad"], r.get("canal", ""), r["customer_id"],
+                          r.get("observacion", ""))
+        c = f.cambio or {}
+        pendiente = c.get("estado") == "PENDIENTE" and abs(float(c.get("cantidad", -1)) - r["cantidad"]) < 1e-9 \
+            and abs(f.cantidad - r["cantidad"]) > 1e-9
+        res["cambios" if pendiente else "nuevas"] += 1
+    audit(user, "DEMANDA_GRUPO", "DemandForecast", mes, res)
+    return res
+
+
+def decide_change(f, user, aprobar, comentario=""):
+    """Gerencia General autoriza (o no) el cambio de una proyección registrada."""
+    if not has_perm(user, "demanda.aprobar_cambio"):
+        raise BusinessError("Los cambios de la proyección los autoriza Gerencia General.")
+    c = dict(f.cambio or {})
+    if c.get("estado") != "PENDIENTE":
+        raise BusinessError("No hay un cambio pendiente.")
+    if not aprobar and not (comentario or "").strip():
+        raise BusinessError("Indique el motivo para no autorizar el cambio.")
+    if aprobar:
+        f.cantidad = float(c["cantidad"])
+        f.observacion = c.get("observacion", "")[:250]
+    c.update({"estado": "APROBADO" if aprobar else "RECHAZADO", "decidio": user.nombre,
+              "decision_ts": now().isoformat(timespec="minutes"), "comentario": (comentario or "").strip()})
+    f.cambio = c
+    alerts.close_by_system(f"DEMANDA_CAMBIO:{f.id}", f"{'Autorizado' if aprobar else 'No autorizado'} por {user.nombre}")
+    audit(user, "DEMANDA_CAMBIO_" + ("APROBADO" if aprobar else "RECHAZADO"), "DemandForecast", f.id, c)
+
+
+def pending_changes():
+    return [f for f in db().execute(select(DemandForecast)).scalars() if (f.cambio or {}).get("estado") == "PENDIENTE"]
 
 
 def import_forecast(user, path):

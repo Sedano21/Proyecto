@@ -1,0 +1,23 @@
+{% extends "base.html" %}{% from "_m.html" import csrf, ic, empty %}
+{% block content %}
+<div class="page-head"><div><h1>{{ p.descripcion }}</h1><p class="sub"><span class="mono">{{ p.code }}</span> · {{ p.marca }}{{ ' · ' ~ p.presentacion if p.presentacion }} · se vende por {{ 'kilo' if unit_for(p) == 'KG' else 'unidad' }}{% if p.destacado %} · <span class="b ok">{{ dest_txt[p.destacado] }}</span>{% endif %}</p></div>
+<a class="btn sec" href="{{ url_for('com.catalog') }}">{{ ic('chevron') }} Catálogo</a></div>
+<div class="grid g2">
+<div class="card prod-hero">{% if p.foto %}<img src="{{ url_for('main.evidence', name=p.foto) }}" alt="{{ p.descripcion }}">{% else %}<div class="sin-foto">Sin foto</div>{% endif %}
+{% if can('catalogo.fotos') %}<form method="post" enctype="multipart/form-data" class="row">{{ csrf() }}<input type="hidden" name="accion" value="foto"><div class="grow"><label>{{ 'Cambiar' if p.foto else 'Subir' }} la foto principal</label><input type="file" name="foto" accept="image/*" required></div><div><button class="small">Guardar foto</button></div></form>{% endif %}</div>
+<div class="card"><h3>{{ ic('award') }} Producto destacado</h3>
+{% if p.destacado %}<p><b>{{ dest_txt[p.destacado] }}</b>{% if p.destacado_hasta %} hasta el {{ p.destacado_hasta|d }}{% endif %}</p><p class="small">{{ p.destacado_nota }}</p>{% else %}<p class="small muted">No está destacado.</p>{% endif %}
+{% if can('catalogo.fotos') or can('comercial.configurar') %}<form method="post" class="row">{{ csrf() }}<input type="hidden" name="accion" value="destacado">
+<div><label>Clasificación</label><select name="destacado"><option value="">No destacado</option>{% for k, v in dest_txt.items() %}<option value="{{ k }}" {{ 'selected' if p.destacado == k }}>{{ v }}</option>{% endfor %}</select></div>
+<div><label>Vigente hasta</label><input type="date" name="hasta" value="{{ p.destacado_hasta.isoformat() if p.destacado_hasta }}"></div>
+<div class="grow"><label>Mensaje para la fuerza de ventas</label><input name="nota" value="{{ p.destacado_nota }}" placeholder="p. ej. campaña de invierno, precio especial por volumen"></div><div><button class="small">Guardar</button></div></form>{% endif %}</div></div>
+
+<div class="card"><h3>{{ ic('folder') }} Carpeta del producto</h3>
+<div class="cards">{% for k, t in carpetas.items() %}<article class="xcard"><div class="xcard-head"><b>{{ t }}</b><span class="small muted">{{ docs[k]|length }}</span></div>
+{% if docs[k] %}<ul class="doc-list">{% for x in docs[k] %}<li><a href="{{ url_for('main.evidence', name=x.archivo) }}" class="ibtn" title="Ver" aria-label="Ver {{ x.nombre }}">{{ ic('eye') }}</a><span>{{ x.nombre }}<br><span class="small muted">{{ x.ts|d }}{{ ' · ' ~ x.user.nombre if x.user }}</span></span>
+{% if can('catalogo.fotos') %}<form method="post" data-confirm="¿Retirar «{{ x.nombre }}» de la carpeta?">{{ csrf() }}<input type="hidden" name="accion" value="retirar"><input type="hidden" name="doc_id" value="{{ x.id }}"><button class="ibtn" title="Retirar" aria-label="Retirar">{{ ic('x') }}</button></form>{% endif %}</li>{% endfor %}</ul>
+{% else %}<p class="small muted">Vacía.</p>{% endif %}</article>{% endfor %}</div>
+{% if can('catalogo.fotos') %}<form method="post" enctype="multipart/form-data" class="row">{{ csrf() }}<input type="hidden" name="accion" value="documento">
+<div><label>Carpeta</label><select name="carpeta" required>{% for k, t in carpetas.items() %}<option value="{{ k }}">{{ t }}</option>{% endfor %}</select></div>
+<div class="grow"><label>Nombre (opcional)</label><input name="nombre"></div><div class="grow"><label>Archivos</label><input type="file" name="archivos" multiple required></div><div><button>{{ ic('upload') }} Agregar</button></div></form>{% endif %}</div>
+{% endblock %}

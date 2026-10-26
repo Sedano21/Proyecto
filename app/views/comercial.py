@@ -671,13 +671,13 @@ def market_report():
 
 
 @bp.route("/mercado/sustitutos", methods=["GET", "POST"])
-@perm_required("costos.ver")
+@perm_required("costos.ver", "mercado.sustitutos")
 def market_substitutes():
     """Productos sustitutos: alta individual o por Excel (decisión del usuario, 15-oct-2026)."""
     from ..models import ProductSubstitute
     from ..services import market
     if request.method == "POST":
-        if "costos.cargar" not in g.perms:
+        if "costos.cargar" not in g.perms and "mercado.sustitutos" not in g.perms:
             abort(403)
         acc = request.form.get("accion")
         volver = url_for("com.market_substitutes")

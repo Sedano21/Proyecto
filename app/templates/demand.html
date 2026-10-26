@@ -1,20 +1,28 @@
 {% extends "base.html" %}{% from "_m.html" import csrf, ic, empty %}
 {% block content %}<div class="card-head"><h1 style="flex:1">Proyección de demanda</h1>
-{% if can('demanda.cargar') %}<button class="btn sec" data-open="dlg-dem-xls">{{ ic('upload') }} Cargar Excel</button> <button class="btn" data-open="dlg-dem">{{ ic('plus') }} Agregar proyección</button>{% endif %}</div>
+{% if can('demanda.cargar') %}<button class="btn sec" data-open="dlg-dem-xls">{{ ic('upload') }} Cargar Excel</button> <button class="btn" data-open="dlg-dem">{{ ic('plus') }} Registrar proyección</button>{% endif %}</div>
 <p class="small muted">Comercial carga lo que espera vender por producto y mes; Logística la consulta frente al stock libre para prever compras, producción y traslados.</p>
 <form class="row card" method="get"><div><label>Desde (mes)</label><input type="month" name="desde" value="{{ d.meses[0] }}"></div><div><label>Meses</label><select name="meses">{% for n in [1,2,3,6] %}<option {{ 'selected' if (f.get('meses') or '3')|int == n }}>{{ n }}</option>{% endfor %}</select></div><div><button class="sec">Ver</button></div></form>
+{% if pendientes %}<div class="card" style="border-left:4px solid var(--warn)"><h3>Cambios por autorizar (Gerencia General)</h3><div class="cards">{% for x in pendientes %}<article class="xcard alerta"><div class="xcard-head"><b>{{ x.product_code }} · {{ x.mes }}</b><span class="small muted">{{ x.canal or 'todos los canales' }}{{ ' · ' ~ x.customer.nombre if x.customer }}</span></div>
+<div class="big">{{ x.cambio.anterior|n }} → {{ x.cambio.cantidad|n }}</div><p class="small">Justificación: {{ x.cambio.observacion }}<br><span class="muted">{{ x.cambio.user }} · {{ x.cambio.ts|replace('T', ' ') }}</span></p>
+{% if can('demanda.aprobar_cambio') %}<form method="post" action="{{ url_for('sup.demand_change', fid=x.id) }}" class="row">{{ csrf() }}<input name="comentario" placeholder="comentario (obligatorio si no autoriza)" class="grow"><button name="decision" value="aprobar" class="small">Autorizar</button><button name="decision" value="rechazar" class="sec small">No autorizar</button></form>{% endif %}</article>{% endfor %}</div></div>{% endif %}
 {% if d.filas %}<div class="cards">{% for x in d.filas %}<article class="xcard {{ 'alerta' if x.faltante > 0 else '' }}"><div class="xcard-head"><b>{{ x.code }}</b><span class="small muted">{{ x.descripcion[:40] }}</span></div>
 <div class="meta">{% for m in d.meses %}<span>{{ m }}: <b>{{ x.meses.get(m, 0)|n }}</b></span>{% endfor %}</div>
 <div class="meta"><span>Proyectado <b>{{ x.total|n }}</b></span><span>Stock libre <b>{{ x.libre|n }}</b></span>{% if x.faltante > 0 %}<span class="err">Falta {{ x.faltante|n }}</span>{% endif %}</div>
 {% if x.cobertura is not none %}<div class="meter {{ 'bad' if x.cobertura < 100 }}"><i style="width:{{ [x.cobertura, 100]|min }}%"></i></div><div class="small muted">Cobertura {{ x.cobertura }} %</div>{% endif %}</article>{% endfor %}</div>
 {% else %}{{ empty('Sin proyección cargada para el periodo.', 'trend') }}{% endif %}
-{% if can('demanda.cargar') %}<dialog class="modal" id="dlg-dem"><form method="post">{{ csrf() }}
-<div class="dlg-head"><h3>Agregar proyección</h3><button class="ibtn" data-close aria-label="Cerrar">{{ ic('x') }}</button></div>
-<div class="dlg-body"><div class="row"><div><label class="req">Mes</label><input type="month" name="mes" required value="{{ d.meses[0] }}"></div><div><label class="req">Cantidad</label><input name="cantidad" type="number" step="any" min="0" required style="width:120px"></div></div>
-<label class="req">Producto</label><input name="product_code" list="dem-p" required autocomplete="off" style="width:100%"><datalist id="dem-p">{% for p in prods %}<option value="{{ p.code }} · {{ p.descripcion }}"></option>{% endfor %}</datalist>
-<div class="row"><div><label>Canal (opcional)</label><input name="canal"></div><div class="grow"><label>Observación</label><input name="observacion"></div></div>
-<p class="small muted">Si ya existe la proyección del mismo producto, mes y canal, se reemplaza.</p></div>
-<div class="dlg-foot"><button class="btn sec" data-close>Cancelar</button><button class="btn">Guardar</button></div></form></dialog>
+{% if can('demanda.cargar') %}<dialog class="modal wide" id="dlg-dem"><form method="post" data-borrador>{{ csrf() }}<input type="hidden" name="accion" value="grupo">
+<div class="dlg-head"><h3>Registrar proyección</h3><button type="button" class="ibtn" data-close aria-label="Cerrar">{{ ic('x') }}</button></div>
+<div class="dlg-body"><div class="row"><div><label class="req">Mes</label><input type="month" name="mes" required value="{{ d.meses[0] }}"></div></div>
+<datalist id="dem-p">{% for p in prods %}<option value="{{ p.code }} · {{ p.descripcion }}"></option>{% endfor %}</datalist>
+<div class="tw"><table class="small"><thead><tr><th class="req">Producto</th><th class="req">Cantidad</th><th>Canal (opcional)</th><th>Cliente (opcional)</th><th>Justificación</th><th></th></tr></thead><tbody id="dem-filas">
+<tr class="dynrow"><td><input name="product_code" list="dem-p" autocomplete="off" style="min-width:220px" aria-label="Producto"></td><td><input name="cantidad" type="number" step="any" min="0" style="width:110px" aria-label="Cantidad"></td>
+<td><select name="canal" aria-label="Canal"><option value="">(todos)</option>{% for c in canales %}<option>{{ c }}</option>{% endfor %}</select></td>
+<td><select name="customer_id" aria-label="Cliente" style="max-width:220px"><option value="">(todos)</option>{% for c in clientes %}<option value="{{ c.id }}">{{ c.nombre }}</option>{% endfor %}</select></td>
+<td><input name="observacion" placeholder="por qué esta cantidad" aria-label="Justificación"></td><td><button type="button" class="ibtn" data-delrow aria-label="Quitar">{{ ic('x') }}</button></td></tr></tbody></table></div>
+<p><button type="button" class="sec small" data-addrow="#dem-filas">{{ ic('plus') }} Agregar producto</button></p>
+<p class="small muted">Se envía todo junto: si una fila tiene error no se guarda ninguna. Si un producto ya tiene proyección para el mismo mes, canal y cliente, el cambio requiere justificación y queda pendiente hasta que Gerencia General lo autorice.</p></div>
+<div class="dlg-foot"><button type="button" class="btn sec" data-close>Cancelar</button><button class="btn">Enviar proyección</button></div></form></dialog>
 <dialog class="modal" id="dlg-dem-xls"><form method="post" enctype="multipart/form-data">{{ csrf() }}<input type="hidden" name="accion" value="excel">
 <div class="dlg-head"><h3>Cargar proyección (Excel)</h3><button class="ibtn" data-close aria-label="Cerrar">{{ ic('x') }}</button></div>
 <div class="dlg-body"><p class="small">Columnas: <b>mes</b> (AAAA-MM o fecha), <b>producto</b> (código), <b>cantidad</b>; opcionales <b>canal</b> y <b>observación</b>.</p><input type="file" name="archivo" accept=".xlsx,.xlsm" required></div>

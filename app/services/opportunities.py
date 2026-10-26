@@ -46,7 +46,18 @@ def save_opportunity(user, customer, datos, opp=None):
                           tipo="NUEVO" if customer.es_prospecto else "ADICIONAL")
         db().add(opp)
     opp.titulo = titulo
-    opp.productos = (datos.get("productos") or "").strip()
+    # V7: varios productos del catálogo (se guarda el código; el texto libre se conserva si no es un código)
+    vals = datos.getlist("productos") if hasattr(datos, "getlist") else [datos.get("productos") or ""]
+    from ..models import Product
+    prods = []
+    for v in vals:
+        for x in str(v or "").split(","):
+            x = x.strip()
+            code = x.split(" ")[0].upper() if x else ""
+            item = code if code and db().get(Product, code) is not None else x
+            if item and item not in prods:
+                prods.append(item)
+    opp.productos = ", ".join(prods)
     opp.proyeccion_mensual = _num(datos.get("proyeccion_mensual"))
     opp.proyeccion_kg = _num(datos.get("proyeccion_kg"))
     db().flush()

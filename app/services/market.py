@@ -74,8 +74,8 @@ def _norm(x):
 
 def add_substitute(user, producto_base, sustituto, observacion="", origen="Alta manual"):
     """Registra un sustituto (Comercial). El producto base debe ser uno que ofrecemos."""
-    if not has_perm(user, "costos.cargar"):
-        raise BusinessError("Los productos sustitutos los registra Comercial.")
+    if not (has_perm(user, "costos.cargar") or has_perm(user, "mercado.sustitutos")):
+        raise BusinessError("Los productos sustitutos los registran el Coordinador, el Jefe o el Gerente Comercial.")
     base, sus = _norm(producto_base), _norm(sustituto)
     if not base or not sus:
         raise BusinessError("Indique el producto base y el sustituto.")
@@ -98,8 +98,8 @@ def add_substitute(user, producto_base, sustituto, observacion="", origen="Alta 
 
 
 def remove_substitute(user, x):
-    if not has_perm(user, "costos.cargar"):
-        raise BusinessError("Los productos sustitutos los registra Comercial.")
+    if not (has_perm(user, "costos.cargar") or has_perm(user, "mercado.sustitutos")):
+        raise BusinessError("Los productos sustitutos los registran el Coordinador, el Jefe o el Gerente Comercial.")
     x.activo = False
     audit(user, "SUSTITUTO_DESACTIVADO", "ProductSubstitute", x.id, {"base": x.producto_base, "sustituto": x.sustituto})
 

@@ -214,3 +214,87 @@ def test_alerta_meta_atrasada(s, U):
         pytest.skip("al inicio del mes el avance esperado aún es bajo")
     assert check_goal_alerts(hoy) == 1 and check_goal_alerts(hoy) == 1
     assert s.query(Alert).filter_by(type_code="META_ATRASADA").count() == 1
+
+
+def test_catalogo_carpetas_destacado_y_alta(s, U, app, tmp_path):
+    from app.models import Product
+    from app.services import catalog as ct
+    u = U("jefe.ventas")
+    p = s.get(Product, "PT-905")
+    ct.add_document(u, p, "FICHA_TECNICA", "ficha.pdf", "Ficha técnica 2026")
+    ct.add_document(u, p, "RECETAS", "receta.pdf")
+    docs = ct.documents(p)
+    assert len(docs["FICHA_TECNICA"]) == 1 and len(docs["RECETAS"]) == 1
+    with pytest.raises(BusinessError):
+        ct.add_document(U("asist.ventas"), p, "FOTOS", "x.jpg")
+    ct.set_featured(u, p, "MES", "Campaña de invierno", date.today() + timedelta(days=10))
+    assert p in ct.featured()
+    nuevo = ct.add_product(u, {"code": "PT-9999", "descripcion": "producto ficticio v7", "tipo": "PT", "peso_kg": "1"})
+    assert nuevo.descripcion == "PRODUCTO FICTICIO V7"
+    c = app.test_client()
+    login(c, "jefe.ventas")
+    assert c.get("/ov/catalogo/PT-905").status_code == 200
+    assert "Destacados" in c.get("/ov/catalogo").get_data(as_text=True)
+
+
+def test_oportunidad_varios_productos_y_cotizaciones(s, U, cust, app):
+    from werkzeug.datastructures import MultiDict
+    from app.services import opportunities as op
+    o = op.save_opportunity(U("coord.ventas"), cust(), MultiDict([("titulo", "Ingreso a cadena"),
+                                                                  ("productos", "PT-905 · algo"), ("productos", "PT-902"),
+                                                                  ("productos", "Quinua orgánica")]))
+    assert o.productos == "PT-905, PT-902, Quinua orgánica"
+    q = op.save_quote(U("coord.ventas"), cust(), [{"product_code": "PT-905", "cantidad": 2, "precio": 10}], opp=o)
+    s.commit()
+    c = app.test_client()
+    login(c, "coord.ventas")
+    assert c.get("/ov/cotizaciones").status_code == 200
+    r = c.get(f"/ov/cotizacion/{q.id}?formato=pdf")
+    assert r.data[:4] == b"%PDF"
+
+
+def test_cotizaciones_sap_lectura_y_escritura_bloqueada(s, U, cust):
+    from app.services import sap_sl
+    c = cust()
+    c.codigo_sap = "C0001"
+    s.flush()
+
+    class FakeSL:
+        def get_all(self, path, params=None):
+            if path == "Quotations":
+                return [{"DocNum": 501, "DocDate": "2026-10-20", "DocDueDate": "2026-11-20", "CardCode": "C0001",
+                         "CardName": c.nombre, "DocTotal": 100, "DocumentStatus": "bost_Open",
+                         "DocumentLines": [{"ItemCode": "PT-905", "Quantity": 10, "Price": 10}]}]
+            return []
+    r = sap_sl.pull_quotes(U("coord.ventas"), FakeSL())
+    assert r["nuevas"] == 1
+    assert sap_sl.pull_quotes(U("coord.ventas"), FakeSL())["actualizadas"] == 1
+    from app.models import Quote
+    q = s.query(Quote).filter_by(origen="SAP").one()
+    with pytest.raises(BusinessError, match="no está autorizada"):
+        sap_sl.push_quote(q, U("coord.ventas"))
+
+
+def test_metas_ampliadas_y_proyeccion_por_grupo(s, U, cust):
+    from app.services import margin, supply
+    from app.services.commercial_mgmt import new_customers_and_skus
+    mes = f"{date.today():%Y-%m}"
+    t = margin.save_target(U("coord.ventas"), mes, "GENERAL", "", 1000, 500, 2, 5)
+    assert t.nuevos_clientes == 2 and t.nuevos_sku == 5
+    with pytest.raises(BusinessError):
+        margin.save_target(U("asist.ventas"), mes, "GENERAL", "", 1)
+    assert "clientes" in new_customers_and_skus(date.today().replace(day=1), date.today(), [])
+    filas = [{"product_code": "PT-905", "cantidad": 100, "canal": "", "customer_id": "", "observacion": ""},
+             {"product_code": "PT-902 · x", "cantidad": 50, "canal": "", "customer_id": str(cust().id), "observacion": "Cliente nuevo"}]
+    assert supply.save_forecast_group(U("jefe.ventas"), mes, filas) == {"nuevas": 2, "cambios": 0}
+    with pytest.raises(BusinessError, match="no existe"):
+        supply.save_forecast_group(U("jefe.ventas"), mes, [{"product_code": "NO-EXISTE", "cantidad": 1}])
+    filas[0].update(cantidad=150, observacion="Campaña")
+    assert supply.save_forecast_group(U("jefe.ventas"), mes, filas[:1]) == {"nuevas": 0, "cambios": 1}
+    f = supply.pending_changes()[0]
+    with pytest.raises(BusinessError):
+        supply.decide_change(f, U("jefe.ventas"), True)
+    with pytest.raises(BusinessError, match="motivo"):
+        supply.decide_change(f, U("gerente.general"), False)
+    supply.decide_change(f, U("gerente.general"), True)
+    assert f.cantidad == 150 and not supply.pending_changes()

@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% from "_m.html" import b, csrf %}
+{% extends "base.html" %}{% from "_m.html" import b, csrf, ic, prod_picker %}
 {% block content %}<h1>Oportunidades</h1>
 <p class="muted small">Registro del trabajo diario del ejecutivo con sus clientes y prospectos: acciones (visita, llamada, reunión virtual, mensajería, carta u oficio), oportunidades con productos de interés y proyección mensual, y cotizaciones. Un prospecto pasa a cliente con al menos una acción y su orden de compra (desde la ficha del cliente).</p>
 <div class="kpis">{% for e, t, n in fun.etapas %}<a class="kpi" href="?estado={{ e }}"><b>{{ n }}</b><span>{{ t }}</span></a>{% endfor %}
@@ -8,7 +8,7 @@
 <form method="post" class="card">{{ csrf() }}<h3>Nueva oportunidad</h3>
 <label class="req">Cliente o prospecto</label><select name="customer_id" required><option value="">Elija…</option>{% for c in clientes %}<option value="{{ c.id }}" {{ 'selected' if sel|string == c.id|string }}>{{ '[Prospecto] ' if c.es_prospecto }}{{ c.nombre }}</option>{% endfor %}</select>
 <label class="req">Título</label><input name="titulo" required style="width:100%" placeholder="p. ej. Ingreso de quinua 5 kg a la cadena">
-<label>Productos de interés</label><input name="productos" style="width:100%">
+<label>Productos de interés</label>{{ prod_picker("opp-prods-new", products) }}
 <div class="row"><div><label>Proyección S/ por mes</label><input name="proyeccion_mensual" type="number" step="0.01" min="0"></div><div><label>Proyección kg por mes</label><input name="proyeccion_kg" type="number" step="0.01" min="0"></div></div>
 <p><button>Crear oportunidad</button> <a class="small" href="{{ url_for('com.customer_list') }}">registrar un prospecto nuevo</a></p></form>
 <form method="post" class="card">{{ csrf() }}<input type="hidden" name="accion" value="accion"><h3>Registrar acción con el cliente</h3>

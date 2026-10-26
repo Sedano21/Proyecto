@@ -5,3 +5,8 @@
 {% macro errs(lst, cls='err-list') %}{% if lst %}<ul class="{{ cls }}">{% for e in lst %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}{% endmacro %}
 {% macro ic(name, cls='') %}<svg class="ic {{ cls }}" aria-hidden="true" focusable="false"><use href="#i-{{ name }}"/></svg>{% endmacro %}
 {% macro empty(texto, icono='info') %}<div class="empty"><svg class="ic" aria-hidden="true" focusable="false"><use href="#i-{{ icono }}"/></svg><p>{{ texto }}</p></div>{% endmacro %}
+{# V7: varios productos del catálogo con «+» (oportunidades). selected: texto «COD, COD» #}
+{% macro prod_picker(id, products, selected='', name='productos') %}{% set sel = (selected or '').split(',')|map('trim')|select|list or [''] %}
+<div id="{{ id }}" class="prod-picker">{% for v in sel %}<div class="dynrow row"><input name="{{ name }}" list="{{ id }}-dl" value="{{ v }}" placeholder="Escriba o elija del catálogo" autocomplete="off" class="grow" aria-label="Producto de interés"><button type="button" class="ibtn" data-delrow title="Quitar" aria-label="Quitar producto">{{ ic('x') }}</button></div>{% endfor %}</div>
+<datalist id="{{ id }}-dl">{% for p in products %}<option value="{{ p.code }} · {{ p.descripcion }}"></option>{% endfor %}</datalist>
+<button type="button" class="sec small" data-addrow="#{{ id }}">{{ ic('plus') }} Agregar producto</button>{% endmacro %}

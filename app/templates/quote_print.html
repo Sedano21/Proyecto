@@ -1,6 +1,6 @@
 {% extends "base.html" %}{% from "_m.html" import b %}
-{% block content %}<p class="small"><a href="javascript:history.back()">← Volver</a> · <a href="#" onclick="window.print();return false">Imprimir</a></p>
-<div class="card"><h1>Cotización {{ q.numero }}</h1>
+{% block content %}<p class="small noprint"><a href="#" onclick="window.print();return false">Imprimir</a> · <a href="{{ url_for('com.quote_print', qid=q.id, formato='pdf') }}">Descargar PDF</a></p>
+<div class="card"><img src="{{ url_for('static', filename='img/logo_corporacion_productiva.png') }}" alt="Corporación Productiva" style="height:54px"><h1>Cotización {{ q.numero }}</h1>
 <p>Corporación Productiva · Fecha {{ q.fecha|d }}{% if q.vigencia %} · válida hasta {{ q.vigencia|d }}{% endif %} · {{ b(q.estado) }}</p>
 <p><b>Cliente:</b> {{ q.customer.nombre }} (RUC {{ q.customer.ruc }})</p>
 <table><tr><th>Código</th><th>Descripción</th><th>Unidad</th><th class="r">Cantidad</th><th class="r">Precio S/</th><th class="r">Subtotal S/</th></tr>

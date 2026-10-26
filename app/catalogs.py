@@ -1700,3 +1700,42 @@ ALERT_TYPES += [
      "DEFINIDO", f"{V7}: alertar si el avance de la meta (vendedor, canal o total) está debajo de lo esperado",
      "Una vez por semana mientras el avance esté por debajo del esperado menos la tolerancia.", False),
 ]
+PARAMS += [
+    ("sap_escritura_cotizaciones", False, "bool", "Integración SAP",
+     "Permite registrar en SAP (Service Layer, POST Quotations) las cotizaciones emitidas en el módulo. Es escritura en "
+     "SAP: habilitarlo solo con la autorización de la empresa y un usuario de SAP con ese permiso.", "PENDIENTE",
+     f"{V7}: cotizaciones del módulo visibles en SAP"),
+]
+for _code, _n, _m, _t, _roles in [
+        ("objetivos.registrar", "Registrar objetivos de venta (general, por canal y por vendedor)", "Comercial", "edicion",
+         ["COORD_VENTAS", "JEFE_VENTAS", "GERENTE_COMERCIAL"])]:
+    PERMISSIONS.append((_code, _n, _m, _t))
+    for _r in _roles + ["GERENCIA_GENERAL"]:
+        ROLE_PERMISSIONS.setdefault(_r, []).append((_code, "DEFINIDO", f"{V7}: objetivos registrables por Coordinador, Jefe y Gerente Comercial"))
+    for _r in _roles:
+        if not any(p[0] == "objetivos.ver" for p in ROLE_PERMISSIONS[_r]):
+            ROLE_PERMISSIONS[_r].append(("objetivos.ver", "DEFINIDO", V7))
+PARAMS += [
+    ("demanda_cambio_requiere_gg", True, "bool", "Comercial",
+     "Modificar una proyección de demanda ya registrada requiere la justificación y la autorización de Gerencia General.",
+     "DEFINIDO", f"{V7}: proyección de demanda"),
+]
+ALERT_TYPES += [
+    ("DEMANDA_CAMBIO", "Autorizar cambio de proyección de demanda", "Gerencia", "Proyección de demanda", "MEDIA",
+     ["GERENCIA_GENERAL"], "DEFINIDO", f"{V7}: la modificación de la proyección la autoriza Gerencia General",
+     "Comercial solicita modificar una proyección ya registrada.", True),
+]
+for _code, _n, _m, _t, _roles in [
+        ("demanda.aprobar_cambio", "Autorizar cambios de la proyección de demanda (Gerencia General)", "Comercial", "exclusivo",
+         ["GERENCIA_GENERAL"])]:
+    PERMISSIONS.append((_code, _n, _m, _t))
+    for _r in _roles:
+        ROLE_PERMISSIONS.setdefault(_r, []).append((_code, "DEFINIDO", V7))
+for _code, _n, _m, _t, _roles in [
+        ("mercado.sustitutos", "Registrar productos sustitutos (relación con nuestros productos)", "Comercial", "edicion",
+         ["COORD_VENTAS", "JEFE_VENTAS", "GERENTE_COMERCIAL"])]:
+    PERMISSIONS.append((_code, _n, _m, _t))
+    for _r in _roles + ["GERENCIA_GENERAL"]:
+        ROLE_PERMISSIONS.setdefault(_r, []).append((_code, "DEFINIDO", f"{V7}: sustitutos y competencia por Coordinador, Jefe y Gerente Comercial"))
+if not any(p[0] == "mercado.registrar" for p in ROLE_PERMISSIONS["GERENTE_COMERCIAL"]):
+    ROLE_PERMISSIONS["GERENTE_COMERCIAL"].append(("mercado.registrar", "DEFINIDO", f"{V7}: competencia directa registrada también por el Gerente Comercial"))

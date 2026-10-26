@@ -136,6 +136,10 @@ class Product(Base):
     unidades_por_bulto: Mapped[float | None] = mapped_column(Float, nullable=True)
     tipo: Mapped[str] = mapped_column(String(10), default="")  # PT, MP, GR, EN, SU, ...
     foto: Mapped[str] = mapped_column(String(250), default="")  # foto del catálogo (ronda 23-oct-2026)
+    # V7: destacado del catálogo: MES (producto del mes) o TEMPORADA, con nota y vigencia
+    destacado: Mapped[str] = mapped_column(String(12), default="", server_default="")
+    destacado_nota: Mapped[str] = mapped_column(String(200), default="", server_default="")
+    destacado_hasta: Mapped[date | None] = mapped_column(Date, nullable=True)
     calidad: Mapped[str] = mapped_column(String(30), default="")  # SUPERIOR / EXTRA
     maquina: Mapped[str] = mapped_column(String(30), default="")  # MAQ (E2000, T1000...)
     marca: Mapped[str] = mapped_column(String(60), default="")
@@ -1569,6 +1573,8 @@ class SalesTarget(Base):
     clave: Mapped[str] = mapped_column(String(120), default="")  # canal o id del vendedor
     soles: Mapped[float] = mapped_column(Float, default=0)
     kg: Mapped[float | None] = mapped_column(Float, nullable=True)
+    nuevos_clientes: Mapped[int | None] = mapped_column(Integer, nullable=True)  # V7
+    nuevos_sku: Mapped[int | None] = mapped_column(Integer, nullable=True)  # V7: SKU nuevos en clientes existentes
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     ts: Mapped[datetime] = mapped_column(DateTime, default=now)
     __table_args__ = (UniqueConstraint("mes", "alcance", "clave", name="uq_target"),)
@@ -1645,6 +1651,8 @@ class Quote(Base):
     total: Mapped[float] = mapped_column(Float, default=0)
     estado: Mapped[str] = mapped_column(String(12), default="EMITIDA")  # EMITIDA / ACEPTADA / RECHAZADA / VENCIDA
     observacion: Mapped[str] = mapped_column(Text, default="")
+    origen: Mapped[str] = mapped_column(String(10), default="MODULO", server_default="MODULO")  # MODULO / SAP (V7)
+    sap_docnum: Mapped[str] = mapped_column(String(20), default="", server_default="")  # N° de la oferta en SAP
     order_id: Mapped[int | None] = mapped_column(ForeignKey("sales_orders.id"), nullable=True)
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     ts: Mapped[datetime] = mapped_column(DateTime, default=now)
@@ -1781,6 +1789,8 @@ class DemandForecast(Base):
     canal: Mapped[str] = mapped_column(String(60), default="")
     customer_id: Mapped[int | None] = mapped_column(ForeignKey("customers.id"), nullable=True)
     observacion: Mapped[str] = mapped_column(String(250), default="")
+    # V7: cambio solicitado sobre una proyección ya registrada; lo autoriza Gerencia General
+    cambio: Mapped[dict] = mapped_column(JSON, default=dict)
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     ts: Mapped[datetime] = mapped_column(DateTime, default=now)
     product = relationship("Product")
@@ -1838,3 +1848,17 @@ class CustomerPenalty(Base):
     customer = relationship("Customer")
     order = relationship("SalesOrder")
     vendedor = relationship("User", foreign_keys=[vendedor_id])
+
+
+class ProductDocument(Base):
+    """Carpeta del producto (V7): ficha técnica, fotos, certificados, recetas y estrategias comerciales."""
+    __tablename__ = "product_documents"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    product_code: Mapped[str] = mapped_column(ForeignKey("products.code"), index=True)
+    carpeta: Mapped[str] = mapped_column(String(20))  # FICHA_TECNICA / FOTOS / CERTIFICADOS / RECETAS / ESTRATEGIAS
+    nombre: Mapped[str] = mapped_column(String(200), default="")
+    archivo: Mapped[str] = mapped_column(String(250))
+    vigente: Mapped[bool] = mapped_column(Boolean, default=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    user = relationship("User")

@@ -121,6 +121,7 @@ def _metas(mes, ovs_mes, tipo, usuarios):
         for alc, k in (("GENERAL", ""), ("CANAL", order_channel(o)), ("VENDEDOR", str(o.vendedor_id or ""))):
             real[alc][k][0] += so
             real[alc][k][1] += kg
+    nuevos = new_customers_and_skus(ini, fin, ovs_mes)
     filas = []
     for t in db().execute(select(SalesTarget).where(SalesTarget.mes == mes)).scalars():
         so, kg = real[t.alcance][t.clave] if t.clave in real.get(t.alcance, {}) else (0.0, 0.0)
@@ -131,7 +132,9 @@ def _metas(mes, ovs_mes, tipo, usuarios):
                       "meta_soles": t.soles, "meta_kg": t.kg, "soles": round(so, 2), "kg": round(kg, 1),
                       "avance_soles": av_s, "avance_kg": av_k, "atrasada": atrasada,
                       "falta_soles": round(max(t.soles - so, 0), 2) if t.soles else None,
-                      "nuevos_clientes": getattr(t, "nuevos_clientes", None), "nuevos_sku": getattr(t, "nuevos_sku", None)})
+                      "meta_nuevos_clientes": t.nuevos_clientes, "meta_nuevos_sku": t.nuevos_sku,
+                      "nuevos_clientes": len(nuevos["clientes"].get((t.alcance, t.clave), set())),
+                      "nuevos_sku": len(nuevos["sku"].get((t.alcance, t.clave), set()))})
     filas.sort(key=lambda x: ({"GENERAL": 0, "CANAL": 1, "VENDEDOR": 2}[x["alcance"]], x["nombre"]))
     return {"mes": mes, "esperado": esperado, "filas": filas, "atrasadas": [f for f in filas if f["atrasada"]]}
 
@@ -247,12 +250,13 @@ def gestion(desde=None, hasta=None, filtros=None, ver_costos=False, user=None):
     if ver_costos:
         from .margin import margin
         margen = margin(desde, hasta, "CANAL", "PEDIDO")
+    mercado = _mercado(desde, hasta, ver_costos)
     reco = _recomendaciones(nivel, metas, personas, pendientes, sin_mov, con_stock, pagos, ingresadas)
     return {"desde": desde, "hasta": hasta, "filtros": f, "ingresadas": ingresadas, "atendidas": atendidas,
             "pendientes": pendientes, "facturacion": facturacion, "nivel": nivel, "formulas": FORMULAS, "por": por,
             "metas": metas, "personas": personas, "embudo": embudo, "menos_vendidos": menos,
             "sin_movimiento": sin_mov[:30], "sin_movimiento_con_stock": [p for p in sin_mov if p.code in con_stock][:30],
-            "presentaciones_sin_mov": pres_sin, "pagos": pagos, "margen": margen,
+            "presentaciones_sin_mov": pres_sin, "pagos": pagos, "margen": margen, "mercado": mercado,
             "canceladas": sum(1 for o in todas if o.estado == "CANCELADA"), "recomendaciones": reco,
             "penalidades": indicator(desde, hasta)["total"]}
 
@@ -321,3 +325,44 @@ def check_goal_alerts(hoy=None):
                     dedup_key=f"META:{mes}:{semana}:{f['alcance']}:{f['nombre']}")
         n += 1
     return n
+
+
+def new_customers_and_skus(ini, fin, ovs_mes):
+    """Clientes nuevos (su primera OV es del mes) y SKU nuevos en clientes existentes (primera vez que el cliente compra
+    ese producto), por alcance: GENERAL, CANAL y VENDEDOR."""
+    from .reports import order_channel
+    previas = list(db().execute(select(SalesOrder).where(SalesOrder.fecha_emision < ini,
+                                                         SalesOrder.estado != "CANCELADA")).scalars())
+    con_compra = {o.customer_id for o in previas}
+    compro = {(o.customer_id, l.product_code) for o in previas for l in o.lines if l.activa}
+    clientes, sku = defaultdict(set), defaultdict(set)
+    for o in ovs_mes:
+        claves = [("GENERAL", ""), ("CANAL", order_channel(o)), ("VENDEDOR", str(o.vendedor_id or ""))]
+        for k in claves:
+            if o.customer_id not in con_compra:
+                clientes[k].add(o.customer_id)
+            else:
+                for l in o.lines:
+                    if l.activa and (o.customer_id, l.product_code) not in compro:
+                        sku[k].add((o.customer_id, l.product_code))
+    return {"clientes": clientes, "sku": sku}
+
+
+def _mercado(desde, hasta, ver_costos):
+    """Precio y costo frente al mercado (competencia directa y sustitutos registrados por Comercial), por producto base."""
+    from .costs import cost_per_kg
+    from .market import analysis
+    filas = [f for f in analysis(max((hasta - desde).days, 30))["venta"] if f["prom_competencia"] or f["prom_sustitutos"]]
+    if ver_costos:
+        por_base = defaultdict(list)
+        for p in db().execute(select(Product).where(Product.tipo.in_(("PT", "GR")))).scalars():
+            base = ((p.producto_base or p.descripcion or "").upper().split("*")[0]).strip()
+            c = cost_per_kg(p)
+            if c:
+                por_base[base].append(c)
+        for f in filas:
+            cs = por_base.get(f["producto"])
+            f["costo_kg"] = round(sum(cs) / len(cs), 4) if cs else None
+            ref = f["prom_competencia"] or f["prom_sustitutos"]
+            f["costo_vs_mercado"] = round((f["costo_kg"] - ref) / ref * 100, 1) if f["costo_kg"] and ref else None
+    return filas

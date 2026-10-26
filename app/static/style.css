@@ -446,3 +446,8 @@ details.ms .ms-pop{position:absolute;z-index:30;top:100%;left:0;margin-top:4px;b
 details.ms .ms-pop label.chk{display:flex;gap:8px;align-items:center;font-weight:400;margin:0;padding:3px 2px}
 .meter{position:relative;overflow:visible}.meter i{border-radius:4px}.meter em{position:absolute;top:-4px;width:2px;height:16px;background:var(--ink);opacity:.55}
 @media (max-width:640px){details.ms{min-width:0;flex:1 1 100%}details.ms .ms-pop{position:static;box-shadow:none}.reco-big{flex-direction:column;gap:6px;font-size:1rem}}
+/* V7: catálogo */
+a.prod-card{color:inherit;text-decoration:none;transition:transform .12s ease,box-shadow .12s ease}a.prod-card:hover{transform:translateY(-2px);box-shadow:0 10px 24px rgba(0,0,0,.12)}
+.prod-hero img{width:100%;max-height:340px;object-fit:contain;border-radius:10px;background:var(--surface)}
+.doc-list{list-style:none;margin:0;padding:0;display:grid;gap:6px}.doc-list li{display:flex;gap:8px;align-items:center}.doc-list li>span{flex:1;min-width:0;overflow-wrap:anywhere}
+.featured{border-top:3px solid var(--cp-verde)}

@@ -34,11 +34,32 @@ def demand():
                 arch.save(path)
                 return ssvc.import_forecast(g.user, path)
             return act(_x, lambda r: f"{r[0]} fila(s) cargadas." + (f" Errores: {' | '.join(r[1][:5])}" if r[1] else ""), back)
-        return act(lambda: ssvc.save_forecast(g.user, f.get("mes"), f.get("product_code"), f.get("cantidad"), f.get("canal", ""),
-                                              None, f.get("observacion", "")), "Proyección guardada.", back)
+        if f.get("accion") == "grupo":
+            filas = [{"product_code": p, "cantidad": q, "canal": c, "customer_id": cl, "observacion": o} for p, q, c, cl, o in
+                     zip(f.getlist("product_code"), f.getlist("cantidad"), f.getlist("canal"), f.getlist("customer_id"),
+                         f.getlist("observacion"))]
+            return act(lambda: ssvc.save_forecast_group(g.user, f.get("mes"), filas),
+                       lambda r: f"{r['nuevas']} proyección(es) registradas" + (f"; {r['cambios']} cambio(s) enviados a "
+                                                                              "Gerencia General para su autorización" if r["cambios"] else "") + ".",
+                       back)
+        abort(400)
     d = ssvc.forecast_view(request.args.get("desde") or None, int(request.args.get("meses") or 3))
     prods = list(db().execute(select(Product).where(Product.tipo.in_(["PT", "GR", "MP"])).order_by(Product.code)).scalars())
-    return render_template("demand.html", d=d, prods=prods, f=request.args)
+    from ..models import Customer
+    from .comercial_mb2 import _canales
+    clientes = list(db().execute(select(Customer).where(Customer.es_prospecto.is_(False)).order_by(Customer.nombre)).scalars())
+    return render_template("demand.html", d=d, prods=prods, f=request.args, canales=_canales(), clientes=clientes,
+                           pendientes=ssvc.pending_changes())
+
+
+@bp.route("/demanda/cambio/<int:fid>", methods=["POST"])
+@perm_required("demanda.aprobar_cambio")
+def demand_change(fid):
+    from ..models import DemandForecast
+    fc = db().get(DemandForecast, fid) or abort(404)
+    ok = request.form.get("decision") == "aprobar"
+    return act(lambda: ssvc.decide_change(fc, g.user, ok, request.form.get("comentario", "")),
+               "Cambio autorizado." if ok else "Cambio no autorizado.", url_for("sup.demand"))
 
 
 @bp.route("/rotacion")

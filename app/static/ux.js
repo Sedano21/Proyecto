@@ -14,7 +14,7 @@
   document.addEventListener('click', function (e) {
     var op = e.target.closest('[data-open]');
     if (op) {
-      var d = document.getElementById(op.getAttribute('data-open'));
+      var d = document.getElementById(op.getAttribute('data-open').replace(/^#/, ''));
       if (d && d.showModal) {
         e.preventDefault();
         Object.keys(op.dataset).forEach(function (k) {

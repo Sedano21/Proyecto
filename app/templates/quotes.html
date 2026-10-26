@@ -1,0 +1,14 @@
+{% extends "base.html" %}{% from "_m.html" import b, csrf, ic, empty %}
+{% block content %}
+<div class="page-head"><div><h1>Cotizaciones</h1><p class="sub">Emitidas en el módulo y ofertas de venta de SAP en una sola lista.</p></div>
+<div class="row noprint">{% if sap_ok %}<form method="post">{{ csrf() }}<input type="hidden" name="accion" value="traer_sap"><button class="sec">{{ ic('refresh') }} Traer de SAP</button></form>{% else %}<span class="small muted" title="Configure SAP_SL_URL, SAP_SL_COMPANY, SAP_SL_USER y SAP_SL_PASSWORD en el servidor">Conexión con SAP no configurada</span>{% endif %}
+<a class="btn" href="{{ url_for('com.opportunities') }}">{{ ic('plus') }} Nueva (desde una oportunidad)</a></div></div>
+<form class="row card noprint" method="get"><div><label>Origen</label><div class="seg">{% for v, t in [('', 'Todas'), ('MODULO', 'Módulo'), ('SAP', 'SAP')] %}<label><input type="radio" name="origen" value="{{ v }}" {{ 'checked' if origen == v }} onchange="this.form.submit()"><span>{{ t }}</span></label>{% endfor %}</div></div></form>
+{% if rows %}<div class="cards">{% for q in rows %}<article class="xcard"><div class="xcard-head"><b>{{ q.numero }}</b>{{ b(q.estado) }}</div>
+<div class="meta">{{ q.customer.nombre }} · {{ q.fecha|d }}{% if q.vigencia %} · vence {{ q.vigencia|d }}{% endif %} · <span class="b {{ 'info' if q.origen == 'SAP' else 'ok' }}">{{ 'SAP' if q.origen == 'SAP' else 'Módulo' }}</span>{% if q.sap_docnum and q.origen != 'SAP' %} · en SAP N° {{ q.sap_docnum }}{% endif %}</div>
+<div class="big">S/ {{ q.total|n }}</div><p class="small muted">{{ q.lineas|length }} producto(s){{ ' · ' ~ q.observacion[:80] if q.observacion }}</p>
+<div class="row"><a class="btn sec small" href="{{ url_for('com.quote_print', qid=q.id) }}">{{ ic('eye') }} Ver / imprimir</a><a class="btn sec small" href="{{ url_for('com.quote_print', qid=q.id, formato='pdf') }}">{{ ic('download') }} PDF</a>
+{% if escritura and q.origen != 'SAP' and not q.sap_docnum %}<form method="post" data-confirm="¿Registrar la cotización {{ q.numero }} en SAP?">{{ csrf() }}<input type="hidden" name="accion" value="enviar_sap"><input type="hidden" name="id" value="{{ q.id }}"><button class="small">Registrar en SAP</button></form>{% endif %}</div></article>{% endfor %}</div>
+{% else %}{{ empty('Sin cotizaciones.', 'file') }}{% endif %}
+{% if not escritura %}<p class="small muted">Registrar en SAP las cotizaciones del módulo es escritura en SAP: se habilita con el parámetro «sap_escritura_cotizaciones» cuando la empresa lo autorice.</p>{% endif %}
+{% endblock %}

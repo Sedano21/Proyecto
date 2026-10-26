@@ -230,9 +230,9 @@ def margin(desde=None, hasta=None, agrupar="CANAL", base="FACTURADO", canal="", 
 
 
 # ------------------------------------------------------------------ objetivos de venta
-def save_target(user, mes, alcance, clave, soles, kg=None):
-    if not has_perm(user, "comercial.configurar"):
-        raise BusinessError("Los objetivos los configura el Jefe Comercial.")
+def save_target(user, mes, alcance, clave, soles, kg=None, nuevos_clientes=None, nuevos_sku=None):
+    if not (has_perm(user, "comercial.configurar") or has_perm(user, "objetivos.registrar")):
+        raise BusinessError("Los objetivos los registran el Coordinador, el Jefe o el Gerente Comercial.")
     alcance = (alcance or "").upper()
     if alcance not in ("GENERAL", "CANAL", "VENDEDOR"):
         raise BusinessError("Alcance inválido.")
@@ -246,10 +246,18 @@ def save_target(user, mes, alcance, clave, soles, kg=None):
     if t is None:
         t = SalesTarget(mes=mes, alcance=alcance, clave=clave)
         db().add(t)
-    t.soles = float(soles or 0)
-    t.kg = float(kg) if kg not in (None, "") else None
+    try:
+        t.soles = float(soles or 0)
+        t.kg = float(kg) if kg not in (None, "") else None
+        t.nuevos_clientes = int(nuevos_clientes) if nuevos_clientes not in (None, "") else None
+        t.nuevos_sku = int(nuevos_sku) if nuevos_sku not in (None, "") else None
+    except ValueError:
+        raise BusinessError("Valores del objetivo inválidos.")
+    if t.soles < 0 or (t.kg or 0) < 0 or (t.nuevos_clientes or 0) < 0 or (t.nuevos_sku or 0) < 0:
+        raise BusinessError("Los objetivos no pueden ser negativos.")
     t.user_id = user.id
-    audit(user, "OBJETIVO_VENTA", "SalesTarget", f"{mes}/{alcance}/{clave}", {"soles": t.soles, "kg": t.kg})
+    audit(user, "OBJETIVO_VENTA", "SalesTarget", f"{mes}/{alcance}/{clave}",
+          {"soles": t.soles, "kg": t.kg, "nuevos_clientes": t.nuevos_clientes, "nuevos_sku": t.nuevos_sku})
     return t
 
 

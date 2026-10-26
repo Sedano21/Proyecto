@@ -7,7 +7,7 @@ from flask import abort, current_app, g, render_template, request, url_for
 from sqlalchemy import select
 
 from ..db import db
-from ..models import (Customer, IncentiveRule, MarginInvestment, Opportunity, Product, ProductGTIN, Quote, SalesTarget,
+from ..models import (Customer, IncentiveRule, MarginInvestment, Opportunity, Product, ProductGTIN, Quote, SalesOrder, SalesTarget,
                       User)
 from ..services import margin as msvc
 from ..services import opportunities as opsvc
@@ -46,7 +46,8 @@ def opportunities():
     a = request.args
     rows = opsvc.listing(g.user, a.get("estado", ""), a.get("vendedor_id") or None)
     clientes = list(db().execute(select(Customer).order_by(Customer.es_prospecto.desc(), Customer.nombre)).scalars())
-    return render_template("opportunities.html", rows=rows, fun=opsvc.funnel(g.user, f_date("desde"), f_date("hasta")),
+    products = list(db().execute(select(Product).where(Product.tipo.in_(["PT", "GR", "MP"])).order_by(Product.code)).scalars())
+    return render_template("opportunities.html", rows=rows, fun=opsvc.funnel(g.user, f_date("desde"), f_date("hasta")), products=products,
                            estados=opsvc.ESTADOS, clientes=clientes, sel=a.get("customer_id", ""),
                            tipos=param("tipos_accion_cliente", []) or [], vendedores=_vendedores(), f=a, today=date.today())
 
@@ -85,7 +86,41 @@ def opportunity_detail(oid):
 @perm_required("oportunidades.registrar", "oportunidades.ver_todas")
 def quote_print(qid):
     q = db().get(Quote, qid) or abort(404)
-    return render_template("quote_print.html", q=q)
+    html = render_template("quote_print.html", q=q)
+    if request.args.get("formato") == "pdf":  # V7: descargar la cotización en PDF
+        import io
+        from flask import send_file
+        from ..services import pdfreport
+        return send_file(io.BytesIO(pdfreport.html_to_pdf(html, f"Cotización {q.numero}")), mimetype="application/pdf",
+                         as_attachment=True, download_name=f"cotizacion_{q.numero}.pdf")
+    return html
+
+
+@bp.route("/cotizaciones", methods=["GET", "POST"])
+@perm_required("oportunidades.registrar", "oportunidades.ver_todas")
+def quotes():
+    """V7: cotizaciones del módulo y de SAP en una sola lista; traer de SAP, imprimir/descargar y (si está autorizado)
+    registrar en SAP las del módulo."""
+    from ..services import sap_sl
+    if request.method == "POST":
+        acc = request.form.get("accion")
+        if acc == "traer_sap":
+            return act(lambda: sap_sl.pull_quotes(g.user), lambda r: f"SAP: {r['nuevas']} cotizaciones nuevas, "
+                       f"{r['actualizadas']} actualizadas" + (f", {r['sin_cliente']} sin cliente en el módulo" if r["sin_cliente"] else "") + ".",
+                       url_for("com.quotes"))
+        if acc == "enviar_sap":
+            q = db().get(Quote, int(request.form.get("id") or 0)) or abort(404)
+            return act(lambda: sap_sl.push_quote(q, g.user), lambda n: f"Cotización registrada en SAP con el N° {n}.",
+                       url_for("com.quotes"))
+        abort(400)
+    rows = list(db().execute(select(Quote).order_by(Quote.fecha.desc(), Quote.id.desc()).limit(300)).scalars())
+    if "oportunidades.ver_todas" not in g.perms:
+        rows = [q for q in rows if q.user_id == g.user.id or (q.customer.vendedor_id == g.user.id)]
+    origen = request.args.get("origen", "")
+    if origen:
+        rows = [q for q in rows if q.origen == origen]
+    return render_template("quotes.html", rows=rows, origen=origen, sap_ok=sap_sl.configured(),
+                           escritura=bool(param("sap_escritura_cotizaciones", False)))
 
 
 # ------------------------------------------------------------------ configuración comercial (Jefe Comercial)
@@ -180,12 +215,40 @@ def _margin_xlsx(d):
                      mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 
-@bp.route("/objetivos")
-@perm_required("objetivos.ver")
+@bp.route("/objetivos", methods=["GET", "POST"])
+@perm_required("objetivos.ver", "objetivos.registrar")
 def targets():
+    if request.method == "POST":
+        f = request.form
+
+        def _guardar():
+            n = 0
+            for alc, cl, so, kg, nc, ns in zip(f.getlist("alcance"), f.getlist("clave"), f.getlist("soles"), f.getlist("kg"),
+                                               f.getlist("nuevos_clientes"), f.getlist("nuevos_sku")):
+                if not (so or kg or nc or ns):
+                    continue
+                msvc.save_target(g.user, f.get("mes"), alc, cl, so, kg, nc, ns)
+                n += 1
+            if not n:
+                raise BusinessError("Complete al menos un objetivo.")
+            return n
+        return act(_guardar, lambda n: f"{n} objetivo(s) guardados.", url_for("com.targets", mes=f.get("mes")))
     d = msvc.targets_progress(request.args.get("mes"))
+    from ..services.commercial_mgmt import _metas
+    from datetime import timedelta as _td
+    mes = d["mes"]
+    ini = date(int(mes[:4]), int(mes[5:7]), 1)
+    fin = (ini.replace(day=28) + _td(days=4)).replace(day=1) - _td(days=1)
+    ovs = [o for o in db().execute(select(SalesOrder).where(SalesOrder.fecha_emision >= ini, SalesOrder.fecha_emision <= fin)).scalars()
+           if o.estado not in ("CANCELADA", "BORRADOR", "REGULARIZACION_OBSERVADA")]
+    usuarios = {str(u.id): u.nombre for u in db().execute(select(User)).scalars()}
+    d["v7"] = _metas(mes, ovs, "", usuarios)
+    vendedores = list(db().execute(select(User).where(User.role_code.in_(("EJECUTIVO_VENTAS", "COORD_VENTAS", "JEFE_VENTAS")),
+                                                      User.activo.is_(True)).order_by(User.nombre)).scalars())
+    d["vendedores"], d["canales"] = vendedores, _canales()
     if "comercial.configurar" not in g.perms and "margen.ver" not in g.perms and g.user.role_code == "EJECUTIVO_VENTAS":
         d["filas"] = [x for x in d["filas"] if x["t"].alcance != "VENDEDOR" or x["t"].clave == str(g.user.id)]
+        d["v7"]["filas"] = [x for x in d["v7"]["filas"] if x["alcance"] != "VENDEDOR" or x["nombre"] == g.user.nombre]
     return render_template("targets.html", d=d)
 
 
@@ -199,9 +262,13 @@ def incentives():
 @bp.route("/catalogo", methods=["GET", "POST"])
 @perm_required("catalogo.ver", "catalogo.fotos")
 def catalog():
+    from ..services import catalog as ctsvc
     if request.method == "POST":
         if "catalogo.fotos" not in g.perms:
             abort(403)
+        if request.form.get("accion") == "nuevo":
+            return act(lambda: ctsvc.add_product(g.user, request.form), lambda p: f"Producto {p.code} agregado al catálogo.",
+                       url_for("com.catalog"), redirect_fn=lambda p: url_for("com.catalog_item", code=p.code))
 
         def _do():
             import os
@@ -227,12 +294,56 @@ def catalog():
                    url_for("com.catalog"))
     q = (request.args.get("q") or "").strip().upper()
     rows = list(db().execute(select(Product).where(Product.tipo.in_(["PT", "GR", "MP"])).order_by(Product.code)).scalars())
+    if request.args.get("destacado"):
+        rows = [p for p in rows if p.destacado == request.args["destacado"]]
     if q:
         rows = [p for p in rows if q in p.code.upper() or q in (p.descripcion or "").upper() or q in (p.marca or "").upper()]
     if request.args.get("con_foto") == "1":
         rows = [p for p in rows if p.foto]
     from ..services.orders import unit_for
-    return render_template("catalog.html", rows=rows, q=q, unit_for=unit_for, con_foto=request.args.get("con_foto", ""))
+    return render_template("catalog.html", rows=rows, q=q, unit_for=unit_for, con_foto=request.args.get("con_foto", ""),
+                           destacados=ctsvc.featured(), dest_txt=ctsvc.DESTACADOS, dest=request.args.get("destacado", ""))
+
+
+@bp.route("/catalogo/<code>", methods=["GET", "POST"])
+@perm_required("catalogo.ver", "catalogo.fotos")
+def catalog_item(code):
+    """V7: carpeta del producto (ficha técnica, fotos, certificados, recetas, estrategias) y producto del mes."""
+    from ..models import ProductDocument
+    from ..services import catalog as ctsvc
+    from ..services.distribution import save_upload
+    p = db().get(Product, code) or abort(404)
+    back = url_for("com.catalog_item", code=code)
+    if request.method == "POST":
+        fm = request.form
+        acc = fm.get("accion")
+        if acc == "documento":
+            def _doc():
+                n = 0
+                for fs in request.files.getlist("archivos"):
+                    if fs and fs.filename:
+                        arch = save_upload(fs, current_app.config["UPLOAD_DIR"], f"prod_{code}_{fm.get('carpeta', '').lower()}")
+                        ctsvc.add_document(g.user, p, fm.get("carpeta", ""), arch, fm.get("nombre") or fs.filename)
+                        n += 1
+                if not n:
+                    raise BusinessError("Adjunte al menos un archivo.")
+                return n
+            return act(_doc, lambda n: f"{n} archivo(s) agregados a la carpeta.", back)
+        if acc == "foto":
+            return act(lambda: ctsvc.set_photo(g.user, p, save_upload(request.files.get("foto"), current_app.config["UPLOAD_DIR"],
+                                                                      f"foto_{code}")), "Foto actualizada.", back)
+        if acc == "retirar":
+            d = db().get(ProductDocument, int(fm.get("doc_id") or 0))
+            if d is None or d.product_code != code:
+                abort(404)
+            return act(lambda: ctsvc.retire_document(g.user, d), "Archivo retirado de la carpeta.", back)
+        if acc == "destacado":
+            return act(lambda: ctsvc.set_featured(g.user, p, fm.get("destacado", ""), fm.get("nota", ""), f_date("hasta")),
+                       "Catálogo actualizado.", back)
+        abort(400)
+    from ..services.orders import unit_for
+    return render_template("catalog_item.html", p=p, docs=ctsvc.documents(p), carpetas=ctsvc.CARPETAS,
+                           dest_txt=ctsvc.DESTACADOS, unit_for=unit_for)
 
 
 # ------------------------------------------------------------------ precios de mercado por aprobar

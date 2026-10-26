@@ -311,3 +311,89 @@ def scheduled_sync(ahora=None):
             alerts.emit("CARGA_SAP_DESACTUALIZADA", f"Sincronización con SAP fallida: {TIPOS_SAP.get(tipo, tipo)}", str(e),
                         "UploadBatch", "", dedup_key=f"SAP_SL_ERR:{tipo}:{ahora:%Y%m%d%H}")
     return n
+
+
+# ------------------------------------------------------------------ cotizaciones (ofertas de venta) – V7
+def pull_quotes(user, sl=None, dias=90):
+    """Trae de SAP las ofertas de venta (Quotations) de los últimos días y las registra como cotizaciones del módulo
+    (origen SAP), sin duplicar: se identifican por su número de documento de SAP. Solo lectura en SAP."""
+    from sqlalchemy import select
+    from ..db import db
+    from ..models import Customer, Product, Quote
+    from .core import has_perm
+    if not (has_perm(user, "oportunidades.registrar") or has_perm(user, "oportunidades.ver_todas")):
+        raise BusinessError("Su rol no gestiona cotizaciones.")
+    desde = (date.today() - timedelta(days=dias)).isoformat()
+    own = sl is None
+    sl = sl or ServiceLayer()
+    if own:
+        sl.login()
+    try:
+        docs = sl.get_all("Quotations", {"$filter": f"DocDate ge '{desde}'",
+                                         "$select": "DocNum,DocDate,DocDueDate,CardCode,CardName,Comments,DocumentStatus,"
+                                                    "DocTotal,DocumentLines"})
+        bps = _bp_index(sl, [d.get("CardCode") for d in docs])
+    finally:
+        if own:
+            sl.logout()
+    nuevas = actualizadas = sin_cliente = 0
+    for d in docs:
+        bp = bps.get(d.get("CardCode"), {})
+        ruc = bp.get("FederalTaxID") or ""
+        c = db().execute(select(Customer).where(Customer.ruc == ruc)).scalars().first() if ruc else None
+        if c is None:
+            c = db().execute(select(Customer).where(Customer.codigo_sap == d.get("CardCode"))).scalars().first()
+        if c is None:
+            sin_cliente += 1
+            continue
+        filas = []
+        for ln in d.get("DocumentLines") or []:
+            p = db().get(Product, ln.get("ItemCode") or "")
+            filas.append({"product_code": ln.get("ItemCode"), "descripcion": (p.descripcion if p else ln.get("ItemDescription")) or "",
+                          "cantidad": float(ln.get("Quantity") or 0), "precio": float(ln.get("Price") or 0),
+                          "um": ln.get("UoMCode") or ""})
+        num = str(d.get("DocNum"))
+        q = db().execute(select(Quote).where(Quote.sap_docnum == num, Quote.origen == "SAP")).scalars().first()
+        estado = "EMITIDA" if d.get("DocumentStatus") in (None, "bost_Open") else "ACEPTADA"
+        if q is None:
+            q = Quote(numero=f"SAP-{num}", customer_id=c.id, fecha=_d(d.get("DocDate")) or date.today(),
+                      vigencia=_d(d.get("DocDueDate")), lineas=filas, total=float(d.get("DocTotal") or 0),
+                      observacion=d.get("Comments") or "", user_id=user.id, origen="SAP", sap_docnum=num, estado=estado)
+            db().add(q)
+            db().flush()
+            nuevas += 1
+        else:
+            q.lineas, q.total, q.vigencia = filas, float(d.get("DocTotal") or 0), _d(d.get("DocDueDate"))
+            if q.estado == "EMITIDA":
+                q.estado = estado
+            actualizadas += 1
+    audit(user, "SAP_COTIZACIONES", "Quote", "", {"nuevas": nuevas, "actualizadas": actualizadas, "sin_cliente": sin_cliente})
+    return {"nuevas": nuevas, "actualizadas": actualizadas, "sin_cliente": sin_cliente}
+
+
+def push_quote(q, user, sl=None):
+    """Registra en SAP una cotización del módulo (POST Quotations). Es ESCRITURA en SAP: solo funciona si el parámetro
+    «sap_escritura_cotizaciones» fue habilitado con la autorización de la empresa; por defecto está deshabilitado."""
+    if not param("sap_escritura_cotizaciones", False):
+        raise BusinessError("La escritura de cotizaciones en SAP no está autorizada (parámetro «sap_escritura_cotizaciones»).")
+    if q.origen == "SAP" or q.sap_docnum:
+        raise BusinessError("La cotización ya está en SAP.")
+    card = q.customer.codigo_sap
+    if not card:
+        raise BusinessError("El cliente no tiene código de SAP.")
+    body = {"CardCode": card, "DocDate": q.fecha.isoformat(), "DocDueDate": (q.vigencia or q.fecha).isoformat(),
+            "Comments": f"Cotización {q.numero} del módulo. {q.observacion or ''}"[:250],
+            "DocumentLines": [{"ItemCode": f["product_code"], "Quantity": f["cantidad"], "UnitPrice": f["precio"]}
+                              for f in q.lineas]}
+    own = sl is None
+    sl = sl or ServiceLayer()
+    if own:
+        sl.login()
+    try:
+        r = sl._req("POST", "Quotations", body)
+    finally:
+        if own:
+            sl.logout()
+    q.sap_docnum = str(r.get("DocNum") or "")
+    audit(user, "SAP_COTIZACION_ENVIADA", "Quote", q.numero, {"sap_docnum": q.sap_docnum})
+    return q.sap_docnum
