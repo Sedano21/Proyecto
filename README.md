@@ -16,12 +16,13 @@ python -m app.cli demo
 python run.py                                          # http://127.0.0.1:5000  · contraseña demo: Demo2026!
 ```
 
-Pruebas: `pip install -r requirements-dev.txt && python -m pytest tests -v` (284 pruebas; también en PostgreSQL con TEST_DATABASE_URL).
+Pruebas: `pip install -r requirements-dev.txt && python -m pytest tests -v` (309 pruebas; también en PostgreSQL con TEST_DATABASE_URL).
 
 ## Documentación entregada (`docs/`)
 
 | Documento | Contenido |
 |---|---|
+| [23_OBSERVACIONES_V7](docs/23_OBSERVACIONES_V7.md) | Observaciones del módulo V7: regularización, penalidades, informe de gestión comercial, catálogo, cotizaciones SAP, metas, proyección, turnos, movimientos, carga chofer→auxiliar, GEOSATELITAL |
 | [01_INVENTARIO_FUENTES](docs/01_INVENTARIO_FUENTES.md) | Los 30 archivos analizados, qué contiene cada uno y cómo se usó |
 | [02_ESPECIFICACION_CONSOLIDADA](docs/02_ESPECIFICACION_CONSOLIDADA.md) | Alcance consolidado, contradicciones, vacíos, dependencias, decisiones técnicas y **preguntas Q1–Q17** (Q1, Q3, Q4 resueltas) |
 | [03_MATRIZ_TRAZABILIDAD](docs/03_MATRIZ_TRAZABILIDAD.md) | 184 requerimientos (IF + TO-BE + decisiones): fuente → implementación → prueba → estado |

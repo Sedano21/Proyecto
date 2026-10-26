@@ -456,3 +456,5 @@ a.prod-card{color:inherit;text-decoration:none;transition:transform .12s ease,bo
 .mov-times{display:flex;flex-wrap:wrap;gap:14px;margin:8px 0;padding:8px 10px;border-radius:9px;background:var(--surface)}
 .mov-times>div{display:flex;flex-direction:column;gap:2px;position:relative;padding-right:30px}.mov-times .ibtn{position:absolute;right:0;top:4px}
 .geo-frame{width:100%;height:60vh;border:0;border-radius:var(--r);background:var(--surface)}.geo-frame.small{height:280px;margin-top:8px}
+/* pestañas de informes hechas con botones: la activa (verde) lleva texto blanco */
+.tabs a.btn{border-bottom:0;padding:8px 14px}.tabs a.btn:not(.sec),.tabs a.btn:not(.sec):hover{color:#fff}
