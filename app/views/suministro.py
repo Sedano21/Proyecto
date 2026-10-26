@@ -79,8 +79,10 @@ def moves():
         up = current_app.config["UPLOAD_DIR"]
         if acc == "solicitar":
             return act(lambda: ssvc.request_move(g.user, f.get("origen"), f.get("destino"), f.get("detalle", ""), f.get("cantidad", ""),
-                                                 f.get("prioridad"), f.get("almacen", ""), f.get("observacion", "")),
-                       "Movimiento solicitado al montacarguista.", back)
+                                                 f.get("prioridad"), f.get("almacen", ""), f.get("observacion", ""),
+                                                 f.get("programado_para") if f.get("cuando") == "PROGRAMADO" else None,
+                                                 f.get("asignado_id") or None),
+                       "Movimiento solicitado.", back)
         m = db().get(MoveRequest, int(f.get("move_id") or 0)) or abort(404)
         if acc == "iniciar":
             return act(lambda: ssvc.start_move(g.user, m, save_upload(request.files.get("foto"), up, f"mov{m.id}_ini")),
@@ -89,9 +91,9 @@ def moves():
             return act(lambda: ssvc.finish_move(g.user, m, save_upload(request.files.get("foto"), up, f"mov{m.id}_fin"),
                                                 f.get("observacion", "")), "Movimiento completado y validado.", back)
         if acc == "anular":
-            return act(lambda: ssvc.cancel_move(g.user, m, f.get("motivo", "")), "Movimiento anulado.", back)
+            return act(lambda: ssvc.cancel_move(g.user, m, f.get("motivo", "")), "Solicitud eliminada.", back)
         abort(400)
-    return render_template("moves.html", rows=ssvc.moves(g.user),
+    return render_template("moves.html", rows=ssvc.moves(g.user), ejecutores=ssvc.move_executors(),
                            almacenes=list(db().execute(select(Warehouse).where(Warehouse.habilitado.is_(True))
                                                        .order_by(Warehouse.code)).scalars()))
 

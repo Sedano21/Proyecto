@@ -33,6 +33,8 @@ def _ready_route(s, U, o, discrepancia=False):
     dsp.add_photo(r, U("aux.despacho"), "vehiculo", "v.jpg")
     dsp.add_photo(r, U("aux.despacho"), "mercaderia_cargada", "m.jpg")
     dsp.add_photo(r, U("conductor1"), "vehiculo_salida", "salida.jpg")  # obs. demo v0.6
+    if r.driver and r.driver.user_id:  # V7: el chofer valida primero
+        dsp.driver_check_load(r, s.get(type(U("conductor1")), r.driver.user_id), {})
     dsp.validate_load(r, U("aux.despacho"), {})
     lines = [{**e, "guia": e["esperado"], "cargado": e["esperado"] - (1 if discrepancia else 0)} for e in dist.expected_lines(r)]
     dist.register_security_check(r, U("seguridad"), "T001-9", lines)

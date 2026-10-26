@@ -228,7 +228,7 @@ def _req(user, perm="distribucion.programar"):
         raise BusinessError("Su rol no puede realizar esta acción de distribución.")
 
 
-def update_route(route, user, vehicle_id=None, driver_id=None):
+def update_route(route, user, vehicle_id=None, driver_id=None, auxiliar_id=None):
     _req(user)
     if route.estado not in ("PROPUESTA", "CONFIRMADA"):
         raise BusinessError("La ruta ya salió.")
@@ -254,8 +254,19 @@ def update_route(route, user, vehicle_id=None, driver_id=None):
         _, busy_d = _busy(route.fecha)
         if d.id in busy_d and d.id != route.driver_id:
             raise BusinessError("El conductor ya está asignado a otra ruta ese día.")
+        if route.driver_id != d.id:
+            route.carga_chofer = {}
         route.driver_id = d.id
-    audit(user, "RUTA_AJUSTADA", "Route", route.id, {"vehicle": vehicle_id, "driver": driver_id})
+    if auxiliar_id is not None:
+        from ..models import User
+        if auxiliar_id == "":
+            route.auxiliar_id = None
+        else:
+            a = db().get(User, int(auxiliar_id))
+            if a is None or a.role_code != "AUX_DESPACHO" or not a.activo:
+                raise BusinessError("Elija un auxiliar de distribución activo.")
+            route.auxiliar_id = a.id
+    audit(user, "RUTA_AJUSTADA", "Route", route.id, {"vehicle": vehicle_id, "driver": driver_id, "auxiliar": auxiliar_id})
 
 
 def validate_external(route, user, aprobar, comentario=""):
@@ -315,7 +326,7 @@ def confirm_route(route, user):
     # TO-BE: alerta al chofer y al auxiliar de las rutas asignadas, y al montacarguista para el traslado a despacho
     alerts.emit("RUTA_ASIGNADA", f"Ruta #{route.id} asignada: {route.fecha:%d/%m/%Y} · {route.vehicle.placa}",
                 ", ".join(f"{st.order.numero} ({st.order.customer.nombre})" for st in route.stops), "Route", route.id,
-                extra_users=[route.driver.user_id] if route.driver.user_id else None, creado_por=user)
+                extra_users=[x for x in (route.driver.user_id, route.auxiliar_id) if x] or None, creado_por=user)
     alerts.emit("MONTACARGUISTA_DESPACHO", f"Trasladar mercadería de la ruta #{route.id} a la zona de despacho",
                 ", ".join(st.order.numero for st in route.stops), "Route", route.id, creado_por=user)
     audit(user, "RUTA_CONFIRMADA", "Route", route.id)
@@ -431,6 +442,9 @@ def register_arrival(stop, user):
     _req(user, "distribucion.entrega")
     if stop.estado != "EN_CAMINO":
         raise BusinessError("La parada no está en camino.")
+    drv = stop.route.driver
+    if drv is not None and drv.user_id and drv.user_id != user.id:  # V7: la llegada la registra el chofer
+        raise BusinessError(f"La llegada la registra el chofer de la ruta ({drv.nombre}).")
     stop.estado = "LLEGADA"
     stop.llegada_ts = now()
     alerts.emit("DIST_LLEGADA", f"Llegada al punto de entrega: OV {stop.order.numero}", stop.order.customer.nombre, "Route",

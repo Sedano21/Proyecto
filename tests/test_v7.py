@@ -331,3 +331,79 @@ def test_alertas_por_prioridad(s, U):
     rows = alerts.by_priority(u, alerts.inbox(u))
     claves = [(a.estado in alerts.CERRADOS, alerts.nature_for(u, a) != "TAREA", alerts.PRIORIDAD_ORDEN.get(a.prioridad, 9)) for a in rows]
     assert claves == sorted(claves)
+
+
+def test_movimientos_programados_asignados_y_solo_el_creador_elimina(s, U):
+    from datetime import datetime
+    from app.services import supply
+    with pytest.raises(BusinessError):
+        supply.request_move(U("aux.almacen") if s.query(type(U("jefe.produccion"))).filter_by(username="aux.almacen").first()
+                            else U("vendedor1"), "A", "B")
+    aux = next(u for u in supply.move_executors() if u.role_code == "AUX_ALMACEN") if any(
+        u.role_code == "AUX_ALMACEN" for u in supply.move_executors()) else supply.move_executors()[0]
+    m = supply.request_move(U("jefe.produccion"), "Línea R2", "Zona despacho", "PT-905", "2 pallets",
+                            programado_para=(datetime.now() + timedelta(hours=2)).isoformat(timespec="minutes"),
+                            asignado_id=aux.id)
+    assert m.tipo == "PROGRAMADO" and m.asignado_a == aux.id
+    otro = next((u for u in supply.move_executors() if u.id != aux.id), None)
+    if otro is not None:
+        with pytest.raises(BusinessError, match="asignado"):
+            supply.start_move(otro, m, "ini.jpg")
+    with pytest.raises(BusinessError, match="quien creó"):
+        supply.cancel_move(aux, m, "x")
+    supply.start_move(aux, m, "ini.jpg")
+    supply.finish_move(aux, m, "fin.jpg")
+    assert m.inicio_ts and m.fin_ts and m.estado == "COMPLETADA"
+
+
+def test_validacion_de_carga_chofer_primero(s, U):
+    from app.services import despacho as dsp
+    from app.services.core import BusinessError as BE
+    from app.models import Route
+    from app.models import Driver
+    r = Route(fecha=date.today(), estado="CONFIRMADA", zona="Z",
+              driver_id=s.query(Driver).filter(Driver.user_id.isnot(None)).first().id)
+    s.add(r)
+    s.flush()
+    s.refresh(r)
+    r.estado = "CONFIRMADA"
+    r.carga_validada = False
+    r.carga_chofer = {}
+    r.fotos = {"vehiculo": [{"archivo": "v.jpg"}], "mercaderia_cargada": [{"archivo": "m.jpg"}]}
+    s.flush()
+    with pytest.raises(BE, match="chofer"):
+        dsp.validate_load(r, U("aux.despacho"), {})
+    with pytest.raises(BE, match="chofer de la ruta"):
+        dsp.driver_check_load(r, U("aux.despacho"), {})
+    chofer = s.get(type(U("aux.despacho")), r.driver.user_id)
+    items = [it for g in dsp.preguia(r) for it in g["items"]]
+    if items:
+        difs = dsp.driver_check_load(r, chofer, {str(items[0]["order_line_id"]): {"lote_ok": "0"}})
+        assert difs and not r.carga_chofer["conforme"]
+    assert dsp.driver_check_load(r, chofer, {}) == [] and r.carga_chofer["conforme"]
+
+
+def test_fumigaciones_contadas_y_enlace_geosatelital(s, U, app):
+    from app.models import StockLot, Vehicle
+    from app.services import geosat, quality
+    from app.services.stock import change_lot_state
+    lot = s.query(StockLot).filter(StockLot.cantidad > 0, StockLot.estado == "DISPONIBLE").first()
+    change_lot_state(lot, "EN_FUMIGACION", U("jefe.calidad"), "Fumigación 1")
+    change_lot_state(lot, "PENDIENTE_REVISION", U("jefe.calidad"), "Fin")
+    change_lot_state(lot, "EN_FUMIGACION", U("jefe.calidad"), "Fumigación 2")
+    s.flush()
+    c = quality.fumigation_counts()
+    assert (lot.product_code, lot.lote) in {(a, b) for a, b, n, _ in c["lotes"] if n == 2}
+    v = s.query(Vehicle).first()
+    with pytest.raises(BusinessError, match="https"):
+        geosat.set_vehicle_link(v, U("coord.distribucion"), "http://x")
+    with pytest.raises(BusinessError, match="contraseña"):
+        geosat.set_vehicle_link(v, U("coord.distribucion"), "https://user:clave@geo.example/x")
+    geosat.set_vehicle_link(v, U("coord.distribucion"), "https://geo.example/compartir/ABC")
+    s.commit()
+    cl = app.test_client()
+    login(cl, "coord.distribucion")
+    h = cl.get("/distribucion/rastreo").get_data(as_text=True)
+    assert "https://geo.example/compartir/ABC" in h
+    login(cl, "jefe.calidad")
+    assert "Veces enviado a fumigación" in cl.get("/calidad/").get_data(as_text=True)

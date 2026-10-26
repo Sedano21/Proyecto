@@ -886,6 +886,8 @@ class Vehicle(Base):
     conductor_habitual_id: Mapped[int | None] = mapped_column(ForeignKey("drivers.id"), nullable=True)
     observacion: Mapped[str] = mapped_column(String(250), default="")
     km_actual: Mapped[float | None] = mapped_column(Float, nullable=True)  # último kilometraje registrado
+    # V7: enlace de seguimiento compartido por GEOSATELITAL para esta unidad (sin API: se muestra embebido o en ventana)
+    geosat_link: Mapped[str] = mapped_column(String(500), default="", server_default="")
 
 
 class Driver(Base):
@@ -915,6 +917,9 @@ class Route(Base):
     fotos: Mapped[dict] = mapped_column(JSON, default=dict)  # {etapa: [{archivo, user, ts, nota}]}
     carga: Mapped[dict] = mapped_column(JSON, default=dict)  # validación de productos vs pre-guía
     carga_validada: Mapped[bool] = mapped_column(Boolean, default=False)
+    # V7: el chofer valida primero la carga (cantidad, lote, presentación, producto); luego el auxiliar acompañante
+    carga_chofer: Mapped[dict] = mapped_column(JSON, default=dict)
+    auxiliar_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     autorizacion_seguridad: Mapped[dict] = mapped_column(JSON, default=dict)  # revisión de documentos por Seguridad
     aprobacion_discrepancia: Mapped[dict] = mapped_column(JSON, default=dict)  # Q8: salida aprobada por Logística
     vistos_buenos: Mapped[dict] = mapped_column(JSON, default=dict)  # Q16: {rol: {user, ts}} Seguridad, Auxiliar, Líder
@@ -943,7 +948,7 @@ class Route(Base):
     driver = relationship("Driver")
     stops = relationship("RouteStop", back_populates="route", order_by="RouteStop.orden",
                          cascade="all, delete-orphan")
-
+    auxiliar = relationship("User", foreign_keys=[auxiliar_id])
 
 class RouteStop(Base):
     __tablename__ = "route_stops"
@@ -1818,6 +1823,9 @@ class MoveRequest(Base):
     detalle: Mapped[str] = mapped_column(String(250), default="")  # producto / lote / pallets
     cantidad: Mapped[str] = mapped_column(String(40), default="")
     prioridad: Mapped[str] = mapped_column(String(10), default="MEDIA")
+    # V7: inmediato o programado para una fecha y hora
+    tipo: Mapped[str] = mapped_column(String(10), default="INMEDIATO", server_default="INMEDIATO")
+    programado_para: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     estado: Mapped[str] = mapped_column(String(15), default="SOLICITADA")  # SOLICITADA / EN_CURSO / COMPLETADA / ANULADA
     solicitado_por: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     asignado_a: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)

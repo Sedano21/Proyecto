@@ -72,6 +72,8 @@ def dispatch(s, U, o, today):
     assert dist.register_security_check(r, U("seguridad"), "T001-DEMO", lines) == []
     dsp.add_photo(r, U("aux.despacho"), "mercaderia_cargada", "carga.jpg")
     dsp.add_photo(r, U("conductor1"), "vehiculo_salida", "salida.jpg")  # obs. demo v0.6
+    if r.driver and r.driver.user_id:  # V7: el chofer valida primero
+        dsp.driver_check_load(r, s.get(type(U("conductor1")), r.driver.user_id), {})
     assert dsp.validate_load(r, U("aux.despacho"), {}) == []
     for st in r.stops:
         dsp.set_guide(st, U("coord.distribucion"), "", "SISTEMA")

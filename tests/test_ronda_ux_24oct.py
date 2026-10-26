@@ -342,9 +342,13 @@ def test_stock_sin_rotacion_mensual(s, U):
 
 def test_movimientos_punto_a_punto(s, U):
     from app.services import supply
-    m = supply.request_move(U("asist.produccion"), "Línea R2", "Zona de despacho", "PT-905 2 pallets", "2")
-    assert m.area == "Producción" and alerts_of(s, "MOVIMIENTO_SOLICITADO", m.id)
+    # V7: solicitan jefes, supervisores, coordinadores, líderes y el montacarguista (ya no los asistentes)
     with pytest.raises(BusinessError):
+        supply.request_move(U("aux.almacen"), "Línea R2", "Zona de despacho")
+    m = supply.request_move(U("jefe.produccion"), "Línea R2", "Zona de despacho", "PT-905 2 pallets", "2",
+                            asignado_id=U("montacarguista").id)
+    assert m.area == "Producción" and alerts_of(s, "MOVIMIENTO_SOLICITADO", m.id)
+    with pytest.raises(BusinessError):  # asignado al montacarguista
         supply.start_move(U("aux.almacen"), m, "f.jpg")
     with pytest.raises(BusinessError, match="foto"):
         supply.start_move(U("montacarguista"), m, "")

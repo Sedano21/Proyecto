@@ -1762,3 +1762,22 @@ for _r in ("COORD_VENTAS", "COORD_ALMACEN", "COORD_ALMACEN_MP", "SUPERV_ALMACEN"
            "SUPERV_CALIDAD", "GERENTE_COMERCIAL", "ASIST_PRODUCCION", "LIDER_ALMACEN"):
     if not any(p[0] == "turnos.gestionar" for p in ROLE_PERMISSIONS.get(_r, [])):
         ROLE_PERMISSIONS.setdefault(_r, []).append(("turnos.gestionar", "DEFINIDO", f"{V7}: turnos de su propia área"))
+# V7: solicitan movimientos jefes, supervisores, coordinadores, líderes operativos (producción, logística, calidad) y el
+# montacarguista; ejecutan el montacarguista, el auxiliar de almacén o el auxiliar de distribución
+_MOV_QUITA = ["ASIST_PRODUCCION", "AUX_ALMACEN", "AUX_DESPACHO", "ASIST_CALIDAD", "ASIST_DISTRIBUCION"]
+for _r in _MOV_QUITA:
+    ROLE_PERMISSIONS[_r] = [x for x in ROLE_PERMISSIONS.get(_r, []) if x[0] != "movimiento.solicitar"]
+PERMISOS_RETIRADOS += [(r, "movimiento.solicitar", V7) for r in _MOV_QUITA]
+for _r in ("AUX_ALMACEN", "AUX_DESPACHO"):
+    if not any(p[0] == "movimiento.ejecutar" for p in ROLE_PERMISSIONS.get(_r, [])):
+        ROLE_PERMISSIONS[_r].append(("movimiento.ejecutar", "DEFINIDO", f"{V7}: también mueven el auxiliar de almacén y de distribución"))
+PARAMS += [
+    ("carga_chofer_primero", True, "bool", "Distribución",
+     "El chofer valida primero la carga (cantidad, lote, presentación y producto); después la valida el auxiliar de "
+     "distribución asignado a la ruta (si lo hay).", "DEFINIDO", f"{V7}: secuencia de validación de la carga"),
+]
+ALERT_TYPES += [
+    ("CARGA_CHOFER_OK", "El chofer validó la carga: sigue el auxiliar", "Distribución", "Carga", "MEDIA",
+     ["COORD_DISTRIBUCION", "ASIST_DISTRIBUCION"], "DEFINIDO", f"{V7}: el chofer valida primero, luego el auxiliar",
+     "El chofer validó cantidad, lote, presentación y producto de la carga.", True),
+]

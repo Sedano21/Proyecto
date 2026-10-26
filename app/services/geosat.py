@@ -103,3 +103,18 @@ def tracking_board(vehicles, opener=None):
     return {"filas": filas, "configurado": configured(), "api": bool(api_url()), "panel": panel_url(), "error": error,
             "consulta": datetime.now(), "sin_flota": [p for p in (pos or []) if p["placa"] not in
                                                      {v.placa.replace(" ", "").upper() for v in vehicles}]}
+
+
+def set_vehicle_link(vehicle, user, link):
+    """V7: enlace de seguimiento de la unidad que genera el panel de GEOSATELITAL («compartir ubicación»). Sin API del
+    proveedor es la forma de ver cada unidad desde el módulo. Solo enlaces https; no se guardan usuario ni contraseña."""
+    from .core import BusinessError, audit, has_perm
+    if not has_perm(user, "distribucion.programar"):
+        raise BusinessError("El enlace de seguimiento lo registra Distribución.")
+    link = (link or "").strip()
+    if link and not link.lower().startswith("https://"):
+        raise BusinessError("El enlace debe empezar con https://")
+    if link and ("password=" in link.lower() or "clave=" in link.lower() or "@" in link.split("/")[2]):
+        raise BusinessError("No registre enlaces con usuario o contraseña: use el enlace de «compartir ubicación».")
+    vehicle.geosat_link = link[:500]
+    audit(user, "VEHICULO_GEOSAT_LINK", "Vehicle", vehicle.placa, {"link": bool(link)})

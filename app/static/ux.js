@@ -332,7 +332,7 @@
   $all('[data-refresh]').forEach(function (el) {
     var s = parseInt(el.getAttribute('data-refresh'), 10) || 60;
     setInterval(function () {
-      if (document.hidden || document.querySelector('dialog[open]')) return;
+      if (document.hidden || document.querySelector('dialog[open]') || el.querySelector('iframe:not([hidden]), details[open]')) return;
       fetch(location.href, { credentials: 'same-origin' }).then(function (r) { return r.text(); }).then(function (h) {
         var doc = new DOMParser().parseFromString(h, 'text/html'), nuevo = doc.getElementById(el.id);
         if (nuevo) el.innerHTML = nuevo.innerHTML;

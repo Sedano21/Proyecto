@@ -42,7 +42,9 @@ def route_detail(rid):
         u = g.user
         f = request.form
         if acc == "ajustar":
-            fn = lambda: dsvc.update_route(r, u, f.get("vehicle_id") or None, f.get("driver_id") or None)  # noqa: E731
+            aux = f.get("auxiliar_id", "-")
+            fn = lambda: dsvc.update_route(r, u, f.get("vehicle_id") or None, f.get("driver_id") or None,  # noqa: E731
+                                           None if aux == "-" else aux)
         elif acc == "mover":
             stop = db().get(RouteStop, int(f["stop_id"]))
             target = db().get(Route, int(f["target"]))
@@ -91,6 +93,11 @@ def route_detail(rid):
                 if not arch:
                     raise BusinessError("Adjunte la foto de la incidencia.")
                 dsp.register_loading_incident(r, u, arch, f.get("motivo", ""), f.get("hora", ""))
+        elif acc == "chofer_carga":
+            ids = [k[4:] for k in f if k.startswith("chq_")]
+            lineas = {i: {"cantidad": f.get(f"chq_{i}"), "producto_ok": f.get(f"producto_ok_{i}", "1"),
+                          "presentacion_ok": f.get(f"presentacion_ok_{i}", "1"), "lote_ok": f.get(f"lote_ok_{i}", "1")} for i in ids}
+            fn = lambda: dsp.driver_check_load(r, u, lineas, f.get("observacion", ""))  # noqa: E731
         elif acc == "validar_carga":
             lineas = {k[4:]: {"cargado": v, "correcto": f.get(f"ok_{k[4:]}", "1") == "1"} for k, v in f.items() if k.startswith("car_")}
             fn = lambda: dsp.validate_load(r, u, lineas, f.get("observacion", ""))  # noqa: E731
@@ -151,7 +158,9 @@ def route_detail(rid):
                                                 cantidad=f_float("cantidad"))
         else:
             abort(404)
-        msgs = {"validar_carga": lambda res: ("Incongruencias: " + "; ".join(res) + ". Se avisó al almacén.") if res else
+        msgs = {"chofer_carga": lambda res: ("Diferencias: " + "; ".join(res) + ". Se avisó para corregir.") if res else
+                "Carga validada por el chofer: sigue el auxiliar.",
+                "validar_carga": lambda res: ("Incongruencias: " + "; ".join(res) + ". Se avisó al almacén.") if res else
                 "Carga validada: camión cargado (alerta enviada).",
                 "revisar_documentos": lambda res: ("Documentos faltantes: " + "; ".join(res) + ". Se reportó a las áreas.") if res
                 else "Documentos completos: Seguridad dio conformidad. Falta la autorización de salida del Líder Operativo.",
@@ -164,7 +173,10 @@ def route_detail(rid):
     certs = {st.id: list(db().execute(select(Certificate).where(Certificate.order_id == st.order_id,
                                                                   Certificate.estado != "ANULADO")).scalars()) for st in r.stops}
     from ..services import maps
-    return render_template("route_detail.html", r=r, vehicles=vehicles, drivers=drivers, others=others,
+    from ..models import User
+    auxiliares = list(db().execute(select(User).where(User.role_code == "AUX_DESPACHO", User.activo.is_(True))
+                                   .order_by(User.nombre)).scalars())
+    return render_template("route_detail.html", r=r, vehicles=vehicles, drivers=drivers, others=others, auxiliares=auxiliares,
                            gmaps=maps.gmaps_link(r), embed=maps.embed_url(r), estimado=maps.estimate(r) if not maps.api_key() else None,
                            maps_ok=bool(maps.api_key()),
                            checklist=dsvc.CHECKLIST, expected=dsvc.expected_lines(r), tipos=INCIDENT_TYPES,
@@ -204,12 +216,16 @@ def my_deliveries():
     return render_template("my_deliveries.html", rutas=dsvc.driver_stops(g.user))
 
 
-@bp.route("/rastreo")
+@bp.route("/rastreo", methods=["GET", "POST"])
 @perm_required("distribucion.rastreo")
 def tracking():
     """Rastreo de unidades en movimiento (GEOSATELITAL)."""
     from ..services import geosat
     from ..services.fleet import soat_status
+    if request.method == "POST":
+        v = db().get(Vehicle, int(request.form.get("vehicle_id") or 0)) or abort(404)
+        return act(lambda: geosat.set_vehicle_link(v, g.user, request.form.get("geosat_link", "")),
+                   f"Enlace de seguimiento de {v.placa} guardado.", url_for("dist.tracking"))
     vehs = list(db().execute(select(Vehicle).order_by(Vehicle.propio.desc(), Vehicle.placa)).scalars())
     en_ruta = {r.vehicle_id: r for r in db().execute(select(Route).where(Route.estado == "EN_RUTA")).scalars()}
     return render_template("tracking.html", t=geosat.tracking_board(vehs), en_ruta=en_ruta, soat=soat_status)

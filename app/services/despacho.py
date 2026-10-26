@@ -86,6 +86,49 @@ def preguia(route):
     return out
 
 
+def _es_chofer(route, user):
+    drv = route.driver
+    return drv is not None and drv.user_id and drv.user_id == user.id
+
+
+def driver_check_load(route, user, lineas, observacion=""):
+    """V7: el chofer valida PRIMERO la carga: cantidad, lote, presentación y producto de cada línea de la pre-guía.
+    (No da conformidad del estado del producto: eso compete a Calidad, Distribución o Almacén.) lineas:
+    {order_line_id: {cantidad, lote_ok, presentacion_ok, producto_ok}}. Si hay diferencias se alerta y no se continúa."""
+    _route_ready(route)
+    drv = route.driver
+    externo_sin_cuenta = drv is not None and not drv.user_id
+    if not _es_chofer(route, user) and not (externo_sin_cuenta and has_perm(user, "distribucion.programar")):
+        raise BusinessError(f"Valida primero la carga el chofer de la ruta ({drv.nombre if drv else '-'}).")
+    difs, detalle = [], []
+    for grupo in preguia(route):
+        for it in grupo["items"]:
+            v = lineas.get(str(it["order_line_id"]), {})
+            q = float(v.get("cantidad") if v.get("cantidad") not in (None, "") else it["cantidad"])
+            oks = {k: v.get(k, True) not in (False, "0", 0) for k in ("lote_ok", "presentacion_ok", "producto_ok")}
+            detalle.append({"ov": grupo["order"].numero, "producto": it["codigo"], "preguia": it["cantidad"], "cantidad": q, **oks})
+            malos = [n for k, n in (("producto_ok", "producto"), ("presentacion_ok", "presentación"), ("lote_ok", "lote")) if not oks[k]]
+            if abs(q - it["cantidad"]) > 1e-9 or malos:
+                difs.append(f"OV {grupo['order'].numero} {it['codigo']}: pre-guía {it['cantidad']:g}, contó {q:g}"
+                            + (f"; no coincide {', '.join(malos)}" if malos else ""))
+    route.carga_chofer = {"user": user.nombre + (f" (por el chofer {drv.nombre}, sin cuenta en el módulo)" if externo_sin_cuenta else ""),
+                          "user_id": user.id, "ts": now().isoformat(timespec="minutes"),
+                          "lineas": detalle, "diferencias": difs, "conforme": not difs, "observacion": (observacion or "").strip()}
+    if route.carga_validada and difs:
+        route.carga_validada = False
+    if difs:
+        alerts.emit("CARGA_INCONGRUENCIA", f"Ruta #{route.id}: el chofer encontró diferencias en la carga",
+                    "; ".join(difs) + ". Corrija con el almacén y vuelva a validar.", "Route", route.id, creado_por=user)
+    else:
+        aux = route.auxiliar
+        alerts.emit("CARGA_CHOFER_OK", f"Ruta #{route.id}: el chofer validó la carga",
+                    "Siguiente paso: validación del auxiliar de distribución." if aux else
+                    "Siguiente paso: validación de la carga.", "Route", route.id,
+                    extra_users=[aux.id] if aux else None, creado_por=user)
+    audit(user, "CARGA_VALIDADA_CHOFER", "Route", route.id, route.carga_chofer)
+    return difs
+
+
 def validate_load(route, user, lineas, observacion=""):
     """Auxiliar (y chofer): ¿productos correctos o completos? lineas: {order_line_id: {cargado, correcto}}.
     Si hay incongruencias se avisa al almacenero (validación cruzada); si todo está correcto se exige la foto de la
@@ -94,6 +137,11 @@ def validate_load(route, user, lineas, observacion=""):
         # obs. demo v0.7: el chofer no da conformidad del estado del producto (compete a Calidad, Distribución y Almacén)
         raise BusinessError("La conformidad del producto la dan Calidad, Distribución o Almacén (no el chofer).")
     _route_ready(route)
+    if param("carga_chofer_primero", True) and route.driver is not None and route.driver.user_id \
+            and not (route.carga_chofer or {}).get("conforme"):
+        raise BusinessError("Primero valida la carga el chofer (cantidad, lote, presentación y producto).")
+    if route.auxiliar_id and route.auxiliar_id != user.id:
+        raise BusinessError(f"Valida la carga el auxiliar asignado a la ruta ({route.auxiliar.nombre}).")
     if not (route.fotos or {}).get("vehiculo"):
         raise BusinessError("Primero suba la foto del vehículo antes de la estiba.")
     incongruencias = []

@@ -66,6 +66,8 @@ def test_modificar_plan_de_picking_cambia_lote(s, U, new_order):
 def test_carga_incongruente_y_documentos_faltantes(s, U, new_order):
     o = new_order([("PT-905", 60)])
     r = _prepare_and_confirm(s, U, o)
+    if r.driver and r.driver.user_id:  # V7: el chofer valida primero
+        dsp.driver_check_load(r, s.get(type(U("conductor1")), r.driver.user_id), {})
     with pytest.raises(BusinessError):  # falta foto del vehículo antes de la estiba
         dsp.validate_load(r, U("aux.despacho"), {})
     dsp.add_photo(r, U("aux.despacho"), "vehiculo", "v.jpg")
@@ -120,6 +122,8 @@ def test_factura_con_modificaciones_si_incompleto(s, U, new_order, today):
     dsp.add_photo(r, U("aux.despacho"), "vehiculo", "v.jpg")
     dsp.add_photo(r, U("aux.despacho"), "mercaderia_cargada", "m.jpg")
     dsp.add_photo(r, U("conductor1"), "vehiculo_salida", "salida.jpg")  # obs. demo v0.6
+    if r.driver and r.driver.user_id:  # V7: el chofer valida primero
+        dsp.driver_check_load(r, s.get(type(U("conductor1")), r.driver.user_id), {})
     dsp.validate_load(r, U("aux.despacho"), {})
     dif = dsp.set_invoice(r.stops[0], U("facturacion"), "F001-2", "f.pdf")
     assert dif and r.stops[0].factura_con_modificaciones

@@ -1,9 +1,13 @@
-{% extends "base.html" %}{% from "_m.html" import b, ic, empty %}
+{% extends "base.html" %}{% from "_m.html" import b, csrf, ic, empty %}
 {% block content %}<h1>Rastreo de unidades</h1>
 <p class="seg small"><a href="{{ url_for('dist.fleet') }}">Unidades</a><a href="{{ url_for('dist.fleet_tracking') }}">Documentos y mantenimiento</a><a class="on" href="{{ url_for('dist.tracking') }}">Rastreo GEOSATELITAL</a></p>
 {% if not t.configurado %}<div class="note warn"><b>GEOSATELITAL no está conectado.</b> Para ver las unidades en movimiento, Sistemas configura en el servidor el servicio de posiciones del proveedor (<span class="mono">GEOSAT_API_URL</span> y <span class="mono">GEOSAT_TOKEN</span>) y, si el proveedor lo permite, la dirección de su panel (parámetro <span class="mono">geosatelital_url_panel</span>). Mientras tanto se muestran las unidades y sus rutas del sistema.</div>{% endif %}
 {% if t.error %}<div class="note warn">{{ t.error }}</div>{% endif %}
-{% if t.panel %}<div class="card"><h3>Panel GEOSATELITAL</h3><iframe src="{{ t.panel }}" title="Panel GEOSATELITAL" style="width:100%;height:60vh;border:0;border-radius:var(--r)" loading="lazy" referrerpolicy="no-referrer"></iframe></div>{% endif %}
+{% if t.panel %}<div class="card"><div class="card-head"><h3 style="flex:1">Panel GEOSATELITAL</h3>
+<button type="button" class="btn sec small" data-geo-dock="{{ t.panel }}">{{ ic('sidebar') }} Abrir acoplado al costado</button>
+<a class="btn sec small" href="{{ t.panel }}" target="_blank" rel="noopener">Abrir en otra pestaña</a></div>
+<iframe src="{{ t.panel }}" title="Panel GEOSATELITAL" class="geo-frame" loading="lazy" referrerpolicy="no-referrer"></iframe>
+<p class="small muted">El panel se muestra embebido. Si el proveedor no permite mostrarlo dentro de otra página (queda en blanco), use «Abrir acoplado al costado»: abre el panel en una ventana angosta pegada al lado derecho de la pantalla, junto al módulo. Inicie sesión allí con la cuenta de la empresa; el módulo no guarda esas credenciales.</p></div>{% endif %}
 <div id="trk" data-refresh="60"><p class="small muted">Actualizado {{ t.consulta.strftime('%H:%M') }} · se actualiza cada minuto.</p>
 <div class="cards">{% for x in t.filas %}{% set v, p = x.v, x.pos %}{% set ok, txt = soat(v) %}{% set r = en_ruta.get(v.id) %}
 <article class="xcard {{ 'st-EN_PROCESO' if p and p.en_movimiento else '' }} {{ '' if ok else 'alerta' }}"><div class="xcard-head"><b class="mono">{{ v.placa }}</b>{% if p %}{{ b('EN_MOVIMIENTO') if p.en_movimiento else b('DETENIDA', 'MEDIA') }}{% elif r %}{{ b('EN_RUTA') }}{% endif %}</div>
@@ -11,5 +15,16 @@
 {% if p %}<div class="meta"><span class="big">{{ p.velocidad|n if p.velocidad is not none else '—' }} km/h</span><span>{{ p.fecha }}</span></div>
 <div class="meta"><span>{{ p.direccion }}</span><a href="https://www.openstreetmap.org/?mlat={{ p.lat }}&mlon={{ p.lng }}#map=15/{{ p.lat }}/{{ p.lng }}" target="_blank" rel="noopener">Ver en mapa {{ ic('route') }}</a></div>
 {% elif t.api %}<div class="small muted">Sin posición informada por el proveedor.</div>{% endif %}
+{% if v.geosat_link %}<div class="row"><button type="button" class="btn sec small" data-geo-toggle="geo-{{ v.id }}">{{ ic('eye') }} Ver ubicación</button><button type="button" class="btn sec small" data-geo-dock="{{ v.geosat_link }}">{{ ic('sidebar') }} Acoplar</button></div>
+<iframe id="geo-{{ v.id }}" data-src="{{ v.geosat_link }}" title="Ubicación de {{ v.placa }}" class="geo-frame small" hidden referrerpolicy="no-referrer"></iframe>{% endif %}
+{% if can('distribucion.programar') %}<details class="small"><summary>{{ 'Cambiar' if v.geosat_link else 'Registrar' }} enlace de seguimiento</summary><form method="post" class="row">{{ csrf() }}<input type="hidden" name="vehicle_id" value="{{ v.id }}"><input name="geosat_link" type="url" value="{{ v.geosat_link }}" placeholder="https://… (compartir ubicación de GEOSATELITAL)" class="grow" aria-label="Enlace de seguimiento"><button class="small">Guardar</button></form></details>{% endif %}
 {% if not ok %}<div class="chk bad">{{ txt }}: no se asigna a rutas.</div>{% endif %}</article>{% else %}{{ empty('Sin unidades registradas.', 'truck') }}{% endfor %}</div>
-{% if t.sin_flota %}<p class="small muted">Unidades informadas por GEOSATELITAL que no están en la flota del sistema: {{ t.sin_flota|map(attribute='placa')|join(', ') }}.</p>{% endif %}</div>{% endblock %}
+{% if t.sin_flota %}<p class="small muted">Unidades informadas por GEOSATELITAL que no están en la flota del sistema: {{ t.sin_flota|map(attribute='placa')|join(', ') }}.</p>{% endif %}</div><script>(function(){
+document.addEventListener('click',function(e){
+  var d=e.target.closest('[data-geo-dock]');
+  if(d){var w=Math.min(560,Math.round(screen.availWidth*0.38)),h=screen.availHeight;
+    var win=window.open(d.getAttribute('data-geo-dock'),'geosatelital','popup=yes,width='+w+',height='+h+',left='+(screen.availWidth-w)+',top=0');
+    if(win){try{win.focus();}catch(x){}}else{location.href=d.getAttribute('data-geo-dock');}}
+  var t=e.target.closest('[data-geo-toggle]');
+  if(t){var f=document.getElementById(t.getAttribute('data-geo-toggle'));if(!f)return;if(!f.src)f.src=f.getAttribute('data-src');f.hidden=!f.hidden;}
+});})();</script>{% endblock %}

@@ -303,9 +303,33 @@ def _area(user):
     return r.area if r else ""
 
 
-def request_move(user, origen, destino, detalle="", cantidad="", prioridad="MEDIA", almacen="", observacion=""):
+EJECUTORES_MOV = ("MONTACARGUISTA", "AUX_ALMACEN", "AUX_DESPACHO")
+
+
+def move_executors():
+    """V7: quién puede ejecutar el movimiento: montacarguista, auxiliar de almacén o auxiliar de distribución."""
+    from ..models import User
+    return list(db().execute(select(User).where(User.role_code.in_(EJECUTORES_MOV), User.activo.is_(True))
+                             .order_by(User.role_code, User.nombre)).scalars())
+
+
+def request_move(user, origen, destino, detalle="", cantidad="", prioridad="MEDIA", almacen="", observacion="",
+                 programado_para=None, asignado_id=None):
     if not has_perm(user, "movimiento.solicitar"):
         raise BusinessError("Su rol no solicita movimientos al montacarguista.")
+    if isinstance(programado_para, str):
+        try:
+            programado_para = datetime.fromisoformat(programado_para) if programado_para.strip() else None
+        except ValueError:
+            raise BusinessError("Fecha y hora programadas inválidas.")
+    if programado_para is not None and programado_para < datetime.now() - timedelta(minutes=1):
+        raise BusinessError("La fecha y hora programadas ya pasaron.")
+    ejecutor = None
+    if asignado_id:
+        from ..models import User
+        ejecutor = db().get(User, int(asignado_id))
+        if ejecutor is None or ejecutor.role_code not in EJECUTORES_MOV:
+            raise BusinessError("Asigne el movimiento a un montacarguista, auxiliar de almacén o auxiliar de distribución.")
     origen, destino = (origen or "").strip(), (destino or "").strip()
     if not origen or not destino:
         raise BusinessError("Indique el punto de origen y el de destino.")
@@ -316,12 +340,17 @@ def request_move(user, origen, destino, detalle="", cantidad="", prioridad="MEDI
         raise BusinessError("Prioridad no válida.")
     m = MoveRequest(area=_area(user), almacen=(almacen or user.almacen or "").strip(), origen=origen, destino=destino,
                     detalle=(detalle or "").strip(), cantidad=(cantidad or "").strip(), prioridad=prioridad,
-                    observacion=(observacion or "").strip(), solicitado_por=user.id)
+                    observacion=(observacion or "").strip(), solicitado_por=user.id,
+                    tipo="PROGRAMADO" if programado_para else "INMEDIATO", programado_para=programado_para,
+                    asignado_a=ejecutor.id if ejecutor else None)
     db().add(m)
     db().flush()
+    cuando = f" Programado para el {programado_para:%d/%m %H:%M}." if programado_para else " Inmediato."
     alerts.emit("MOVIMIENTO_SOLICITADO", f"Movimiento #{m.id}: {origen} → {destino}",
-                f"{m.area}: {m.detalle or 'sin detalle'} {m.cantidad}. Prioridad {prioridad.lower()}.", "MoveRequest", m.id,
-                prioridad="ALTA" if prioridad == "ALTA" else None, dedup_key=f"MOV:{m.id}", creado_por=user)
+                f"{m.area}: {m.detalle or 'sin detalle'} {m.cantidad}. Prioridad {prioridad.lower()}.{cuando}"
+                + (f" Asignado a {ejecutor.nombre}." if ejecutor else ""), "MoveRequest", m.id,
+                prioridad="ALTA" if prioridad == "ALTA" else None, extra_users=[ejecutor.id] if ejecutor else None,
+                dedup_key=f"MOV:{m.id}", creado_por=user)
     audit(user, "MOVIMIENTO_SOLICITADO", "MoveRequest", m.id, {"origen": origen, "destino": destino})
     return m
 
@@ -331,6 +360,8 @@ def start_move(user, m, foto):
         raise BusinessError("Ejecuta el movimiento el montacarguista.")
     if m.estado != "SOLICITADA":
         raise BusinessError("El movimiento ya fue tomado o cerrado.")
+    if m.asignado_a and m.asignado_a != user.id:
+        raise BusinessError(f"El movimiento está asignado a {m.operador.nombre}.")
     if not foto:
         raise BusinessError("Tome la foto del punto de origen antes de iniciar.")
     m.estado, m.asignado_a, m.inicio_ts, m.foto_inicio = "EN_CURSO", user.id, now(), foto
@@ -355,8 +386,8 @@ def finish_move(user, m, foto, observacion=""):
 
 
 def cancel_move(user, m, motivo):
-    if m.solicitado_por != user.id and not has_perm(user, "movimiento.ejecutar"):
-        raise BusinessError("Anula el movimiento quien lo solicitó.")
+    if m.solicitado_por != user.id:  # V7: solo quien la creó elimina la solicitud
+        raise BusinessError("Solo quien creó la solicitud puede eliminarla.")
     if m.estado == "COMPLETADA":
         raise BusinessError("El movimiento ya se completó.")
     if not (motivo or "").strip():

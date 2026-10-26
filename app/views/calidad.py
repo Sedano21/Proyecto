@@ -30,6 +30,7 @@ def home():
     fum = qsvc.fumigation_plan()
     return render_template("cal_home.html", pend=pend, recs=recs, formatos=qsvc.FORMATOS, formato=formato, muestras=muestras,
                            lotes=lotes, tipos=qsvc.CERT_TIPOS, fum=fum, etapas=qsvc.ETAPAS_PRODUCCION,
+                           fum_veces=qsvc.fumigation_counts(),
                            etapas_todos={k for v in qsvc.ETAPAS_PRODUCCION.values() for k in v})
 
 

@@ -706,3 +706,22 @@ def fumigation_alerts(hoy=None):
                         "StockLot", lot.id, dedup_key=f"FUMI:{lot.id}:{x['fecha']}:{x['dias'] if x['dias'] >= 0 else 'venc'}")
             n += 1
     return n
+
+
+def fumigation_counts():
+    """V7: cuántas veces se envió a fumigación cada producto y cada lote (cada paso a «En fumigación» registrado)."""
+    from collections import Counter
+    from ..models import AuditLog
+    por_lote, por_prod, ultima = Counter(), Counter(), {}
+    for a in db().execute(select(AuditLog).where(AuditLog.accion == "LOTE_ESTADO").order_by(AuditLog.ts)).scalars():
+        d = a.detalle or {}
+        if d.get("a") != "EN_FUMIGACION":
+            continue
+        k = (d.get("producto") or "", d.get("lote") or "")
+        por_lote[k] += 1
+        por_prod[k[0]] += 1
+        ultima[k] = a.ts
+    from ..models import Product
+    nombres = {p.code: p.descripcion for p in db().execute(select(Product).where(Product.code.in_(list(por_prod) or [""]))).scalars()}
+    return {"productos": [(c, nombres.get(c, ""), n) for c, n in por_prod.most_common()],
+            "lotes": [(c, l, n, ultima[(c, l)]) for (c, l), n in por_lote.most_common()]}
