@@ -197,7 +197,7 @@
     return ctx;
   }
   ['click', 'keydown', 'touchstart'].forEach(function (ev) { document.addEventListener(ev, function () { audio(); }, { once: true, passive: true }); });
-  if (btn) btn.addEventListener('click', function () { lset('cp-sound', silenciado() ? 'on' : 'off'); pintarBoton(); if (!silenciado()) sonar(false); });
+  if (btn) btn.addEventListener('click', function () { lset('cp-sound', silenciado() ? 'on' : 'off'); pintarBoton(); if (!silenciado()) sonar('MEDIA'); });
   pintarBoton();
   function nota(c, f, t0, dur, tipo, vol) {
     var o = c.createOscillator(), g = c.createGain();
@@ -206,17 +206,23 @@
     g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
     o.connect(g); g.connect(c.destination); o.start(t0); o.stop(t0 + dur + 0.05);
   }
-  function sonar(importante) {
+  /* V7: un sonido distinto por prioridad. ALTA: alarma aguda e insistente; MEDIA: campanilla de tres notas ascendentes;
+     BAJA: un solo toque suave. (true/false se mantienen por compatibilidad: true = ALTA, false = MEDIA.) */
+  function sonar(nivel) {
     if (silenciado()) return false;
     var c = audio(); if (!c || c.state !== 'running') return false;
     var t = c.currentTime + 0.05;
-    if (importante) {  // tres pares agudos e insistentes
+    nivel = nivel === true ? 'ALTA' : (nivel === false || !nivel ? 'MEDIA' : nivel);
+    if (nivel === 'ALTA') {
       for (var i = 0; i < 3; i++) { nota(c, 1175, t + i * 0.42, 0.16, 'square', 0.12); nota(c, 880, t + i * 0.42 + 0.18, 0.16, 'square', 0.12); }
-    } else {  // campanilla suave de dos notas
-      nota(c, 784, t, 0.22, 'sine', 0.25); nota(c, 1047, t + 0.2, 0.32, 'sine', 0.22);
+    } else if (nivel === 'MEDIA') {
+      nota(c, 659, t, 0.2, 'triangle', 0.22); nota(c, 784, t + 0.18, 0.2, 'triangle', 0.22); nota(c, 1047, t + 0.36, 0.34, 'sine', 0.22);
+    } else {
+      nota(c, 880, t, 0.35, 'sine', 0.16);
     }
     return true;
   }
+  window.cpSonarAlerta = sonar;
   var cont = null;
   function toast(html, importante) {
     if (!cont) { cont = document.createElement('div'); cont.className = 'toasts'; cont.setAttribute('aria-live', 'polite'); body.appendChild(cont); }
@@ -284,7 +290,8 @@
         // suena solo para quien debe actuar, derivar o decidir (decisión del 16-oct); los demás reciben el aviso sin sonido
         var accionables = nuevas.filter(function (a) { return a.tarea; });
         var imp = accionables.some(function (a) { return a.prioridad === 'ALTA'; });
-        if (accionables.length) sonó = sonar(imp);
+        var nivel = imp ? 'ALTA' : (accionables.some(function (a) { return a.prioridad === 'MEDIA'; }) ? 'MEDIA' : 'BAJA');
+        if (accionables.length) sonó = sonar(nivel);
         toast('<b>' + (nuevas.length === 1 ? 'Nueva alerta' : nuevas.length + ' alertas nuevas') + (accionables.length ? '' : ' (información)') + '</b>' + nuevas.slice(0, 3).map(function (a) {
           return '<a href="' + a.url + '">' + esc(a.titulo) + '</a>'; }).join('') + (!accionables.length || sonó || silenciado() ? '' : '<small>Toque la pantalla para activar el sonido.</small>'), imp);
       }

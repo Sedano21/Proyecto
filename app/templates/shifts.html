@@ -1,5 +1,5 @@
-{% extends "base.html" %}{% from "_m.html" import b, csrf %}
-{% block content %}<h1>Turnos del personal</h1>
+{% extends "base.html" %}{% from "_m.html" import b, csrf, ic %}
+{% block content %}<h1>Turnos del personal</h1>{% if areas %}<p class="sub">Área a su cargo: <b>{{ areas|join(', ') }}</b></p>{% endif %}
 <p class="muted small">Las tareas (picking) se proponen y asignan {{ '<b>solo a personal en turno</b>'|safe if solo_turno else 'a todo el personal (parámetro desactivado)' }}. Una persona puede tener varios turnos y turnos rotativos por semana; el refrigerio se descuenta. La entrada y salida las mide otro sistema: aquí solo se planifica el personal disponible para las tareas.</p>
 <div class="grid g2">
 <div class="card"><h3>Turnos</h3><div class="tw"><table class="small"><tr><th>Turno</th><th>Días</th><th>Horario</th><th>Refrigerio</th><th>Activo</th></tr>
@@ -21,15 +21,26 @@
 <p><button>Asignar</button></p></form></div>
 </div>
 
-<div class="card" style="border-left:4px solid var(--warn)"><h3>Refuerzo de emergencia</h3><p class="small muted">Agrega personal en turno para atender una emergencia (también recibe tareas).</p>
-<form method="post" class="row">{{ csrf() }}<input type="hidden" name="accion" value="refuerzo">
-<div class="grow"><label>Persona</label><select name="user_id" required>{% for u in users %}<option value="{{ u.id }}">{{ u.nombre }} — {{ u.role.nombre }}</option>{% endfor %}</select></div>
-<div><label>Desde</label><input type="date" name="desde" required value="{{ today.isoformat() }}"></div><div><label>Hasta</label><input type="date" name="hasta" value="{{ today.isoformat() }}"></div>
+<div class="card" style="border-left:4px solid var(--warn)"><h3>Refuerzo de emergencia</h3><p class="small muted">Agrega personal en turno para atender una emergencia: de la empresa (también recibe tareas) o de un tercero, con su costo por hora para calcular el costo de horas extra.</p>
+<form method="post">{{ csrf() }}<input type="hidden" name="accion" value="refuerzo">
+<div class="seg" role="radiogroup" aria-label="Origen del personal"><label><input type="radio" name="origen" value="EMPRESA" checked data-ref-origen><span>Personal de la empresa</span></label><label><input type="radio" name="origen" value="TERCERO" data-ref-origen><span>Personal de un tercero</span></label></div>
+<div class="row" data-ref="EMPRESA"><div class="grow"><label>Persona</label><select name="user_id">{% for u in users %}<option value="{{ u.id }}">{{ u.nombre }} — {{ u.role.nombre }}</option>{% endfor %}</select></div></div>
+<div class="row" data-ref="TERCERO" hidden><div class="grow"><label class="req">Nombre</label><input name="tercero_nombre"></div><div><label>DNI</label><input name="tercero_doc" maxlength="12" style="width:120px"></div><div class="grow"><label>Empresa</label><input name="tercero_empresa"></div>
+{% if areas and areas|length > 1 %}<div><label>Área</label><select name="area">{% for a in areas %}<option>{{ a }}</option>{% endfor %}</select></div>{% elif not areas %}<div><label>Área</label><input name="area" placeholder="Almacén, Producción…"></div>{% endif %}</div>
+<div class="row"><div><label>Desde</label><input type="date" name="desde" required value="{{ today.isoformat() }}"></div><div><label>Hasta</label><input type="date" name="hasta" value="{{ today.isoformat() }}"></div>
 <div><label>Inicio</label><input type="time" name="inicio" required></div><div><label>Fin</label><input type="time" name="fin" required></div>
-<div class="grow"><label>Motivo</label><input name="motivo" required placeholder="Emergencia que se atiende"></div><div><button>Agregar refuerzo</button></div></form></div>
+<div><label data-costo-label>Costo por hora S/ (opcional)</label><input name="costo_hora" type="number" step="0.01" min="0" style="width:110px"></div>
+<div class="grow"><label>Motivo</label><input name="motivo" required placeholder="Emergencia que se atiende"></div><div><button>Agregar refuerzo</button></div></div></form>
+<script>(function(){var r=document.querySelectorAll('[data-ref-origen]');function u(){var v=document.querySelector('[data-ref-origen]:checked').value;document.querySelectorAll('[data-ref]').forEach(function(x){x.hidden=x.getAttribute('data-ref')!==v;});var t=v==='TERCERO';document.querySelector('[name=tercero_nombre]').required=t;var c=document.querySelector('[name=costo_hora]');c.required=t;document.querySelector('[data-costo-label]').textContent=t?'Costo por hora S/':'Costo por hora S/ (opcional)';}r.forEach(function(x){x.addEventListener('change',u);});u();})();</script></div>
+
+<div class="card"><h3>{{ ic('scale') }} Costo de horas extra (refuerzos del mes)</h3>
+<div class="kpis"><div class="kpi"><b>{{ costos.horas|n }} h</b><span>Horas de refuerzo</span></div><div class="kpi warn"><b>S/ {{ costos.costo|n }}</b><span>Costo de horas extra</span><small>terceros S/ {{ costos.costo_terceros|n }}{{ ' · ' ~ costos.sin_costo ~ ' sin costo registrado' if costos.sin_costo }}</small></div></div>
+{% if costos.filas %}<div class="tw"><table class="small list"><thead><tr><th>Persona</th><th>Origen</th><th>Área</th><th>Fechas</th><th>Horario</th><th class="r">Horas</th><th class="r">S/ por hora</th><th class="r">Costo S/</th></tr></thead>
+{% for r in costos.filas %}<tr><td>{{ r.persona }}</td><td>{{ 'Tercero' if r.tercero else 'Empresa' }}</td><td>{{ r.us.area }}</td><td>{{ r.us.desde|d }} – {{ (r.us.hasta or r.us.desde)|d }}</td><td>{{ r.us.inicio }}–{{ r.us.fin }}</td><td class="r">{{ r.horas|n }}</td><td class="r">{{ r.costo_hora|n if r.costo_hora is not none else '—' }}</td><td class="r">{{ r.costo|n if r.costo is not none else '—' }}</td></tr>{% endfor %}
+<tr><th colspan="5" class="r">Total</th><th class="r">{{ costos.horas|n }}</th><th></th><th class="r">{{ costos.costo|n }}</th></tr></table></div>{% endif %}</div>
 
 <div class="card"><h3>Asignaciones vigentes</h3><div class="tw"><table class="small"><tr><th>Persona</th><th>Tipo</th><th>Turno / horario</th><th>Vigencia</th><th>Rotación</th><th></th></tr>
-{% for a in asignaciones %}<tr><td>{{ a.user.nombre }} <span class="muted">{{ a.user.role.nombre }}</span></td><td>{{ b(a.tipo) }}{% if a.motivo %}<br><span class="muted">{{ a.motivo }}</span>{% endif %}</td>
+{% for a in asignaciones %}<tr><td>{{ a.persona }} <span class="muted">{{ a.user.role.nombre if a.user else 'Tercero · ' ~ a.area }}</span></td><td>{{ b(a.tipo) }}{% if a.motivo %}<br><span class="muted">{{ a.motivo }}</span>{% endif %}</td>
 <td>{% if a.shift %}{{ a.shift.nombre }} ({{ a.shift.inicio }}–{{ a.shift.fin }}){% else %}{{ a.inicio }}–{{ a.fin }}{% endif %}</td><td>{{ a.desde|d }} – {{ a.hasta|d if a.hasta else 'sin fin' }}</td>
 <td>{% if a.ciclo > 1 %}semana {{ a.semana + 1 }} de {{ a.ciclo }}{% else %}—{% endif %}</td>
 <td><form method="post" data-confirm="¿Retirar esta asignación?">{{ csrf() }}<input type="hidden" name="accion" value="retirar"><input type="hidden" name="id" value="{{ a.id }}"><button class="small sec">Retirar</button></form></td></tr>

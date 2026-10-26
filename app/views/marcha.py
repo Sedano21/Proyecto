@@ -97,8 +97,11 @@ def shifts():
             fn = lambda: ssvc.assign_shift(g.user, f.get("user_id"), f.get("shift_id"), f_date("desde", True),  # noqa: E731
                                            f_date("hasta"), f.get("ciclo") or 1, int(f.get("semana") or 1) - 1)
         elif acc == "refuerzo":
-            fn = lambda: ssvc.add_reinforcement(g.user, f.get("user_id"), f_date("desde", True), f_date("hasta"),  # noqa: E731
-                                                f.get("inicio"), f.get("fin"), f.get("motivo"))
+            ter = {"nombre": f.get("tercero_nombre"), "empresa": f.get("tercero_empresa"), "doc": f.get("tercero_doc")} \
+                if f.get("origen") == "TERCERO" else None
+            fn = lambda: ssvc.add_reinforcement(g.user, None if ter else f.get("user_id"), f_date("desde", True),  # noqa: E731
+                                                f_date("hasta"), f.get("inicio"), f.get("fin"), f.get("motivo"), ter,
+                                                f.get("costo_hora"), f.get("area", ""))
         elif acc == "retirar":
             us = s.get(UserShift, int(f["id"])) or abort(404)
             fn = lambda: ssvc.remove_assignment(g.user, us)  # noqa: E731
@@ -109,12 +112,18 @@ def shifts():
         dia = date.fromisoformat(request.args.get("dia") or "")
     except ValueError:
         dia = date.today()
-    users = list(s.execute(select(User).where(User.activo.is_(True)).order_by(User.role_code, User.nombre)).scalars())
+    users = ssvc.people_of(g.user)  # V7: solo el personal de su área
+    areas = ssvc.managed_areas(g.user)
+    ids = {u.id for u in users}
     asign = list(s.execute(select(UserShift).order_by(UserShift.tipo, UserShift.desde.desc())).scalars())
-    vigentes = [a for a in asign if a.hasta is None or a.hasta >= date.today() - timedelta(days=7)]
+    vigentes = [a for a in asign if (a.hasta is None or a.hasta >= date.today() - timedelta(days=7))
+                and (a.user_id in ids or (a.user_id is None and (areas is None or a.area in areas)))]
+    ini = date.today().replace(day=1)
     return render_template("shifts.html", turnos=list(s.execute(select(Shift).order_by(Shift.nombre)).scalars()), users=users,
-                           asignaciones=vigentes, dia=dia, tabla=ssvc.schedule_table(dia), dias=ssvc.DIAS,
-                           solo_turno=param("asignar_solo_personal_en_turno", True), today=date.today())
+                           asignaciones=vigentes, dia=dia, tabla=ssvc.schedule_table(dia, users), dias=ssvc.DIAS,
+                           solo_turno=param("asignar_solo_personal_en_turno", True), today=date.today(),
+                           areas=sorted(areas) if areas is not None else None,
+                           costos=ssvc.reinforcement_costs(ini, date.today() + timedelta(days=31), areas))
 
 
 # ------------------------------------------------------------------ conciliación SAP

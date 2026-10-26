@@ -506,3 +506,13 @@ def display_state(alert):
         if abiertas:
             return "DERIVADA", "Derivada · pendiente " + ", ".join(sorted({x.area for x in abiertas}))
     return alert.estado, ESTADO_TXT.get(alert.estado, alert.estado)
+
+
+def by_priority(user, rows):
+    """V7: orden del panel de alertas: abiertas antes que cerradas; dentro de ellas, las que requieren acción del usuario
+    (tareas) antes que las informativas; luego por urgencia (ALTA, MEDIA, BAJA) y las más recientes primero."""
+    def key(a):
+        cerrada = a.estado in CERRADOS
+        accion = nature_for(user, a) == "TAREA"
+        return (cerrada, not accion, PRIORIDAD_ORDEN.get(a.prioridad, 9), -(a.creado_ts.timestamp() if a.creado_ts else 0), -a.id)
+    return sorted(rows, key=key)

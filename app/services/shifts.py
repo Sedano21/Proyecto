@@ -31,6 +31,31 @@ def _check_perm(user):
         raise BusinessError("Su rol no configura turnos.")
 
 
+def managed_areas(user):
+    """V7: cada responsable gestiona los turnos de su propia área (Logística incluye Almacén y Distribución);
+    Gerencias y Sistemas, todas. None = todas."""
+    if user.role_code in ("GERENCIA_GENERAL", "GERENCIA_OPERACIONES", "SISTEMAS"):
+        return None
+    area = user.role.area if user.role else ""
+    extra = (param("turnos_areas_a_cargo", {}) or {}).get(area, [])
+    return {area, *extra}
+
+
+def _check_area(user, persona=None, area=None):
+    areas = managed_areas(user)
+    if areas is None:
+        return
+    a = area if persona is None else (persona.role.area if persona.role else "")
+    if a not in areas:
+        raise BusinessError(f"Solo gestiona los turnos de su área ({', '.join(sorted(areas))}).")
+
+
+def people_of(user):
+    areas = managed_areas(user)
+    rows = list(db().execute(select(User).where(User.activo.is_(True)).order_by(User.role_code, User.nombre)).scalars())
+    return rows if areas is None else [u for u in rows if u.role and u.role.area in areas]
+
+
 # ------------------------------------------------------------------ turnos
 def save_shift(user, nombre, dias, inicio, fin, refrigerio_min=0, shift=None, activo=True):
     _check_perm(user)
@@ -71,6 +96,7 @@ def assign_shift(user, persona_id, shift_id, desde, hasta=None, ciclo=1, semana=
         raise BusinessError("Indique desde qué fecha rige el turno.")
     if hasta and hasta < desde:
         raise BusinessError("La fecha final no puede ser anterior a la inicial.")
+    _check_area(user, p)
     ciclo = max(int(ciclo or 1), 1)
     semana = int(semana or 0)
     if not 0 <= semana < ciclo:
@@ -84,30 +110,72 @@ def assign_shift(user, persona_id, shift_id, desde, hasta=None, ciclo=1, semana=
     return us
 
 
-def add_reinforcement(user, persona_id, desde, hasta, inicio, fin, motivo):
-    """Refuerzo de emergencia: personal adicional en turno en un rango de fechas y horario."""
+def add_reinforcement(user, persona_id, desde, hasta, inicio, fin, motivo, tercero=None, costo_hora=None, area=""):
+    """Refuerzo de emergencia: personal adicional en turno en un rango de fechas y horario. Puede ser personal de la
+    empresa (persona_id) o de un tercero (tercero = {nombre, empresa, doc}); el costo por hora es obligatorio para el
+    tercero y opcional para la empresa (horas extra), y da el costo de horas extra del refuerzo."""
     _check_perm(user)
-    p = db().get(User, int(persona_id))
+    p = db().get(User, int(persona_id)) if str(persona_id or "").isdigit() else None
+    tercero = {k: " ".join(str(v or "").split()) for k, v in (tercero or {}).items()}
+    if p is None and not tercero.get("nombre"):
+        raise BusinessError("Elija la persona de la empresa o registre los datos del tercero.")
+    try:
+        costo = float(costo_hora) if costo_hora not in (None, "") else None
+    except ValueError:
+        raise BusinessError("Costo por hora inválido.")
+    if costo is not None and costo < 0:
+        raise BusinessError("Costo por hora inválido.")
     if p is None:
-        raise BusinessError("Elija la persona.")
+        if costo is None:
+            raise BusinessError("Indique el costo por hora del personal del tercero.")
+        area = area or (user.role.area if user.role else "")
+        _check_area(user, area=area)
+    else:
+        _check_area(user, p)
+        area = p.role.area if p.role else area
     if desde is None or (hasta and hasta < desde):
         raise BusinessError("Indique el rango de fechas del refuerzo.")
     if not (HORA.match(inicio or "") and HORA.match(fin or "")) or inicio == fin:
         raise BusinessError("Indique el horario del refuerzo (HH:MM).")
     if not (motivo or "").strip():
         raise BusinessError("Indique el motivo (emergencia que se atiende).")
-    us = UserShift(user_id=p.id, desde=desde, hasta=hasta or desde, tipo="REFUERZO", inicio=inicio, fin=fin,
-                   motivo=motivo.strip(), creado_por=user.id)
+    us = UserShift(user_id=p.id if p else None, desde=desde, hasta=hasta or desde, tipo="REFUERZO", inicio=inicio, fin=fin,
+                   motivo=motivo.strip(), creado_por=user.id, area=area or "", costo_hora=costo,
+                   tercero_nombre=tercero.get("nombre", "") if p is None else "",
+                   tercero_empresa=tercero.get("empresa", "") if p is None else "",
+                   tercero_doc=tercero.get("doc", "") if p is None else "")
     db().add(us)
     db().flush()
-    audit(user, "REFUERZO_AGREGADO", "User", p.username, {"desde": desde, "hasta": us.hasta, "horario": f"{inicio}-{fin}",
-                                                          "motivo": motivo})
+    audit(user, "REFUERZO_AGREGADO", "User", p.username if p else us.persona,
+          {"desde": desde, "hasta": us.hasta, "horario": f"{inicio}-{fin}", "motivo": motivo, "costo_hora": costo,
+           "tercero": tercero if p is None else None})
     return us
+
+
+def reinforcement_costs(desde, hasta, areas=None):
+    """Costo de horas extra de los refuerzos: horas del refuerzo (días × horario) × costo por hora."""
+    rows = []
+    for us in db().execute(select(UserShift).where(UserShift.tipo == "REFUERZO", UserShift.desde <= hasta)).scalars():
+        fin = us.hasta or us.desde
+        if fin < desde or (areas is not None and us.area not in areas):
+            continue
+        dias = (min(fin, hasta) - max(us.desde, desde)).days + 1
+        horas = round(minutes(us.inicio, us.fin) / 60.0 * dias, 2)
+        rows.append({"us": us, "persona": us.persona, "tercero": us.user_id is None, "dias": dias, "horas": horas,
+                     "costo_hora": us.costo_hora, "costo": round(horas * us.costo_hora, 2) if us.costo_hora is not None else None})
+    return {"filas": rows, "horas": round(sum(r["horas"] for r in rows), 2),
+            "costo": round(sum(r["costo"] or 0 for r in rows), 2),
+            "costo_terceros": round(sum(r["costo"] or 0 for r in rows if r["tercero"]), 2),
+            "sin_costo": sum(1 for r in rows if r["costo"] is None)}
 
 
 def remove_assignment(user, us):
     _check_perm(user)
-    audit(user, "TURNO_RETIRADO", "User", us.user.username, {"tipo": us.tipo, "turno": us.shift.nombre if us.shift else "",
+    if us.user is not None:
+        _check_area(user, us.user)
+    else:
+        _check_area(user, area=us.area)
+    audit(user, "TURNO_RETIRADO", "User", us.user.username if us.user else us.persona, {"tipo": us.tipo, "turno": us.shift.nombre if us.shift else "",
                                                              "desde": us.desde, "hasta": us.hasta})
     db().delete(us)
 
@@ -173,10 +241,12 @@ def filter_on_shift(users, d):
     return [u for u in users if works_on(u.id, d)]
 
 
-def schedule_table(d):
+def schedule_table(d, users=None):
     """Quién trabaja el día d (para la pantalla de turnos)."""
     out = []
-    for u in db().execute(select(User).where(User.activo.is_(True)).order_by(User.role_code, User.nombre)).scalars():
+    users = users if users is not None else db().execute(select(User).where(User.activo.is_(True))
+                                                         .order_by(User.role_code, User.nombre)).scalars()
+    for u in users:
         w = windows(u.id, d)
         if w:
             out.append((u, w))

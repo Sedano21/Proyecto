@@ -195,7 +195,8 @@ def dashboard():
         if "dashboard.ver" in g.perms else None
     tareas = alert_svc.my_tasks(g.user)
     ids = {a.id for a in tareas}
-    mis = [a for a in alert_svc.inbox(g.user, solo_abiertas=True) if a.id not in ids][:40]
+    mis = alert_svc.by_priority(g.user, [a for a in alert_svc.inbox(g.user, solo_abiertas=True) if a.id not in ids])[:40]
+    tareas = alert_svc.by_priority(g.user, tareas)
     from ..services.shifts import pending_carryover
     com = None
     if g.user.role_code in ("COORD_VENTAS", "JEFE_VENTAS", "GERENTE_COMERCIAL", "GERENCIA_GENERAL"):
@@ -225,6 +226,7 @@ def alerts():
     naturaleza = request.args.get("naturaleza") or ""
     if naturaleza in ("TAREA", "INFORMATIVA"):
         rows = [a for a in rows if alert_svc.nature_for(g.user, a) == naturaleza]
+    rows = alert_svc.by_priority(g.user, rows)  # V7: urgentes y las que requieren acción primero
     agrupar = request.args.get("agrupar")
     grupos = {}
     if agrupar:

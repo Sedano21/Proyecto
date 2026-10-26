@@ -1739,3 +1739,26 @@ for _code, _n, _m, _t, _roles in [
         ROLE_PERMISSIONS.setdefault(_r, []).append((_code, "DEFINIDO", f"{V7}: sustitutos y competencia por Coordinador, Jefe y Gerente Comercial"))
 if not any(p[0] == "mercado.registrar" for p in ROLE_PERMISSIONS["GERENTE_COMERCIAL"]):
     ROLE_PERMISSIONS["GERENTE_COMERCIAL"].append(("mercado.registrar", "DEFINIDO", f"{V7}: competencia directa registrada también por el Gerente Comercial"))
+PARAMS += [
+    ("precio_limite_informativo", True, "bool", "Comercial",
+     "Una OV con precio EN EL LÍMITE del mínimo (dentro del margen de alerta) solo genera un aviso informativo y no se "
+     "detiene; por debajo del mínimo sí se detiene hasta la confirmación comercial.", "DEFINIDO",
+     f"{V7}: OV en el límite del precio = informativa"),
+]
+ALERT_TYPES += [
+    ("OV_PRECIO_LIMITE", "OV con precio en el límite de la lista (informativa)", "Comercial", "Cambios de OV", "BAJA",
+     ["COORD_VENTAS", "JEFE_VENTAS"], "DEFINIDO", f"{V7}: OV en el límite del precio solo informa", 
+     "El precio de una línea está dentro del margen de alerta sobre el mínimo.", False),
+]
+ALERT_INFORMATIVAS = set(ALERT_INFORMATIVAS) | {"OV_PRECIO_LIMITE", "META_ATRASADA"}
+PARAMS += [
+    ("turnos_areas_a_cargo", {"Logística": ["Almacén", "Distribución"]}, "dict", "Configuración",
+     "Áreas adicionales cuyos turnos gestiona cada área (cada responsable gestiona su propia área).", "PROPUESTO",
+     f"{V7}: turnos y personal solo de su área"),
+]
+# V7: turnos y personal: los coordinadores en adelante de cada área; en Producción también los asistentes y en Almacén
+# también el Líder Operativo (cada uno solo su área)
+for _r in ("COORD_VENTAS", "COORD_ALMACEN", "COORD_ALMACEN_MP", "SUPERV_ALMACEN", "COORD_DISTRIBUCION", "COORD_LOGISTICA",
+           "SUPERV_CALIDAD", "GERENTE_COMERCIAL", "ASIST_PRODUCCION", "LIDER_ALMACEN"):
+    if not any(p[0] == "turnos.gestionar" for p in ROLE_PERMISSIONS.get(_r, [])):
+        ROLE_PERMISSIONS.setdefault(_r, []).append(("turnos.gestionar", "DEFINIDO", f"{V7}: turnos de su propia área"))

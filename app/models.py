@@ -1446,7 +1446,7 @@ class UserShift(Base):
     atender una emergencia (también cuenta como «en turno»)."""
     __tablename__ = "user_shifts"
     id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)  # vacío: refuerzo de un tercero
     shift_id: Mapped[int | None] = mapped_column(ForeignKey("shifts.id"), nullable=True)
     desde: Mapped[date] = mapped_column(Date)
     hasta: Mapped[date | None] = mapped_column(Date, nullable=True)
@@ -1456,10 +1456,20 @@ class UserShift(Base):
     inicio: Mapped[str] = mapped_column(String(5), default="")  # refuerzo sin turno: horario propio
     fin: Mapped[str] = mapped_column(String(5), default="")
     motivo: Mapped[str] = mapped_column(Text, default="")
+    # V7: refuerzo de emergencia con personal de la empresa o de un tercero (costo por hora → costo de horas extra)
+    area: Mapped[str] = mapped_column(String(40), default="", server_default="")
+    tercero_nombre: Mapped[str] = mapped_column(String(120), default="", server_default="")
+    tercero_empresa: Mapped[str] = mapped_column(String(120), default="", server_default="")
+    tercero_doc: Mapped[str] = mapped_column(String(20), default="", server_default="")
+    costo_hora: Mapped[float | None] = mapped_column(Float, nullable=True)
     creado_por: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     ts: Mapped[datetime] = mapped_column(DateTime, default=now)
     user = relationship("User", foreign_keys=[user_id])
     shift = relationship("Shift")
+
+    @property
+    def persona(self):
+        return self.user.nombre if self.user else f"{self.tercero_nombre} ({self.tercero_empresa or 'tercero'})"
 
 
 class SapDiscrepancy(Base):

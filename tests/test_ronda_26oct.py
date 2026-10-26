@@ -124,6 +124,8 @@ def _fake_sl(llamadas):
         if "BusinessPartners" in url:
             return _Resp({"value": [{"CardCode": "C001", "CardName": "CLIENTE DEMO MAYORISTA S.A.C.",
                                      "FederalTaxID": "20000000001", "Address": "AV. DEMO 100", "City": "LIMA", "County": "ATE"}]})
+        if "bost_Close" in url:  # V7: OV cerradas recientes (solo para cerrar las atendidas en SAP)
+            return _Resp({"value": []})
         if "Orders" in url and "skip" not in url:
             return _Resp({"value": [{"DocNum": 5001, "DocDate": "2026-10-26", "DocDueDate": (date.today() + timedelta(days=5)).isoformat(),
                                      "CardCode": "C001", "CardName": "CLIENTE DEMO MAYORISTA S.A.C.", "SalesPersonCode": 1,

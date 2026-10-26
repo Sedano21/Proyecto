@@ -377,3 +377,60 @@ def moves(user):
         return rows
     area = _area(user)
     return [m for m in rows if m.solicitado_por == user.id or m.area == area]
+
+
+# ------------------------------------------------------------------ V7: ranking de stock sin rotación
+def _duracion(dias):
+    if dias is None:
+        return "—"
+    sem, mes = dias / 7.0, dias / 30.4
+    return f"{dias} días · {sem:.1f} semanas · {mes:.1f} meses"
+
+
+def rotation_ranking(dias=None, hoy=None, top=20):
+    """Dos frentes: TIEMPO (más días sin salida) y CANTIDAD (más kg inmovilizados sin salida en el periodo), top 20 de
+    cada uno, con días, semanas y meses, y una recomendación de venta por producto."""
+    from .costs import cost_per_kg
+    hoy = hoy or date.today()
+    base = no_rotation(dias, hoy)
+    lots = defaultdict(list)
+    for lot in db().execute(select(StockLot).where(StockLot.cantidad > 0)).scalars():
+        lots[lot.product_code].append(lot)
+    compradores = defaultdict(lambda: defaultdict(float))
+    for o in db().execute(select(SalesOrder).where(SalesOrder.estado != "CANCELADA",
+                                                   SalesOrder.fecha_emision >= hoy - timedelta(days=365))).scalars():
+        for l in o.lines:
+            if l.activa:
+                compradores[l.product_code][o.customer.nombre] += l.cantidad
+    filas = []
+    for x in base["filas"]:
+        p = db().get(Product, x["code"])
+        ls = lots.get(x["code"], [])
+        ingreso = min([l.fecha_admision for l in ls if l.fecha_admision] or [None]) if ls else None
+        dias_sin = x["dias"] if x["dias"] is not None else ((hoy - ingreso).days if ingreso else None)
+        kg_u = (p.peso_kg or (1.0 if (p.um or "").upper().startswith("K") else 0)) if p else 0
+        kg = round(x["stock"] * kg_u, 1)
+        venc = min([l.fecha_venc for l in ls if l.fecha_venc] or [None])
+        dias_venc = (venc - hoy).days if venc else None
+        c = cost_per_kg(p) if p else None
+        quienes = sorted(compradores.get(x["code"], {}).items(), key=lambda t: -t[1])[:3]
+        if dias_venc is not None and dias_venc <= 60:
+            reco = f"Vence en {dias_venc} días: liquidar con precio especial o promoción por volumen esta semana."
+        elif quienes:
+            reco = "Ofrecer a quienes lo compraron en el último año: " + ", ".join(n for n, _ in quienes) + "."
+        elif x["ultima_salida"] is None:
+            reco = "Nunca tuvo salida: proponerlo como «producto del mes», muestra comercial o combo con un producto líder."
+        else:
+            reco = "Incluirlo en la próxima campaña y revisar el precio frente al mercado."
+        filas.append(dict(x, dias_sin=dias_sin, duracion=_duracion(dias_sin), kg=kg, vence=venc, dias_venc=dias_venc,
+                          valor=round(kg * c, 2) if c and kg else None, compradores=quienes, recomendacion=reco,
+                          ingreso=ingreso))
+    por_tiempo = sorted(filas, key=lambda f: -(f["dias_sin"] if f["dias_sin"] is not None else 10 ** 6))[:top]
+    por_cantidad = sorted(filas, key=lambda f: -(f["kg"] or f["stock"]))[:top]
+    for i, f in enumerate(por_tiempo, start=1):
+        f["rank_tiempo"] = i
+    for i, f in enumerate(por_cantidad, start=1):
+        f["rank_cantidad"] = i
+    return {"dias": base["dias"], "total": len(filas), "por_tiempo": por_tiempo, "por_cantidad": por_cantidad,
+            "kg_total": round(sum(f["kg"] for f in filas), 1),
+            "valor_total": round(sum(f["valor"] or 0 for f in filas), 2)}

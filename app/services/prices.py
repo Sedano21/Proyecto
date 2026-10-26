@@ -201,7 +201,7 @@ def check_order_prices(order, user=None):
     from . import alerts
     margen = float(param("margen_alerta_precio_pct", 0) or 0)
     from .costs import cost_for_line
-    observadas, faltantes, bajo_costo = [], [], []
+    observadas, faltantes, bajo_costo, en_limite = [], [], [], []
     for l in order.lines:
         if not l.activa:
             continue
@@ -225,8 +225,18 @@ def check_order_prices(order, user=None):
         estado, detalle = _compare(l, l.product, m, margen)
         sin = "" if l.precio_unitario else " (OV sin precio de venta)"
         l.precio_origen = f"{ESTADO_TXT[estado]}{sin}: {detalle} (canal {m['canal']})"
-        if estado != "SOBRE":
+        if estado == "LIMITE" and l.precio_unitario and param("precio_limite_informativo", True):
+            # V7: en el límite del mínimo solo se informa (no detiene la OV)
+            en_limite.append(f"{l.product_code}: {ESTADO_TXT[estado].lower()} – {detalle}")
+        elif estado != "SOBRE":
             observadas.append(f"{l.product_code}: {ESTADO_TXT[estado].lower()}{sin} – {detalle}")
+    lkey = f"PRECIO_LIM:{order.id}"
+    if en_limite:
+        alerts.emit("OV_PRECIO_LIMITE", f"OV {order.numero}: precio en el límite de la lista (informativo)",
+                    f"Cliente {order.customer.nombre}, vendedor {order.vendedor_nombre or '-'}. " + "; ".join(en_limite)
+                    + ". La OV sigue su curso.", "SalesOrder", order.id, prioridad="BAJA", dedup_key=lkey, creado_por=user)
+    else:
+        alerts.close_by_system(lkey, "Precios sobre el límite")
     key = f"PRECIO:{order.id}"
     tipo = f" [{order.tipo_venta}]" if order.tipo_venta else ""
     previas = list(order.precio_observado or [])
@@ -237,9 +247,9 @@ def check_order_prices(order, user=None):
             order.aprobacion_precio = {}
             if param("retener_ov_bajo_minimo", True) or (bajo_costo and param("retener_ov_bajo_costo", True)):
                 order.retenida_precio = True
-                order.motivo_detencion = "Detenida por precio en el límite o bajo el mínimo: requiere confirmación comercial."
+                order.motivo_detencion = "Detenida por precio bajo el mínimo: requiere confirmación comercial."
         if observadas != previas or not aprobada_igual:
-            a = alerts.emit("OV_PRECIO_BAJO_MINIMO", f"OV {order.numero}{tipo}: precio en el límite o por debajo de la lista",
+            a = alerts.emit("OV_PRECIO_BAJO_MINIMO", f"OV {order.numero}{tipo}: precio por debajo de la lista",
                             f"Cliente {order.customer.nombre} (canal {channel_of(order.customer) or '-'}), vendedor "
                             f"{order.vendedor_nombre or '-'}. " + "; ".join(observadas)
                             + (" La OV queda detenida hasta la confirmación del Coordinador o Jefe Comercial."

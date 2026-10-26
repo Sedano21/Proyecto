@@ -65,8 +65,8 @@ def demand_change(fid):
 @bp.route("/rotacion")
 @perm_required("rotacion.ver")
 def rotation():
-    d = ssvc.no_rotation(request.args.get("dias") or None)
-    return render_template("rotation.html", d=d)
+    d = ssvc.rotation_ranking(request.args.get("dias") or None)
+    return render_template("rotation.html", d=d, ver_costos="costos.ver" in g.perms, frente=request.args.get("frente", "tiempo"))
 
 
 @bp.route("/movimientos", methods=["GET", "POST"])

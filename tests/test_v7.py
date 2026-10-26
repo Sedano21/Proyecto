@@ -298,3 +298,36 @@ def test_metas_ampliadas_y_proyeccion_por_grupo(s, U, cust):
         supply.decide_change(f, U("gerente.general"), False)
     supply.decide_change(f, U("gerente.general"), True)
     assert f.cantidad == 150 and not supply.pending_changes()
+
+
+def test_rotacion_top20_y_turnos_por_area_con_tercero(s, U, app):
+    from app.services import shifts, supply
+    d = supply.rotation_ranking(30)
+    assert len(d["por_tiempo"]) <= 20 and len(d["por_cantidad"]) <= 20
+    for f in d["por_tiempo"]:
+        assert f["recomendacion"] and ("semanas" in f["duracion"] or f["dias_sin"] is None)
+    jp = U("jefe.produccion")
+    otro = s.query(type(jp)).filter_by(username="coord.ventas").one()
+    with pytest.raises(BusinessError, match="su área"):
+        shifts.add_reinforcement(jp, otro.id, date.today(), None, "08:00", "12:00", "Emergencia")
+    with pytest.raises(BusinessError, match="costo por hora"):
+        shifts.add_reinforcement(jp, None, date.today(), None, "08:00", "12:00", "Emergencia", {"nombre": "Persona Ficticia"})
+    us = shifts.add_reinforcement(jp, None, date.today(), date.today() + timedelta(days=1), "08:00", "12:00", "Pedido urgente",
+                                  {"nombre": "Persona Ficticia", "empresa": "Servicios Demo SAC"}, 15)
+    c = shifts.reinforcement_costs(date.today(), date.today() + timedelta(days=5), shifts.managed_areas(jp))
+    assert any(r["us"].id == us.id and r["horas"] == 8 and r["costo"] == 120 for r in c["filas"])
+    s.commit()
+    cl = app.test_client()
+    login(cl, "jefe.produccion")
+    h = cl.get("/configuracion/turnos").get_data(as_text=True)
+    assert "Costo de horas extra" in h and "Persona Ficticia" in h
+    login(cl, "coord.almacen")
+    assert cl.get("/suministro/rotacion?frente=cantidad").status_code == 200
+
+
+def test_alertas_por_prioridad(s, U):
+    from app.services import alerts
+    u = U("coord.ventas")
+    rows = alerts.by_priority(u, alerts.inbox(u))
+    claves = [(a.estado in alerts.CERRADOS, alerts.nature_for(u, a) != "TAREA", alerts.PRIORIDAD_ORDEN.get(a.prioridad, 9)) for a in rows]
+    assert claves == sorted(claves)

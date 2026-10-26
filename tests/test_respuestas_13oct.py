@@ -57,7 +57,9 @@ def test_q11_alerta_si_la_ov_esta_en_el_limite_o_por_debajo(s, U, new_order):
     assert l.precio_unitario == pytest.approx(minimo - 0.01, abs=1e-4)  # el sistema no cambia el precio de la OV
     osvc.modify_order(o, U("coord.ventas"), {"lines": [{"product_code": "PT-905", "cantidad": 10, "precio_unitario": minimo}]})
     s.commit()
-    assert o.lines[0].precio_origen.startswith("EN EL LÍMITE") and a.estado not in ("COMPLETADA", "RECONOCIDA")
+    # V7 (26-oct): en el límite solo informa: no detiene la OV y se avisa con una alerta informativa
+    assert o.lines[0].precio_origen.startswith("EN EL LÍMITE") and not o.retenida_precio
+    assert alerts_of(s, "OV_PRECIO_LIMITE", o.id)
     osvc.modify_order(o, U("coord.ventas"), {"lines": [{"product_code": "PT-905", "cantidad": 10,
                                                         "precio_unitario": minimo * 1.2}]})
     s.commit()
