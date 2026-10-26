@@ -21,7 +21,7 @@ def _iso(ts):
 
 def open_commitment(order, ahora=None):
     """Abre el compromiso al registrar o activar la OV. Con stock completo se responde CUMPLE automáticamente."""
-    if order.estado in ORDEN_ESTADOS_CERRADOS or order.estado in ("BORRADOR", "REGULARIZADA"):
+    if order.estado in ORDEN_ESTADOS_CERRADOS or order.estado in ("BORRADOR", "REGULARIZADA", "REGULARIZACION_OBSERVADA"):
         return
     ahora = ahora or now()
     horas = float(param("plazo_respuesta_cumplimiento_horas", 24) or 24)

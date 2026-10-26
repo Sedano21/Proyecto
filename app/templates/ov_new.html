@@ -4,7 +4,7 @@
 {% if can('ov.regularizar') %}<div class="note small">¿Fecha pasada u hora ya transcurrida? No se puede registrar ni reservar aquí: use <a href="{{ url_for('com.regularization') }}">Regularización de OV</a>.</div>{% endif %}
 <div class="note info small">Al guardar, el sistema valida los datos y evalúa stock, reservas, lotes, vencimientos y condiciones del cliente; reserva solo stock físico verificado y utilizable (IF §4.2–4.3). Precio y costo se validan contra la lista de precios mínimos y el costo vigente.</div>
 <div class="note small">Reglas de registro: la <b>unidad</b> la fija el código (MP, GR, SER en kilos; PT, AB, MQ en unidades){% if corte %}; después de las <b>{{ corte }}</b> no se registra una OV para despachar mañana{% endif %}{% if exigir_oc %}; sin la <b>orden de compra</b> del cliente (o la plantilla del pedido por WhatsApp o correo) la OV queda como <b>borrador</b> y no se evalúa{% endif %}. Un prospecto o un cliente sin condición de pago aprobada por Finanzas solo admite <b>OV de muestra</b>.</div>
-<form method="post" class="card" id="ovform" enctype="multipart/form-data">{{ csrf() }}
+<form method="post" class="card" id="ovform" enctype="multipart/form-data" data-borrador>{{ csrf() }}
 <div class="row">
 <div><label>N° de OV / documento</label><input name="numero" required></div>
 <div class="grow"><label>Cliente</label><input name="cliente_txt" id="cliente_txt" list="clientes" required placeholder="Escriba nombre o RUC" autocomplete="off"><input type="hidden" name="customer_id" id="customer_id">
@@ -17,21 +17,22 @@
 </div>
 <fieldset class="card"><legend>Entrega</legend>
 <div class="row">
-<div class="grow"><label>Lugar de entrega del cliente</label><select name="site_id" id="site_id"><option value="FISCAL">Dirección del cliente</option><option value="OTRO">Otro (detallar)…</option></select></div>
+<div class="grow"><label>Lugar de entrega del cliente</label><select name="site_id" id="site_id"><option value="FISCAL">Dirección 1 (fiscal)</option><option value="OTRO">Otra dirección…</option></select></div>
 <div><label>Hora de cita (24 h)</label><select name="hora_cita" id="hora_cita"><option value="">Sin cita / horario del cliente</option>{% for h in horas %}<option>{{ h }}</option>{% endfor %}</select></div>
 <div><label><input type="checkbox" name="cita_confirmada" value="1"> Cita confirmada</label><label><input type="checkbox" name="urgente" value="1"> Urgente</label><label title="Sin precio: la OV queda detenida hasta la confirmación del Coordinador o Jefe Comercial"><input type="checkbox" name="muestra" id="muestra" value="1"> Muestra comercial (sin precio)</label></div>
 </div>
-<div id="otro" class="row" style="display:none"><div class="grow"><label>Nombre del lugar (almacén, tienda, sede)</label><input name="lugar_otro" id="lugar_otro"></div>
-<div><label><input type="checkbox" name="guardar_lugar" value="1" checked> Guardar en la ficha del cliente</label></div></div>
+<div id="otro" class="row" style="display:none"><div class="grow"><label>Nombre del lugar (opcional: almacén, tienda, sede)</label><input name="lugar_otro" id="lugar_otro"></div>
+<p class="small muted">La nueva dirección se guarda sola en la ficha del cliente como una dirección más (no reemplaza las anteriores) y aparecerá en esta lista en la próxima OV.</p></div>
 <div class="row"><div class="grow"><label>Dirección</label><input name="direccion" id="direccion" required></div><div><label>Distrito</label><input name="distrito" id="distrito" required></div><div><label>Provincia</label><input name="provincia" id="provincia" required></div></div>
 <p class="small muted" id="horario_cli"></p>
 </fieldset>
 <label>Comentarios</label><textarea name="comentarios"></textarea>
 <h3>Líneas</h3>
-<div class="tw"><table><tr><th>Producto (código, nombre y presentación)</th><th>Unidad</th><th>Cantidad</th><th>Precio unitario S/ (por la unidad elegida)</th></tr>
-{% for i in range(8) %}<tr><td><input name="product_code" list="prods" class="prod" style="min-width:280px;width:100%" autocomplete="off" placeholder="Escriba o elija"></td>
+<div class="tw"><table><thead><tr><th>Producto (código, nombre y presentación)</th><th>Unidad</th><th>Cantidad</th><th>Precio unitario S/ (por la unidad elegida)</th><th></th></tr></thead><tbody id="ov-lineas">
+{% for i in range(3) %}<tr class="dynrow"><td><input name="product_code" list="prods" class="prod" style="min-width:280px;width:100%" autocomplete="off" placeholder="Escriba o elija"></td>
 <td><select name="um_venta" class="um" aria-label="Unidad"><option value="">—</option></select></td>
-<td><input name="cantidad" type="number" step="any" min="0.0001" inputmode="decimal" aria-label="Cantidad"></td><td><input name="precio_unitario" type="number" step="any" min="0.01" inputmode="decimal" aria-label="Precio unitario"></td></tr>{% endfor %}</table></div>
+<td><input name="cantidad" type="number" step="any" min="0.0001" inputmode="decimal" aria-label="Cantidad"></td><td><input name="precio_unitario" type="number" step="any" min="0.01" inputmode="decimal" aria-label="Precio unitario"><div class="precio-aviso small" aria-live="polite"></div></td><td><button type="button" class="ibtn" data-delrow title="Quitar línea" aria-label="Quitar línea">{{ ic('x') }}</button></td></tr>{% endfor %}</tbody></table></div>
+<p><button type="button" class="sec small" data-addrow="#ov-lineas">{{ ic('plus') }} Agregar producto</button></p>
 <p class="small muted">En cada línea con producto, la <b>cantidad</b> y el <b>precio</b> son obligatorios. La primera línea es obligatoria.</p>
 <datalist id="prods">{% for p in products %}<option value="{{ p.code }} · {{ p.descripcion }}{{ ' · ' ~ p.presentacion if p.presentacion }}">{{ p.um }}{{ ' · se vende por kg o por saco' if p.code in granel }}</option>{% endfor %}</datalist>
 <p class="small muted">La unidad se completa al elegir el producto. Granel en kilos: puede elegir «Saco» para vender por saco (se convierte a kg con los kg por saco de la lista mayorista granel).</p>
@@ -57,7 +58,7 @@
   function onSite(){
     var id = opts[cli.value]; var c = id ? S[id] : null; var v = sel.value;
     document.getElementById('otro').style.display = v === 'OTRO' ? '' : 'none';
-    document.getElementById('lugar_otro').required = v === 'OTRO';
+    
     if (!c) return;
     if (v === 'FISCAL') fill(c.fiscal); else if (v === 'OTRO') fill({}); else c.sitios.forEach(function(x){ if (String(x.id) === v) fill(x); });
   }
@@ -80,7 +81,29 @@
     s.innerHTML = ''; if (!u) { s.add(new Option('—', '')); return; }
     s.add(new Option(u === 'KG' ? 'Kilo' : 'Unidad', u)); if (u === 'KG' && GR.indexOf(code) >= 0) s.add(new Option('Saco (granel)', 'SACO'));
     if (prev === 'SACO' && s.options.length > 1) s.value = 'SACO'; }
-  form.querySelectorAll('tr').forEach(function(tr){ var p = tr.querySelector('.prod'); if (p) { p.addEventListener('change', function(){ unidad(tr); }); p.addEventListener('input', function(){ unidad(tr); }); } });
+  ['change','input'].forEach(function(ev){ form.addEventListener(ev, function(e){ if (e.target.classList && e.target.classList.contains('prod')) unidad(e.target.closest('tr')); }); });
+  // V7: aviso en vivo si el precio está bajo el precio base (solo para quien registra: confirma o modifica)
+  var tmP = null;
+  function revisarPrecio(tr){
+    var p = tr.querySelector('.prod'), pr = tr.querySelector('[name=precio_unitario]'), um = tr.querySelector('.um'), av = tr.querySelector('.precio-aviso');
+    if (!p || !av) return;
+    if (!p.value.trim() || !pr.value || !cid.value) { av.textContent = ''; av.className = 'precio-aviso small'; tr.classList.remove('precio-bajo'); return; }
+    var q = new URLSearchParams({producto: p.value, cliente: cid.value, precio: pr.value, um: um ? um.value : '', canal: (document.getElementById('canal_precio') || {}).value || ''});
+    fetch('{{ url_for('com.price_check_api') }}?' + q, {credentials: 'same-origin'}).then(function(r){ return r.json(); }).then(function(d){
+      tr.classList.toggle('precio-bajo', d.estado === 'DEBAJO');
+      av.className = 'precio-aviso small ' + (d.estado === 'DEBAJO' ? 'err' : (d.estado === 'LIMITE' ? 'warn' : 'muted'));
+      av.textContent = d.estado === 'DEBAJO' ? 'Bajo el precio base (S/ ' + Number(d.minimo).toFixed(2) + '). Confirme o modifique.' :
+        d.estado === 'LIMITE' ? 'En el límite del precio base (S/ ' + Number(d.minimo).toFixed(2) + ').' :
+        d.estado === 'SIN_MINIMO' ? d.detalle : '';
+    }).catch(function(){});
+  }
+  form.addEventListener('input', function(e){ var tr = e.target.closest && e.target.closest('tr.dynrow'); if (tr && e.target.name === 'precio_unitario') { clearTimeout(tmP); tmP = setTimeout(function(){ revisarPrecio(tr); }, 350); } });
+  form.addEventListener('change', function(e){ var tr = e.target.closest && e.target.closest('tr.dynrow'); if (tr) revisarPrecio(tr); else if (e.target === cli || e.target.id === 'canal_precio') form.querySelectorAll('tr.dynrow').forEach(revisarPrecio); });
+  form.addEventListener('submit', function(e){
+    var bajos = [].map.call(form.querySelectorAll('tr.precio-bajo .prod'), function(x){ return x.value.split(' ')[0]; });
+    if (bajos.length && !form.dataset.precioOk && !confirm('Precio bajo el precio base en: ' + bajos.join(', ') + '.\n\nAceptar: registrar igual (la OV queda retenida hasta la aprobación del precio).\nCancelar: volver y modificar el precio.')) { e.preventDefault(); e.stopImmediatePropagation(); return; }
+    form.dataset.precioOk = '1';
+  });
   function avisoCli(){ var e = EC[cid.value], a = document.getElementById('aviso_cli'); if (!e) { a.textContent = ''; return; }
     a.textContent = e.prospecto ? 'Prospecto: solo admite OV de muestra hasta que pase a cliente (Oportunidades).' :
       (e.condicion !== 'APROBADA' ? 'Sin condición de pago aprobada por Finanzas: solo admite OV de muestra.' : ''); a.className = a.textContent ? 'small warn' : 'small'; }

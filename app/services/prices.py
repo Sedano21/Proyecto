@@ -375,3 +375,21 @@ def check_validity(today):
                         "PriceListMeta", m.lista, dedup_key=f"LISTA_VENC:{m.lista}:{m.vigencia_hasta}")
             n += 1
     return n
+
+
+def check_line_price(product, customer, precio, um_venta="", canal=None):
+    """V7: verificación en vivo para quien registra la OV (antes de guardar). No crea alertas: solo informa para que
+    confirme o modifique. Devuelve dict(estado SOBRE/LIMITE/DEBAJO/SIN_MINIMO, minimo, detalle)."""
+    from types import SimpleNamespace
+    m, motivo = minimum_for(product, customer, canal)
+    if m is None:
+        return {"estado": "SIN_MINIMO", "minimo": None, "detalle": "Sin precio base: " + motivo}
+    if m["tipo"] == "GRANEL" and (um_venta or "").upper() == "SACO":
+        ref = m["precio_saco"]
+        prod = SimpleNamespace(um="SACO")
+    else:
+        ref, _ = price_for(product, customer, canal)
+        prod = product
+    estado, detalle = _compare(SimpleNamespace(precio_unitario=float(precio or 0)), prod, m,
+                               float(param("margen_alerta_precio_pct", 0) or 0))
+    return {"estado": estado, "minimo": ref, "detalle": detalle, "canal": m["canal"]}

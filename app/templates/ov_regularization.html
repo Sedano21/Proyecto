@@ -1,25 +1,56 @@
 {% extends "base.html" %}{% from "_m.html" import b, csrf, ic, empty %}
 {% block content %}
-<div class="page-head"><div><h1>Regularización de OV</h1><p class="sub">Pedidos con fecha pasada u hora ya transcurrida. Se registran <b>sin reservar stock</b>; luego se liberan al flujo normal con una fecha vigente o se cierran como registro.</p></div></div>
+<div class="page-head"><div><h1>Regularización de OV</h1><p class="sub">Pedidos de <b>fechas pasadas</b> que no se registraron a tiempo en el módulo. Para un pedido de hoy o de una fecha futura use <a href="{{ url_for('com.order_new') }}">Nueva OV</a>.</p></div></div>
+<div class="card explain"><h3>{{ ic('info') }} ¿Qué pasa después de registrarla?</h3>
+<div class="cards">
+<article class="xcard st-LIQUIDADO"><div class="xcard-head"><b>1 · La mercadería ya salió</b></div><p class="small">El pedido se atendió físicamente (p. ej. por teléfono o en contingencia). El sistema <b>descuenta del inventario</b> lo que salió, por FEFO (o los lotes que usted elija), lo registra en el historial de ventas y <b>cierra</b> la OV. Si la salida ya está descontada en SAP, marque «ya descontado en SAP» para no descontar dos veces.</p></article>
+<article class="xcard st-PENDIENTE"><div class="xcard-head"><b>2 · Aún no se atiende</b></div><p class="small">El pedido llegó tarde pero todavía no sale. Se le pone una <b>fecha vigente</b> y pasa al <b>flujo normal</b>: se evalúa, reserva stock, va a picking y despacho como cualquier OV.</p></article>
+</div>
+<p class="small muted">Mientras no elija una de las dos, la OV no reserva ni descuenta stock. Si registra una fecha de hoy o posterior, se guarda como <b>borrador observado</b> y se le alerta para corregirla.</p></div>
 <details class="card" {{ 'open' if not rows }}><summary><b>{{ ic('plus') }} Registrar una OV a regularizar</b></summary>
-<form method="post" id="regform" style="margin-top:10px">{{ csrf() }}
+<form method="post" id="regform" style="margin-top:10px" data-borrador>{{ csrf() }}
 <div class="row">
 <div><label>N° de OV / documento</label><input name="numero" required></div>
-<div class="grow"><label>Cliente</label><select name="customer_id" required><option value="">Elija el cliente</option>{% for c in customers %}<option value="{{ c.id }}">{{ c.nombre }} · {{ c.ruc }}</option>{% endfor %}</select></div>
-<div><label>Fecha comprometida (pasada)</label><input type="date" name="fecha_compromiso" required></div>
+<div class="grow"><label>Cliente</label><select name="customer_id" required data-search><option value="">Elija el cliente</option>{% for c in customers %}<option value="{{ c.id }}">{{ c.nombre }} · {{ c.ruc }}</option>{% endfor %}</select></div>
+<div><label>Fecha del pedido (anterior a hoy)</label><input type="date" name="fecha_compromiso" max="{{ ayer.isoformat() }}" required></div>
 <div><label>Hora de cita</label><select name="hora_cita"><option value="">—</option>{% for h in horas %}<option>{{ h }}</option>{% endfor %}</select></div>
 <div><label>Vendedor</label><select name="vendedor_id"><option value="">(—)</option>{% for v in vendedores %}<option value="{{ v.id }}" {{ 'selected' if v.id==user.id }}>{{ v.nombre }}</option>{% endfor %}</select></div>
 </div>
 <label>Motivo de la regularización</label><input name="motivo" required style="width:100%" placeholder="p. ej. pedido atendido por teléfono el día anterior">
 <label>Comentarios</label><textarea name="comentarios"></textarea>
-<div class="tw"><table><tr><th>Producto</th><th>Cantidad</th><th>Precio unitario S/</th></tr>
-{% for i in range(5) %}<tr><td><input type="hidden" name="um_venta" value=""><input name="product_code" list="prods" placeholder="código" {{ 'required' if i == 0 }} aria-label="Producto"></td><td><input name="cantidad" type="number" step="any" min="0.0001" {{ 'required' if i == 0 }} aria-label="Cantidad"></td><td><input name="precio_unitario" type="number" step="any" min="0.01" {{ 'required' if i == 0 }} aria-label="Precio"></td></tr>{% endfor %}</table></div>
+<div class="tw"><table><thead><tr><th>Producto</th><th>Cantidad</th><th>Precio unitario S/</th><th></th></tr></thead>
+<tbody id="reg-lineas"><tr class="dynrow"><td><input type="hidden" name="um_venta" value=""><input name="product_code" list="prods" placeholder="código" required aria-label="Producto"></td><td><input name="cantidad" type="number" step="any" min="0.0001" required aria-label="Cantidad"></td><td><input name="precio_unitario" type="number" step="any" min="0.01" required aria-label="Precio"></td><td><button type="button" class="ibtn" data-delrow title="Quitar línea" aria-label="Quitar línea">{{ ic('x') }}</button></td></tr></tbody></table></div>
+<p><button type="button" class="sec small" data-addrow="#reg-lineas">{{ ic('plus') }} Agregar producto</button></p>
 <datalist id="prods">{% for p in products %}<option value="{{ p.code }}">{{ p.descripcion }}</option>{% endfor %}</datalist>
 <p><button>Registrar regularización</button></p></form></details>
+
 <div class="card"><h3>OV en regularización</h3>
-{% if rows %}<div class="tw"><table class="list"><tr><th>OV</th><th>Cliente</th><th>Fecha</th><th>Motivo</th><th>Registró</th><th>Estado</th><th>Acción</th></tr>
-{% for o in rows %}<tr><td><a href="{{ url_for('com.order_detail', oid=o.id) }}">{{ o.numero }}</a></td><td>{{ o.customer.nombre }}</td><td>{{ o.fecha_compromiso|d }} {{ o.hora_cita }}</td><td>{{ o.regularizacion.motivo }}</td><td class="small">{{ o.regularizacion.user }}<br>{{ (o.regularizacion.ts or '')[:16]|replace('T',' ') }}</td><td>{{ b(o.estado) }}{% if o.regularizacion.cierre %}<br><span class="small muted">{{ o.regularizacion.cierre }}</span>{% endif %}</td>
-<td>{% if o.estado == 'REGULARIZADA' %}<form method="post" class="row" data-confirm="¿Liberar la OV {{ o.numero }} al flujo normal? Se evaluará y reservará stock.">{{ csrf() }}<input type="hidden" name="accion" value="liberar"><input type="hidden" name="oid" value="{{ o.id }}"><input type="date" name="nueva_fecha" min="{{ today.isoformat() }}" required aria-label="Nueva fecha"><input name="comentario" placeholder="comentario" aria-label="Comentario"><button class="small">Liberar con fecha vigente</button></form>
-<form method="post" class="row" data-confirm="¿Cerrar la OV {{ o.numero }} como registro, sin reservar stock?">{{ csrf() }}<input type="hidden" name="accion" value="cerrar"><input type="hidden" name="oid" value="{{ o.id }}"><input name="comentario" placeholder="cómo se regularizó" required aria-label="Cómo se regularizó"><button class="sec small">Cerrar como registro</button></form>{% endif %}</td></tr>{% endfor %}</table></div>
+{% if rows %}<div class="cards">{% for o in rows %}
+<article class="xcard {{ 'alerta' if o.estado == 'REGULARIZACION_OBSERVADA' else ('st-PENDIENTE' if o.estado == 'REGULARIZADA' else 'st-LIQUIDADO') }}">
+<div class="xcard-head"><a href="{{ url_for('com.order_detail', oid=o.id) }}"><b>{{ o.numero }}</b></a>{{ b(o.estado) }}</div>
+<div class="meta">{{ o.customer.nombre }} · {{ o.fecha_compromiso|d }} {{ o.hora_cita }} · registró {{ o.regularizacion.user }} {{ (o.regularizacion.ts or '')[:16]|replace('T',' ') }}</div>
+<p class="small">Motivo: {{ o.regularizacion.motivo }}<br>{% for l in o.lines if l.activa %}{{ l.product_code }} × {{ l.cantidad|n }}{{ ', ' if not loop.last }}{% endfor %}</p>
+{% if o.estado == 'REGULARIZACION_OBSERVADA' %}
+<div class="pending-why">{{ o.motivo_detencion }}</div>
+<form method="post" class="row">{{ csrf() }}<input type="hidden" name="accion" value="corregir_fecha"><input type="hidden" name="oid" value="{{ o.id }}"><div><label>Fecha correcta (anterior a hoy)</label><input type="date" name="nueva_fecha" max="{{ ayer.isoformat() }}" required></div><div><button class="small">Corregir fecha</button></div></form>
+{% elif o.estado == 'REGULARIZADA' %}
+<div class="row"><button type="button" class="small" data-open="#dlg-cerrar-{{ o.id }}">{{ ic('check') }} La mercadería ya salió: descontar y cerrar</button>
+<button type="button" class="sec small" data-open="#dlg-liberar-{{ o.id }}">Aún no se atiende: pasar al flujo normal</button></div>
+<dialog class="modal" id="dlg-cerrar-{{ o.id }}"><form method="post" data-confirm="¿Descontar del inventario y cerrar la OV {{ o.numero }}?">{{ csrf() }}<input type="hidden" name="accion" value="cerrar"><input type="hidden" name="oid" value="{{ o.id }}">
+<h3>{{ o.numero }}: descontar la mercadería que salió</h3><p class="small muted">Propuesta FEFO con el stock libre (no toca lo reservado para otras OV). Ajuste las cantidades si salió de otros lotes.</p>
+{% for r in salidas[o.id] %}<h4>{{ r.line.product_code }} · {{ r.line.cantidad|n }} {{ r.line.product.um|lower }}</h4>
+{% if r.lots %}<div class="tw"><table><tr><th>Lote</th><th>Almacén</th><th>Vence</th><th>Libre</th><th>Salió</th></tr>
+{% for lot, libre in r.lots %}{% set pq = r.por_lote.get(lot.id) %}<tr><td>{{ lot.lote }}</td><td>{{ lot.warehouse_code }}</td><td>{{ lot.fecha_venc|d }}</td><td>{{ libre|n }}</td><td><input type="hidden" name="sal_line" value="{{ r.line.id }}"><input type="hidden" name="sal_lot" value="{{ lot.id }}"><input name="sal_qty" type="number" step="any" min="0" max="{{ libre }}" value="{{ pq if pq else '' }}" style="width:100px" aria-label="Cantidad que salió del lote {{ lot.lote }}"></td></tr>{% endfor %}</table></div>
+{% if r.falta > 0 %}<p class="pending-why small">Faltan {{ r.falta|n }} sin stock libre en el módulo: probablemente ya se descontaron en SAP.</p>{% endif %}
+{% else %}<p class="pending-why small">Sin stock libre de este producto en el módulo.</p>{% endif %}{% endfor %}
+<label><input type="checkbox" name="ya_descontado_sap" value="1"> Ya descontado en SAP (no descontar aquí; la próxima carga de stock lo reflejará)</label>
+<label>¿Cómo se atendió?</label><input name="comentario" required style="width:100%" placeholder="p. ej. salió con la guía 001-123 el 24/10">
+<p class="row"><button>Descontar y cerrar</button><button type="button" class="sec" data-close>Cancelar</button></p></form></dialog>
+<dialog class="modal" id="dlg-liberar-{{ o.id }}"><form method="post" data-confirm="¿Pasar la OV {{ o.numero }} al flujo normal? Se evaluará y reservará stock.">{{ csrf() }}<input type="hidden" name="accion" value="liberar"><input type="hidden" name="oid" value="{{ o.id }}">
+<h3>{{ o.numero }}: pasar al flujo normal</h3><p class="small muted">Elija la nueva fecha de despacho; la OV se evalúa y reserva stock como cualquier pedido.</p>
+<label>Nueva fecha de despacho</label><input type="date" name="nueva_fecha" min="{{ today.isoformat() }}" required><label>Comentario</label><input name="comentario" style="width:100%">
+<p class="row"><button>Pasar al flujo normal</button><button type="button" class="sec" data-close>Cancelar</button></p></form></dialog>
+{% else %}<p class="small muted">{{ 'Descontado del inventario: ' if o.regularizacion.descontado else ('Ya descontado en SAP. ' if o.regularizacion.descontado == false else '') }}{% for x in o.regularizacion.salidas or [] %}{{ x.producto }} lote {{ x.lote }} ({{ x.almacen }}) × {{ x.cantidad|n }}{{ '; ' if not loop.last }}{% endfor %}<br>{{ o.regularizacion.cierre }}</p>{% endif %}
+</article>{% endfor %}</div>
 {% else %}{{ empty('No hay OV en regularización.', 'check') }}{% endif %}</div>
 {% endblock %}

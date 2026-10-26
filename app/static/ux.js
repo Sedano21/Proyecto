@@ -214,6 +214,120 @@
     new MutationObserver(function () { if (cv.offsetWidth && cv.width !== cv.offsetWidth) size(); }).observe(dlg || document.body, { attributes: true, subtree: true, attributeFilter: ['open', 'hidden'] });
   });
 
+  /* 9. «Volver»: pila de pantallas visitadas en la pestaña (sin repetir la misma al guardar un formulario) */
+  (function () {
+    var KEY = 'cp-nav', here = location.pathname + location.search, pila = [];
+    try { pila = JSON.parse(sessionStorage.getItem(KEY) || '[]'); } catch (e) { pila = []; }
+    var back = document.querySelector('[data-back]');
+    if (pila.length && pila[pila.length - 1] === here) { /* recarga o guardado en la misma pantalla */ }
+    else if (pila.length > 1 && pila[pila.length - 2] === here && sessionStorage.getItem('cp-nav-back') === '1') { pila.pop(); }
+    else { pila.push(here); }
+    try { sessionStorage.removeItem('cp-nav-back'); sessionStorage.setItem(KEY, JSON.stringify(pila.slice(-30))); } catch (e) {}
+    if (!back || pila.length < 2 || location.pathname === '/' ) return;
+    var prev = pila[pila.length - 2];
+    back.href = prev; back.hidden = false;
+    back.addEventListener('click', function (e) {
+      e.preventDefault();
+      try { sessionStorage.setItem('cp-nav-back', '1'); } catch (err) {}
+      location.href = prev;
+    });
+  })();
+
+  /* 10. visor de documentos: la OC, guías, facturas y fotos se abren en una ventana con retorno, sin salir de la pantalla */
+  (function () {
+    var dlg = null;
+    function viewer() {
+      if (dlg) return dlg;
+      dlg = document.createElement('dialog'); dlg.className = 'modal viewer';
+      dlg.innerHTML = '<div class="dlg-head"><h3 class="v-title">Documento</h3><a class="btn sec small v-open" target="_blank" rel="noopener">Abrir en otra pestaña</a>' +
+        '<button type="button" class="ibtn v-close" aria-label="Cerrar">✕</button></div><div class="v-body"></div>';
+      document.body.appendChild(dlg);
+      dlg.querySelector('.v-close').addEventListener('click', function () { dlg.close(); });
+      dlg.addEventListener('click', function (e) { if (e.target === dlg) dlg.close(); });
+      dlg.addEventListener('close', function () { dlg.querySelector('.v-body').innerHTML = ''; });
+      return dlg;
+    }
+    document.addEventListener('click', function (e) {
+      var a = e.target.closest('a[href*="/evidencias/"]');
+      if (!a || e.ctrlKey || e.metaKey || e.shiftKey || a.hasAttribute('download')) return;
+      e.preventDefault();
+      var d = viewer(), url = a.getAttribute('href'), ext = (url.split('?')[0].split('.').pop() || '').toLowerCase();
+      d.querySelector('.v-title').textContent = (a.textContent || 'Documento').trim() || 'Documento';
+      d.querySelector('.v-open').href = url;
+      var body = d.querySelector('.v-body');
+      if (['jpg', 'jpeg', 'png', 'webp', 'gif'].indexOf(ext) >= 0) {
+        var img = document.createElement('img'); img.src = url; img.alt = d.querySelector('.v-title').textContent; body.appendChild(img);
+      } else if (ext === 'pdf') {
+        var f = document.createElement('iframe'); f.src = url; f.title = 'Documento'; body.appendChild(f);
+      } else {
+        body.innerHTML = '<p class="small">Este tipo de archivo no se puede mostrar aquí. Use «Abrir en otra pestaña» para descargarlo.</p>';
+      }
+      d.showModal();
+    });
+  })();
+
+  /* 11. borrador de la pantalla: si sale a otra pestaña (p. ej. la ficha del cliente) y vuelve, lo escrito sigue ahí */
+  $all('form[data-borrador]').forEach(function (f) {
+    var key = 'cp-borrador:' + location.pathname + ':' + (f.id || 'f');
+    function campos() { return $all('input,select,textarea', f).filter(function (el) {
+      var t = (el.type || '').toLowerCase(); return el.name && el.name !== '_csrf' && ['file', 'password', 'hidden', 'submit', 'button'].indexOf(t) < 0; }); }
+    try {
+      var raw = sessionStorage.getItem(key);
+      if (raw && !document.querySelector('.flash.error')) {
+        var st = JSON.parse(raw), cnt = {};
+        var add = f.querySelector('[data-addrow]'), guard = 0;
+        var falta = function () { return Object.keys(st).some(function (n) { return f.querySelectorAll('[name="' + n + '"]').length && f.querySelectorAll('[name="' + n + '"]').length < st[n].length; }); };
+        while (add && falta() && guard++ < 100) add.click();
+        campos().forEach(function (el) {
+          var i = cnt[el.name] = (cnt[el.name] || 0); cnt[el.name]++;
+          var v = (st[el.name] || [])[i]; if (v === undefined) return;
+          if (el.type === 'checkbox' || el.type === 'radio') el.checked = v === true || v === el.value; else el.value = v;
+        });
+        var aviso = document.createElement('div'); aviso.className = 'flash info noprint';
+        aviso.innerHTML = '<span>Recuperamos lo que estaba escribiendo. </span>';
+        var b = document.createElement('button'); b.type = 'button'; b.className = 'small sec'; b.textContent = 'Empezar de nuevo';
+        b.addEventListener('click', function () { try { sessionStorage.removeItem(key); } catch (e) {} location.reload(); });
+        aviso.appendChild(b); f.parentNode.insertBefore(aviso, f);
+      }
+    } catch (e) {}
+    var tm = null;
+    function guardar() {
+      var st = {};
+      campos().forEach(function (el) { (st[el.name] = st[el.name] || []).push(el.type === 'checkbox' || el.type === 'radio' ? (el.checked ? el.value : false) : el.value); });
+      try { sessionStorage.setItem(key, JSON.stringify(st)); } catch (e) {}
+    }
+    f.addEventListener('input', function () { clearTimeout(tm); tm = setTimeout(guardar, 400); });
+    f.addEventListener('change', guardar);
+    f.addEventListener('submit', function () { try { sessionStorage.removeItem(key); } catch (e) {} });
+  });
+
+  /* 12. filas dinámicas «+»: <button type="button" data-addrow="#tbody"> clona la última fila vacía;
+     [data-delrow] dentro de la fila la quita (siempre queda una). */
+  document.addEventListener('click', function (e) {
+    var add = e.target.closest('[data-addrow]');
+    if (add) {
+      var box = document.querySelector(add.getAttribute('data-addrow')); if (!box) return;
+      var filas = box.querySelectorAll(':scope > .dynrow'), ult = filas[filas.length - 1]; if (!ult) return;
+      var max = parseInt(add.getAttribute('data-max'), 10) || 60; if (filas.length >= max) return;
+      var n = ult.cloneNode(true);
+      $all('input,select,textarea', n).forEach(function (el) {
+        if (el.type === 'checkbox' || el.type === 'radio') el.checked = false;
+        else if (el.tagName === 'SELECT') el.selectedIndex = 0; else if (el.type !== 'hidden' || el.hasAttribute('data-clear')) el.value = '';
+        el.removeAttribute('required'); el.classList.remove('falta');
+      });
+      ult.parentNode.insertBefore(n, ult.nextSibling);
+      var foco = n.querySelector('input:not([type=hidden]),select'); if (foco) foco.focus();
+      box.dispatchEvent(new Event('change', { bubbles: true }));
+      return;
+    }
+    var del = e.target.closest('[data-delrow]');
+    if (del) {
+      var fila = del.closest('.dynrow'), cont = fila && fila.parentNode;
+      if (!fila || cont.querySelectorAll(':scope > .dynrow').length <= 1) return;
+      fila.remove(); cont.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+  });
+
   /* 7. recarga periódica */
   $all('[data-refresh]').forEach(function (el) {
     var s = parseInt(el.getAttribute('data-refresh'), 10) || 60;

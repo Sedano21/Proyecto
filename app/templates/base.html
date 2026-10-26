@@ -144,6 +144,7 @@
       {% if contingencia %}<div class="flash warn noprint" role="status">{{ ic('alert') }}<span><b>Registro en contingencia activo</b> desde {{ (contingencia.desde or '')[:16]|replace('T', ' ') }} ({{ contingencia.motivo }}): todo lo que registre queda marcado como «registrado en contingencia».</span></div>{% endif %}
       {% if demo_mode %}<div class="demo-strip noprint">{{ ic('info') }} Entorno de demostración con datos ficticios. No conectado a SAP ni a sistemas productivos.</div>{% endif %}
       {% with msgs = get_flashed_messages(with_categories=true) %}{% for c, m in msgs %}<div class="flash {{ c }}" role="{{ 'alert' if c == 'error' else 'status' }}">{{ ic('x' if c == 'error' else ('check' if c == 'ok' else 'info')) }}<span>{{ m }}</span></div>{% endfor %}{% endwith %}
+      <a class="back-link noprint" href="#" data-back hidden>{{ ic('chevron') }}<span>Volver</span></a>
       {% block content %}{% endblock %}
     </main>
   </div>

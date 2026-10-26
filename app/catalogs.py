@@ -1652,3 +1652,11 @@ PARAMS += [
      "Datos de SAP que se autorizan solos si no tienen errores (los demás quedan para revisión y autorización, como las "
      "cargas de Excel).", "PENDIENTE", f"{R26}: conexión SAP Service Layer"),
 ]
+
+# Observaciones del módulo V7 (26-oct-2026)
+V7 = "Observaciones del módulo V7 (26-oct-2026)"
+ALERT_TYPES += [
+    ("OV_REGULARIZACION_FECHA", "Regularización con fecha no pasada: corregir", "Comercial", "Órdenes de venta", "ALTA",
+     [], "DEFINIDO", f"{V7}: la regularización exige fecha anterior a hoy; se guarda el borrador y se alerta para corregir",
+     "Se registra una regularización con fecha de hoy o posterior (va solo a quien la registró).", True),
+]

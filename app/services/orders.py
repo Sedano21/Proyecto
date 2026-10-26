@@ -6,7 +6,8 @@ from datetime import date, datetime, timedelta
 from sqlalchemy import select
 
 from ..db import db
-from ..models import (Alert, Customer, OVChangeRequest, OVDecision, Product, RouteStop, SalesOrder, SalesOrderLine, User, now)
+from ..models import (Alert, Customer, OVChangeRequest, OVDecision, Product, RouteStop, SalesHistory, SalesOrder,
+                      SalesOrderLine, User, now)
 from . import alerts
 from .core import BusinessError, audit, can_self_approve, has_perm, param
 from .stock import (ORDEN_ESTADOS_CERRADOS, evaluate_order, line_reserved, priority_key, release_order)
@@ -156,13 +157,26 @@ def resolve_delivery(customer, site_id=None, lugar="", direccion="", distrito=""
     falta = [k for k in ("direccion", "distrito", "provincia") if not datos[k]]
     if falta and exigir:
         raise BusinessError("Complete " + ", ".join(falta) + " del lugar de entrega (necesarios para calcular la ruta).")
-    if site is None and guardar and datos["lugar_entrega"]:
-        site = CustomerSite(customer_id=customer.id, nombre=datos["lugar_entrega"], direccion=datos["direccion"],
-                            distrito=datos["distrito"], provincia=datos["provincia"])
+    if site is None and guardar and not falta:
+        # V7: otra dirección de entrega se agrega sola a la ficha como «Dirección N» sin borrar las anteriores; si ya
+        # existe (misma dirección y distrito) se reutiliza. La dirección fiscal es la «Dirección 1».
+        def _k(d, di):
+            return (" ".join((d or "").upper().split()), " ".join((di or "").upper().split()))
+        clave = _k(datos["direccion"], datos["distrito"])
+        if clave == _k(customer.direccion, customer.distrito):
+            return datos
+        existente = next((x for x in customer.sites if x.activo and _k(x.direccion, x.distrito) == clave), None)
+        if existente is not None:
+            datos.update({"site_id": existente.id, "lugar_entrega": datos["lugar_entrega"] or existente.nombre})
+            return datos
+        n = len(customer.sites) + 2
+        site = CustomerSite(customer_id=customer.id, nombre=datos["lugar_entrega"] or f"Dirección {n}",
+                            direccion=datos["direccion"], distrito=datos["distrito"], provincia=datos["provincia"])
         db().add(site)
         db().flush()
         datos["site_id"] = site.id
-        audit(user, "CLIENTE_LUGAR_AGREGADO", "Customer", customer.ruc, {"lugar": site.nombre})
+        datos["lugar_entrega"] = site.nombre
+        audit(user, "CLIENTE_LUGAR_AGREGADO", "Customer", customer.ruc, {"lugar": site.nombre, "direccion": site.direccion})
     return datos
 
 
@@ -222,9 +236,13 @@ def create_order(user, numero, customer_id, fecha_compromiso, lines, urgente=Fal
         raise BusinessError(f"La OV {numero} ya existe.")
     _validate_header(customer_id, fecha_compromiso)
     muestra = "MUESTRA" in (tipo_venta or "").upper()
+    fuera_de_corte = ""
     if origen == "MODULO" and not regularizacion:
         check_not_past(fecha_compromiso, hora_cita)
-        check_cutoff(fecha_compromiso)
+        try:
+            check_cutoff(fecha_compromiso)
+        except BusinessError as e:  # V7: no se pierde lo digitado; queda como borrador para corregir la fecha
+            fuera_de_corte = str(e)
         customer_can_order(db().get(Customer, int(customer_id)), muestra)
     if origen == "MODULO":
         lines = apply_unit_rule(lines)
@@ -256,6 +274,18 @@ def create_order(user, numero, customer_id, fecha_compromiso, lines, urgente=Fal
         o.estado = "REGULARIZADA"
         o.estado_stock = ""
         o.regularizacion = {"motivo": regularizacion, "user": user.nombre, "user_id": user.id, "ts": now().isoformat()}
+        if fecha_compromiso >= date.today():
+            # V7: una regularización solo registra pedidos de fechas PASADAS; con fecha de hoy o posterior es una OV
+            # normal. No se descarta lo digitado: queda como borrador observado y se alerta a quien la registró.
+            o.estado = "REGULARIZACION_OBSERVADA"
+            o.motivo_detencion = ("Borrador: la regularización exige una fecha anterior a hoy. Corrija la fecha o "
+                                  "registre una OV normal.")
+            audit(user, "OV_REGULARIZACION_OBSERVADA", "SalesOrder", o.numero, {"fecha_compromiso": fecha_compromiso})
+            alerts.emit("OV_REGULARIZACION_FECHA", f"Regularización {o.numero}: corrija la fecha",
+                        f"La fecha {fecha_compromiso:%d/%m/%Y} no es anterior a hoy. Se guardó como borrador; corrija "
+                        "la fecha o regístrela como OV normal.", "SalesOrder", o.id, prioridad="ALTA",
+                        extra_users=[user.id], creado_por=user, dedup_key=f"OV_REG_FECHA:{o.id}")
+            return o
         audit(user, "OV_REGULARIZACION", "SalesOrder", o.numero, {"lineas": lines, "fecha_compromiso": fecha_compromiso,
                                                                    "motivo": regularizacion})
         alerts.emit("OV_REGULARIZACION", f"OV {o.numero} registrada como regularización",
@@ -269,6 +299,13 @@ def create_order(user, numero, customer_id, fecha_compromiso, lines, urgente=Fal
     audit(user, "OV_CREADA", "SalesOrder", o.numero, {"lineas": lines, "fecha_compromiso": fecha_compromiso,
                                                       "urgente": urgente, "canal_precio": o.canal_precio,
                                                       "oc": bool(oc_archivo)})
+    if fuera_de_corte:
+        o.estado = "BORRADOR"
+        o.estado_stock = ""
+        o.motivo_detencion = "Borrador: " + fuera_de_corte.replace("Elija otra fecha de despacho.",
+                                                                    "Corrija la fecha de despacho para registrarla.")
+        audit(user, "OV_BORRADOR_CORTE", "SalesOrder", o.numero, {"fecha_compromiso": fecha_compromiso})
+        return o
     if origen == "MODULO" and not muestra and not oc_archivo and param("exigir_oc_ov_modulo", True):
         # ronda 23-oct-2026 (decisión 2): sin orden de compra la OV se guarda como borrador y no se ejecuta
         o.estado = "BORRADOR"
@@ -447,15 +484,26 @@ def attach_oc(order, user, archivo, numero=""):
     order.oc_numero = (numero or order.oc_numero or "").strip()
     audit(user, "OV_OC_ADJUNTA", "SalesOrder", order.numero, {"archivo": archivo, "numero": order.oc_numero})
     if order.estado == "BORRADOR":
-        check_not_past(order.fecha_compromiso, order.hora_cita)
-        check_cutoff(order.fecha_compromiso)
-        customer_can_order(order.customer)
-        order.estado = "REGISTRADA"
-        order.estado_stock = "SIN_EVALUAR"
-        order.motivo_detencion = ""
-        order.creado_ts = now()
-        _activate(order, user)
+        _complete_draft(order, user)
     return order
+
+
+def _complete_draft(order, user):
+    """Registra y evalúa un borrador cuando ya cumple todo: orden de compra (si se exige), fecha vigente y fuera del
+    corte de las 12:00 (V7: la OV fuera de corte queda en borrador hasta corregir la fecha)."""
+    muestra = "MUESTRA" in (order.tipo_venta or "").upper()
+    if not order.oc_archivo and not muestra and order.origen == "MODULO" and param("exigir_oc_ov_modulo", True):
+        order.motivo_detencion = "Borrador: falta adjuntar la orden de compra del cliente"
+        return False
+    check_not_past(order.fecha_compromiso, order.hora_cita)
+    check_cutoff(order.fecha_compromiso)
+    customer_can_order(order.customer, muestra)
+    order.estado = "REGISTRADA"
+    order.estado_stock = "SIN_EVALUAR"
+    order.motivo_detencion = ""
+    order.creado_ts = now()
+    _activate(order, user)
+    return True
 
 
 def _apply_changes(order, user, changes):
@@ -519,7 +567,8 @@ def _apply_changes(order, user, changes):
     order.version += 1
     db().flush()
     audit(user, "OV_MODIFICADA", "SalesOrder", order.numero, {"antes": antes, "despues": snapshot(order)})
-    if order.estado == "BORRADOR":  # se valida y evalúa al adjuntar la orden de compra
+    if order.estado == "BORRADOR":  # se registra y evalúa cuando cumple todo (orden de compra, fecha, corte)
+        _complete_draft(order, user)
         return
     from .prices import check_order_prices
     check_order_prices(order, user)
@@ -958,19 +1007,105 @@ def regularize_release(order, user, nueva_fecha, comentario=""):
     evaluate_order(order, user, "REGULARIZACION")
 
 
-def regularize_close(order, user, comentario):
-    """Regularización: se deja como registro (p. ej. pedido ya atendido fuera del sistema), sin reservar stock."""
+def regularize_fix_date(order, user, nueva_fecha):
+    """V7: corrige la fecha de una regularización observada (borrador) y la deja lista para gestionar."""
+    if not has_perm(user, "ov.regularizar"):
+        raise BusinessError("Su rol no gestiona regularizaciones de OV.")
+    if order.estado != "REGULARIZACION_OBSERVADA":
+        raise BusinessError("La OV no está observada por fecha.")
+    if isinstance(nueva_fecha, str):
+        nueva_fecha = date.fromisoformat(nueva_fecha)
+    if nueva_fecha >= date.today():
+        raise BusinessError("La regularización debe tener una fecha anterior a hoy. Si el pedido aún no se atiende, "
+                            "regístrelo como OV normal.")
+    anterior = order.fecha_compromiso
+    order.fecha_compromiso = nueva_fecha
+    order.estado = "REGULARIZADA"
+    order.motivo_detencion = ""
+    audit(user, "OV_REGULARIZACION_FECHA_CORREGIDA", "SalesOrder", order.numero, {"anterior": anterior, "nueva": nueva_fecha})
+    alerts.close_by_system(f"OV_REG_FECHA:{order.id}", f"Fecha corregida por {user.nombre}")
+    alerts.emit("OV_REGULARIZACION", f"OV {order.numero} registrada como regularización",
+                f"Fecha comprometida {nueva_fecha:%d/%m/%Y}. Motivo: {(order.regularizacion or {}).get('motivo', '')}.",
+                "SalesOrder", order.id, creado_por=user)
+
+
+def regularization_exits(order):
+    """Propuesta de salida por línea para cerrar una regularización: lotes FEFO con stock libre (sin tocar reservas
+    de otras OV) en los almacenes principales del producto. [{line, lots:[(lot, libre)], propuesta:[(lot, q)], falta}]"""
+    from .stock import _sort_lots, free_qty, lots_of, principal_warehouses
+    out = []
+    for line in order.lines:
+        if not line.activa:
+            continue
+        whs = [w.code for w in principal_warehouses(line.product)] or None
+        lots = [l for l in _sort_lots(lots_of(line.product_code, whs)) if l.estado == "DISPONIBLE" and free_qty(l) > 0]
+        falta, prop = line.cantidad - line.despachado, []
+        for l in lots:
+            if falta <= 1e-9:
+                break
+            q = min(free_qty(l), falta)
+            prop.append((l, q))
+            falta -= q
+        out.append({"line": line, "lots": [(l, free_qty(l)) for l in lots], "propuesta": prop, "falta": max(falta, 0),
+                    "por_lote": {l.id: q for l, q in prop}})
+    return out
+
+
+def regularize_close(order, user, comentario, salidas=None, descontar=True):
+    """Regularización «la mercadería ya salió»: descuenta del inventario lo que salió físicamente (FEFO por defecto o
+    los lotes que indique el usuario), registra la venta en el historial y cierra la OV como registro.
+    salidas: [{"line_id", "lot_id", "cantidad"}]; None = propuesta FEFO. descontar=False solo si el stock ya se
+    descontó en SAP y la próxima carga lo reflejará (se registra el motivo)."""
+    from ..models import StockLot
+    from .stock import free_qty
     if not has_perm(user, "ov.regularizar"):
         raise BusinessError("Su rol no gestiona regularizaciones de OV.")
     if order.estado != "REGULARIZADA":
         raise BusinessError("La OV no está en regularización.")
     if not (comentario or "").strip():
         raise BusinessError("Indique cómo se regularizó el pedido.")
+    movs = []
+    if descontar:
+        if salidas is None:
+            salidas = [{"line_id": r["line"].id, "lot_id": l.id, "cantidad": q}
+                       for r in regularization_exits(order) for l, q in r["propuesta"]]
+        lineas = {l.id: l for l in order.lines if l.activa}
+        por_linea = {}
+        for sl in salidas:
+            q = float(sl.get("cantidad") or 0)
+            if q <= 0:
+                continue
+            line = lineas.get(int(sl["line_id"]))
+            lot = db().get(StockLot, int(sl["lot_id"]))
+            if line is None or lot is None or lot.product_code != line.product_code:
+                raise BusinessError("Lote no válido para la línea.")
+            if q > free_qty(lot) + 1e-6:
+                raise BusinessError(f"El lote {lot.lote} solo tiene {free_qty(lot):g} libres de {line.product_code}.")
+            por_linea[line.id] = por_linea.get(line.id, 0) + q
+            if por_linea[line.id] > line.cantidad - line.despachado + 1e-6:
+                raise BusinessError(f"La salida de {line.product_code} supera la cantidad de la OV.")
+            movs.append((line, lot, q))
+        if not movs:
+            raise BusinessError("No hay stock libre para descontar. Si la salida ya está descontada en SAP, marque "
+                                "«ya descontado en SAP».")
+        for line, lot, q in movs:
+            lot.cantidad = max(lot.cantidad - q, 0)
+            if lot.cantidad_verificada is not None:
+                lot.cantidad_verificada = max(lot.cantidad_verificada - q, 0)
+            line.despachado += q
+            line.entregado += q
+            db().add(SalesHistory(product_code=line.product_code, fecha=order.fecha_compromiso, cantidad=q,
+                                  documento=order.numero, origen="REGULARIZACION"))
     reg = dict(order.regularizacion or {})
-    reg.update({"cerrada_por": user.nombre, "cerrada_ts": now().isoformat(), "cierre": comentario.strip()})
+    reg.update({"cerrada_por": user.nombre, "cerrada_ts": now().isoformat(), "cierre": comentario.strip(),
+                "descontado": descontar,
+                "salidas": [{"producto": ln.product_code, "lote": lt.lote, "almacen": lt.warehouse_code, "cantidad": q}
+                            for ln, lt, q in movs]})
     order.regularizacion = reg
     order.estado = "REGULARIZADA_CERRADA"
-    audit(user, "OV_REGULARIZACION_CERRADA", "SalesOrder", order.numero, {"comentario": comentario})
+    audit(user, "OV_REGULARIZACION_CERRADA", "SalesOrder", order.numero, {"comentario": comentario,
+                                                                          "salidas": reg["salidas"],
+                                                                          "descontado": descontar})
 
 
 def request_date_change(order, user, nueva_fecha, motivo):

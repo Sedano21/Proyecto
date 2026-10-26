@@ -411,3 +411,13 @@ dialog.modal::backdrop,dialog.drawer::backdrop{background:rgba(16,24,20,.45)}
 .meter.bad i{background:var(--err)}
 .sig{border:1px dashed var(--line);border-radius:var(--r);background:#fff;touch-action:none;width:100%;height:160px}
 @media (max-width:600px){dialog.drawer{width:100vw;border-radius:0}}
+
+/* ---------- Ronda V7: volver y visor de documentos ---------- */
+.back-link{display:inline-flex;align-items:center;gap:4px;font-size:13px;color:var(--muted);margin:-4px 0 8px;padding:4px 8px 4px 2px;border-radius:var(--r-sm)}
+.back-link .ic{width:16px;height:16px;transform:rotate(180deg)}.back-link:hover{color:var(--cp-verde-700);background:var(--surface);text-decoration:none}
+dialog.viewer{max-width:min(1100px,96vw);width:96vw;height:90vh}
+dialog.viewer[open]{display:flex;flex-direction:column}
+dialog.viewer .v-body{flex:1;min-height:0;overflow:auto;background:var(--surface);display:flex;align-items:center;justify-content:center}
+dialog.viewer .v-body img{max-width:100%;max-height:100%;object-fit:contain}
+dialog.viewer .v-body iframe{width:100%;height:100%;border:0;background:#fff}
+dialog.viewer .dlg-head{gap:8px}

@@ -880,7 +880,7 @@ def export(entidad):
 
 
 @bp.route("/evidencias/<path:name>")
-@perm_required("distribucion.ver", "ov.ver")
+@login_required
 def evidence(name):
     from flask import current_app
     return send_from_directory(current_app.config["UPLOAD_DIR"], os.path.basename(name))

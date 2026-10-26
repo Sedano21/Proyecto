@@ -1,5 +1,5 @@
 """Vistas de Comercial (OV, decisiones ante faltantes) y preparación."""
-from datetime import date
+from datetime import date, timedelta
 
 from flask import Blueprint, abort, flash, g, redirect, render_template, request, url_for
 from sqlalchemy import select
@@ -57,6 +57,23 @@ def orders():
     return render_template("ov_list.html", rows=rows, estado=estado or "", estado_stock=stock or "", pend=pend)
 
 
+@bp.route("/api/precio")
+@perm_required("ov.crear", "ov.regularizar")
+def price_check_api():
+    """V7: aviso en vivo de precio bajo el precio base, solo para quien registra la OV."""
+    from flask import jsonify
+    from ..services.prices import check_line_price
+    p = db().get(Product, (request.args.get("producto") or "").strip().upper().split(" ")[0])
+    c = db().get(Customer, int(request.args.get("cliente") or 0))
+    if p is None or c is None:
+        return jsonify({"estado": "", "detalle": ""})
+    try:
+        precio = float(request.args.get("precio") or 0)
+    except ValueError:
+        precio = 0
+    return jsonify(check_line_price(p, c, precio, request.args.get("um", ""), request.args.get("canal") or None))
+
+
 @bp.route("/nueva", methods=["GET", "POST"])
 @perm_required("ov.crear")
 def order_new():
@@ -74,8 +91,8 @@ def order_new():
             sid = fm.get("site_id", "")
             entrega = osvc.resolve_delivery(c, sid if sid not in ("", "OTRO", "FISCAL") else None, fm.get("lugar_otro", ""),
                                             fm.get("direccion", ""), fm.get("distrito", ""), fm.get("provincia", ""),
-                                            guardar=f_bool("guardar_lugar"), user=g.user)
-            if sid == "FISCAL":
+                                            guardar=True, user=g.user)
+            if sid == "FISCAL" and not entrega["site_id"]:
                 entrega["lugar_entrega"] = "Dirección fiscal"
             from flask import current_app
             from ..services.finance import save_document
@@ -89,8 +106,8 @@ def order_new():
                                   oc_numero=fm.get("oc_numero", ""))
             holder["o"] = o
             return o
-        resp = act(_do, lambda o: (f"OV {o.numero} guardada como BORRADOR: adjunte la orden de compra del cliente para "
-                                   "registrarla y evaluarla." if o.estado == "BORRADOR" else
+        resp = act(_do, lambda o: (f"OV {o.numero} guardada como BORRADOR (no se ejecuta todavía). "
+                                   f"{(lambda t: t[:1].upper() + t[1:])(o.motivo_detencion.replace('Borrador: ', '')).rstrip('.')}." if o.estado == "BORRADOR" else
                                    f"OV {o.numero} registrada y evaluada: cobertura {o.cobertura_unidades}% unidades / "
                                    f"{o.cobertura_lineas}% líneas."), url_for("com.orders"))
         if "o" in holder and holder["o"].id:
@@ -202,17 +219,27 @@ def order_file(oid):
 @bp.route("/regularizacion", methods=["GET", "POST"])
 @perm_required("ov.regularizar")
 def regularization():
-    """Regularización de OV (obs. demo v0.7): OV con fecha pasada u hora transcurrida. No reserva stock; se libera al
-    flujo normal con una fecha vigente o se cierra como registro."""
+    """Regularización de OV: pedidos de fechas PASADAS que no se registraron a tiempo. Si la mercadería ya salió se
+    descuenta del inventario (FEFO o lotes elegidos) y se cierra; si aún no se atiende, pasa al flujo normal con una
+    fecha vigente. Con fecha de hoy o posterior se guarda como borrador observado (V7)."""
     if request.method == "POST":
         fm = request.form
-        if fm.get("accion") in ("liberar", "cerrar"):
+        if fm.get("accion") in ("liberar", "cerrar", "corregir_fecha"):
             o = db().get(SalesOrder, int(fm.get("oid") or 0)) or abort(404)
             if fm["accion"] == "liberar":
                 return act(lambda: osvc.regularize_release(o, g.user, f_date("nueva_fecha", True), fm.get("comentario", "")),
-                           f"OV {o.numero} liberada al flujo normal y evaluada.", url_for("com.order_detail", oid=o.id))
-            return act(lambda: osvc.regularize_close(o, g.user, fm.get("comentario", "")),
-                       f"OV {o.numero} cerrada como regularización.", url_for("com.regularization"))
+                           f"OV {o.numero} pasó al flujo normal: se evaluó y reservó stock.", url_for("com.order_detail", oid=o.id))
+            if fm["accion"] == "corregir_fecha":
+                return act(lambda: osvc.regularize_fix_date(o, g.user, f_date("nueva_fecha", True)),
+                           f"Fecha de la regularización {o.numero} corregida.", url_for("com.regularization"))
+            ya_sap = f_bool("ya_descontado_sap")
+            salidas = [{"line_id": li, "lot_id": lo, "cantidad": q} for li, lo, q in
+                       zip(fm.getlist("sal_line"), fm.getlist("sal_lot"), fm.getlist("sal_qty")) if (q or "").strip()]
+            return act(lambda: osvc.regularize_close(o, g.user, fm.get("comentario", ""), None if ya_sap else salidas,
+                                                     descontar=not ya_sap),
+                       f"OV {o.numero} cerrada: " + ("salida ya descontada en SAP." if ya_sap else
+                                                     "se descontó la mercadería del inventario."),
+                       url_for("com.regularization"))
 
         def _crear():
             c = db().get(Customer, int(fm.get("customer_id") or 0))
@@ -224,15 +251,23 @@ def regularization():
                                      comentarios=fm.get("comentarios", ""), hora_cita=fm.get("hora_cita", ""),
                                      vendedor_id=fm.get("vendedor_id") or None, canal_precio=fm.get("canal_precio", ""),
                                      regularizacion=fm.get("motivo", ""))
-        return act(_crear, lambda o: f"OV {o.numero} registrada como regularización (sin reserva de stock).",
-                   url_for("com.regularization"))
-    rows = list(db().execute(select(SalesOrder).where(SalesOrder.estado.in_(("REGULARIZADA", "REGULARIZADA_CERRADA")))
-                             .order_by(SalesOrder.id.desc())).scalars())
+
+        def _msg(o):
+            if o.estado == "REGULARIZACION_OBSERVADA":
+                flash("La regularización exige una fecha ANTERIOR a hoy. Se guardó como borrador: corrija la fecha abajo "
+                      "o, si el pedido aún no se atiende, regístrelo como OV normal.", "warn")
+                return f"Borrador {o.numero} guardado."
+            return f"OV {o.numero} registrada como regularización: elija abajo qué pasó con la mercadería."
+        return act(_crear, _msg, url_for("com.regularization"))
+    rows = list(db().execute(select(SalesOrder).where(SalesOrder.estado.in_(
+        ("REGULARIZACION_OBSERVADA", "REGULARIZADA", "REGULARIZADA_CERRADA"))).order_by(SalesOrder.id.desc())).scalars())
+    salidas = {o.id: osvc.regularization_exits(o) for o in rows if o.estado == "REGULARIZADA"}
     customers = list(db().execute(select(Customer).order_by(Customer.nombre)).scalars())
     vendedores = list(db().execute(select(User).where(User.role_code == "EJECUTIVO_VENTAS")).scalars())
     products = list(db().execute(select(Product).where(Product.tipo.in_(["PT", "GR", "MP"])).order_by(Product.code)).scalars())
     return render_template("ov_regularization.html", rows=rows, customers=customers, vendedores=vendedores,
-                           products=products, horas=osvc.horas_cita())
+                           products=products, horas=osvc.horas_cita(), salidas=salidas,
+                           ayer=date.today() - timedelta(days=1))
 
 
 @bp.route("/<int:oid>/imprimir")
