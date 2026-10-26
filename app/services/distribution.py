@@ -495,6 +495,8 @@ def register_delivery(stop, user, foto_path, guia_path, entregas=None, observaci
                 "guía firmada.", "Route", stop.route_id, creado_por=user)
     audit(user, "ENTREGA_REGISTRADA", "SalesOrder", order.numero, {"parcial": parcial, "receptor": stop.receptor_nombre,
                                                                     "dni": stop.receptor_dni})
+    from .penalties import detect_for_order
+    detect_for_order(order, user)  # V7: penalidad calculada según las condiciones del cliente
     _maybe_close_route(stop.route)
 
 

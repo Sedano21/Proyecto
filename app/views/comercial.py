@@ -510,13 +510,31 @@ def customer_card(cid):
                        url_for("com.customer_card", cid=cid))
         if acc in ("condicion", "condicion_resolver", "pago", "pago_confirmar", "convertir"):
             return _customer_finance_action(c, acc)
+        from ..services import penalties as pen
         if acc == "penalidad":
-            from ..services.customer_conditions import set_penalty_amounts
-            cond = for_customer(c) or abort(404)
-            vals = {t: (request.form.get(f"modo_{t}", "FIJO"), request.form.get(f"valor_{t}", "").strip())
-                    for t in (cond.penalidad_tipos or []) if t != "FILL_RATE"}
-            return act(lambda: set_penalty_amounts(cond, g.user, vals), "Montos de penalidad guardados.",
-                       url_for("com.customer_card", cid=cid))
+            fm = request.form
+            filas = [{"tipo": t, "nombre": n, "modo": m, "valor": v} for t, n, m, v in
+                     zip(fm.getlist("pen_tipo"), fm.getlist("pen_nombre"), fm.getlist("pen_modo"), fm.getlist("pen_valor"))]
+            return act(lambda: pen.save_conditions(c, g.user, filas), "Condiciones y penalidades del cliente actualizadas.",
+                       url_for("com.customer_card", cid=cid) + "#penalidades")
+        if acc in ("penalidad_registrar", "penalidad_resolver"):
+            from ..models import CustomerPenalty
+            fm = request.form
+            if acc == "penalidad_registrar":
+                def _reg():
+                    num = (fm.get("ov") or "").strip()
+                    o = db().execute(select(SalesOrder).where(SalesOrder.numero == num)).scalars().first() if num else None
+                    if num and (o is None or o.customer_id != c.id):
+                        raise BusinessError("La OV no existe o no es de este cliente.")
+                    return pen.register(c, g.user, fm.get("tipo", ""), fm.get("descripcion", ""), fm.get("monto", ""), o,
+                                        f_date("fecha"))
+                return act(_reg,
+                           "Penalidad registrada; se alertó a Comercial.", url_for("com.customer_card", cid=cid) + "#penalidades")
+            pr = db().get(CustomerPenalty, int(fm.get("pid") or 0))
+            if pr is None or pr.customer_id != c.id:
+                abort(404)
+            return act(lambda: pen.resolve(pr, g.user, fm.get("estado", ""), fm.get("monto_pagado"), fm.get("comentario", "")),
+                       "Resultado de la penalidad registrado.", url_for("com.customer_card", cid=cid) + "#penalidades")
         def _guardar():
             from flask import current_app
             from ..services.distribution import save_upload
@@ -539,8 +557,13 @@ def customer_card(cid):
                            tramos=rules.get("tramos") or [], todos_plazos=rules.get("plazos_todos_los_documentos") or [],
                            opps=opps, acciones=acciones, cotiz=cotiz, grupos=csv_.customer_groups(), cond=for_customer(c), canal=psvc.channel_of(c),
                            canales=canales, editable="clientes.editar" in g.perms,
-                           tipo_txt=TIPO_TXT, vendedores=list(db().execute(select(User).where(User.role_code.in_(
+                           tipo_txt=TIPO_TXT, penal_ind=_pen_indicator(c.id), vendedores=list(db().execute(select(User).where(User.role_code.in_(
                                ("EJECUTIVO_VENTAS", "COORD_VENTAS", "JEFE_VENTAS"))).order_by(User.nombre)).scalars()))
+
+
+def _pen_indicator(cid):
+    from ..services.penalties import indicator
+    return indicator(customer_id=cid)
 
 
 def _customer_finance_action(c, acc):

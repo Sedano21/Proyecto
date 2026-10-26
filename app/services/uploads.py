@@ -1103,17 +1103,34 @@ def _c_ov(b, user, opciones):
                     solicitudes += 1
         except BusinessError as ex:
             errores.append(f"OV {numero}: {ex}")
+    # V7: OV abierta en el módulo que SAP ya cerró (atendida). Si aún no entró a preparación se cierra como «Atendida
+    # en SAP»: se liberan sus reservas y NO se descuenta stock aquí (la salida ya está en SAP y la próxima carga de stock
+    # la refleja; descontar aquí la duplicaría). Si ya está en preparación o en ruta manda el módulo: queda como diferencia.
+    cerradas_auto = 0
+    if param("cerrar_ov_cerrada_en_sap", True):
+        from .stock import release_order
+        for o in s.execute(select(SalesOrder).where(SalesOrder.numero.in_(cerradas_sap or {""}),
+                                                    SalesOrder.estado.in_(("BORRADOR", "REGISTRADA", "EVALUADA", "BLOQUEADA")))).scalars():
+            if o.numero in grupos:
+                continue
+            release_order(o, "OV atendida y cerrada en SAP")
+            antes = o.estado
+            o.estado = "CERRADA"
+            o.motivo_detencion = f"Atendida en SAP (carga {b.archivo})"
+            audit(user, "OV_CERRADA_EN_SAP", "SalesOrder", o.numero, {"estado_anterior": antes, "carga": b.archivo})
+            cerradas_auto += 1
     if alertar:  # OV abiertas del módulo que SAP da por cerradas o que no figuran en la carga
         for o in s.execute(select(SalesOrder).where(SalesOrder.estado.notin_(ORDEN_ESTADOS_CERRADOS))).scalars():
             if o.numero in grupos or (o.regularizacion or {}):
                 continue
             if o.numero in cerradas_sap:
-                conc.add("OV", o.numero, "Estado", "Cerrada en SAP", o.estado)
+                conc.add("OV", o.numero, "Estado", "Cerrada en SAP", o.estado,
+                         "La OV ya está en preparación o en ruta en el módulo: revisar antes de cerrarla")
             else:
                 conc.add("OV", o.numero, "Existencia", "No figura en la carga de SAP", o.estado,
                          "OV abierta en el módulo que no está en la exportación de SAP")
     return {"ov_creadas": creadas, "ov_modificadas": modificadas, "solicitudes_de_modificacion": solicitudes,
-            "sin_cambio": sin_cambio, "errores": errores, "diferencias_sap": conc.close()}
+            "sin_cambio": sin_cambio, "ov_cerradas_en_sap": cerradas_auto, "ov_cerradas_omitidas": len(cerradas_sap), "errores": errores, "diferencias_sap": conc.close()}
 
 
 def _v_condiciones(b):

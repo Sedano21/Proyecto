@@ -1660,3 +1660,28 @@ ALERT_TYPES += [
      [], "DEFINIDO", f"{V7}: la regularización exige fecha anterior a hoy; se guarda el borrador y se alerta para corregir",
      "Se registra una regularización con fecha de hoy o posterior (va solo a quien la registró).", True),
 ]
+_COMP = ["EJECUTIVO_VENTAS", "COORD_VENTAS", "JEFE_VENTAS", "GERENTE_COMERCIAL"]
+ALERT_TYPES += [
+    ("CLIENTE_PENALIDAD", "Penalidad de cliente: registrar si se pagó o se desestimó", "Comercial", "Clientes", "ALTA",
+     ["COORD_VENTAS", "JEFE_VENTAS"], "DEFINIDO",
+     f"{V7}: al detectar una penalidad se alerta al vendedor o ejecutivo, al Coordinador y al Jefe Comercial",
+     "El sistema detecta una penalidad al registrar la entrega o Comercial la registra.", True),
+]
+PARAMS += [
+    ("prefijo_codigo_cliente", "C", "str", "Comercial",
+     "Prefijo del código correlativo para clientes nuevos cuando aún no hay códigos de SAP cargados (si los hay, se usa "
+     "el mismo prefijo y ancho que SAP).", "PROPUESTO", f"{V7}: respetar los códigos de clientes de SAP"),
+]
+for _code, _n, _m, _t, _roles in [
+        ("clientes.penalidad", "Registrar penalidades de clientes y si se pagaron o desestimaron", "Comercial", "edicion",
+         _COMP)]:
+    PERMISSIONS.append((_code, _n, _m, _t))
+    for _r in _roles + ["GERENCIA_GENERAL"]:
+        ROLE_PERMISSIONS.setdefault(_r, []).append((_code, "DEFINIDO", V7))
+PARAMS += [
+    ("cerrar_ov_cerrada_en_sap", True, "bool", "Integración SAP",
+     "Al cargar las OV de SAP, una OV abierta en el módulo que SAP ya cerró (atendida) y que aún no entró a preparación se "
+     "cierra como «Atendida en SAP»: libera sus reservas y no descuenta stock (lo refleja la próxima carga de stock de "
+     "SAP). Si ya está en preparación o en ruta, manda el módulo y queda como diferencia para revisar.", "PROPUESTO",
+     f"{V7}: la carga de SAP no analiza las OV cerradas y no duplica las abiertas"),
+]

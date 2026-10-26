@@ -97,5 +97,71 @@ def test_pantallas_v7(app):
     c = app.test_client()
     login(c, "coord.ventas")
     assert c.get("/ov/regularizacion").status_code == 200
+    r = c.get("/ov/clientes/1")
+    assert r.status_code == 200 and "Penalidades del cliente" in r.get_data(as_text=True)
     r = c.get("/ov/api/precio?producto=PT-905&cliente=1&precio=1")
     assert r.status_code == 200 and "estado" in r.get_json()
+
+
+def test_penalidades_ilimitadas_deteccion_y_resultado(s, U, cust):
+    from app.services import orders as osvc
+    from app.services import penalties as pen
+    c = cust()
+    filas = [{"tipo": "FECHA_ENTREGA", "modo": "FIJO", "valor": "150"}, {"tipo": "ENTREGA_PARCIAL", "modo": "PCT_OV", "valor": "10"},
+             {"tipo": "OTRO", "nombre": "Etiquetado incorrecto", "modo": "FIJO", "valor": "80"}]
+    cond = pen.save_conditions(c, U("coord.ventas"), filas)
+    assert "ETIQUETADO_INCORRECTO" in cond.penalidad_tipos and len(cond.penalidad_tipos) == 3
+    o = osvc.create_order(U("coord.ventas"), "PN-1", c.id, date.today() + timedelta(days=3), LN, oc_archivo="oc.pdf", evaluar=False)
+    s.flush()
+    o.lines[0].entregado = 3
+    nuevas = pen.detect_for_order(o, U("coord.ventas"), fecha_entrega=o.fecha_compromiso + timedelta(days=1))
+    assert {p.tipo for p in nuevas} == {"FECHA_ENTREGA", "ENTREGA_PARCIAL"}
+    assert pen.detect_for_order(o, U("coord.ventas"), fecha_entrega=o.fecha_compromiso + timedelta(days=1)) == []
+    assert alerts_of(s, "CLIENTE_PENALIDAD", nuevas[0].id)
+    with pytest.raises(BusinessError, match="desestim"):
+        pen.resolve(nuevas[0], U("coord.ventas"), "DESESTIMADA")
+    pen.resolve(nuevas[0], U("coord.ventas"), "PAGADA", 100)
+    pen.resolve(nuevas[1], U("coord.ventas"), "DESESTIMADA", comentario="El cliente aceptó la reposición")
+    ind = pen.indicator(customer_id=c.id)["total"]
+    assert ind["pagada"] == 100 and ind["calculada"] == 150 + round(50 * 0.10, 2) and ind["pendientes"] == 0
+
+
+def test_codigo_de_cliente_correlativo(s, U):
+    from app.models import Customer
+    from app.services import customers as csv_
+    from app.services.penalties import next_customer_code
+    s.query(Customer).first().codigo_sap = "C000120"
+    s.flush()
+    assert next_customer_code() == "C000121"
+    c = csv_.save_customer(U("coord.ventas"), None, {"ruc": "20999999991", "nombre": "CLIENTE FICTICIO V7",
+                                                      "direccion": "Av. Ficticia 1", "ubigeo": "150101"})
+    assert c.codigo_sap == "C000121"
+
+
+def test_carga_sap_cierra_ov_atendida_en_sap_sin_duplicar(s, U, tmp_path):
+    import os
+    import openpyxl
+    from app.demo_data import write_ovs
+    from app.models import SalesOrder
+    from app.services import uploads as up
+    from app.services.stock import line_reserved
+    p = os.path.join(tmp_path, "ovs.xlsx")
+    write_ovs(p, date.today())
+    up.confirm(up.create_batch(U("coord.ventas"), "OV", p, "ovs.xlsx"), U("coord.ventas"))
+    n = s.query(SalesOrder).count()
+    res = up.confirm(up.create_batch(U("coord.ventas"), "OV", p, "ovs.xlsx"), U("coord.ventas"))  # 2.ª carga del día
+    assert s.query(SalesOrder).count() == n and res["ov_creadas"] == 0
+    o = s.query(SalesOrder).filter_by(numero="SAP-9001").one()
+    assert any(line_reserved(l) > 0 for l in o.lines)
+    wb = openpyxl.load_workbook(p)
+    ws = wb["OVS"]
+    hdr = [c.value for c in ws[1]]
+    ie, inum = hdr.index("Estado"), hdr.index("Número de documento")
+    for row in ws.iter_rows(min_row=2):
+        if row[inum].value == "SAP-9001":
+            row[ie].value = "Cerrado"
+    wb.save(p)
+    res = up.confirm(up.create_batch(U("coord.ventas"), "OV", p, "ovs.xlsx"), U("coord.ventas"))
+    s.flush()
+    assert res["ov_cerradas_en_sap"] == 1 and o.estado == "CERRADA"
+    assert all(line_reserved(l) == 0 for l in o.lines)

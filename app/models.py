@@ -1809,3 +1809,32 @@ class MoveRequest(Base):
     fin_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     solicitante = relationship("User", foreign_keys=[solicitado_por])
     operador = relationship("User", foreign_keys=[asignado_a])
+
+
+# ---------------------------------------------------------------------------
+# Observaciones del módulo V7 (26-oct-2026)
+# ---------------------------------------------------------------------------
+class CustomerPenalty(Base):
+    """Penalidad de un cliente: la detecta el sistema al registrar la entrega (fecha, entrega parcial, fill rate) o la
+    registra Comercial. Se resuelve como PAGADA (con el monto pagado) o DESESTIMADA (con el motivo)."""
+    __tablename__ = "customer_penalties"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    customer_id: Mapped[int] = mapped_column(ForeignKey("customers.id"), index=True)
+    order_id: Mapped[int | None] = mapped_column(ForeignKey("sales_orders.id"), nullable=True, index=True)
+    tipo: Mapped[str] = mapped_column(String(60))
+    descripcion: Mapped[str] = mapped_column(Text, default="")
+    origen: Mapped[str] = mapped_column(String(10), default="SISTEMA")  # SISTEMA / MANUAL
+    fecha: Mapped[date] = mapped_column(Date, default=date.today)
+    monto_calculado: Mapped[float] = mapped_column(Float, default=0)
+    base_calculo: Mapped[str] = mapped_column(String(250), default="")
+    monto_pagado: Mapped[float | None] = mapped_column(Float, nullable=True)
+    estado: Mapped[str] = mapped_column(String(15), default="PENDIENTE")  # PENDIENTE / PAGADA / DESESTIMADA
+    comentario: Mapped[str] = mapped_column(Text, default="")
+    vendedor_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    creado_por: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    resuelto_por: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    resuelto_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    customer = relationship("Customer")
+    order = relationship("SalesOrder")
+    vendedor = relationship("User", foreign_keys=[vendedor_id])

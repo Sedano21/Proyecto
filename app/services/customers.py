@@ -56,6 +56,13 @@ def save_customer(user, c, datos):
     for k in CAMPOS:
         if k in datos and datos[k] is not None:
             setattr(c, k, str(datos[k]).strip())
+    # V7: se respetan los códigos de SAP; el cliente nuevo recibe el siguiente código correlativo con el mismo formato
+    if nuevo and not (c.codigo_sap or "").strip():
+        from .penalties import next_customer_code
+        c.codigo_sap = next_customer_code()
+    if c.codigo_sap and db().execute(select(Customer).where(Customer.codigo_sap == c.codigo_sap,
+                                                            Customer.id != (c.id or 0))).scalars().first():
+        raise BusinessError(f"El código de cliente {c.codigo_sap} ya pertenece a otro cliente (código de SAP).")
     if "canal_precio" in datos and (datos.get("canal_precio") or "") != (c.canal_precio or ""):
         if not has_perm(user, "clientes.canal"):
             raise BusinessError("El canal de precios del cliente lo asigna el Jefe Comercial o Sistemas.")

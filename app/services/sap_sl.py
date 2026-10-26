@@ -27,7 +27,7 @@ import ssl
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from http.cookiejar import CookieJar
 
 from .core import BusinessError, audit, param
@@ -173,6 +173,15 @@ def rows_ov(sl):
                           "Unidad de medida": ln.get("UoMCode") or ln.get("MeasureUnit") or "",
                           "P. Unitario SOLES": ln.get("Price"), "Moneda": o.get("DocCurrency") or "",
                           "Comentarios": o.get("Comments") or "", "TaxCode": ln.get("TaxCode") or ""})
+    # V7: las OV cerradas recientemente se traen solo para cerrar en el módulo las que SAP ya atendió (no se importan)
+    desde = (date.today() - timedelta(days=7)).isoformat()
+    for o in sl.get_all("Orders", {"$filter": f"DocumentStatus eq 'bost_Close' and UpdateDate ge '{desde}'",
+                                   "$select": "DocNum,DocDueDate,CardCode,CardName,DocumentLines"}):
+        for ln in (o.get("DocumentLines") or [])[:1]:
+            filas.append({"Número de documento": o.get("DocNum"), "Estado": "Cerrado",
+                          "Fecha de Vencimiento": _d(o.get("DocDueDate")), "Ruc": o.get("CardCode"),
+                          "Nombre de cliente": o.get("CardName"), "Código de Producto": ln.get("ItemCode"),
+                          "Solicitado": float(ln.get("Quantity") or 0)})
     return filas
 
 

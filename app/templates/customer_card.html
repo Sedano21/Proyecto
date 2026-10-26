@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% from "_m.html" import b, csrf %}
+{% extends "base.html" %}{% from "_m.html" import b, csrf, ic, empty %}
 {% block content %}<p class="small"><a href="{{ url_for('com.customer_list') }}">← Clientes</a></p>
 <h1>{{ c.nombre }} <span class="muted mono" style="font-size:16px">RUC {{ c.ruc }}</span></h1>
 {% set est = p.cuenta %}
@@ -30,16 +30,27 @@
 <tr><td>Ejecutivo / canal comercial</td><td>{{ cond.ejecutivo }} · {{ cond.canal_comercial }}</td></tr><tr><td>Solicitud</td><td>{{ cond.solicitud }}</td></tr>
 <tr><td>Lotes por SKU</td><td><b>{{ cond.lotes_texto }}</b></td></tr><tr><td>Vida útil restante mínima al despacho</td><td><b>{{ cond.vida_util_texto }}</b></td></tr>
 <tr><td>Penalidades</td><td style="white-space:pre-line">{{ cond.penalidades or '—' }}</td></tr><tr><td>Origen</td><td>{{ cond.origen }}</td></tr></table>
-{% if cond.penalidad_tipos %}<h4>Monto de penalidad por tipo</h4>
-<p class="muted small">Se usa para calcular la penalidad estimada en cada OV (fill rate se calcula con la cobertura y el mínimo del cliente).</p>
-<form method="post">{{ csrf() }}<input type="hidden" name="accion" value="penalidad"><table class="small"><tr><th>Tipo</th><th>Modo</th><th>Valor</th></tr>
-{% for t in cond.penalidad_tipos if t != 'FILL_RATE' %}{% set m = (cond.penalidad_montos or {}).get(t, {}) %}<tr><td>{{ tipo_txt.get(t, t) }}</td>
-<td><select name="modo_{{ t }}" {% if not editable %}disabled{% endif %}><option value="FIJO" {% if m.get('modo')=='FIJO' %}selected{% endif %}>Monto fijo S/</option>
-<option value="PCT_OV" {% if m.get('modo')=='PCT_OV' %}selected{% endif %}>% del monto de la OV</option></select></td>
-<td><input name="valor_{{ t }}" type="number" step="0.01" min="0" value="{{ m.get('valor', '') }}" {% if not editable %}disabled{% endif %}></td></tr>{% endfor %}
-</table>{% if editable %}<button class="btn">Guardar montos</button>{% endif %}</form>{% endif %}
-{% else %}<p class="muted">Sin condiciones registradas (lista de clientes con penalidades y lotes).</p>{% endif %}
+{% else %}<p class="muted">Sin condiciones importadas (lista de clientes con penalidades y lotes). Puede registrarlas en «Penalidades del cliente».</p>{% endif %}
 <h3>Productos más comprados</h3><table class="small"><tr><th>Producto</th><th class="r">Cantidad</th><th class="r">S/</th></tr>{% for k, q, so in p.top %}<tr><td>{{ k }}</td><td class="r">{{ q|n }}</td><td class="r">{{ so|n }}</td></tr>{% else %}<tr><td colspan="3" class="muted">Sin compras</td></tr>{% endfor %}</table></div></div>
+<div class="card" id="penalidades"><div class="card-head"><h3 style="flex:1">{{ ic('alert') }} Penalidades del cliente</h3>
+{% set t = penal_ind.total %}<div class="kpis compact"><div class="kpi"><b>S/ {{ t.calculada|n }}</b><span>Calculada</span></div><div class="kpi ok"><b>S/ {{ t.pagada|n }}</b><span>Pagada</span></div><div class="kpi"><b>S/ {{ t.desestimada|n }}</b><span>Desestimada ({{ t.pct_desestimada }}%)</span></div><div class="kpi {{ 'warn' if t.pendientes }}"><b>{{ t.pendientes }}</b><span>Por resolver</span></div></div></div>
+<h4>Condiciones de penalidad</h4><p class="small muted">Agregue todas las que tenga el cliente; al guardar se actualiza la tabla de condiciones. El monto se usa para la penalidad calculada de cada OV (fill rate se calcula con el mínimo del cliente).</p>
+<datalist id="pen-tipos">{% for k, v in tipo_txt.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}<option value="OTRO">Otra (escriba el nombre)</option></datalist>
+<form method="post">{{ csrf() }}<input type="hidden" name="accion" value="penalidad"><div class="tw"><table class="small"><thead><tr><th>Tipo</th><th>Nombre (si es otra)</th><th>Modo</th><th>Valor</th><th></th></tr></thead><tbody id="pen-filas">
+{% set tipos = (cond.penalidad_tipos if cond else []) or [''] %}{% for tp in tipos %}{% set m = ((cond.penalidad_montos if cond else {}) or {}).get(tp, {}) %}<tr class="dynrow"><td><select name="pen_tipo" {{ 'disabled' if not editable }} aria-label="Tipo de penalidad"><option value="">Elija…</option>{% for k, v in tipo_txt.items() %}<option value="{{ k }}" {{ 'selected' if k == tp }}>{{ v|capitalize }}</option>{% endfor %}{% if tp and tp not in tipo_txt %}<option value="{{ tp }}" selected>{{ tp|replace('_', ' ')|capitalize }}</option>{% endif %}<option value="OTRO">Otra…</option></select></td>
+<td><input name="pen_nombre" placeholder="solo si es «Otra»" {{ 'disabled' if not editable }} aria-label="Nombre"></td>
+<td><select name="pen_modo" {{ 'disabled' if not editable }} aria-label="Modo"><option value="FIJO" {{ 'selected' if m.get('modo') == 'FIJO' }}>Monto fijo S/</option><option value="PCT_OV" {{ 'selected' if m.get('modo') == 'PCT_OV' }}>% del monto de la OV</option></select></td>
+<td><input name="pen_valor" type="number" step="0.01" min="0" value="{{ m.get('valor', '') }}" style="width:110px" {{ 'disabled' if not editable }} aria-label="Valor"></td><td>{% if editable %}<button type="button" class="ibtn" data-delrow title="Quitar" aria-label="Quitar">{{ ic('x') }}</button>{% endif %}</td></tr>{% endfor %}</tbody></table></div>
+{% if editable %}<p class="row"><button type="button" class="sec small" data-addrow="#pen-filas">{{ ic('plus') }} Agregar penalidad</button><button class="small">Guardar condiciones</button></p>{% endif %}</form>
+<h4>Penalidades aplicadas</h4>
+{% if penal_ind.rows %}<div class="cards">{% for x in penal_ind.rows %}<article class="xcard {{ 'alerta' if x.estado == 'PENDIENTE' else ('st-LIQUIDADO' if x.estado == 'PAGADA' else '') }}"><div class="xcard-head"><b>{{ tipo_txt.get(x.tipo, x.tipo|replace('_',' ')|lower) | capitalize }}</b>{{ b(x.estado) }}</div>
+<div class="meta">{{ x.fecha|d }}{% if x.order %} · <a href="{{ url_for('com.order_detail', oid=x.order_id) }}">OV {{ x.order.numero }}</a>{% endif %} · {{ 'detectada por el sistema' if x.origen == 'SISTEMA' else 'registrada por Comercial' }}{% if x.vendedor %} · {{ x.vendedor.nombre }}{% endif %}</div>
+<p class="small">{{ x.descripcion }}</p><div class="row"><div><span class="small muted">Calculada</span><div class="big">S/ {{ x.monto_calculado|n }}</div></div>{% if x.estado == 'PAGADA' %}<div><span class="small muted">Pagada</span><div class="big">S/ {{ x.monto_pagado|n }}</div></div>{% endif %}</div>
+<p class="small muted">{{ x.base_calculo }}{% if x.comentario %} · {{ x.comentario }}{% endif %}</p>
+{% if x.estado == 'PENDIENTE' and 'clientes.penalidad' in perms %}<form method="post" class="row">{{ csrf() }}<input type="hidden" name="accion" value="penalidad_resolver"><input type="hidden" name="pid" value="{{ x.id }}"><div><label>Resultado</label><select name="estado" required><option value="PAGADA">Pagada</option><option value="DESESTIMADA">Desestimada</option></select></div><div><label>Monto pagado S/</label><input name="monto_pagado" type="number" step="0.01" min="0" value="{{ x.monto_calculado }}" style="width:110px"></div><div class="grow"><label>Comentario (obligatorio si se desestima)</label><input name="comentario"></div><div><button class="small">Registrar</button></div></form>{% endif %}</article>{% endfor %}</div>
+{% else %}{{ empty('Sin penalidades aplicadas.', 'check') }}{% endif %}
+{% if 'clientes.penalidad' in perms %}<details><summary class="small"><b>{{ ic('plus') }} Registrar una penalidad comunicada por el cliente</b></summary><form method="post" class="row">{{ csrf() }}<input type="hidden" name="accion" value="penalidad_registrar"><div><label>Tipo</label><input name="tipo" list="pen-tipos" required></div><div><label>OV (opcional)</label><input name="ov"></div><div><label>Fecha</label><input type="date" name="fecha" value="{{ today.isoformat() }}"></div><div><label>Monto S/</label><input name="monto" type="number" step="0.01" min="0" required style="width:110px"></div><div class="grow"><label>Descripción</label><input name="descripcion"></div><div><button class="small">Registrar</button></div></form></details>{% endif %}
+</div>
 <div class="card"><h3>Lugares de entrega</h3>
 {% for x in c.sites %}<form id="s{{ x.id }}" method="post">{{ csrf() }}<input type="hidden" name="accion" value="lugar"><input type="hidden" name="site_id" value="{{ x.id }}"></form>{% endfor %}
 <form id="snew" method="post">{{ csrf() }}<input type="hidden" name="accion" value="lugar"></form>
