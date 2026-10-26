@@ -145,7 +145,7 @@ def order_detail(oid):
     from ..services import commitment as cmsvc
     from ..services.finance import TIPOS_DOC_OV, order_documents
     paradas = list(db().execute(select(RouteStop).where(RouteStop.order_id == o.id).order_by(RouteStop.id)).scalars())
-    return render_template("ov_detail.html", o=o, alts=alts, paradas=paradas, docs=order_documents(o), tipos_doc=TIPOS_DOC_OV,
+    return render_template("ov_detail.html", o=o, prioridades_gg=osvc.PRIORIDADES_GG, alts=alts, paradas=paradas, docs=order_documents(o), tipos_doc=TIPOS_DOC_OV,
                            comp_estados=cmsvc.ESTADOS, dias_prod=cmsvc.production_days(), whs=whs, reqs=reqs, decs=decs, hist=hist, certs=certs,
                            products=products, line_reserved=line_reserved, monto=osvc.order_amount(o), peso=peso,
                            sin_peso=sin_peso, can_auth=osvc.can_authorize_change(g.user, o), prep=osvc.prep_progress(o),
@@ -272,6 +272,10 @@ def order_action(oid, accion):
         "confirmar_precio": (lambda: __import__("app.services.prices", fromlist=["x"]).approve_price(o, u, f.get("comentario", "")),
                              "Precio confirmado: la OV queda liberada para preparación y despacho."),
         "renegociar": (lambda: osvc.renegotiate_date(o, u, f_date("nueva_fecha", True), f.get("comentario", "")), "Fecha renegociada; OV reevaluada."),
+        "solicitar_gg": (lambda: osvc.request_gg_decision(o, u, f.get("justificacion", "")),
+                         "Se pidió la decisión de Gerencia General; la OV sigue bloqueada."),
+        "decision_gg": (lambda: osvc.decide_gg(o, u, f.get("aprobar") == "1", f.get("comentario", ""), f.get("prioridad", "NORMAL")),
+                        "Decisión registrada."),
         "cambiar_producto": (lambda: osvc.change_product(o, u, f.get("line_id"), f.get("nuevo_codigo", "").strip().upper(),
                                                           f_float("cantidad", True), f.get("comentario", "")), "Producto cambiado; OV reevaluada."),
         "traslado": (lambda: tsvc.request_transfer(u, f.get("lot_id"), f.get("destino"), f_float("cantidad", True), o,

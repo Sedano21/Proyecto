@@ -2,8 +2,9 @@
 
 El servicio del proveedor se conecta solo cuando Sistemas lo configura; sin configuración no se hace ninguna conexión:
 - GEOSAT_API_URL (variable de entorno del servidor): servicio que devuelve en JSON las posiciones de las unidades.
-- GEOSAT_TOKEN (variable de entorno): credencial del proveedor; se envía como «Authorization: Bearer …». Nunca se guarda
-  en la base ni en el repositorio.
+- GEOSAT_TOKEN (variable de entorno): credencial del proveedor; se envía como «Authorization: Bearer …». Si el proveedor
+  da cuenta y contraseña en lugar de un token: GEOSAT_USER y GEOSAT_PASSWORD (autenticación básica). Nunca se guardan en
+  la base ni en el repositorio.
 - Parámetro geosatelital_url_panel: dirección del panel web del proveedor para mostrarlo embebido (si lo permite).
 El formato exacto de la respuesta del proveedor está pendiente de su documentación: se reconocen los nombres de campo más
 comunes (placa / plate, lat / latitude, lng / lon / longitude, velocidad / speed, fecha / timestamp, motor / ignition).
@@ -77,8 +78,12 @@ def positions(opener=None):
         return None
     req = urllib.request.Request(url, headers={"Accept": "application/json"})
     token = os.environ.get("GEOSAT_TOKEN", "").strip()
+    usuario, clave = os.environ.get("GEOSAT_USER", "").strip(), os.environ.get("GEOSAT_PASSWORD", "")
     if token:
         req.add_header("Authorization", f"Bearer {token}")
+    elif usuario and clave:  # cuenta del proveedor (autenticación básica) si su servicio la acepta
+        import base64
+        req.add_header("Authorization", "Basic " + base64.b64encode(f"{usuario}:{clave}".encode()).decode())
     try:
         with (opener or urllib.request.urlopen)(req, timeout=15) as r:
             return normalize(json.loads(r.read().decode("utf-8")))

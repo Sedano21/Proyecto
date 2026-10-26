@@ -282,10 +282,156 @@ def create_order(user, numero, customer_id, fecha_compromiso, lines, urgente=Fal
 def _activate(o, user, evaluar=True):
     from .prices import check_order_prices
     check_order_prices(o, user)  # Q11: la lista es el precio mínimo; alerta si la OV está en el límite o debajo
+    if o.origen == "MODULO" and not check_emission_window(o, user):
+        return  # emitida con menos anticipación que la mínima: se renegocia la fecha antes de ejecutarla
     if evaluar:
         evaluate_order(o, user, "CREACION")
+        if check_feasibility(o, user):
+            return  # ninguna opción cumple la fecha: bloqueada hasta renegociar o hasta la decisión de Gerencia General
     from .commitment import open_commitment
     open_commitment(o)
+
+
+# ---------------- OV bloqueada: sin opción que cumpla la fecha y límite de emisión (ronda 26-oct-2026) ----------------
+def _hist(order, evento, user, **extra):
+    b = dict(order.bloqueo_ov or {})
+    b["historial"] = list(b.get("historial") or []) + [dict({"evento": evento, "user": user.nombre if user else "Sistema",
+                                                             "ts": now().isoformat(timespec="minutes")}, **extra)]
+    return b
+
+
+def _block(order, user, tipo, estado, motivo, **extra):
+    """Bloquea la OV: libera sus reservas (no compromete stock) y la detiene hasta que se resuelva."""
+    release_order(order, f"OV bloqueada: {motivo}")
+    order.estado = "BLOQUEADA"
+    order.motivo_detencion = motivo
+    b = _hist(order, f"BLOQUEO_{tipo}", user, motivo=motivo)
+    b.update({"tipo": tipo, "estado": estado, "motivo": motivo}, **extra)
+    order.bloqueo_ov = b
+    db().flush()
+
+
+def check_emission_window(order, user, hoy=None):
+    """La OV se emite como mínimo `dias_minimos_emision_ov` (1) día antes de la fecha de entrega; si no, se bloquea y se
+    alerta a Comercial para renegociar la fecha. Devuelve True si está dentro del plazo."""
+    hoy = hoy or date.today()
+    dias = int(param("dias_minimos_emision_ov", 1) or 0)
+    if not dias or order.fecha_compromiso >= hoy + timedelta(days=dias):
+        return True
+    motivo = (f"Se emitió el {hoy:%d/%m/%Y} para entregar el {order.fecha_compromiso:%d/%m/%Y}: el límite es {dias} día(s) "
+              "antes de la fecha de entrega. Renegocie la fecha con el cliente.")
+    _block(order, user, "EMISION", "RENEGOCIAR", motivo)
+    alerts.emit("OV_RENEGOCIAR_FECHA", f"OV {order.numero}: renegociar la fecha de entrega", motivo, "SalesOrder", order.id,
+                prioridad="ALTA", extra_users=[order.vendedor_id] if order.vendedor_id else None,
+                dedup_key=f"OV_RENEG:{order.id}:{order.fecha_compromiso.isoformat()}", creado_por=user)
+    audit(user, "OV_BLOQUEADA_EMISION", "SalesOrder", order.numero, {"fecha": order.fecha_compromiso, "dias_minimos": dias})
+    return False
+
+
+def unfeasible_lines(order):
+    """Líneas para las que el análisis de opciones no encuentra ninguna combinación viable que llegue a la fecha."""
+    from .options import evaluate
+    out = []
+    for x in evaluate(order):
+        ok = [o for o in x["opciones"] if o["viable"] and o["cumple"] and (o["vida"] is None or o["vida"]["cumple"] is not False)]
+        cubre = sum(o["cantidad"] for o in ok)
+        if cubre < x["pendiente"] - 1e-9:
+            out.append({"line_id": x["line"].id, "producto": x["line"].product_code, "pendiente": round(x["pendiente"], 3),
+                        "cubre_a_tiempo": round(cubre, 3), "analisis": x["porque"],
+                        "opciones": [{"ruta": o["nombre"], "fecha": o["fecha"].isoformat() if o["fecha"] else None,
+                                      "viable": o["viable"], "cumple": o["cumple"]} for o in x["opciones"]]})
+    return out
+
+
+def check_feasibility(order, user):
+    """Si el sistema ya analizó que ninguna opción de Operaciones cumple la fecha, la OV se bloquea (no compromete stock)
+    y Comercial decide: renegociar la fecha o mantenerla y pedir la decisión de Gerencia General. Devuelve True si bloqueó."""
+    if not param("bloquear_ov_sin_opcion", True) or (order.bloqueo_ov or {}).get("estado") == "APROBADA":
+        return False
+    falta = unfeasible_lines(order)
+    if not falta:
+        return False
+    det = "; ".join(f"{x['producto']}: a tiempo {x['cubre_a_tiempo']:g} de {x['pendiente']:g}" for x in falta)
+    motivo = f"Ninguna opción de Operaciones cumple la fecha {order.fecha_compromiso:%d/%m/%Y} ({det})."
+    _block(order, user, "SIN_OPCION", "SIN_OPCION", motivo, lineas=falta)
+    alerts.emit("OV_SIN_OPCION", f"OV {order.numero} bloqueada: ninguna opción cumple la fecha",
+                motivo + " Renegocie la fecha con el cliente o, si debe entregarse en esa fecha, solicite la decisión de "
+                "Gerencia General.", "SalesOrder", order.id, prioridad="ALTA",
+                extra_users=[order.vendedor_id] if order.vendedor_id else None,
+                dedup_key=f"OV_SIN_OPCION:{order.id}:{order.fecha_compromiso.isoformat()}", creado_por=user)
+    audit(user, "OV_BLOQUEADA_SIN_OPCION", "SalesOrder", order.numero, {"lineas": falta})
+    return True
+
+
+def request_gg_decision(order, user, justificacion):
+    """Comercial mantiene la fecha («sí o sí»): la OV sigue bloqueada y se pide la decisión de Gerencia General."""
+    if not (has_perm(user, "ov.renegociar") or has_perm(user, "ov.modificar")):
+        raise BusinessError("La decisión la solicita Comercial.")
+    b = order.bloqueo_ov or {}
+    if order.estado != "BLOQUEADA" or b.get("estado") != "SIN_OPCION":
+        raise BusinessError("La OV no está bloqueada por falta de opción.")
+    if not (justificacion or "").strip():
+        raise BusinessError("Explique por qué el cliente necesita esa fecha.")
+    nb = _hist(order, "SOLICITUD_GG", user, justificacion=justificacion.strip())
+    nb.update({"estado": "PENDIENTE_GG", "solicitud": {"user": user.nombre, "user_id": user.id,
+                                                       "ts": now().isoformat(timespec="minutes"),
+                                                       "justificacion": justificacion.strip()}})
+    order.bloqueo_ov = nb
+    alerts.close_by_system(f"OV_SIN_OPCION:{order.id}:{order.fecha_compromiso.isoformat()}", "Se pidió la decisión de Gerencia General")
+    alerts.emit("OV_DECISION_GG", f"Decidir OV {order.numero}: ninguna opción cumple el {order.fecha_compromiso:%d/%m/%Y}",
+                f"{order.customer.nombre}. {b.get('motivo', '')} Comercial: {justificacion.strip()}", "SalesOrder", order.id,
+                prioridad="ALTA", dedup_key=f"OV_DECISION_GG:{order.id}:{nb['solicitud']['ts']}", creado_por=user)
+    audit(user, "OV_DECISION_GG_SOLICITADA", "SalesOrder", order.numero, {"justificacion": justificacion})
+    return order
+
+
+PRIORIDADES_GG = {"NORMAL": "Normal", "ALTA": "Prioritaria (se atiende antes que las demás)"}
+
+
+def decide_gg(order, user, aprobar, comentario="", prioridad="NORMAL"):
+    """Gerencia General aprueba (va, con su prioridad) o no (Comercial renegocia la fecha con el cliente)."""
+    if not has_perm(user, "ov.decision_gg"):
+        raise BusinessError("Esta decisión la toma Gerencia General.")
+    b = order.bloqueo_ov or {}
+    if order.estado != "BLOQUEADA" or b.get("estado") != "PENDIENTE_GG":
+        raise BusinessError("La OV no está pendiente de la decisión de Gerencia General.")
+    if not aprobar and not (comentario or "").strip():
+        raise BusinessError("Indique por qué no procede.")
+    prioridad = (prioridad or "NORMAL").upper()
+    if prioridad not in PRIORIDADES_GG:
+        raise BusinessError("Prioridad no válida.")
+    ts = (b.get("solicitud") or {}).get("ts", "")
+    alerts.close_by_system(f"OV_DECISION_GG:{order.id}:{ts}", "Decidida por Gerencia General")
+    nb = _hist(order, "DECISION_GG", user, aprobada=bool(aprobar), prioridad=prioridad, comentario=(comentario or "").strip())
+    nb["decision"] = {"aprobada": bool(aprobar), "prioridad": prioridad, "comentario": (comentario or "").strip(),
+                      "user": user.nombre, "ts": now().isoformat(timespec="minutes")}
+    destinatarios = [order.vendedor_id] if order.vendedor_id else None
+    if not aprobar:
+        nb["estado"] = "RENEGOCIAR"
+        order.bloqueo_ov = nb
+        order.motivo_detencion = "Gerencia General no aprobó la fecha: renegociar con el cliente."
+        alerts.emit("OV_DECISION_GG_RESUELTA", f"OV {order.numero}: Gerencia General NO aprueba la fecha — renegociar",
+                    f"{comentario.strip()}. Renegocie la fecha de entrega con el cliente.", "SalesOrder", order.id,
+                    prioridad="ALTA", extra_users=destinatarios, creado_por=user)
+        audit(user, "OV_DECISION_GG", "SalesOrder", order.numero, nb["decision"])
+        return order
+    nb["estado"] = "APROBADA"
+    order.bloqueo_ov = nb
+    order.estado = "REGISTRADA"
+    order.motivo_detencion = ""
+    if prioridad == "ALTA":
+        order.urgente = True  # se prioriza en reservas, preparación y rutas
+    evaluate_order(order, user, "DECISION_GG")
+    from .commitment import open_commitment
+    open_commitment(order)
+    alerts.emit("OV_DECISION_GG_RESUELTA", f"OV {order.numero}: Gerencia General aprueba la fecha"
+                + (" — PRIORITARIA" if prioridad == "ALTA" else ""),
+                f"Entregar el {order.fecha_compromiso:%d/%m/%Y}. {comentario or ''} Operaciones: organizar las opciones "
+                "(producción, compra, traslado) para cumplir.", "SalesOrder", order.id,
+                prioridad="ALTA" if prioridad == "ALTA" else None, extra_users=destinatarios,
+                extra_roles=["JEFE_LOGISTICA", "JEFE_PRODUCCION", "COORD_ALMACEN"], creado_por=user)
+    audit(user, "OV_DECISION_GG", "SalesOrder", order.numero, nb["decision"])
+    return order
 
 
 def attach_oc(order, user, archivo, numero=""):
@@ -587,10 +733,29 @@ def create_saldo(order, user):
 def renegotiate_date(order, user, nueva_fecha, comentario=""):
     if not has_perm(user, "ov.renegociar"):
         raise BusinessError("Su rol no registra renegociaciones.")
+    bloqueada = order.estado == "BLOQUEADA"
+    if bloqueada and (order.bloqueo_ov or {}).get("estado") == "PENDIENTE_GG":
+        raise BusinessError("La OV espera la decisión de Gerencia General.")
+    if bloqueada and nueva_fecha == order.fecha_compromiso:
+        raise BusinessError("Indique la nueva fecha acordada con el cliente.")
     db().add(OVDecision(order_id=order.id, tipo="RENEGOCIAR_FECHA", detalle={"anterior": order.fecha_compromiso.isoformat(),
                                                                                "nueva": nueva_fecha.isoformat()},
                         comentario=comentario, user_id=user.id, estado="APLICADA"))
+    if not bloqueada:
+        _apply_changes(order, user, {"fecha_compromiso": nueva_fecha})
+        return
+    # OV bloqueada: con la nueva fecha se vuelve a analizar (puede quedar activa o volver a bloquearse)
+    b = _hist(order, "RENEGOCIADA", user, anterior=order.fecha_compromiso.isoformat(), nueva=nueva_fecha.isoformat())
+    b["estado"] = "RENEGOCIADA"
+    order.bloqueo_ov = b
+    order.estado = "REGISTRADA"
+    order.motivo_detencion = ""
     _apply_changes(order, user, {"fecha_compromiso": nueva_fecha})
+    if order.origen == "MODULO" and not check_emission_window(order, user):
+        return
+    if not check_feasibility(order, user):
+        from .commitment import open_commitment
+        open_commitment(order)
 
 
 def change_product(order, user, line_id, nuevo_codigo, cantidad, comentario=""):

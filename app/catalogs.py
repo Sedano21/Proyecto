@@ -1613,3 +1613,42 @@ for _code, _n, _m, _t, _roles in _RUX_PERMS:
         ROLE_PERMISSIONS.setdefault(_r, []).append((_code, "DEFINIDO", RUX))
     if _t != "exclusivo" and "GERENCIA_GENERAL" not in _roles:
         ROLE_PERMISSIONS["GERENCIA_GENERAL"].append((_code, "DEFINIDO", f"{RUX}; regla general de Gerencia General"))
+
+# Ronda del 26-oct-2026: OV sin opción que cumpla la fecha → decisión de Gerencia General; límite de emisión de la OV
+R26 = "Respuestas del usuario del 26-oct-2026"
+PARAMS += [
+    ("bloquear_ov_sin_opcion", True, "bool", "Comercial",
+     "Si el análisis de opciones no encuentra ninguna que cumpla la fecha, la OV se bloquea (no compromete stock) hasta "
+     "renegociar la fecha o hasta la decisión de Gerencia General.", "DEFINIDO", f"{R26}: OV sin opción viable"),
+    ("dias_minimos_emision_ov", 1, "int", "Comercial",
+     "Anticipación mínima (días) entre la emisión de la OV y la fecha de entrega; si no se cumple, la OV se bloquea y se "
+     "alerta a Comercial para renegociar la fecha.", "DEFINIDO", f"{R26}: límite para emitir una OV"),
+]
+_COMV = ["JEFE_VENTAS", "COORD_VENTAS", "GERENTE_COMERCIAL"]
+ALERT_TYPES += [
+    ("OV_SIN_OPCION", "OV bloqueada: ninguna opción cumple la fecha", "Comercial", "OV", "ALTA", _COMV, "DEFINIDO", R26,
+     "El análisis de opciones no encuentra cómo cumplir la fecha: renegociar o pedir la decisión de Gerencia General.", True),
+    ("OV_RENEGOCIAR_FECHA", "OV emitida fuera del plazo mínimo: renegociar la fecha", "Comercial", "OV", "ALTA", _COMV,
+     "DEFINIDO", R26, "La OV se emitió con menos anticipación que la mínima respecto de la fecha de entrega.", True),
+    ("OV_DECISION_GG", "Decidir si va una OV que no cumple la fecha", "Gerencia", "OV", "ALTA", ["GERENCIA_GENERAL"],
+     "DEFINIDO", R26, "Comercial mantiene la fecha pese a que ninguna opción la cumple.", True),
+    ("OV_DECISION_GG_RESUELTA", "Decisión de Gerencia General sobre una OV", "Comercial", "OV", "ALTA", _COMV, "DEFINIDO", R26,
+     "Gerencia General aprobó (con su prioridad) o no la fecha de la OV.", True),
+]
+for _code, _n, _m, _t, _roles in [
+        ("ov.decision_gg", "Decidir si va una OV que no cumple la fecha y su prioridad (Gerencia General)", "Comercial", "exclusivo",
+         ["GERENCIA_GENERAL"])]:
+    PERMISSIONS.append((_code, _n, _m, _t))
+    for _r in _roles:
+        ROLE_PERMISSIONS.setdefault(_r, []).append((_code, "DEFINIDO", R26))
+PARAMS += [
+    ("sap_consultas", {"STOCK": "", "LIQUIDACION": ""}, "dict", "Integración SAP",
+     "Códigos de las consultas SQL guardadas en el Service Layer para los datos sin entidad estándar (stock por lote y "
+     "liquidaciones), con columnas nombradas como en la exportación de SAP.", "PENDIENTE", f"{R26}: conexión SAP Service Layer"),
+    ("sap_sync_tipos", [], "list", "Integración SAP",
+     "Datos que se traen de SAP automáticamente cada SAP_SYNC_MIN minutos (OV, CLIENTES, PRODUCTOS, DESPACHOS, STOCK, "
+     "LIQUIDACION). Vacío: solo a pedido.", "PENDIENTE", f"{R26}: conexión SAP Service Layer"),
+    ("sap_autoconfirmar", [], "list", "Integración SAP",
+     "Datos de SAP que se autorizan solos si no tienen errores (los demás quedan para revisión y autorización, como las "
+     "cargas de Excel).", "PENDIENTE", f"{R26}: conexión SAP Service Layer"),
+]

@@ -3,6 +3,8 @@
     python -m app.cli init            # crea tablas y catálogos (sin datos de demostración)
     python -m app.cli demo            # crea tablas, catálogos y datos FICTICIOS de demostración
     python -m app.cli reset-demo      # BORRA la base local y recrea la demostración (solo SQLite local)
+    python -m app.cli sap-probar      # prueba la conexión con SAP Service Layer (solo lectura)
+    python -m app.cli sap-traer TIPO USUARIO   # trae de SAP un tipo de dato y crea la carga para revisar
     python -m app.cli verificar       # ejecuta verificaciones periódicas (alertas automáticas, correo)
     python -m app.cli crear-usuario <usuario> <rol> <nombre> <email>
     python -m app.cli muestras <carpeta>   # genera los Excel ficticios de ejemplo
@@ -57,6 +59,24 @@ def main(argv):
             r = purge_photos(app.config["UPLOAD_DIR"], aplicar="--aplicar" in argv)
             s.commit()
             print(r)
+        elif cmd == "sap-probar":
+            from .services import sap_sl
+            print(sap_sl.test_connection())
+        elif cmd == "sap-traer":
+            # sap-traer TIPO USUARIO: trae de SAP (solo lectura) y crea la carga con el perfil del usuario indicado
+            if len(argv) < 3:
+                print("Uso: sap-traer <OV|CLIENTES|PRODUCTOS|DESPACHOS|STOCK|LIQUIDACION> <usuario>")
+                return 2
+            from sqlalchemy import select
+            from .models import User
+            from .services import sap_sl
+            u = s.execute(select(User).where(User.username == argv[2])).scalars().first()
+            if u is None:
+                print("Usuario no encontrado")
+                return 2
+            b = sap_sl.sync(argv[1].upper(), u, app.config["UPLOAD_DIR"])
+            s.commit()
+            print(f"Carga #{b.id}: {b.estado} ({len(b.rows)} filas)")
         elif cmd == "verificar":
             from .services.scheduler import run_checks
             print(run_checks())

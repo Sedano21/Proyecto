@@ -11,6 +11,29 @@
 <a class="btn sec" href="{{ url_for('com.order_print', oid=o.id) }}">{{ ic('file') }}Imprimir OV</a>
 <a class="btn sec" href="#expediente">{{ ic('folder') }}Expediente</a>
 {% if can('ov.reportar_atraso') and gestionable and not o.aviso_atraso %}<button class="btn sec" data-open="dlg-atraso">{{ ic('alert') }}Avisar atraso</button>{% endif %}</div></div>
+{% set bq = o.bloqueo_ov or {} %}
+{% if o.estado == 'BLOQUEADA' %}<div class="card" style="box-shadow:inset 3px 0 0 var(--err),var(--sh)"><div class="card-head"><h3 style="flex:1">{{ ic('alert') }} OV bloqueada: no compromete stock</h3>{{ b(bq.estado) }}</div>
+<p>{{ bq.motivo }}</p>
+{% if bq.lineas %}<details class="small"><summary>Análisis de opciones por producto</summary>{% for x in bq.lineas %}<div class="person"><b>{{ x.producto }}</b> · a tiempo {{ x.cubre_a_tiempo|n }} de {{ x.pendiente|n }}<div class="muted">{{ x.analisis }}</div>{% for op in x.opciones %}<div>{{ op.ruta }}: {{ 'llega el ' ~ op.fecha if op.fecha else 'sin plazo' }} {{ '✓' if op.cumple else '✕' }}{{ ' (no viable)' if not op.viable }}</div>{% endfor %}</div>{% endfor %}</details>{% endif %}
+{% if bq.estado == 'PENDIENTE_GG' %}<div class="pending-why">Pendiente de: decisión de Gerencia General (pedida por {{ bq.solicitud.user }}: {{ bq.solicitud.justificacion }})</div>{% endif %}
+{% if bq.decision and not bq.decision.aprobada %}<div class="pending-why">Gerencia General no aprobó la fecha: {{ bq.decision.comentario }}. Renegocie con el cliente.</div>{% endif %}
+<div class="row">{% if bq.estado in ['SIN_OPCION','RENEGOCIAR'] and can('ov.renegociar') %}<button class="btn" data-open="dlg-reneg">{{ ic('calendar') }} Renegociar fecha</button>{% endif %}
+{% if bq.estado == 'SIN_OPCION' and (can('ov.renegociar') or can('ov.modificar')) %}<button class="btn sec" data-open="dlg-gg-sol">Mantener la fecha: pedir decisión de Gerencia General</button>{% endif %}
+{% if bq.estado == 'PENDIENTE_GG' and can('ov.decision_gg') %}<button class="btn" data-open="dlg-gg-dec">{{ ic('check') }} Decidir</button>{% endif %}</div></div>
+<dialog class="modal" id="dlg-reneg"><form method="post" action="{{ url_for('com.order_action', oid=o.id, accion='renegociar') }}">{{ csrf() }}
+<div class="dlg-head"><h3>Renegociar fecha de entrega</h3><button class="ibtn" data-close aria-label="Cerrar">{{ ic('x') }}</button></div>
+<div class="dlg-body"><label class="req">Nueva fecha acordada con el cliente</label><input type="date" name="nueva_fecha" required min="{{ today.isoformat() }}"><label>Comentario</label><input name="comentario" style="width:100%"><p class="small muted">Con la nueva fecha el sistema vuelve a analizar las opciones.</p></div>
+<div class="dlg-foot"><button class="btn sec" data-close>Cancelar</button><button class="btn">Renegociar</button></div></form></dialog>
+<dialog class="modal" id="dlg-gg-sol"><form method="post" action="{{ url_for('com.order_action', oid=o.id, accion='solicitar_gg') }}">{{ csrf() }}
+<div class="dlg-head"><h3>Pedir decisión de Gerencia General</h3><button class="ibtn" data-close aria-label="Cerrar">{{ ic('x') }}</button></div>
+<div class="dlg-body"><p class="small">El cliente necesita el pedido el <b>{{ o.fecha_compromiso|d }}</b>. La OV sigue bloqueada hasta que Gerencia General decida si va y con qué prioridad.</p><label class="req">¿Por qué debe entregarse en esa fecha?</label><input name="justificacion" required style="width:100%"></div>
+<div class="dlg-foot"><button class="btn sec" data-close>Cancelar</button><button class="btn">Enviar a Gerencia General</button></div></form></dialog>
+<dialog class="modal" id="dlg-gg-dec"><form method="post" action="{{ url_for('com.order_action', oid=o.id, accion='decision_gg') }}">{{ csrf() }}
+<div class="dlg-head"><h3>Decisión sobre la OV {{ o.numero }}</h3><button class="ibtn" data-close aria-label="Cerrar">{{ ic('x') }}</button></div>
+<div class="dlg-body"><p class="small">{{ bq.motivo }}</p><label>Si va, prioridad</label><select name="prioridad">{% for k, v in prioridades_gg.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select>
+<label>Comentario (obligatorio si no procede)</label><input name="comentario" style="width:100%"></div>
+<div class="dlg-foot"><button class="btn sec" name="aprobar" value="0">No procede: renegociar</button><button class="btn" name="aprobar" value="1">Aprobar: va</button></div></form></dialog>{% endif %}
+{% if bq.decision and bq.decision.aprobada %}<div class="note">Fecha aprobada por Gerencia General ({{ bq.decision.user }}, {{ bq.decision.ts|replace('T',' ') }}){{ ' · PRIORITARIA' if bq.decision.prioridad == 'ALTA' }}{{ ': ' ~ bq.decision.comentario if bq.decision.comentario }}</div>{% endif %}
 {% if o.aviso_atraso %}<div class="note warn"><b>Logística avisó que no llegará a tiempo</b> ({{ o.aviso_atraso.user }}, {{ o.aviso_atraso.ts|replace('T',' ') }}): {{ o.aviso_atraso.motivo }}{% if o.aviso_atraso.nueva_fecha %} · fecha estimada {{ o.aviso_atraso.nueva_fecha }}{% endif %}</div>{% endif %}
 {% if can('ov.reportar_atraso') and gestionable and not o.aviso_atraso %}<dialog class="modal" id="dlg-atraso"><form method="post" action="{{ url_for('sup.order_delay', oid=o.id) }}">{{ csrf() }}
 <div class="dlg-head"><h3>Avisar a Comercial: la OV no llegará a tiempo</h3><button class="ibtn" data-close aria-label="Cerrar">{{ ic('x') }}</button></div>

@@ -390,3 +390,34 @@ def entries():
     rows = [l for l in db().execute(q.limit(300)).scalars() if not estado or l.estado == estado]
     return render_template("entries.html", rows=rows, desde=desde, estado=estado,
                            estados=["REGISTRADA", "BLOQUEADA", "RECIBIDA_COMPLETA", "RECIBIDA_FALTANTE", "RECIBIDA_SOBRANTE"])
+
+
+# ------------------- conexión SAP Service Layer (ronda 26-oct-2026) -------------------
+@bp.route("/cargas/sap", methods=["GET", "POST"])
+@perm_required("stock.cargar", "ov.importar", "config.editar", "produccion.liquidar", "distribucion.documentos")
+def sap_sync():
+    """Traer datos de SAP (solo lectura) y pasarlos por el flujo de cargas: validación, revisión y autorización."""
+    from flask import current_app
+    from ..services import sap_sl
+    from ..services.uploads import SPECS
+    if request.method == "POST":
+        if request.form.get("accion") == "probar":
+            return act(lambda: sap_sl.test_connection(), lambda r: f"Conexión con SAP correcta (versión {r['version'] or '-'}).",
+                       url_for("alm.sap_sync"))
+        tipo = request.form.get("tipo", "")
+        holder = {}
+
+        def _do():
+            holder["b"] = sap_sl.sync(tipo, g.user, current_app.config["UPLOAD_DIR"])
+            return holder["b"]
+        resp = act(_do, lambda b: f"Datos traídos de SAP: carga #{b.id} ({b.estado.replace('_', ' ').lower()}).",
+                   url_for("alm.sap_sync"))
+        if holder.get("b") is not None and holder["b"].id:
+            return redirect(url_for("alm.upload_detail", bid=holder["b"].id))
+        return resp
+    tipos = [(t, n) for t, n in sap_sl.TIPOS_SAP.items() if SPECS[t]["perm"] in g.perms]
+    ult = {t: db().execute(select(UploadBatch).where(UploadBatch.archivo.like(f"SAP_SL_{t}_%"))
+                           .order_by(UploadBatch.id.desc())).scalars().first() for t, _ in tipos}
+    cfg = sap_sl.config()
+    return render_template("sap_sync.html", tipos=tipos, ult=ult, configurado=sap_sl.configured(),
+                           url=cfg["url"], empresa=cfg["company"])

@@ -86,6 +86,8 @@ def run_checks(user=None, today=None):
     out["ov_sin_compromiso"] = check_pending()
     from .finance import check_overdue as facturas_vencidas
     out["facturas_vencidas"] = facturas_vencidas(today)
+    from .sap_sl import scheduled_sync
+    out["sap_service_layer"] = scheduled_sync()
     out["correo"] = flush_outbox()
     return out
 

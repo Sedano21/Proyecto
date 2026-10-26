@@ -1,0 +1,9 @@
+{% extends "base.html" %}{% from "_m.html" import b, csrf, ic, empty %}
+{% block content %}<h1>Datos de SAP (Service Layer)</h1>
+<p class="small muted">Conexión de <b>solo lectura</b>: el sistema trae los datos de SAP y los pasa por el mismo flujo de las cargas (validación, revisión y autorización). No escribe nada en SAP.</p>
+{% if not configurado %}<div class="note warn"><b>La conexión con SAP aún no está configurada.</b> Sistemas la configura en el servidor: dirección del Service Layer, base de datos de la empresa y un usuario de SAP de solo consulta (ver «Instalación y despliegue»). Mientras tanto se siguen usando las cargas de Excel.</div>
+{% else %}<div class="card row"><div class="grow"><b>Service Layer</b><div class="small muted">{{ url }} · empresa {{ empresa }}</div></div><form method="post">{{ csrf() }}<input type="hidden" name="accion" value="probar"><button class="btn sec">{{ ic('refresh') }} Probar conexión</button></form></div>{% endif %}
+{% if tipos %}<div class="cards">{% for t, n in tipos %}{% set u = ult.get(t) %}<article class="xcard"><div class="xcard-head"><b>{{ n }}</b>{% if u %}{{ b(u.estado) }}{% endif %}</div>
+<div class="meta">{% if u %}<span>Última: {{ u.ts.strftime('%d/%m/%Y %H:%M') }}</span><a href="{{ url_for('alm.upload_detail', bid=u.id) }}">carga #{{ u.id }}</a>{% else %}<span>Aún no se trajo de SAP</span>{% endif %}</div>
+{% if configurado %}<form method="post">{{ csrf() }}<input type="hidden" name="tipo" value="{{ t }}"><button class="btn small">{{ ic('download') }} Traer de SAP</button></form>{% endif %}</article>{% endfor %}</div>
+{% else %}{{ empty('Su perfil no carga datos de SAP.') }}{% endif %}{% endblock %}

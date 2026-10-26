@@ -368,6 +368,9 @@ class SalesOrder(Base):
     fecha_compromiso: Mapped[date] = mapped_column(Date)  # fecha comprometida de despacho
     # ronda UX 24-oct-2026: aviso de Logística de que la OV no llegará a tiempo {motivo, user, ts, nueva_fecha}
     aviso_atraso: Mapped[dict] = mapped_column(JSON, default=dict)
+    # ronda 26-oct-2026: OV BLOQUEADA (no compromete stock) cuando ninguna opción cumple la fecha o se emitió con menos
+    # de un día de anticipación. {tipo, estado, lineas, solicitud, decision, historial}
+    bloqueo_ov: Mapped[dict] = mapped_column(JSON, default=dict)
     urgente: Mapped[bool] = mapped_column(Boolean, default=False)
     direccion: Mapped[str] = mapped_column(String(250), default="")
     distrito: Mapped[str] = mapped_column(String(80), default="")

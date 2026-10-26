@@ -122,6 +122,7 @@ def test_autoaprobacion_de_jefes_y_cambio_de_fecha_por_logistica(s, U, new_order
 
 def test_compromiso_cumple_no_cumple_y_plazo(s, U, new_order):
     from app.services import commitment as cm
+    set_param("bloquear_ov_sin_opcion", False)  # aquí se prueba el compromiso; el bloqueo se prueba en test_ronda_26oct
     o = new_order([("PT-901", 1)])
     assert o.compromiso["estado"] in ("CUMPLE", "PENDIENTE")
     o2 = new_order([("PT-902", 999999)])
