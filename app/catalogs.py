@@ -1685,3 +1685,18 @@ PARAMS += [
      "SAP). Si ya está en preparación o en ruta, manda el módulo y queda como diferencia para revisar.", "PROPUESTO",
      f"{V7}: la carga de SAP no analiza las OV cerradas y no duplica las abiertas"),
 ]
+PARAMS += [
+    ("meta_otif_pct", 95, "float", "Comercial", "Meta de OTIF del informe de gestión comercial (bajo la meta se recomienda revisar).",
+     "PROPUESTO", f"{V7}: informe comercial con OTIF, fill rate y on time"),
+    ("tolerancia_meta_pct", 10, "float", "Comercial",
+     "Puntos porcentuales bajo el avance esperado a la fecha a partir de los cuales una meta se marca como atrasada.",
+     "PROPUESTO", f"{V7}: alerta cuando el avance de la meta está por debajo"),
+]
+for _r in ("GERENTE_COMERCIAL",):
+    if not any(p[0] == "informes.comercial" for p in ROLE_PERMISSIONS[_r]):
+        ROLE_PERMISSIONS[_r].append(("informes.comercial", "DEFINIDO", f"{V7}: informe de gestión comercial"))
+ALERT_TYPES += [
+    ("META_ATRASADA", "Meta de venta atrasada", "Comercial", "Objetivos", "MEDIA", ["COORD_VENTAS", "JEFE_VENTAS", "GERENTE_COMERCIAL"],
+     "DEFINIDO", f"{V7}: alertar si el avance de la meta (vendedor, canal o total) está debajo de lo esperado",
+     "Una vez por semana mientras el avance esté por debajo del esperado menos la tolerancia.", False),
+]

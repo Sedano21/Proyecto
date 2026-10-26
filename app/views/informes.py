@@ -9,6 +9,7 @@ bp = Blueprint("rep", __name__, url_prefix="/informes")
 
 # informe -> (título, permisos que lo habilitan)
 INFORMES = {
+    "gestion": ("Gestión comercial", ("informes.comercial",)),
     "comercial": ("Comercial", ("informes.comercial",)),
     "reempaque": ("Reempaque", ("informes.reempaque",)),
     "produccion": ("Producción", ("informes.produccion",)),
@@ -116,11 +117,45 @@ def _descarga(html, titulo):
 def show(nombre):
     if nombre not in INFORMES or nombre not in dict(disponibles()):
         abort(403)
+    if nombre == "gestion" and request.args.get("formato") == "pptx":
+        import io
+        from datetime import date
+        from ..services.pptxreport import gestion_pptx
+        return send_file(io.BytesIO(gestion_pptx(_gestion_data())), as_attachment=True,
+                         download_name=f"informe_gestion_comercial_{date.today():%Y%m%d}.pptx",
+                         mimetype="application/vnd.openxmlformats-officedocument.presentationml.presentation")
     return _descarga(_show(nombre), INFORMES[nombre][0])
+
+
+def _gestion_data():
+    from ..services import commercial_mgmt as cm
+    desde, hasta = _periodo()
+    a = request.args
+    f = {"canales": a.getlist("canal"), "modo_canal": a.get("modo_canal", "incluir"), "tipo": a.get("tipo", ""),
+         "vendedores": a.getlist("vendedor"), "clientes": a.getlist("cliente")}
+    if g.user.role_code == "EJECUTIVO_VENTAS":  # el ejecutivo ve lo suyo
+        f["vendedores"] = [str(g.user.id)]
+    return cm.gestion(desde, hasta, f, ver_costos="costos.ver" in g.perms, user=g.user)
 
 
 def _show(nombre):
     desde, hasta = _periodo()
+    if nombre == "gestion":
+        from ..services import commercial_mgmt as cm
+        d = _gestion_data()
+        nv = lambda r: r["nivel"]  # noqa: E731
+        graf = {
+            "vend": charts.columns([n[:14] for n, _ in d["por"]["vendedor"][:10]],
+                                   [("S/", [r["soles"] for _, r in d["por"]["vendedor"][:10]])], "S/", title="Venta por vendedor"),
+            "canal": charts.bars([(n, r["soles"]) for n, r in d["por"]["canal"]], "S/", title="Venta por canal"),
+            "otif_vend": charts.bars([(n, nv(r)["otif"] or 0) for n, r in d["por"]["vendedor"] if nv(r)["n"]], "%",
+                                     title="OTIF por vendedor", color=2),
+            "embudo": charts.bars(d["embudo"], "", title="Embudo comercial", color=6),
+            "menos": charts.bars([(f"{p.code} {p.descripcion[:16]}", v) for p, v in d["menos_vendidos"]], "S/",
+                                 title="Productos con menos venta", color=1),
+        }
+        return render_template("informe_gestion.html", d=d, graf=graf, items=disponibles(), actual=nombre, op=cm.options(),
+                               charts=charts)
     if nombre == "comercial":
         fa = request.args
         vend = fa.get("vendedor", "")

@@ -197,8 +197,12 @@ def dashboard():
     ids = {a.id for a in tareas}
     mis = [a for a in alert_svc.inbox(g.user, solo_abiertas=True) if a.id not in ids][:40]
     from ..services.shifts import pending_carryover
+    com = None
+    if g.user.role_code in ("COORD_VENTAS", "JEFE_VENTAS", "GERENTE_COMERCIAL", "GERENCIA_GENERAL"):
+        from ..services.commercial_mgmt import home_summary
+        com = home_summary(g.user)  # V7: metas por vendedor/canal/total (S/ y kg) y pedidos del mes en la portada
     return render_template("dashboard.html", k=k, mis_alertas=mis, tareas=tareas, desde=desde or "", hasta=hasta or "",
-                           estado_txt=alert_svc.ESTADO_TXT, arrastre=pending_carryover(g.user))
+                           estado_txt=alert_svc.ESTADO_TXT, arrastre=pending_carryover(g.user), com=com)
 
 
 @bp.route("/verificaciones", methods=["POST"])

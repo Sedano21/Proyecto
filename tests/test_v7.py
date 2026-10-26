@@ -165,3 +165,52 @@ def test_carga_sap_cierra_ov_atendida_en_sap_sin_duplicar(s, U, tmp_path):
     s.flush()
     assert res["ov_cerradas_en_sap"] == 1 and o.estado == "CERRADA"
     assert all(line_reserved(l) == 0 for l in o.lines)
+
+
+def test_informe_gestion_comercial_y_exportaciones(app):
+    c = app.test_client()
+    login(c, "jefe.ventas")
+    r = c.get("/informes/gestion")
+    assert r.status_code == 200
+    h = r.get_data(as_text=True)
+    assert "OTIF" in h and "Fill rate" in h and "Embudo comercial" in h and "Desempeño por persona" in h
+    assert c.get("/informes/gestion?tipo=GRANEL&modo_canal=excluir&canal=X").status_code == 200
+    r = c.get("/informes/gestion?formato=pptx")
+    assert r.status_code == 200 and r.data[:2] == b"PK"
+    assert c.get("/informes/gestion?formato=pdf").data[:4] == b"%PDF"
+    assert c.get("/informes/gestion?formato=xlsx").data[:2] == b"PK"
+
+
+def test_formulas_nivel_de_servicio(s, U, cust):
+    from datetime import datetime
+    from app.services import orders as osvc
+    from app.services.commercial_mgmt import _nivel
+    o1 = osvc.create_order(U("coord.ventas"), "NS-1", cust().id, date.today() + timedelta(days=3), LN, oc_archivo="o", evaluar=False)
+    o2 = osvc.create_order(U("coord.ventas"), "NS-2", cust().id, date.today() + timedelta(days=3), LN, oc_archivo="o", evaluar=False)
+    s.flush()
+    o1.salida_ts = datetime.combine(o1.fecha_compromiso, datetime.min.time())
+    o1.lines[0].despachado = 5
+    o2.salida_ts = datetime.combine(o2.fecha_compromiso + timedelta(days=1), datetime.min.time())
+    o2.lines[0].despachado = 4
+    n = _nivel([o1, o2], "")
+    assert (n["on_time"], n["in_full"], n["otif"], n["fill_unidades"]) == (50.0, 50.0, 50.0, 90.0)
+
+
+@pytest.mark.parametrize("usuario", ["coord.ventas", "jefe.ventas", "gerente.general"])
+def test_portada_comercial_con_metas(app, usuario):
+    c = app.test_client()
+    login(c, usuario)
+    r = c.get("/")
+    assert r.status_code == 200 and "Gestión comercial del mes" in r.get_data(as_text=True)
+
+
+def test_alerta_meta_atrasada(s, U):
+    from app.models import Alert, SalesTarget
+    from app.services.commercial_mgmt import check_goal_alerts
+    hoy = date.today()
+    s.add(SalesTarget(mes=f"{hoy:%Y-%m}", alcance="GENERAL", clave="", soles=10_000_000))
+    s.flush()
+    if hoy.day < 5:
+        pytest.skip("al inicio del mes el avance esperado aún es bajo")
+    assert check_goal_alerts(hoy) == 1 and check_goal_alerts(hoy) == 1
+    assert s.query(Alert).filter_by(type_code="META_ATRASADA").count() == 1

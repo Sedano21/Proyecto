@@ -23,6 +23,21 @@
 {% else %}{{ empty('Sin alertas abiertas.', 'bell') }}{% endif %}</section>
 </div>
 
+{% if com %}{# V7: gestión comercial del mes para Coordinador, Jefe y Gerente Comercial #}
+<div class="section-title">Gestión comercial del mes <a class="small" href="{{ url_for('rep.show', nombre='gestion') }}">Ver informe completo</a></div>
+{% if com.recomendaciones %}<section class="recos">{% for nivel, texto in com.recomendaciones %}<div class="reco-big {{ nivel }}"><b>{{ {'ALTA': 'Acción urgente', 'MEDIA': 'Atención', 'INFO': 'Seguimiento'}[nivel] }}</b><span>{{ texto }}</span></div>{% endfor %}</section>{% endif %}
+<div class="kpis">
+<div class="kpi"><b>S/ {{ com.ingresadas.soles|n }}</b><span>OV ingresadas</span><small>{{ com.ingresadas.n }} OV · {{ com.ingresadas.kg|n }} kg</small></div>
+<div class="kpi ok"><b>S/ {{ com.atendidas.soles|n }}</b><span>Atendido</span><small>{{ com.atendidas.kg|n }} kg</small></div>
+<div class="kpi {{ 'warn' if com.pendientes.vencidas }}"><b>S/ {{ com.pendientes.soles|n }}</b><span>Pendiente del mes</span><small>{{ com.pendientes.n }} OV · {{ com.pendientes.vencidas }} vencidas</small></div>
+<div class="kpi"><b>S/ {{ com.facturacion.soles|n }}</b><span>Facturación</span><small>{{ com.facturacion.fuente }}</small></div>
+<div class="kpi {{ '' if com.nivel.otif is none else ('ok' if com.nivel.otif >= 95 else 'warn') }}"><b>{{ com.nivel.otif if com.nivel.otif is not none else '—' }}{{ ' %' if com.nivel.otif is not none }}</b><span>OTIF</span><small>Fill rate {{ com.nivel.fill_unidades if com.nivel.fill_unidades is not none else '—' }} %</small></div></div>
+{% if com.metas.filas %}<div class="cards">{% for m in com.metas.filas %}<article class="xcard {{ 'alerta' if m.atrasada else 'st-LIQUIDADO' }}"><div class="xcard-head"><b>{{ m.nombre }}</b><span class="small muted">{{ m.alcance|capitalize }}</span></div>
+<div class="big">{{ m.avance_soles if m.avance_soles is not none else '—' }} %<span class="small muted"> en S/{% if m.meta_kg %} · {{ m.avance_kg }} % en kg{% endif %}</span></div><div class="meter {{ 'bad' if m.atrasada }}"><i style="width:{{ [m.avance_soles or 0, 100]|min }}%"></i><em style="left:{{ com.metas.esperado }}%" title="Esperado a la fecha"></em></div>
+<div class="small">S/ {{ m.soles|n }} de {{ m.meta_soles|n }}{% if m.atrasada %} · <b class="err">atrasada</b>{% endif %}</div></article>{% endfor %}</div>
+{% else %}<p class="small muted">Sin metas registradas para {{ com.metas.mes }}: <a href="{{ url_for('com.targets') }}">registrarlas</a>.</p>{% endif %}
+{% endif %}
+
 {% if k %}
 {# 2. Pedidos: situación de las órdenes de venta #}
 <div class="section-title">Pedidos</div>

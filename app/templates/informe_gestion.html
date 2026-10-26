@@ -1,0 +1,73 @@
+{% extends "base.html" %}{% from "_m.html" import ic %}
+{% block content %}
+{% set f = d.filtros %}{% set qs = request.args.to_dict(flat=False) %}
+<div class="page-head"><div><h1>Informe de gestión comercial</h1><p class="sub">Periodo {{ d.desde|d }} – {{ d.hasta|d }} · metas, servicio al cliente, desempeño, embudo, cobranza y productos</p></div>
+<div class="row noprint">{% set base = request.query_string.decode() %}
+<a class="btn" href="{{ request.path }}?{{ base }}{{ '&' if base }}formato=pdf">{{ ic('download') }}PDF</a>
+<a class="btn sec" href="{{ request.path }}?{{ base }}{{ '&' if base }}formato=xlsx">{{ ic('download') }}Excel</a>
+<a class="btn sec" href="{{ request.path }}?{{ base }}{{ '&' if base }}formato=pptx">{{ ic('download') }}PowerPoint</a></div></div>
+<p class="tabs noprint">{% for k, t in items %}<a class="btn {{ '' if k == actual else 'sec' }}" href="{{ url_for('rep.show', nombre=k) }}">{{ t }}</a> {% endfor %}</p>
+
+<form class="card filters noprint" method="get">
+<div class="row">
+<div><label>Desde</label><input type="date" name="desde" value="{{ d.desde.isoformat() }}"></div>
+<div><label>Hasta</label><input type="date" name="hasta" value="{{ d.hasta.isoformat() }}"></div>
+<div><label>Granel / envasado</label><div class="seg">{% for v, t in [('', 'Todo'), ('GRANEL', 'Solo granel'), ('ENVASADO', 'Sin granel')] %}<label><input type="radio" name="tipo" value="{{ v }}" {{ 'checked' if (f.tipo or '') == v }}><span>{{ t }}</span></label>{% endfor %}</div></div>
+<details class="ms"><summary><label>Canales</label><span class="ms-sel">{{ f.canales|join(', ') if f.canales else 'Todos' }}</span></summary><div class="ms-pop">
+<div class="seg small"><label><input type="radio" name="modo_canal" value="incluir" {{ 'checked' if f.modo_canal != 'excluir' }}><span>Incluir</span></label><label><input type="radio" name="modo_canal" value="excluir" {{ 'checked' if f.modo_canal == 'excluir' }}><span>Excluir</span></label></div>
+{% for c in op.canales %}<label class="chk"><input type="checkbox" name="canal" value="{{ c }}" {{ 'checked' if c in f.canales }}> {{ c }}</label>{% endfor %}</div></details>
+{% if user.role_code != 'EJECUTIVO_VENTAS' %}<details class="ms"><summary><label>Vendedores</label><span class="ms-sel">{{ (f.vendedores|length ~ ' elegidos') if f.vendedores else 'Todos' }}</span></summary><div class="ms-pop">
+{% for v in op.vendedores %}<label class="chk"><input type="checkbox" name="vendedor" value="{{ v.id }}" {{ 'checked' if v.id|string in f.vendedores }}> {{ v.nombre }}</label>{% endfor %}</div></details>{% endif %}
+<details class="ms"><summary><label>Clientes</label><span class="ms-sel">{{ (f.clientes|length ~ ' elegidos') if f.clientes else 'Todos' }}</span></summary><div class="ms-pop"><input type="search" placeholder="Buscar cliente" data-ms-filter aria-label="Buscar cliente">
+{% for c in op.clientes %}<label class="chk"><input type="checkbox" name="cliente" value="{{ c.id }}" {{ 'checked' if c.id|string in f.clientes }}> {{ c.nombre }}</label>{% endfor %}</div></details>
+<div><button>{{ ic('chart') }} Actualizar</button> <a class="btn sec" href="{{ request.path }}">Limpiar</a></div></div></form>
+
+{% if d.recomendaciones %}<section class="recos">{% for nivel, texto in d.recomendaciones %}<div class="reco-big {{ nivel }}"><b>{{ {'ALTA': 'Acción urgente', 'MEDIA': 'Atención', 'INFO': 'Seguimiento'}[nivel] }}</b><span>{{ texto }}</span></div>{% endfor %}</section>{% endif %}
+
+<h2 class="sec-title">Pedidos del periodo</h2>
+<div class="kpis">
+<div class="kpi"><b>S/ {{ d.ingresadas.soles|n }}</b><span>OV ingresadas</span><small>{{ d.ingresadas.n }} OV · {{ d.ingresadas.kg|n }} kg</small></div>
+<div class="kpi ok"><b>S/ {{ d.atendidas.soles|n }}</b><span>Atendido</span><small>{{ d.atendidas.n }} OV cerradas · {{ d.atendidas.kg|n }} kg</small></div>
+<div class="kpi {{ 'warn' if d.pendientes.vencidas }}"><b>S/ {{ d.pendientes.soles|n }}</b><span>Pendiente</span><small>{{ d.pendientes.n }} OV ({{ d.pendientes.mes }} del mes) · {{ d.pendientes.kg|n }} kg · {{ d.pendientes.vencidas }} vencidas</small></div>
+<div class="kpi"><b>S/ {{ d.facturacion.soles|n }}</b><span>Facturación</span><small>{{ d.facturacion.fuente }}</small></div>
+<div class="kpi"><b>{{ d.canceladas }}</b><span>OV canceladas</span></div></div>
+
+<h2 class="sec-title">Nivel de servicio <span class="small muted">({{ d.nivel.n }} OV que salieron)</span></h2>
+<div class="kpis">{% for k, t in [('otif', 'OTIF'), ('on_time', 'On time'), ('in_full', 'In full'), ('fill_unidades', 'Fill rate (unidades)'), ('fill_lineas', 'Fill rate (líneas)')] %}{% set v = d.nivel[k] %}
+<div class="kpi {{ '' if v is none else ('ok' if v >= 95 else ('warn' if v >= 85 else 'err')) }}"><b>{{ v if v is not none else '—' }}{{ ' %' if v is not none }}</b><span>{{ t }}</span><small title="Fórmula">{{ d.formulas[k] }}</small></div>{% endfor %}</div>
+
+<h2 class="sec-title">Metas de {{ d.metas.mes }} <span class="small muted">· avance esperado a la fecha {{ d.metas.esperado }} %</span></h2>
+{% if d.metas.filas %}<div class="cards">{% for m in d.metas.filas %}<article class="xcard {{ 'alerta' if m.atrasada else 'st-LIQUIDADO' }}"><div class="xcard-head"><b>{{ m.nombre }}</b><span class="small muted">{{ m.alcance|capitalize }}</span></div>
+<div class="row"><div class="grow"><span class="small muted">Soles</span><div class="big">{{ m.avance_soles if m.avance_soles is not none else '—' }} %</div><div class="meter"><i style="width:{{ [m.avance_soles or 0, 100]|min }}%"></i><em style="left:{{ d.metas.esperado }}%"></em></div><span class="small">S/ {{ m.soles|n }} de {{ m.meta_soles|n }}</span></div>
+{% if m.meta_kg %}<div class="grow"><span class="small muted">Kilos</span><div class="big">{{ m.avance_kg }} %</div><div class="meter"><i style="width:{{ [m.avance_kg or 0, 100]|min }}%"></i><em style="left:{{ d.metas.esperado }}%"></em></div><span class="small">{{ m.kg|n }} de {{ m.meta_kg|n }} kg</span></div>{% endif %}</div>
+{% if m.atrasada %}<div class="pending-why">Atrasada: faltan S/ {{ m.falta_soles|n }}.</div>{% endif %}</article>{% endfor %}</div>
+{% else %}<div class="card small muted">No hay metas registradas para {{ d.metas.mes }}. Regístrelas en <a href="{{ url_for('com.targets') }}">Objetivos de venta</a>.</div>{% endif %}
+
+<div class="grid g2"><div class="card"><h3>Venta por vendedor</h3>{{ graf.vend }}</div><div class="card"><h3>Venta por canal</h3>{{ graf.canal }}</div></div>
+
+<div class="card"><h3>Desempeño por persona</h3><div class="tw"><table class="list small"><thead><tr><th>Vendedor</th><th class="r">OV</th><th class="r">S/</th><th class="r">kg</th><th class="r">Ticket</th><th class="r">Meta S/</th><th class="r">OTIF</th><th class="r">Fill rate</th><th class="r">OV modificadas</th><th class="r">Oportunidades</th><th class="r">Ganadas</th><th class="r">Penalidad calc. / pagada</th></tr></thead>
+{% for p in d.personas %}<tr><td>{{ p.nombre }}</td><td class="r">{{ p.ovs }}</td><td class="r">{{ p.soles|n }}</td><td class="r">{{ p.kg|n }}</td><td class="r">{{ p.ticket|n }}</td><td class="r {{ 'err' if p.meta and p.meta.atrasada }}">{{ (p.meta.avance_soles ~ ' %') if p.meta and p.meta.avance_soles is not none else '—' }}</td><td class="r">{{ p.nivel.otif if p.nivel.otif is not none else '—' }}</td><td class="r">{{ p.nivel.fill_unidades if p.nivel.fill_unidades is not none else '—' }}</td><td class="r">{{ p.modificadas }} ({{ p.pct_modificadas or 0 }} %)</td><td class="r">{{ p.oportunidades }}</td><td class="r">{{ p.ganadas }}</td><td class="r">{{ p.penalidad_calc|n }} / {{ p.penalidad_pag|n }}</td></tr>{% else %}<tr><td colspan="12" class="muted">Sin OV en el periodo.</td></tr>{% endfor %}</table></div>
+<p class="small muted">OTIF por vendedor:</p>{{ graf.otif_vend }}</div>
+
+<div class="grid g2"><div class="card"><h3>Por canal</h3><div class="tw"><table class="list small"><thead><tr><th>Canal</th><th class="r">OV</th><th class="r">S/</th><th class="r">kg</th><th class="r">OTIF</th><th class="r">Fill rate</th></tr></thead>{% for n, r in d.por.canal %}<tr><td>{{ n }}</td><td class="r">{{ r.ovs }}</td><td class="r">{{ r.soles|n }}</td><td class="r">{{ r.kg|n }}</td><td class="r">{{ r.nivel.otif if r.nivel.otif is not none else '—' }}</td><td class="r">{{ r.nivel.fill_unidades if r.nivel.fill_unidades is not none else '—' }}</td></tr>{% endfor %}</table></div></div>
+<div class="card"><h3>Embudo comercial</h3>{{ graf.embudo }}</div></div>
+
+{% if d.margen %}<div class="card"><h3>Margen por canal (lo que deja a la empresa)</h3><div class="tw"><table class="list small"><thead><tr><th>Canal</th><th class="r">Venta S/</th><th class="r">Costo S/</th><th class="r">Margen bruto S/</th><th class="r">Margen bruto %</th><th class="r">Utilidad neta S/</th></tr></thead>{% for x in d.margen.filas %}<tr><td>{{ x.clave }}</td><td class="r">{{ x.venta|n }}</td><td class="r">{{ x.costo|n }}</td><td class="r">{{ x.margen_bruto|n }}</td><td class="r">{{ x.pct_mb if x.pct_mb is not none else '—' }} %</td><td class="r {{ 'err' if x.utilidad_neta < 0 }}">{{ x.utilidad_neta|n }} ({{ x.pct_un if x.pct_un is not none else '—' }} %)</td></tr>{% endfor %}</table></div><p class="small muted">Base: pedidos del periodo, con las tasas de margen configuradas por canal y cliente.</p></div>{% endif %}
+
+<div class="card"><h3>Clientes: venta y estado de pago</h3><div class="tw"><table class="list small"><thead><tr><th>Cliente</th><th class="r">Venta S/</th><th class="r">Deuda S/</th><th class="r">Vencida S/</th><th class="r">Días de atraso</th><th>Estado</th></tr></thead>
+{% for p in d.pagos %}<tr><td><a href="{{ url_for('rep.customer_behavior', cid=p.cliente.id) }}">{{ p.cliente.nombre }}</a></td><td class="r">{{ p.soles|n }}</td><td class="r">{{ p.deuda|n }}</td><td class="r {{ 'err' if p.vencida }}">{{ p.vencida|n }}</td><td class="r">{{ p.dias_atraso }}</td><td><span class="b {{ 'err' if p.estado == 'VENCIDA' else ('warn' if p.estado == 'CON_SALDO' else 'ok') }}">{{ {'VENCIDA': 'Deuda vencida', 'CON_SALDO': 'Con saldo', 'AL_DIA': 'Al día'}[p.estado] }}</span></td></tr>{% else %}<tr><td colspan="6" class="muted">Sin clientes en el periodo.</td></tr>{% endfor %}</table></div></div>
+
+<div class="grid g2"><div class="card"><h3>Productos con menos venta</h3>{{ graf.menos }}</div>
+<div class="card"><h3>Sin movimiento en el periodo</h3><p class="small muted">Primero los que tienen stock (prioridad para campañas).</p><ul class="small">{% for p in d.sin_movimiento %}<li>{{ p.code }} · {{ p.descripcion }}{% if p in d.sin_movimiento_con_stock %} <span class="b warn">con stock</span>{% endif %}</li>{% else %}<li class="muted">Todos los productos tuvieron venta.</li>{% endfor %}</ul>
+{% if d.presentaciones_sin_mov %}<h4>Presentaciones sin movimiento</h4><p class="small">{{ d.presentaciones_sin_mov|join(' · ') }}</p>{% endif %}</div></div>
+
+<div class="card"><h3>Penalidades</h3><div class="kpis"><div class="kpi"><b>S/ {{ d.penalidades.calculada|n }}</b><span>Calculada</span></div><div class="kpi ok"><b>S/ {{ d.penalidades.pagada|n }}</b><span>Pagada</span></div><div class="kpi"><b>S/ {{ d.penalidades.desestimada|n }}</b><span>Desestimada</span><small>{{ d.penalidades.pct_desestimada }} % de lo calculado</small></div><div class="kpi {{ 'warn' if d.penalidades.pendientes }}"><b>{{ d.penalidades.pendientes }}</b><span>Por resolver</span></div></div></div>
+
+<div class="card small"><h3>Indicadores que recomendamos sumar</h3><ul>
+<li><b>Tasa de recompra</b>: clientes que vuelven a comprar dentro de su frecuencia habitual ÷ clientes activos.</li>
+<li><b>Venta por cliente nuevo y SKU nuevo</b> en clientes existentes (penetración del catálogo).</li>
+<li><b>Días de venta pendiente (DSO comercial)</b>: deuda ÷ venta diaria promedio, por vendedor.</li>
+<li><b>Precio realizado vs precio base</b> por canal (descuento efectivo) y <b>margen de contribución por kg</b>.</li>
+<li><b>Lead time de pedido</b>: emisión de la OV → entrega, y tasa de OV con renegociación de fecha.</li></ul></div>
+<script>document.querySelectorAll('[data-ms-filter]').forEach(function(i){i.addEventListener('input',function(){var q=i.value.toLowerCase();i.parentNode.querySelectorAll('label.chk').forEach(function(l){l.style.display=l.textContent.toLowerCase().indexOf(q)<0?'none':'';});});});</script>
+{% endblock %}
