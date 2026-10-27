@@ -35,11 +35,12 @@ def open_count(user, warehouse_code, product_prefix="", observacion="", base=Non
 
 
 def compute_line(line):
-    if line.conteo is None:
+    conteo = line.recuento if line.recuento is not None else line.conteo  # el recuento reemplaza al primer conteo
+    if conteo is None:
         line.fisico = None
         line.faltante = line.sobrante = 0
         return
-    line.fisico = line.conteo * line.peso_unitario if line.peso_unitario else line.conteo
+    line.fisico = conteo * line.peso_unitario if line.peso_unitario else conteo
     line.faltante = max(line.sap - line.fisico, 0)
     line.sobrante = max(line.fisico - line.sap, 0)
 
@@ -55,7 +56,27 @@ def save_lines(c, user, valores):
         line.conteo = float(v["conteo"]) if v.get("conteo") not in (None, "") else None
         line.peso_unitario = float(v["peso_unitario"]) if v.get("peso_unitario") not in (None, "") else None
         line.comentario = v.get("comentario", line.comentario) or ""
+        if "recuento" in v:
+            line.recuento = float(v["recuento"]) if v.get("recuento") not in (None, "") else None
         compute_line(line)
+
+
+def needs_recount(line):
+    """A06: la diferencia supera la tolerancia (1 % o 5 kg, configurables) y aún no se recontó."""
+    if line.recuento is not None or line.fisico is None:
+        return False
+    from .core import param
+    from ..models import Product
+    dif = abs(line.fisico - line.sap)
+    if dif <= 1e-9:
+        return False
+    pct = float(param("conteo_tolerancia_pct", 1) or 0)
+    kg_tol = float(param("conteo_tolerancia_kg", 5) or 0)
+    p = db().get(Product, line.product_code)
+    kg_u = (p.peso_kg or (1.0 if (p.um or "").upper().startswith("K") else 0)) if p else 0
+    supera_pct = line.sap > 0 and dif / line.sap * 100 > pct
+    supera_kg = kg_u > 0 and dif * kg_u > kg_tol
+    return supera_pct or supera_kg or line.sap <= 0
 
 
 def close_count(c, user):
@@ -64,6 +85,10 @@ def close_count(c, user):
     sin = [l for l in c.lines if l.conteo is None]
     if sin:
         raise BusinessError(f"Hay {len(sin)} líneas sin conteo.")
+    recontar = [l for l in c.lines if needs_recount(l)]
+    if recontar:
+        raise BusinessError("Recuente antes de cerrar (diferencia mayor a la tolerancia): "
+                            + ", ".join(f"{l.product_code} lote {l.lote}" for l in recontar[:10]) + ".")
     difs = []
     for line in c.lines:
         lot = db().get(StockLot, line.lot_id) if line.lot_id else None
@@ -103,3 +128,26 @@ def close_count(c, user):
                     evaluate_order(o, user, "REEVALUACION")
     audit(user, "CONTEO_CERRADO", "PhysicalCount", c.id, {"diferencias": len(difs)})
     return difs
+
+
+def check_cycle_counts(hoy=None):
+    """A06: conteo cíclico quincenal. Avisa por almacén habilitado cuando pasaron N días desde el último conteo cerrado."""
+    from datetime import date
+    from sqlalchemy import func
+    from .core import param
+    from ..models import Warehouse
+    hoy = hoy or date.today()
+    dias = int(param("conteo_ciclico_dias", 15) or 0)
+    if not dias:
+        return 0
+    n = 0
+    for w in db().execute(select(Warehouse).where(Warehouse.habilitado.is_(True))).scalars():
+        ult = db().execute(select(func.max(PhysicalCount.fecha)).where(PhysicalCount.warehouse_code == w.code,
+                                                                       PhysicalCount.estado == "CERRADO")).scalar()
+        if ult is None or (hoy - ult).days >= dias:
+            alerts.emit("CONTEO_CICLICO", f"Toca el conteo cíclico de {w.code}",
+                        f"Último conteo cerrado: {ult:%d/%m/%Y}." if ult else "Aún no hay conteos cerrados en este almacén.",
+                        "Warehouse", w.code,
+                        dedup_key=f"CONTEO_CICLICO:{w.code}:{hoy.toordinal() // dias}")  # una vez por periodo
+            n += 1
+    return n

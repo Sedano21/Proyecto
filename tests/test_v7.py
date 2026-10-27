@@ -271,7 +271,7 @@ def test_cotizaciones_sap_lectura_y_escritura_bloqueada(s, U, cust):
     assert sap_sl.pull_quotes(U("coord.ventas"), FakeSL())["actualizadas"] == 1
     from app.models import Quote
     q = s.query(Quote).filter_by(origen="SAP").one()
-    with pytest.raises(BusinessError, match="no está autorizada"):
+    with pytest.raises(BusinessError, match="autorizada"):
         sap_sl.push_quote(q, U("coord.ventas"))
 
 

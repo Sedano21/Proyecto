@@ -65,8 +65,10 @@ def demand_change(fid):
 @bp.route("/rotacion")
 @perm_required("rotacion.ver")
 def rotation():
-    d = ssvc.rotation_ranking(request.args.get("dias") or None)
-    return render_template("rotation.html", d=d, ver_costos="costos.ver" in g.perms, frente=request.args.get("frente", "tiempo"))
+    d = ssvc.rotation_ranking(request.args.get("dias") or None, almacen=request.args.get("almacen") or None)
+    almacenes = list(db().execute(select(Warehouse).where(Warehouse.habilitado.is_(True)).order_by(Warehouse.code)).scalars())
+    return render_template("rotation.html", d=d, ver_costos="costos.ver" in g.perms, frente=request.args.get("frente", "tiempo"),
+                           almacenes=almacenes)
 
 
 @bp.route("/movimientos", methods=["GET", "POST"])
@@ -81,7 +83,7 @@ def moves():
             return act(lambda: ssvc.request_move(g.user, f.get("origen"), f.get("destino"), f.get("detalle", ""), f.get("cantidad", ""),
                                                  f.get("prioridad"), f.get("almacen", ""), f.get("observacion", ""),
                                                  f.get("programado_para") if f.get("cuando") == "PROGRAMADO" else None,
-                                                 f.get("asignado_id") or None),
+                                                 f.get("asignado_id") or None, f.get("aviso_min")),
                        "Movimiento solicitado.", back)
         m = db().get(MoveRequest, int(f.get("move_id") or 0)) or abort(404)
         if acc == "iniciar":
@@ -90,10 +92,14 @@ def moves():
         if acc == "terminar":
             return act(lambda: ssvc.finish_move(g.user, m, save_upload(request.files.get("foto"), up, f"mov{m.id}_fin"),
                                                 f.get("observacion", "")), "Movimiento completado y validado.", back)
+        if acc == "reasignar":
+            return act(lambda: ssvc.reassign_move(g.user, m, f.get("asignado_id") or None, f.get("motivo", "")),
+                       "Movimiento reasignado (queda registrado el cambio).", back)
         if acc == "anular":
             return act(lambda: ssvc.cancel_move(g.user, m, f.get("motivo", "")), "Solicitud eliminada.", back)
         abort(400)
     return render_template("moves.html", rows=ssvc.moves(g.user), ejecutores=ssvc.move_executors(),
+                           puntos=ssvc.move_points(g.user.almacen or ""),
                            almacenes=list(db().execute(select(Warehouse).where(Warehouse.habilitado.is_(True))
                                                        .order_by(Warehouse.code)).scalars()))
 

@@ -7,7 +7,10 @@
 <div class="dlg-body"><p class="small muted">{{ s.order.customer.nombre }} · {{ s.order.direccion }} {{ s.order.distrito }}</p>
 <ol class="steps"><li>1. Quién recibe</li><li>2. Firma</li><li>3. Foto y guía</li></ol>
 <section class="wz-step"><label class="req">Nombre de quien recibe</label><input name="receptor_nombre" required minlength="3" autocomplete="off" style="width:100%">
-<label class="req">DNI</label><input name="receptor_dni" required inputmode="numeric" pattern="[0-9]{8}|[A-Za-z0-9]{9,12}" title="8 dígitos (o carné de extranjería)" size="14">
+<label class="req">Documento</label><div class="row"><select name="receptor_tipo" data-doc-tipo aria-label="Tipo de documento"><option value="DNI">DNI</option><option value="CE">Carné de extranjería</option><option value="PASAPORTE">Pasaporte</option><option value="SIN_DOCUMENTO">Sin documento</option></select>
+<input name="receptor_dni" required inputmode="numeric" pattern="[0-9]{8}" title="8 dígitos" size="14" data-doc-num aria-label="Número de documento"></div>
+<div data-doc-sin hidden><label class="req">Foto de quien recibe</label><input type="file" name="receptor_foto" accept="image/*" capture="user">
+<label class="req">Motivo (quién es y por qué no muestra documento)</label><input name="receptor_motivo" minlength="15" style="width:100%"></div>
 <div class="wz-nav"><span></span><button class="btn" data-next>Siguiente</button></div></section>
 <section class="wz-step" hidden><label class="req">Firma de quien recibe</label><canvas class="sig" data-signature="firma" aria-label="Área de firma"></canvas>
 <p><button class="btn sec small" data-clear-signature>Limpiar firma</button></p>
@@ -18,5 +21,12 @@
 <label>Observación</label><input name="observacion" style="width:100%">
 <div class="wz-nav"><button class="btn sec" data-prev>Atrás</button><button class="btn">{{ ic('check') }} Confirmar entrega</button></div></section>
 </div></form></dialog>
+<script>(function(){var d=document.currentScript.previousElementSibling;if(!d)return;var t=d.querySelector('[data-doc-tipo]');if(!t)return;
+function u(){var v=t.value,n=d.querySelector('[data-doc-num]'),sd=d.querySelector('[data-doc-sin]');
+ n.hidden=v==='SIN_DOCUMENTO';n.required=v!=='SIN_DOCUMENTO';n.inputMode=v==='DNI'?'numeric':'text';
+ n.pattern={DNI:'[0-9]{8}',CE:'[A-Za-z0-9]{9,12}',PASAPORTE:'[A-Za-z0-9]{6,12}'}[v]||'.*';
+ n.title={DNI:'8 dígitos',CE:'9 a 12 caracteres',PASAPORTE:'6 a 12 caracteres'}[v]||'';
+ sd.hidden=v!=='SIN_DOCUMENTO';sd.querySelectorAll('input').forEach(function(i){i.required=v==='SIN_DOCUMENTO';});}
+t.addEventListener('change',u);u();})();</script>
 {% endmacro %}
-{% macro evidencia(s) %}{% if s.foto_path %}<span class="small">Recibió <b>{{ s.receptor_nombre or '—' }}</b>{{ ' · DNI ' ~ s.receptor_dni if s.receptor_dni }} · <a href="{{ url_for('main.evidence', name=s.foto_path) }}">foto</a> · <a href="{{ url_for('main.evidence', name=s.guia_firmada_path) }}">guía firmada</a>{% if s.firma_path %} · <a href="{{ url_for('main.evidence', name=s.firma_path) }}">firma</a>{% endif %}</span>{% endif %}{% endmacro %}
+{% macro evidencia(s) %}{% if s.foto_path %}<span class="small">Recibió <b>{{ s.receptor_nombre or '—' }}</b>{{ (' · ' ~ {'DNI': 'DNI', 'CE': 'CE', 'PASAPORTE': 'pasaporte'}.get(s.receptor_tipo_doc or 'DNI', '') ~ ' ' ~ s.receptor_dni) if s.receptor_dni else (' · sin documento' if s.receptor_tipo_doc == 'SIN_DOCUMENTO' else '') }} · <a href="{{ url_for('main.evidence', name=s.foto_path) }}">foto</a> · <a href="{{ url_for('main.evidence', name=s.guia_firmada_path) }}">guía firmada</a>{% if s.firma_path %} · <a href="{{ url_for('main.evidence', name=s.firma_path) }}">firma</a>{% endif %}</span>{% endif %}{% endmacro %}

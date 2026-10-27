@@ -213,12 +213,12 @@
     var c = audio(); if (!c || c.state !== 'running') return false;
     var t = c.currentTime + 0.05;
     nivel = nivel === true ? 'ALTA' : (nivel === false || !nivel ? 'MEDIA' : nivel);
-    if (nivel === 'ALTA') {
-      for (var i = 0; i < 3; i++) { nota(c, 1175, t + i * 0.42, 0.16, 'square', 0.12); nota(c, 880, t + i * 0.42 + 0.18, 0.16, 'square', 0.12); }
-    } else if (nivel === 'MEDIA') {
+    if (nivel === 'ALTA') {  // V8 (G03): urgente = alarma insistente, sirena aguda en diente de sierra (≈3 s)
+      for (var i = 0; i < 6; i++) { nota(c, 1397, t + i * 0.5, 0.22, 'sawtooth', 0.16); nota(c, 932, t + i * 0.5 + 0.24, 0.22, 'sawtooth', 0.16); }
+    } else if (nivel === 'MEDIA') {  // media: campanilla de tres notas, una sola vez
       nota(c, 659, t, 0.2, 'triangle', 0.22); nota(c, 784, t + 0.18, 0.2, 'triangle', 0.22); nota(c, 1047, t + 0.36, 0.34, 'sine', 0.22);
     } else {
-      nota(c, 880, t, 0.35, 'sine', 0.16);
+      return false;  // baja: sin sonido
     }
     return true;
   }

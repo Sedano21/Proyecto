@@ -80,7 +80,7 @@ def dispatch(s, U, o, today):
         dsp.set_invoice(st, U("facturacion"), f"F001-{st.order.numero}", "fact.pdf")
         approve_certs(s, U, st.order)
     assert dsp.review_documents(r, U("seguridad"), impresos=True) == []
-    dsp.give_exit_ok(r, U("aux.despacho"))  # Q16: visto bueno del auxiliar
+    dsp.give_exit_ok(r, (s.get(type(U("conductor1")), r.driver.user_id) if r.driver and r.driver.user_id else U("coord.distribucion")))  # V8 (D02): visto bueno del chofer
     dist.confirm_departure(r, U("lider.almacen"), {k: True for k, _ in dist.CHECKLIST})
     s.commit()
     return r.stops[0]

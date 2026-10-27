@@ -147,8 +147,8 @@ def test_q16_salida_requiere_tres_vistos_buenos(s, U, new_order):
     r = dist.active_stop(o).route
     dist.confirm_route(r, U("coord.distribucion"))
     dsp.add_photo(r, U("aux.despacho"), "vehiculo", "v.jpg")
-    with pytest.raises(BusinessError):  # sin carga validada no hay visto bueno del auxiliar
-        dsp.give_exit_ok(r, U("aux.despacho"))
+    with pytest.raises(BusinessError):  # sin carga validada no hay visto bueno del chofer
+        dsp.give_exit_ok(r, (s.get(type(U("conductor1")), r.driver.user_id) if r.driver and r.driver.user_id else U("coord.distribucion")))
     dsp.add_photo(r, U("aux.despacho"), "mercaderia_cargada", "m.jpg")
     dsp.add_photo(r, U("conductor1"), "vehiculo_salida", "salida.jpg")  # obs. demo v0.6
     if r.driver and r.driver.user_id:  # V7: el chofer valida primero
@@ -164,14 +164,14 @@ def test_q16_salida_requiere_tres_vistos_buenos(s, U, new_order):
     with pytest.raises(BusinessError, match="Seguridad"):
         dsp.review_documents(r, U("aux.despacho"), True)
     assert dsp.review_documents(r, U("seguridad"), impresos=True) == []
-    with pytest.raises(BusinessError, match="Auxiliar de Despacho"):
+    with pytest.raises(BusinessError, match="Chofer"):  # V8 (D02)
         dist.confirm_departure(r, U("lider.almacen"), check)
-    for quien in ("seguridad", "lider.almacen", "coord.distribucion"):
+    for quien in ("seguridad", "lider.almacen", "aux.despacho"):
         with pytest.raises(BusinessError):
             dsp.give_exit_ok(r, U(quien))
-    dsp.give_exit_ok(r, U("aux.despacho"), "Carga conforme")
+    dsp.give_exit_ok(r, (s.get(type(U("conductor1")), r.driver.user_id) if r.driver and r.driver.user_id else U("coord.distribucion")), "Carga conforme")
     dist.confirm_departure(r, U("lider.almacen"), check)
-    assert set(r.vistos_buenos) == {"SEGURIDAD", "AUX_DESPACHO", "LIDER_ALMACEN"} and r.estado == "EN_RUTA"
+    assert set(r.vistos_buenos) == {"SEGURIDAD", "CHOFER", "LIDER_ALMACEN"} and r.estado == "EN_RUTA"
 
 
 def test_q5_almacenes_virtuales_los_manejan_coord_1560_y_logistica(s, U):

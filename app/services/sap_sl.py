@@ -37,8 +37,16 @@ TIPOS_SAP = {"OV": "Órdenes de venta abiertas", "CLIENTES": "Clientes", "PRODUC
 MAX_PAGINAS = 400
 
 
+def _base_url(u):
+    """V8 (S01): se acepta la dirección del servidor (https://servidor:50000/) y se completa la ruta del Service Layer."""
+    u = (u or "").strip().rstrip("/")
+    if u and "/b1s/" not in u + "/":
+        u += "/b1s/v1"
+    return u
+
+
 def config():
-    return {"url": os.environ.get("SAP_SL_URL", "").strip().rstrip("/"), "company": os.environ.get("SAP_SL_COMPANY", "").strip(),
+    return {"url": _base_url(os.environ.get("SAP_SL_URL", "")), "company": os.environ.get("SAP_SL_COMPANY", "").strip(),
             "user": os.environ.get("SAP_SL_USER", "").strip(), "password": os.environ.get("SAP_SL_PASSWORD", ""),
             "ca": os.environ.get("SAP_SL_CA", "").strip(), "verify": os.environ.get("SAP_SL_VERIFY", "1") != "0",
             "timeout": float(os.environ.get("SAP_SL_TIMEOUT", "60") or 60)}
@@ -252,7 +260,7 @@ def _write_excel(tipo, filas, upload_dir):
     return path, nombre
 
 
-def sync(tipo, user, upload_dir, sl=None, autoconfirmar=None):
+def sync(tipo, user, upload_dir, sl=None, autoconfirmar=None, solo_si_cambia=False):
     """Trae un tipo de dato de SAP y crea la carga con el flujo normal (validación y autorización)."""
     from .uploads import SPECS, confirm, create_batch
     if tipo not in TIPOS_SAP:
@@ -268,6 +276,21 @@ def sync(tipo, user, upload_dir, sl=None, autoconfirmar=None):
             sl.logout()
     if not filas:
         raise BusinessError(f"SAP no devolvió datos de {TIPOS_SAP[tipo].lower()}.")
+    # V8 (S07): con sincronización cada minuto no se crea una carga nueva si SAP no cambió nada desde la anterior
+    import hashlib
+    huella = hashlib.sha256(json.dumps(filas, sort_keys=True, default=str).encode()).hexdigest()
+    from ..db import db
+    from ..models import Param
+    clave = f"sap_sync_huella_{tipo}"
+    prev = db().get(Param, clave)
+    if solo_si_cambia and prev is not None and (prev.valor or {}).get("v") == huella:
+        return None
+    if prev is None:
+        prev = Param(key=clave, valor={"v": huella}, tipo="str", grupo="Integración SAP",
+                     descripcion="Huella de la última sincronización (interno)", estado="DEFINIDO", fuente="Sistema")
+        db().add(prev)
+    else:
+        prev.valor = {"v": huella}
     path, nombre = _write_excel(tipo, filas, upload_dir)
     b = create_batch(user, tipo, path, nombre)
     auto = autoconfirmar if autoconfirmar is not None else tipo in (param("sap_autoconfirmar", []) or [])
@@ -293,10 +316,15 @@ def scheduled_sync(ahora=None):
     minutos = int(os.environ.get("SAP_SYNC_MIN", "0") or 0)
     if minutos <= 0 or not configured():
         return 0
+    ahora = ahora or datetime.now()
+    horario = (param("sap_sync_horario", "06:00-21:00") or "").strip()  # V8 (S07): cada minuto de 06:00 a 21:00
+    if horario and "-" in horario:
+        ini, fin = [x.strip() for x in horario.split("-", 1)]
+        if not (ini <= f"{ahora:%H:%M}" <= fin):
+            return 0
     u = db().execute(select(User).where(User.username == os.environ.get("SAP_SYNC_USER", ""))).scalars().first()
     if u is None:
         return 0
-    ahora = ahora or datetime.now()
     n = 0
     for tipo in param("sap_sync_tipos", []) or []:
         ult = db().execute(select(UploadBatch).where(UploadBatch.archivo.like(f"SAP_SL_{tipo}_%"))
@@ -304,8 +332,8 @@ def scheduled_sync(ahora=None):
         if ult is not None and ult.ts and (ahora - ult.ts).total_seconds() < minutos * 60:
             continue
         try:
-            sync(tipo, u, current_app.config["UPLOAD_DIR"])
-            n += 1
+            if sync(tipo, u, current_app.config["UPLOAD_DIR"], solo_si_cambia=True) is not None:
+                n += 1
         except BusinessError as e:
             from . import alerts
             alerts.emit("CARGA_SAP_DESACTUALIZADA", f"Sincronización con SAP fallida: {TIPOS_SAP.get(tipo, tipo)}", str(e),
@@ -376,6 +404,10 @@ def push_quote(q, user, sl=None):
     «sap_escritura_cotizaciones» fue habilitado con la autorización de la empresa; por defecto está deshabilitado."""
     if not param("sap_escritura_cotizaciones", False):
         raise BusinessError("La escritura de cotizaciones en SAP no está autorizada (parámetro «sap_escritura_cotizaciones»).")
+    empresas = [e.strip().upper() for e in (param("sap_escritura_empresas", []) or [])]
+    if (sl.cfg if sl is not None else config())["company"].upper() not in empresas:  # V8 (S06): solo la base autorizada
+        raise BusinessError("La escritura en SAP solo está autorizada en la base de pruebas indicada en "
+                            "«sap_escritura_empresas».")
     if q.origen == "SAP" or q.sap_docnum:
         raise BusinessError("La cotización ya está en SAP.")
     card = q.customer.codigo_sap

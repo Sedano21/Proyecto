@@ -313,8 +313,14 @@ def move_executors():
                              .order_by(User.role_code, User.nombre)).scalars())
 
 
+def move_points(almacen=""):
+    """A03: lista configurable de puntos por almacén (zonas, racks, líneas, despacho); siempre admite «otro»."""
+    cfg = param("puntos_movimiento", {}) or {}
+    return list(dict.fromkeys(list(cfg.get(almacen or "", [])) + list(cfg.get("*", []))))
+
+
 def request_move(user, origen, destino, detalle="", cantidad="", prioridad="MEDIA", almacen="", observacion="",
-                 programado_para=None, asignado_id=None):
+                 programado_para=None, asignado_id=None, aviso_min=None):
     if not has_perm(user, "movimiento.solicitar"):
         raise BusinessError("Su rol no solicita movimientos al montacarguista.")
     if isinstance(programado_para, str):
@@ -342,7 +348,8 @@ def request_move(user, origen, destino, detalle="", cantidad="", prioridad="MEDI
                     detalle=(detalle or "").strip(), cantidad=(cantidad or "").strip(), prioridad=prioridad,
                     observacion=(observacion or "").strip(), solicitado_por=user.id,
                     tipo="PROGRAMADO" if programado_para else "INMEDIATO", programado_para=programado_para,
-                    asignado_a=ejecutor.id if ejecutor else None)
+                    asignado_a=ejecutor.id if ejecutor else None,
+                    aviso_min=_aviso(aviso_min) if programado_para else None)
     db().add(m)
     db().flush()
     cuando = f" Programado para el {programado_para:%d/%m %H:%M}." if programado_para else " Inmediato."
@@ -353,6 +360,58 @@ def request_move(user, origen, destino, detalle="", cantidad="", prioridad="MEDI
                 dedup_key=f"MOV:{m.id}", creado_por=user)
     audit(user, "MOVIMIENTO_SOLICITADO", "MoveRequest", m.id, {"origen": origen, "destino": destino})
     return m
+
+
+def _aviso(v):
+    """A04: la anticipación del aviso varía: la elige quien solicita (por defecto el parámetro)."""
+    try:
+        v = int(v) if v not in (None, "") else int(param("aviso_movimiento_min", 30) or 30)
+    except ValueError:
+        raise BusinessError("Anticipación del aviso inválida.")
+    if not 0 <= v <= 24 * 60:
+        raise BusinessError("La anticipación del aviso va de 0 a 1440 minutos.")
+    return v
+
+
+def reassign_move(user, m, nuevo_id, motivo=""):
+    """A05: solo quien solicitó reasigna (o deja libre para el primero disponible); queda el rastro del cambio."""
+    from ..models import User
+    if m.solicitado_por != user.id:
+        raise BusinessError("Solo quien solicitó el movimiento puede reasignarlo.")
+    if m.estado != "SOLICITADA":
+        raise BusinessError("Solo se reasigna un movimiento que aún no empezó.")
+    nuevo = db().get(User, int(nuevo_id)) if nuevo_id else None
+    if nuevo is not None and nuevo.role_code not in EJECUTORES_MOV:
+        raise BusinessError("Asigne a un montacarguista, auxiliar de almacén o auxiliar de distribución.")
+    if (nuevo.id if nuevo else None) == m.asignado_a:
+        raise BusinessError("Ya está asignado a esa persona.")
+    antes = m.operador.nombre if m.operador else "primero disponible"
+    m.historial = list(m.historial or []) + [{"ts": now().isoformat(timespec="minutes"), "user": user.nombre, "de": antes,
+                                              "a": nuevo.nombre if nuevo else "primero disponible",
+                                              "motivo": (motivo or "").strip()}]
+    m.asignado_a = nuevo.id if nuevo else None
+    alerts.emit("MOVIMIENTO_SOLICITADO", f"Movimiento #{m.id} reasignado: {m.origen} → {m.destino}",
+                f"De {antes} a {nuevo.nombre if nuevo else 'el primero disponible'}. {motivo}", "MoveRequest", m.id,
+                extra_users=[nuevo.id] if nuevo else None, creado_por=user)
+    audit(user, "MOVIMIENTO_REASIGNADO", "MoveRequest", m.id, m.historial[-1])
+    return m
+
+
+def check_scheduled_moves(ahora=None):
+    """A04: aviso a quien ejecuta (o a todos los ejecutores si no hay asignado) con la anticipación elegida."""
+    ahora = ahora or datetime.now()
+    n = 0
+    for m in db().execute(select(MoveRequest).where(MoveRequest.estado == "SOLICITADA", MoveRequest.tipo == "PROGRAMADO",
+                                                    MoveRequest.avisado_ts.is_(None))).scalars():
+        if m.programado_para and m.programado_para - timedelta(minutes=m.aviso_min or 0) <= ahora:
+            alerts.emit("MOVIMIENTO_SOLICITADO", f"Movimiento programado #{m.id} a las {m.programado_para:%H:%M}: {m.origen} → {m.destino}",
+                        f"{m.detalle or ''} {m.cantidad or ''}".strip() or "Prepárese para ejecutarlo.", "MoveRequest", m.id,
+                        prioridad="ALTA", extra_users=[m.asignado_a] if m.asignado_a else None,
+                        dedup_key=f"MOV_PROG:{m.id}")
+            m.avisado_ts = now()
+            n += 1
+    db().flush()
+    return n
 
 
 def start_move(user, m, foto):
@@ -418,14 +477,17 @@ def _duracion(dias):
     return f"{dias} días · {sem:.1f} semanas · {mes:.1f} meses"
 
 
-def rotation_ranking(dias=None, hoy=None, top=20):
+def rotation_ranking(dias=None, hoy=None, top=20, almacen=None):
     """Dos frentes: TIEMPO (más días sin salida) y CANTIDAD (más kg inmovilizados sin salida en el periodo), top 20 de
     cada uno, con días, semanas y meses, y una recomendación de venta por producto."""
     from .costs import cost_per_kg
     hoy = hoy or date.today()
     base = no_rotation(dias, hoy)
     lots = defaultdict(list)
-    for lot in db().execute(select(StockLot).where(StockLot.cantidad > 0)).scalars():
+    q = select(StockLot).where(StockLot.cantidad > 0)
+    if almacen:  # A02: consolidado, con filtro por almacén
+        q = q.where(StockLot.warehouse_code == almacen)
+    for lot in db().execute(q).scalars():
         lots[lot.product_code].append(lot)
     compradores = defaultdict(lambda: defaultdict(float))
     for o in db().execute(select(SalesOrder).where(SalesOrder.estado != "CANCELADA",
@@ -437,6 +499,10 @@ def rotation_ranking(dias=None, hoy=None, top=20):
     for x in base["filas"]:
         p = db().get(Product, x["code"])
         ls = lots.get(x["code"], [])
+        if almacen:
+            if not ls:
+                continue
+            x = dict(x, stock=round(sum(l.cantidad for l in ls), 2))
         ingreso = min([l.fecha_admision for l in ls if l.fecha_admision] or [None]) if ls else None
         dias_sin = x["dias"] if x["dias"] is not None else ((hoy - ingreso).days if ingreso else None)
         kg_u = (p.peso_kg or (1.0 if (p.um or "").upper().startswith("K") else 0)) if p else 0
@@ -457,11 +523,12 @@ def rotation_ranking(dias=None, hoy=None, top=20):
                           valor=round(kg * c, 2) if c and kg else None, compradores=quienes, recomendacion=reco,
                           ingreso=ingreso))
     por_tiempo = sorted(filas, key=lambda f: -(f["dias_sin"] if f["dias_sin"] is not None else 10 ** 6))[:top]
-    por_cantidad = sorted(filas, key=lambda f: -(f["kg"] or f["stock"]))[:top]
+    # A01: la «cantidad» se mide en S/ cuando hay costo cargado; si no, en kg
+    por_cantidad = sorted(filas, key=lambda f: (f["valor"] is None, -(f["valor"] if f["valor"] is not None else (f["kg"] or f["stock"]))))[:top]
     for i, f in enumerate(por_tiempo, start=1):
         f["rank_tiempo"] = i
     for i, f in enumerate(por_cantidad, start=1):
         f["rank_cantidad"] = i
     return {"dias": base["dias"], "total": len(filas), "por_tiempo": por_tiempo, "por_cantidad": por_cantidad,
             "kg_total": round(sum(f["kg"] for f in filas), 1),
-            "valor_total": round(sum(f["valor"] or 0 for f in filas), 2)}
+            "valor_total": round(sum(f["valor"] or 0 for f in filas), 2), "almacen": almacen or ""}

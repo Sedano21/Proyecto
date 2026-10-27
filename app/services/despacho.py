@@ -288,24 +288,34 @@ def review_documents(route, user, impresos=False):
 
 
 VB_LABEL = {"SEGURIDAD": "Seguridad (documentos completos)", "AUX_DESPACHO": "Auxiliar de Despacho",
-            "LIDER_ALMACEN": "Líder Operativo"}
+            "LIDER_ALMACEN": "Líder Operativo", "CHOFER": "Chofer"}
 
 
 def required_exit_approvals():
-    return list(param("vistos_buenos_salida", ["SEGURIDAD", "AUX_DESPACHO", "LIDER_ALMACEN"]) or [])
+    return list(param("vistos_buenos_salida", ["SEGURIDAD", "CHOFER", "LIDER_ALMACEN"]) or [])
 
 
 def give_exit_ok(route, user, nota=""):
-    """Q16 (13-oct-2026): visto bueno del Auxiliar de Despacho a la salida (carga validada y conforme)."""
-    if not has_perm(user, "distribucion.visto_bueno_salida"):
-        raise BusinessError("El visto bueno de salida lo da el Auxiliar de Despacho (Q16).")
+    """Visto bueno a la salida con la carga validada: el CHOFER de la ruta (V8, D02: Seguridad, Chofer y Líder
+    Operativo) o el Auxiliar de Despacho si la configuración aún lo pide (Q16)."""
     _route_ready(route)
+    requeridos = required_exit_approvals()
+    sin_cuenta = route.driver is not None and not route.driver.user_id
+    if "CHOFER" in requeridos and (_es_chofer(route, user) or (sin_cuenta and has_perm(user, "distribucion.programar"))):
+        rol = "CHOFER"  # chofer externo sin cuenta: lo registra Distribución por encargo
+        if sin_cuenta and not _es_chofer(route, user):
+            nota = f"Por encargo del chofer {route.driver.nombre} (sin cuenta en el módulo). {nota}".strip()
+    elif "AUX_DESPACHO" in requeridos and has_perm(user, "distribucion.visto_bueno_salida"):
+        rol = "AUX_DESPACHO"
+    else:
+        raise BusinessError("Este visto bueno de salida lo da el chofer de la ruta"
+                            + (" o el Auxiliar de Despacho." if "AUX_DESPACHO" in requeridos else "."))
     if not route.carga_validada:
         raise BusinessError("Primero valide la carga (camión cargado).")
     vb = dict(route.vistos_buenos or {})
-    vb["AUX_DESPACHO"] = {"user": user.nombre, "user_id": user.id, "ts": now().isoformat(), "detalle": nota}
+    vb[rol] = {"user": user.nombre, "user_id": user.id, "ts": now().isoformat(), "detalle": nota}
     route.vistos_buenos = vb
-    audit(user, "VISTO_BUENO_SALIDA", "Route", route.id, {"rol": "AUX_DESPACHO", "nota": nota})
+    audit(user, "VISTO_BUENO_SALIDA", "Route", route.id, {"rol": rol, "nota": nota})
 
 
 def missing_exit_approvals(route, excluir=("LIDER_ALMACEN",)):

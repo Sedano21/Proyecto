@@ -98,3 +98,86 @@ def test_pantalla_ov_desde_sap(app):
     c = app.test_client()
     login(c, "coord.ventas")
     assert c.get("/ov/carga-sap").status_code == 200
+
+
+def test_movimiento_reasignado_con_rastro_y_aviso_programado(s, U):
+    from app.services import supply
+    ej = supply.move_executors()
+    m = supply.request_move(U("jefe.produccion"), "Zona de recepción", "Rack", programado_para=datetime.now() + timedelta(hours=2),
+                            asignado_id=ej[0].id, aviso_min=60)
+    assert m.aviso_min == 60 and "Zona de despacho" in supply.move_points("")
+    with pytest.raises(BusinessError, match="quien solicitó"):
+        supply.reassign_move(U("coord.almacen"), m, ej[-1].id)
+    supply.reassign_move(U("jefe.produccion"), m, None, "Se liberó para el primero disponible")
+    assert m.asignado_a is None and m.historial[-1]["a"] == "primero disponible"
+    assert supply.check_scheduled_moves(datetime.now()) == 0
+    assert supply.check_scheduled_moves(datetime.now() + timedelta(hours=1, minutes=1)) == 1
+    assert supply.check_scheduled_moves(datetime.now() + timedelta(hours=1, minutes=2)) == 0  # un solo aviso
+
+
+def test_fumigacion_repetida_alerta_a_calidad(s, U):
+    from app.models import StockLot
+    from app.services.stock import change_lot_state
+    lot = s.query(StockLot).filter(StockLot.cantidad > 0, StockLot.estado == "DISPONIBLE").first()
+    change_lot_state(lot, "EN_FUMIGACION", U("jefe.calidad"), "1.ª")
+    assert not alerts_of(s, "FUMIGACION_REPETIDA")
+    change_lot_state(lot, "PENDIENTE_REVISION", U("jefe.calidad"), "fin")
+    change_lot_state(lot, "EN_FUMIGACION", U("jefe.calidad"), "2.ª")
+    s.flush()
+    a = alerts_of(s, "FUMIGACION_REPETIDA")
+    assert a and "JEFE_CALIDAD" in a[0].roles
+
+
+def test_auxiliar_por_paradas_peso_o_cliente(s, U, cust):
+    from app.models import Route, RouteStop
+    from app.services.distribution import needs_auxiliar
+    r = Route(fecha=date.today(), estado="PROPUESTA", zona="Z", peso_total=2500)
+    s.add(r)
+    s.flush()
+    assert any("kg" in m for m in needs_auxiliar(r))
+    r.peso_total = 100
+    from app.services import orders as osvc
+    o = osvc.create_order(U("coord.ventas"), "AUX-1", cust().id, date.today() + timedelta(days=3),
+                          [{"product_code": "PT-905", "cantidad": 1, "precio_unitario": 10}], oc_archivo="o", evaluar=False)
+    o.customer.requiere_auxiliar = True
+    r.stops.append(RouteStop(order=o, orden=1, peso_kg=1))
+    s.flush()
+    assert any("cliente" in m for m in needs_auxiliar(r))
+
+
+def test_receptor_sin_dni(s, U):
+    from app.services import distribution as dist
+    from app.models import Route, RouteStop
+    st = RouteStop(estado="LLEGADA", route=Route(fecha=date.today(), estado="EN_RUTA", zona="Z"))
+    with pytest.raises(BusinessError):
+        dist.register_delivery(st, U("conductor1"), "f.jpg", "g.jpg", receptor_nombre="Ana Demo", receptor_dni="12",
+                               firma_path="x.png", receptor_tipo="DNI")
+
+
+def test_sap_url_horario_y_escritura_solo_pruebas(s, U, monkeypatch):
+    from app.services import sap_sl
+    assert sap_sl._base_url("https://10.0.0.1:50000/") == "https://10.0.0.1:50000/b1s/v1"
+    assert sap_sl._base_url("https://10.0.0.1:50000/b1s/v2") == "https://10.0.0.1:50000/b1s/v2"
+    for k, v in {"SAP_SL_URL": "https://sap.invalid:50000", "SAP_SL_COMPANY": "BASE_PRODUCCION", "SAP_SL_USER": "u",
+                 "SAP_SL_PASSWORD": "p", "SAP_SYNC_MIN": "1", "SAP_SYNC_USER": "coord.ventas"}.items():
+        monkeypatch.setenv(k, v)
+    assert sap_sl.scheduled_sync(datetime(2026, 10, 27, 22, 30)) == 0  # fuera del horario 06:00-21:00
+    from app.models import Quote
+    q = Quote(numero="COT-X", customer_id=1, fecha=date.today(), lineas=[], total=0)
+    s.add(q)
+    s.flush()
+    with pytest.raises(BusinessError, match="base de pruebas"):
+        sap_sl.push_quote(q, U("coord.ventas"))
+
+
+def test_cambios_de_parametros_en_bases_existentes(s):
+    from app.models import Param
+    from app.seed import sync_catalogs
+    from app.services.core import param
+    p = s.get(Param, "vistos_buenos_salida")
+    p.valor = {"v": ["SEGURIDAD", "AUX_DESPACHO", "LIDER_ALMACEN"]}
+    from app.models import AuditLog
+    s.query(AuditLog).filter_by(accion="PARAMETRO_CAMBIO_CATALOGO").delete()
+    s.flush()
+    sync_catalogs()
+    assert param("vistos_buenos_salida") == ["SEGURIDAD", "CHOFER", "LIDER_ALMACEN"]

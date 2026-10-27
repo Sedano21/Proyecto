@@ -304,6 +304,21 @@ def move_stop(stop, user, target_route):
     audit(user, "PARADA_MOVIDA", "Route", target_route.id, {"stop": stop.id, "desde": origin.id})
 
 
+def needs_auxiliar(route):
+    """V8 (D01): la ruta lleva auxiliar acompañante si supera N paradas o N kg, o si algún cliente lo pide."""
+    motivos = []
+    max_paradas = int(param("auxiliar_si_paradas_mayor_a", 3) or 0)
+    max_kg = float(param("auxiliar_si_kg_mayor_a", 2000) or 0)
+    if max_paradas and len(route.stops) > max_paradas:
+        motivos.append(f"{len(route.stops)} paradas (más de {max_paradas})")
+    if max_kg and (route.peso_total or 0) > max_kg:
+        motivos.append(f"{route.peso_total:,.0f} kg (más de {max_kg:,.0f})")
+    pide = sorted({st.order.customer.nombre for st in route.stops if st.order.customer.requiere_auxiliar})
+    if pide:
+        motivos.append("lo pide el cliente: " + ", ".join(pide))
+    return motivos
+
+
 def confirm_route(route, user):
     _req(user)
     if route.estado != "PROPUESTA":
@@ -318,6 +333,19 @@ def confirm_route(route, user):
         raise BusinessError("Asigne un conductor antes de confirmar.")
     if route.requiere_externo and not (route.externo_validacion or {}).get("validado"):
         raise BusinessError("La ruta usa transporte externo: debe validarlo el Coordinador de Distribución antes de confirmar.")
+    motivos = needs_auxiliar(route)
+    if motivos and not route.auxiliar_id:
+        from ..models import User
+        ocupados = {r.auxiliar_id for r in db().execute(select(Route).where(Route.fecha == route.fecha,
+                                                                          Route.id != route.id,
+                                                                          Route.estado != "ANULADA")).scalars()}
+        libre = next((u for u in db().execute(select(User).where(User.role_code == "AUX_DESPACHO", User.activo.is_(True))
+                                              .order_by(User.nombre)).scalars() if u.id not in ocupados), None)
+        if libre is None:
+            raise BusinessError("La ruta requiere auxiliar acompañante (" + "; ".join(motivos) + ") y no hay uno libre ese "
+                                "día: asígnelo en «Ajustar».")
+        route.auxiliar_id = libre.id
+        audit(user, "RUTA_AUXILIAR_AUTOMATICO", "Route", route.id, {"auxiliar": libre.nombre, "motivos": motivos})
     route.estado = "CONFIRMADA"
     for st in route.stops:
         if st.order.estado == "PREPARADA":
@@ -466,7 +494,7 @@ def save_upload(file_storage, upload_dir, prefix):
 
 
 def register_delivery(stop, user, foto_path, guia_path, entregas=None, observacion="", receptor_nombre="", receptor_dni="",
-                      firma_path=""):
+                      firma_path="", receptor_tipo="DNI", receptor_foto="", receptor_motivo=""):
     """Conformidad de entrega digital (ronda UX 24-oct-2026): la valida el chofer de la ruta con el nombre y DNI de quien
     recibe, su firma en pantalla, la fotografía de la entrega y la guía de remisión firmada. entregas: {order_line_id: cantidad}."""
     _req(user, "distribucion.conformidad")
@@ -477,15 +505,31 @@ def register_delivery(stop, user, foto_path, guia_path, entregas=None, observaci
         raise BusinessError(f"La conformidad la registra el chofer de la ruta ({drv.nombre}).")
     nombre = " ".join((receptor_nombre or "").split())
     dni = (receptor_dni or "").strip().upper()
+    tipo = (receptor_tipo or "DNI").upper()
     if len(nombre) < 3:
         raise BusinessError("Indique el nombre de quien recibe.")
-    if not (dni.isdigit() and len(dni) == 8) and not (dni.isalnum() and 9 <= len(dni) <= 12):
-        raise BusinessError("DNI inválido: 8 dígitos (o carné de extranjería de 9 a 12 caracteres).")
+    # V8 (D05): DNI, carné de extranjería o pasaporte; sin documento: foto de quien recibe y motivo detallado
+    if tipo == "DNI" and not (dni.isdigit() and len(dni) == 8):
+        raise BusinessError("DNI inválido: 8 dígitos.")
+    if tipo == "CE" and not (dni.isalnum() and 9 <= len(dni) <= 12):
+        raise BusinessError("Carné de extranjería inválido: 9 a 12 caracteres.")
+    if tipo == "PASAPORTE" and not (dni.isalnum() and 6 <= len(dni) <= 12):
+        raise BusinessError("Pasaporte inválido: 6 a 12 caracteres.")
+    if tipo == "SIN_DOCUMENTO":
+        if not receptor_foto:
+            raise BusinessError("Sin documento: tome la foto de quien recibe.")
+        if len((receptor_motivo or "").strip()) < 15:
+            raise BusinessError("Sin documento: detalle el motivo (por ejemplo, quién es y por qué no muestra documento).")
+        dni = ""
+    elif tipo not in ("DNI", "CE", "PASAPORTE"):
+        raise BusinessError("Tipo de documento no válido.")
     if not firma_path:
         raise BusinessError("Falta la firma de quien recibe.")
     if not foto_path or not guia_path:
         raise BusinessError("La conformidad requiere la fotografía de la entrega y la guía de remisión firmada.")
     stop.receptor_nombre, stop.receptor_dni, stop.firma_path = nombre.upper(), dni, firma_path
+    stop.receptor_tipo_doc, stop.receptor_foto = tipo, receptor_foto or ""
+    stop.receptor_motivo = (receptor_motivo or "").strip()[:250] if tipo == "SIN_DOCUMENTO" else ""
     order = stop.order
     parcial = False
     for l in order.lines:
@@ -507,13 +551,18 @@ def register_delivery(stop, user, foto_path, guia_path, entregas=None, observaci
     if parcial:
         _incident(user, "ENTREGA_PARCIAL", stop, f"Entrega parcial registrada. {observacion}")
     alerts.emit("DIST_ENTREGADO", f"OV {order.numero} {'entregada parcialmente' if parcial else 'entregada con conformidad'}",
-                f"{order.customer.nombre}. Recibió {stop.receptor_nombre} (DNI {stop.receptor_dni}). Evidencia: firma, foto y "
+                f"{order.customer.nombre}. Recibió {stop.receptor_nombre} ({_doc_txt(stop)}). Evidencia: firma, foto y "
                 "guía firmada.", "Route", stop.route_id, creado_por=user)
     audit(user, "ENTREGA_REGISTRADA", "SalesOrder", order.numero, {"parcial": parcial, "receptor": stop.receptor_nombre,
                                                                     "dni": stop.receptor_dni})
     from .penalties import detect_for_order
     detect_for_order(order, user)  # V7: penalidad calculada según las condiciones del cliente
     _maybe_close_route(stop.route)
+
+
+def _doc_txt(stop):
+    t = {"DNI": "DNI", "CE": "CE", "PASAPORTE": "pasaporte"}.get(stop.receptor_tipo_doc or "DNI")
+    return f"{t} {stop.receptor_dni}" if t else f"sin documento: {stop.receptor_motivo}"
 
 
 def _maybe_close_route(route):

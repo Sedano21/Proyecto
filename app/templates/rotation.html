@@ -2,10 +2,11 @@
 {% block content %}
 <div class="page-head"><div><h1>Stock sin rotación</h1><p class="sub">Productos con stock y sin salidas (despachos, consumos o ventas cargadas) en los últimos {{ d.dias }} días. Ranking en dos frentes: <b>tiempo</b> y <b>cantidad</b>.</p></div></div>
 <form class="row card noprint" method="get"><div><label>Días sin salida</label><input type="number" name="dias" min="1" value="{{ d.dias }}" style="width:90px"></div>
+<div><label>Almacén</label><select name="almacen" onchange="this.form.submit()"><option value="">Consolidado (todos)</option>{% for w in almacenes %}<option value="{{ w.code }}" {{ 'selected' if d.almacen == w.code }}>{{ w.code }} · {{ w.nombre }}</option>{% endfor %}</select></div>
 <div><label>Frente</label><div class="seg">{% for v, t in [('tiempo', 'Por tiempo'), ('cantidad', 'Por cantidad')] %}<label><input type="radio" name="frente" value="{{ v }}" {{ 'checked' if frente == v }} onchange="this.form.submit()"><span>{{ t }}</span></label>{% endfor %}</div></div><div><button class="sec">Ver</button></div></form>
 <div class="kpis"><div class="kpi warn"><b>{{ d.total }}</b><span>Productos sin rotación</span></div><div class="kpi"><b>{{ d.kg_total|n }} kg</b><span>Inmovilizados</span></div>{% if ver_costos and d.valor_total %}<div class="kpi"><b>S/ {{ d.valor_total|n }}</b><span>Valor al costo</span></div>{% endif %}</div>
 {% set filas = d.por_tiempo if frente == 'tiempo' else d.por_cantidad %}
-<h2 class="sec-title">Top 20 {{ 'por tiempo sin salida' if frente == 'tiempo' else 'por cantidad inmovilizada' }}</h2>
+<h2 class="sec-title">Top 20 {{ 'por tiempo sin salida' if frente == 'tiempo' else 'por cantidad inmovilizada (S/ al costo; sin costo, kg)' }}</h2>
 {% if filas %}<div class="cards">{% for x in filas %}<article class="xcard {{ 'alerta' if (x.dias_venc is not none and x.dias_venc <= 60) or x.dias_sin is none or x.dias_sin > d.dias * 2 else 'st-PENDIENTE' }}">
 <div class="xcard-head"><span class="rank">#{{ x.rank_tiempo if frente == 'tiempo' else x.rank_cantidad }}</span><b>{{ x.code }}</b><span class="small muted">{{ x.tipo }}</span></div>
 <div class="small">{{ x.descripcion }}</div>

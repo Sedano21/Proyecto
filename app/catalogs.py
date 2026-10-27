@@ -1788,3 +1788,65 @@ PARAMS += [
      "Vigencia por defecto (horas) del enlace de seguimiento de una unidad generado en GEOSATELITAL (dura de 15 min a 24 h).",
      "DEFINIDO", f"{V8}: D03"),
 ]
+PARAMS += [
+    ("puntos_movimiento", {"*": ["Zona de recepción", "Zona de despacho", "Zona de cuarentena", "Zona de fumigación",
+                                "Línea de producción", "Rack", "Área de reempaque"]}, "dict", "Almacén",
+     "Puntos para los movimientos punto a punto por almacén ({código de almacén: [puntos]}; «*» = todos). Siempre se "
+     "puede escribir otro punto. Los puntos reales de cada almacén los configura Almacén.", "PROPUESTO", f"{V8}: A03"),
+    ("aviso_movimiento_min", 30, "int", "Almacén",
+     "Anticipación por defecto del aviso de un movimiento programado; quien solicita puede elegir otra.", "DEFINIDO",
+     f"{V8}: A04 (el tiempo puede variar)"),
+]
+PARAMS += [
+    ("conteo_tolerancia_pct", 1, "float", "Almacén", "Diferencia (%) entre el conteo y SAP a partir de la cual se pide recuento.",
+     "DEFINIDO", f"{V8}: A06"),
+    ("conteo_tolerancia_kg", 5, "float", "Almacén", "Diferencia (kg) entre el conteo y SAP a partir de la cual se pide recuento.",
+     "DEFINIDO", f"{V8}: A06"),
+    ("conteo_ciclico_dias", 15, "int", "Almacén", "Cada cuántos días toca el conteo cíclico de cada almacén (0 = sin aviso).",
+     "DEFINIDO", f"{V8}: A06 (conteo cíclico quincenal por zona)"),
+]
+ALERT_TYPES += [
+    ("CONTEO_CICLICO", "Toca el conteo cíclico del almacén", "Almacén", "Inventario", "MEDIA",
+     ["COORD_ALMACEN", "COORD_ALMACEN_MP", "SUPERV_ALMACEN", "LIDER_ALMACEN"], "DEFINIDO", f"{V8}: A06",
+     "Pasaron los días configurados desde el último conteo cerrado del almacén.", True),
+]
+ALERT_TYPES += [
+    ("FUMIGACION_REPETIDA", "Lote fumigado por segunda vez o más", "Calidad", "Calidad", "ALTA",
+     ["JEFE_CALIDAD", "SUPERV_CALIDAD", "ASIST_CALIDAD"], "DEFINIDO", f"{V8}: A09 (alerta desde la 2.ª fumigación del lote)",
+     "El mismo lote vuelve a pasar a «En fumigación».", True),
+]
+# Cambios de valor de parámetros ya existentes (se aplican una vez en bases existentes si aún tienen el valor anterior)
+PARAMS_CAMBIO = [
+    ("vistos_buenos_salida", ["SEGURIDAD", "AUX_DESPACHO", "LIDER_ALMACEN"], ["SEGURIDAD", "CHOFER", "LIDER_ALMACEN"],
+     f"{V8}: D02 (visto bueno de salida: Seguridad, Chofer y Líder Operativo)"),
+    ("geosatelital_url_panel", "", "https://allpa.panel.geosatelital.com/monitoring/dashboard", f"{V8}: D03"),
+]
+_NUEVOS = {k: n for k, _a, n, _f in PARAMS_CAMBIO}
+PARAMS = [(k, _NUEVOS.get(k, v), *rest) for k, v, *rest in PARAMS]
+PARAMS += [
+    ("auxiliar_si_paradas_mayor_a", 3, "int", "Distribución",
+     "La ruta lleva auxiliar de distribución acompañante si tiene más de este número de paradas (0 = no aplica).",
+     "DEFINIDO", f"{V8}: D01"),
+    ("auxiliar_si_kg_mayor_a", 2000, "float", "Distribución",
+     "La ruta lleva auxiliar acompañante si su peso supera estos kg (0 = no aplica). También si el cliente lo pide en su ficha.",
+     "DEFINIDO", f"{V8}: D01"),
+]
+PARAMS += [
+    ("sap_sync_horario", "06:00-21:00", "str", "Integración SAP",
+     "Horario de la sincronización automática con SAP (HH:MM-HH:MM). La frecuencia se fija en el servidor (SAP_SYNC_MIN=1: "
+     "cada minuto). Si SAP no cambió, no se crea una carga nueva.", "DEFINIDO", f"{V8}: S07 (cada 1 minuto de 6:00 a 21:00)"),
+    ("sap_escritura_empresas", ["ZZZ_CORPRODUC_TEST260826"], "list", "Integración SAP",
+     "Bases de SAP (CompanyDB) en las que el módulo puede escribir (cotizaciones). Solo la base de pruebas.", "DEFINIDO",
+     f"{V8}: S06 (escritura autorizada para conectarlo con la base de pruebas de SAP)"),
+]
+PARAMS_CAMBIO += [
+    ("sap_escritura_cotizaciones", False, True, f"{V8}: S06 (autorizado escribir en la base de pruebas de SAP)"),
+]
+_NUEVOS = {k: n for k, _a, n, _f in PARAMS_CAMBIO}
+PARAMS = [(k, _NUEVOS.get(k, v), *rest) for k, v, *rest in PARAMS]
+PARAMS_CAMBIO += [
+    ("sap_sync_tipos", [], ["OV", "CLIENTES", "PRODUCTOS", "DESPACHOS"],
+     f"{V8}: S07 (sincronizar con SAP; stock y liquidaciones cuando se definan sus consultas en el Service Layer)"),
+]
+_NUEVOS = {k: n for k, _a, n, _f in PARAMS_CAMBIO}
+PARAMS = [(k, _NUEVOS.get(k, v), *rest) for k, v, *rest in PARAMS]

@@ -196,8 +196,10 @@ def _conformidad(stop, u):
     foto = dsvc.save_upload(request.files.get("foto"), updir, f"foto_{stop.order.numero}")
     guia = dsvc.save_upload(request.files.get("guia"), updir, f"guia_{stop.order.numero}")
     entregas = {k[4:]: v for k, v in f.items() if k.startswith("ent_") and v != ""}
+    foto_rec = dsvc.save_upload(request.files.get("receptor_foto"), updir, f"receptor_{stop.order.numero}")
     dsvc.register_delivery(stop, u, foto, guia, entregas, f.get("observacion", ""), f.get("receptor_nombre", ""),
-                           f.get("receptor_dni", ""), firma)
+                           f.get("receptor_dni", ""), firma, f.get("receptor_tipo", "DNI"), foto_rec,
+                           f.get("receptor_motivo", ""))
 
 
 @bp.route("/mis-entregas", methods=["GET", "POST"])

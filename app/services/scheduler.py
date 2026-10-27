@@ -55,6 +55,10 @@ def run_checks(user=None, today=None):
             n += 1
     out["lotes_tiempo_maximo"] = n
     out["reposicion_solicitudes"] = len(run_replenishment(user, ref=today))
+    from .inventory import check_cycle_counts
+    out["conteos_ciclicos"] = check_cycle_counts(today)
+    from .supply import check_scheduled_moves
+    out["movimientos_programados"] = check_scheduled_moves()
     from .commercial_mgmt import check_goal_alerts
     out["metas_atrasadas"] = check_goal_alerts(today)
     from .prices import check_validity

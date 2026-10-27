@@ -207,6 +207,8 @@ def test_geosatelital_sin_configurar_y_con_proveedor(s, monkeypatch):
     from app.models import Vehicle
     from app.services import geosat
     vehs = list(s.execute(select(Vehicle)).scalars())
+    from app.services.core import set_param
+    set_param("geosatelital_url_panel", "")  # V8: el panel viene configurado por defecto
     t = geosat.tracking_board(vehs)
     assert not t["configurado"] and t["error"] is None and all(x["pos"] is None for x in t["filas"])
     monkeypatch.setenv("GEOSAT_API_URL", "https://proveedor.invalid/api")

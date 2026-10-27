@@ -560,6 +560,17 @@ def change_lot_state(lot, nuevo, user, motivo):
     if nuevo == "NO_UTILIZABLE":
         alerts.emit("STOCK_NO_UTILIZABLE", f"Lote {lot.lote} de {lot.product_code} no utilizable",
                     f"Almacén {lot.warehouse_code}. Motivo: {motivo}", "StockLot", lot.id, creado_por=user)
+    if nuevo == "EN_FUMIGACION":  # V8 (A09): desde la 2.ª fumigación del mismo lote se alerta a Calidad
+        from ..models import AuditLog
+        db().flush()  # incluye el cambio de estado recién auditado
+        veces = sum(1 for a in db().execute(select(AuditLog).where(AuditLog.accion == "LOTE_ESTADO")).scalars()
+                    if (a.detalle or {}).get("a") == "EN_FUMIGACION" and (a.detalle or {}).get("producto") == lot.product_code
+                    and (a.detalle or {}).get("lote") == lot.lote)
+        if veces >= 2:
+            alerts.emit("FUMIGACION_REPETIDA", f"Lote {lot.lote} de {lot.product_code}: fumigación n.º {veces}",
+                        f"{lot.product_code} en {lot.warehouse_code}. Revise su almacenamiento y priorice su venta o su "
+                        "evaluación.", "StockLot", lot.id, prioridad="ALTA", creado_por=user,
+                        dedup_key=f"FUM_REP:{lot.product_code}:{lot.lote}:{veces}")
     if nuevo == "EN_FUMIGACION" or (anterior == "EN_FUMIGACION"):
         alerts.emit("FUMIGACION", f"Fumigación {'iniciada' if nuevo == 'EN_FUMIGACION' else 'finalizada'}: lote {lot.lote}",
                     f"{lot.product_code} en {lot.warehouse_code}. {motivo}", "StockLot", lot.id, creado_por=user)

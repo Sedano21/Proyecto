@@ -198,6 +198,7 @@ class Customer(Base):
     contrato_archivo: Mapped[str] = mapped_column(String(200), default="")
     certificaciones: Mapped[str] = mapped_column(Text, default="")  # certificaciones que pide el cliente
     penalidades: Mapped[str] = mapped_column(Text, default="")  # penalidades establecidas con el cliente
+    requiere_auxiliar: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")  # V8 (D01)
     vendedor_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)  # vendedor responsable
     # Ronda 23-oct-2026: ubigeo (guía), condición de pago aprobada por Finanzas y prospecto (módulo de oportunidades)
     ubigeo: Mapped[str] = mapped_column(String(10), default="")
@@ -343,6 +344,7 @@ class PhysicalCountLine(Base):
     faltante: Mapped[float] = mapped_column(Float, default=0)
     sobrante: Mapped[float] = mapped_column(Float, default=0)
     comentario: Mapped[str] = mapped_column(String(250), default="")
+    recuento: Mapped[float | None] = mapped_column(Float, nullable=True)  # V8 (A06): segundo conteo si supera la tolerancia
     count = relationship("PhysicalCount", back_populates="lines")
 
 
@@ -987,6 +989,10 @@ class RouteStop(Base):
     guia_estado_hist: Mapped[list] = mapped_column(JSON, default=list)  # [{estado, nota, user, ts}]
     receptor_nombre: Mapped[str] = mapped_column(String(120), default="")
     receptor_dni: Mapped[str] = mapped_column(String(15), default="")
+    # V8 (D05): tipo de documento de quien recibe (DNI / CE / PASAPORTE / SIN_DOCUMENTO); sin documento: foto y motivo
+    receptor_tipo_doc: Mapped[str] = mapped_column(String(12), default="DNI", server_default="DNI")
+    receptor_foto: Mapped[str] = mapped_column(String(250), default="", server_default="")
+    receptor_motivo: Mapped[str] = mapped_column(String(250), default="", server_default="")
     firma_path: Mapped[str] = mapped_column(String(250), default="")
     route = relationship("Route", back_populates="stops")
     order = relationship("SalesOrder")
@@ -1834,6 +1840,9 @@ class MoveRequest(Base):
     # V7: inmediato o programado para una fecha y hora
     tipo: Mapped[str] = mapped_column(String(10), default="INMEDIATO", server_default="INMEDIATO")
     programado_para: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    aviso_min: Mapped[int | None] = mapped_column(Integer, nullable=True)  # V8 (A04): aviso antes de la hora programada
+    avisado_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    historial: Mapped[list] = mapped_column(JSON, default=list)  # V8 (A05): reasignaciones con rastro
     estado: Mapped[str] = mapped_column(String(15), default="SOLICITADA")  # SOLICITADA / EN_CURSO / COMPLETADA / ANULADA
     solicitado_por: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     asignado_a: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)

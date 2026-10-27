@@ -108,6 +108,27 @@ def seed_catalogs():
 
 
 
+def _apply_param_changes():
+    """Aplica una sola vez los cambios de valor decididos por el usuario (C.PARAMS_CAMBIO) si el parámetro conserva el
+    valor anterior (si alguien ya lo configuró distinto, se respeta). Queda en la auditoría."""
+    from .models import AuditLog
+    s = db()
+    n = 0
+    for key, anterior, nuevo, fuente in getattr(C, "PARAMS_CAMBIO", []):
+        marca = f"{key}:{fuente}"[:80]
+        if s.execute(select(AuditLog).where(AuditLog.accion == "PARAMETRO_CAMBIO_CATALOGO",
+                                            AuditLog.entidad_id == marca)).first():
+            continue
+        p = s.get(Param, key)
+        aplicado = p is not None and (p.valor or {}).get("v") == anterior
+        if aplicado:
+            p.valor = {"v": nuevo}
+            n += 1
+        s.add(AuditLog(user_id=None, accion="PARAMETRO_CAMBIO_CATALOGO", entidad="Param", entidad_id=marca,
+                       detalle={"anterior": anterior, "nuevo": nuevo, "aplicado": aplicado, "fuente": fuente}))
+    return n
+
+
 def sync_catalogs():
     """Agrega a una base existente los roles, permisos, asignaciones, tipos de alerta y parámetros nuevos del catálogo,
     sin modificar lo que ya fue configurado (no destructivo). Devuelve cuántos registros agregó."""
@@ -141,6 +162,7 @@ def sync_catalogs():
             n += 1
     s.flush()
     n += _retire_permissions()
+    n += _apply_param_changes()
     n += _apply_alert_role_changes()
     n += _rename_roles()
     n += _rename_demo_users()

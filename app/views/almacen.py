@@ -174,12 +174,14 @@ def count_detail(cid):
             vals[str(line.id)] = {"conteo": request.form.get(f"conteo_{line.id}"),
                                   "peso_unitario": request.form.get(f"peso_{line.id}"),
                                   "comentario": request.form.get(f"com_{line.id}", "")}
+            if f"rec_{line.id}" in request.form:
+                vals[str(line.id)]["recuento"] = request.form.get(f"rec_{line.id}")
         def _do():
             isvc.save_lines(c, g.user, vals)
             if request.form.get("cerrar") == "1":
                 return isvc.close_count(c, g.user)
         return act(_do, "Conteo guardado.", url_for("alm.count_detail", cid=cid))
-    return render_template("count_detail.html", c=c)
+    return render_template("count_detail.html", c=c, recontar=isvc.needs_recount)
 
 
 # ------------------------------- traslados ---------------------------------

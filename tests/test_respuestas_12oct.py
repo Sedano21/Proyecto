@@ -43,7 +43,7 @@ def _ready_route(s, U, o, discrepancia=False):
         dsp.set_invoice(st, U("facturacion"), f"F-{st.order.numero}", "f.pdf")
         approve_certs(s, U, st.order)
     assert dsp.review_documents(r, U("seguridad"), impresos=True) == []
-    dsp.give_exit_ok(r, U("aux.despacho"))  # Q16: visto bueno del auxiliar
+    dsp.give_exit_ok(r, (s.get(type(U("conductor1")), r.driver.user_id) if r.driver and r.driver.user_id else U("coord.distribucion")))  # V8 (D02): visto bueno del chofer
     s.commit()
     return r
 

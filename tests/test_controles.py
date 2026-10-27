@@ -191,6 +191,9 @@ def test_conteo_fisico_diferencias(s, U):
     line = c.lines[0]
     inv.save_lines(c, U("coord.almacen.mp"), {str(line.id): {"conteo": "4", "peso_unitario": "3"}})
     assert line.fisico == 12 and line.faltante == 3 and line.sobrante == 0
+    with pytest.raises(BusinessError, match="Recuente"):  # V8 (A06): diferencia mayor a la tolerancia
+        inv.close_count(c, U("coord.almacen.mp"))
+    inv.save_lines(c, U("coord.almacen.mp"), {str(line.id): {"conteo": "4", "peso_unitario": "3", "recuento": "4"}})
     difs = inv.close_count(c, U("coord.almacen.mp"))
     s.commit()
     assert len(difs) == 1

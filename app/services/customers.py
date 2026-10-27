@@ -70,6 +70,8 @@ def save_customer(user, c, datos):
         c.canal_precio = (datos["canal_precio"] or "").strip()
     if "requiere_cita" in datos:
         c.requiere_cita = str(datos["requiere_cita"]) in ("1", "true", "True", "on")
+    if "requiere_auxiliar" in datos:  # V8 (D01): el cliente pide auxiliar acompañante en la entrega
+        c.requiere_auxiliar = str(datos["requiere_auxiliar"]) in ("1", "true", "True", "on")
     if "vida_util_min_dias" in datos:
         v = str(datos.get("vida_util_min_dias") or "").strip()
         c.vida_util_min_dias = int(v) if v else None
