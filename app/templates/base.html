@@ -28,6 +28,7 @@
       {{ nl(url_for('com.orders'), 'cart', 'Órdenes de venta') }}
       {% if ve('ov.crear') %}{{ nl(url_for('com.order_new'), 'plus', 'Registrar OV') }}{% endif %}
       {% if ve('ov.regularizar') %}{{ nl(url_for('com.regularization'), 'history', 'Regularización de OV') }}{% endif %}
+      {% if ve('ov.importar') %}{{ nl(url_for('com.sap_excel_upload'), 'database', 'OV desde SAP (Excel)') }}{% endif %}
       {% if ve('clientes.ver') %}{{ nl(url_for('com.customer_list'), 'users', 'Clientes') }}{% endif %}
       {% if ve('precios.ver') %}{{ nl(url_for('com.prices'), 'tag', 'Listas de precios') }}{% endif %}
       {% if ve('costos.ver') %}{{ nl(url_for('com.costs'), 'scale', 'Costos vs mercado') }}{% endif %}

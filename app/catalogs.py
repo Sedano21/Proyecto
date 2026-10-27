@@ -1487,7 +1487,7 @@ PARAMS += [
 PARAMS += [
     ("exigir_soat_vigente", True, "bool", "Distribución",
      "No se asigna a rutas una unidad sin SOAT vigente (se alerta a Distribución).", "DEFINIDO", f"{RUX}: validación de flota y SOAT"),
-    ("geosatelital_url_panel", "", "str", "Distribución",
+    ("geosatelital_url_panel", "https://allpa.panel.geosatelital.com/monitoring/dashboard", "str", "Distribución",
      "Dirección del panel web de GEOSATELITAL para verlo dentro del sistema (si el proveedor lo permite). El servicio de "
      "posiciones se configura en el servidor (GEOSAT_API_URL y GEOSAT_TOKEN).", "PENDIENTE", f"{RUX}: integración GEOSATELITAL"),
 ]
@@ -1780,4 +1780,11 @@ ALERT_TYPES += [
     ("CARGA_CHOFER_OK", "El chofer validó la carga: sigue el auxiliar", "Distribución", "Carga", "MEDIA",
      ["COORD_DISTRIBUCION", "ASIST_DISTRIBUCION"], "DEFINIDO", f"{V7}: el chofer valida primero, luego el auxiliar",
      "El chofer validó cantidad, lote, presentación y producto de la carga.", True),
+]
+
+V8 = "Respuestas del cuestionario operativo (27-oct-2026)"
+PARAMS += [
+    ("geosatelital_link_horas", 24, "int", "Distribución",
+     "Vigencia por defecto (horas) del enlace de seguimiento de una unidad generado en GEOSATELITAL (dura de 15 min a 24 h).",
+     "DEFINIDO", f"{V8}: D03"),
 ]

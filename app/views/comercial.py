@@ -74,6 +74,65 @@ def price_check_api():
     return jsonify(check_line_price(p, c, precio, request.args.get("um", ""), request.args.get("canal") or None))
 
 
+@bp.route("/carga-sap", methods=["GET", "POST"])
+@perm_required("ov.importar")
+def sap_excel_upload():
+    """V8: OV desde las exportaciones de SAP: lista de pedidos (cabeceras) y detalle de cada OV."""
+    import os
+    from flask import current_app
+    from ..services import sap_excel as sx
+    back = url_for("com.sap_excel_upload")
+    if request.method == "POST":
+        def _guardar(fs):
+            if not fs or not fs.filename.lower().endswith((".xlsx", ".xlsm")):
+                raise BusinessError("Suba la exportación de SAP en Excel (.xlsx).")
+            up = current_app.config["UPLOAD_DIR"]
+            os.makedirs(up, exist_ok=True)
+            path = os.path.join(up, f"sap_ov_{os.urandom(4).hex()}.xlsx")
+            fs.save(path)
+            return path
+
+        def _procesar():
+            out = {"cab": None, "creadas": [], "errores": []}
+            for fs in request.files.getlist("archivos"):
+                if not fs or not fs.filename:
+                    continue
+                path = _guardar(fs)
+                tipo = sx.detect(path)
+                if tipo == "CABECERAS":
+                    out["cab"] = sx.import_headers(g.user, path)
+                elif tipo == "DETALLE":
+                    try:
+                        out["creadas"].append(sx.import_detail(g.user, path, request.form.get("numero"), fs.filename).numero)
+                    except BusinessError as e:
+                        out["errores"].append(f"{fs.filename}: {e}")
+                else:
+                    out["errores"].append(f"{fs.filename}: no es una lista de pedidos ni un detalle de OV de SAP.")
+            if out["cab"] is None and not out["creadas"] and not out["errores"]:
+                raise BusinessError("Adjunte al menos un archivo.")
+            if out["errores"] and not out["creadas"] and out["cab"] is None:
+                raise BusinessError(" | ".join(out["errores"][:5]))
+            return out
+
+        def _msg(r):
+            partes = []
+            if r["cab"]:
+                c = r["cab"]
+                partes.append(f"Lista de pedidos: {c['nuevas']} nuevas, {c['actualizadas']} actualizadas, {c['sin_cambio']} sin "
+                              f"cambio, {c['pendientes_detalle']} esperan su detalle, {c['cerradas_omitidas']} cerradas no "
+                              f"importadas, {c['cerradas_en_modulo']} cerradas en el módulo.")
+            if r["creadas"]:
+                partes.append(f"OV creadas: {', '.join(r['creadas'])}.")
+            if r["errores"]:
+                partes.append("Con observaciones: " + " | ".join(r["errores"][:5]))
+            return " ".join(partes)
+        return act(_procesar, _msg, back)
+    from ..models import SapOrderHeader
+    recientes = list(db().execute(select(SapOrderHeader).where(SapOrderHeader.order_id.isnot(None))
+                                  .order_by(SapOrderHeader.id.desc()).limit(30)).scalars())
+    return render_template("sap_excel.html", pendientes=sx.pending_headers(), recientes=recientes)
+
+
 @bp.route("/nueva", methods=["GET", "POST"])
 @perm_required("ov.crear")
 def order_new():

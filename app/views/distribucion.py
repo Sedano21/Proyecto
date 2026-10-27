@@ -224,11 +224,12 @@ def tracking():
     from ..services.fleet import soat_status
     if request.method == "POST":
         v = db().get(Vehicle, int(request.form.get("vehicle_id") or 0)) or abort(404)
-        return act(lambda: geosat.set_vehicle_link(v, g.user, request.form.get("geosat_link", "")),
+        return act(lambda: geosat.set_vehicle_link(v, g.user, request.form.get("geosat_link", ""), request.form.get("horas")),
                    f"Enlace de seguimiento de {v.placa} guardado.", url_for("dist.tracking"))
     vehs = list(db().execute(select(Vehicle).order_by(Vehicle.propio.desc(), Vehicle.placa)).scalars())
     en_ruta = {r.vehicle_id: r for r in db().execute(select(Route).where(Route.estado == "EN_RUTA")).scalars()}
-    return render_template("tracking.html", t=geosat.tracking_board(vehs), en_ruta=en_ruta, soat=soat_status)
+    return render_template("tracking.html", t=geosat.tracking_board(vehs), en_ruta=en_ruta, soat=soat_status,
+                           link_status=geosat.link_status)
 
 
 @bp.route("/ruta/<int:rid>/folio")
@@ -312,6 +313,23 @@ def fleet():
     if request.method == "POST":
         f = request.form
 
+        if f.get("tipo") == "excel":
+            from ..services.fleet import import_vehicles
+
+            def _xls():
+                arch = request.files.get("archivo")
+                if not arch or not arch.filename.lower().endswith((".xlsx", ".xlsm", ".csv")):
+                    raise BusinessError("Suba el Excel (.xlsx) o CSV de unidades.")
+                import os
+                up = current_app.config["UPLOAD_DIR"]
+                os.makedirs(up, exist_ok=True)
+                path = os.path.join(up, f"flota_{os.urandom(4).hex()}{os.path.splitext(arch.filename)[1].lower()}")
+                arch.save(path)
+                return import_vehicles(g.user, path)
+            return act(_xls, lambda r: f"Unidades: {r['nuevas']} nuevas, {r['actualizadas']} actualizadas."
+                       + (" Errores: " + " | ".join(r["errores"][:5]) if r["errores"] else "")
+                       + " Registre la capacidad (kg) de las unidades nuevas para asignarlas a rutas.", url_for("dist.fleet"))
+
         def _do():
             if f.get("tipo") == "vehiculo":
                 v = s.get(Vehicle, int(f["id"])) if f.get("id") else None
@@ -319,6 +337,13 @@ def fleet():
                     v = Vehicle(placa=f["placa"].strip().upper(), capacidad_kg=0)
                     s.add(v)
                 v.descripcion = f.get("descripcion", v.descripcion)
+                for campo in ("marca", "modelo", "tipo_unidad", "flota", "nombre_geosat"):
+                    if campo in f:
+                        setattr(v, campo, f.get(campo, "").strip()[:60])
+                if f.get("anio"):
+                    v.anio = int(f["anio"])
+                if f.get("km_actual"):
+                    v.km_actual = f_float("km_actual")
                 v.propio = f.get("propio") == "1"
                 v.capacidad_kg = f_float("capacidad_kg", True)
                 v.volumen_m3 = f_float("volumen_m3")

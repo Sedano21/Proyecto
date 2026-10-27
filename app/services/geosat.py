@@ -105,7 +105,7 @@ def tracking_board(vehicles, opener=None):
                                                      {v.placa.replace(" ", "").upper() for v in vehicles}]}
 
 
-def set_vehicle_link(vehicle, user, link):
+def set_vehicle_link(vehicle, user, link, horas=None):
     """V7: enlace de seguimiento de la unidad que genera el panel de GEOSATELITAL («compartir ubicación»). Sin API del
     proveedor es la forma de ver cada unidad desde el módulo. Solo enlaces https; no se guardan usuario ni contraseña."""
     from .core import BusinessError, audit, has_perm
@@ -117,4 +117,27 @@ def set_vehicle_link(vehicle, user, link):
     if link and ("password=" in link.lower() or "clave=" in link.lower() or "@" in link.split("/")[2]):
         raise BusinessError("No registre enlaces con usuario o contraseña: use el enlace de «compartir ubicación».")
     vehicle.geosat_link = link[:500]
-    audit(user, "VEHICULO_GEOSAT_LINK", "Vehicle", vehicle.placa, {"link": bool(link)})
+    # V8 (D03): el enlace del proveedor dura entre 15 minutos y 24 horas
+    from datetime import timedelta
+    from ..models import now
+    try:
+        h = float(horas) if horas not in (None, "") else float(param("geosatelital_link_horas", 24) or 24)
+    except ValueError:
+        raise BusinessError("Vigencia inválida.")
+    if link and not (0.25 <= h <= 24):
+        raise BusinessError("La vigencia del enlace va de 15 minutos (0.25 h) a 24 horas.")
+    vehicle.geosat_link_vence = now() + timedelta(hours=h) if link else None
+    audit(user, "VEHICULO_GEOSAT_LINK", "Vehicle", vehicle.placa, {"link": bool(link), "horas": h if link else None})
+
+
+def link_status(vehicle, ahora=None):
+    """(vigente: bool, texto) del enlace de seguimiento de la unidad."""
+    from ..models import now
+    if not vehicle.geosat_link:
+        return False, "Sin enlace"
+    if vehicle.geosat_link_vence is None:
+        return True, "Vigencia no registrada"
+    resto = (vehicle.geosat_link_vence - (ahora or now())).total_seconds()
+    if resto <= 0:
+        return False, f"Venció el {vehicle.geosat_link_vence:%d/%m %H:%M}: genere uno nuevo en GEOSATELITAL"
+    return True, f"Vigente hasta {vehicle.geosat_link_vence:%d/%m %H:%M} ({int(resto // 3600)} h {int(resto % 3600 // 60)} min)"

@@ -3,6 +3,9 @@
 <div class="dlg-head"><h3>{{ 'Unidad ' ~ v.placa if v else 'Nueva unidad' }}</h3><button class="ibtn" data-close aria-label="Cerrar">{{ ic('x') }}</button></div>
 <div class="dlg-body">{% if not v %}<label class="req">Placa</label><input name="placa" required size="10">{% endif %}
 <label>Descripción</label><input name="descripcion" value="{{ v.descripcion if v }}" style="width:100%">
+<div class="row"><div><label>Marca</label><input name="marca" value="{{ v.marca if v }}" size="12"></div><div><label>Modelo</label><input name="modelo" value="{{ v.modelo if v }}" size="12"></div><div><label>Año</label><input name="anio" type="number" min="1980" max="2100" value="{{ v.anio if v and v.anio }}" style="width:90px"></div>
+<div><label>Tipo</label><input name="tipo_unidad" list="tipos-unidad" value="{{ v.tipo_unidad if v }}" size="11"></div><div><label>Odómetro (km)</label><input name="km_actual" type="number" step="any" min="0" value="{{ v.km_actual if v and v.km_actual }}" style="width:110px"></div></div>
+<div class="row"><div><label>Nombre en GEOSATELITAL</label><input name="nombre_geosat" value="{{ v.nombre_geosat if v }}" size="12"></div><div><label>Flota</label><input name="flota" value="{{ v.flota if v }}" size="12"></div></div>
 <div class="row"><div><label>Propiedad</label><select name="propio"><option value="1" {{ 'selected' if not v or v.propio }}>Propia</option><option value="0" {{ 'selected' if v and not v.propio }}>Tercero</option></select></div>
 <div><label class="req">Capacidad (kg)</label><input name="capacidad_kg" type="number" step="any" min="1" required value="{{ v.capacidad_kg if v }}" style="width:110px"></div><div><label>Volumen (m³)</label><input name="volumen_m3" type="number" step="any" min="0" value="{{ v.volumen_m3 if v and v.volumen_m3 }}" style="width:90px"></div></div>
 <div class="row"><div><label>Conductor habitual</label><select name="conductor_habitual_id"><option value="">—</option>{% for d in drivers %}<option value="{{ d.id }}" {{ 'selected' if v and d.id == v.conductor_habitual_id }}>{{ d.nombre }}</option>{% endfor %}</select></div>
@@ -17,12 +20,21 @@
 {% block content %}<h1>Flota y conductores</h1>
 <p class="seg small"><a class="on" href="{{ url_for('dist.fleet') }}">Unidades</a><a href="{{ url_for('dist.fleet_tracking') }}">Documentos y mantenimiento</a>{% if can('distribucion.rastreo') %}<a href="{{ url_for('dist.tracking') }}">Rastreo GEOSATELITAL</a>{% endif %}</p>
 <p class="muted small">Una unidad sin SOAT vigente no se asigna a rutas: regístrelo en «Documentos y mantenimiento».</p>
-<div class="card-head"><h2 style="flex:1">Unidades</h2><button class="btn" data-open="dlg-v-new">{{ ic('plus') }} Agregar unidad</button></div>
+<datalist id="tipos-unidad"><option>Camión</option><option>Camioneta</option><option>Furgón</option><option>Auto</option><option>Moto</option></datalist>
+<div class="card-head"><h2 style="flex:1">Unidades</h2><button class="btn sec" data-open="dlg-v-xls">{{ ic('upload') }} Cargar Excel de GEOSATELITAL</button> <button class="btn" data-open="dlg-v-new">{{ ic('plus') }} Agregar unidad</button></div>
 <dialog class="modal" id="dlg-v-new">{{ vform() }}</dialog>
+<dialog class="modal" id="dlg-v-xls"><form method="post" enctype="multipart/form-data">{{ csrf() }}<input type="hidden" name="tipo" value="excel">
+<div class="dlg-head"><h3>Cargar unidades</h3><button type="button" class="ibtn" data-close aria-label="Cerrar">{{ ic('x') }}</button></div>
+<div class="dlg-body"><p class="small">Use la lista de unidades exportada de GEOSATELITAL o un Excel con las columnas <b>Placa</b> (obligatoria), Nombre, Conductor, Flota, Marca, Modelo, Año, Tipo, Odómetro y, opcional, <b>Capacidad (kg)</b>.</p>
+<p class="small muted">Se identifica cada unidad por la placa: si ya existe se actualiza, si no se crea. GEOSATELITAL no informa la capacidad: las unidades nuevas sin capacidad quedan «no disponibles» hasta registrarla. «Sin marca», «Sin modelo» y «N/A» se toman como vacío.</p>
+<input type="file" name="archivo" accept=".xlsx,.xlsm,.csv" required></div>
+<div class="dlg-foot"><button type="button" class="btn sec" data-close>Cancelar</button><button class="btn">Cargar</button></div></form></dialog>
 <div class="cards">{% for v in vehicles %}{% set ok, txt = soat(v) %}
 <article class="xcard {{ '' if ok else 'alerta' }}"><div class="xcard-head"><b class="mono">{{ v.placa }}</b>{% if ok %}<span class="b ok">SOAT vigente</span>{% else %}<span class="b ALTA">{{ 'SOAT vencido' if 'vencido' in txt else 'sin SOAT' }}</span>{% endif %}
 <button class="ibtn" data-open="dlg-v-{{ v.id }}" aria-label="Editar {{ v.placa }}" title="Editar">{{ ic('edit') }}</button></div>
-<div class="small">{{ v.descripcion }}</div><div class="meta"><span>{{ 'Propia' if v.propio else 'Tercero' }}</span><span>{{ v.capacidad_kg|n }} kg</span><span>{{ 'disponible' if v.disponible else 'no disponible' }}</span></div>
+<div class="small">{{ v.descripcion }}</div>
+<div class="meta">{% if v.marca or v.modelo %}<span>{{ v.marca }} {{ v.modelo }}{{ ' · ' ~ v.anio if v.anio }}</span>{% endif %}{% if v.tipo_unidad %}<span>{{ v.tipo_unidad }}</span>{% endif %}{% if v.km_actual %}<span>{{ v.km_actual|n }} km</span>{% endif %}</div>
+<div class="meta"><span>{{ 'Propia' if v.propio else 'Tercero' }}</span>{% if v.capacidad_kg > 0 %}<span>{{ v.capacidad_kg|n }} kg</span>{% else %}<span class="err">sin capacidad registrada</span>{% endif %}<span>{{ 'disponible' if v.disponible else 'no disponible' }}</span></div>
 <div class="meta"><span>{{ txt }}</span><a href="{{ url_for('dist.vehicle_detail', vid=v.id) }}">Documentos →</a></div></article>
 <dialog class="modal" id="dlg-v-{{ v.id }}">{{ vform(v) }}</dialog>{% else %}{{ empty('Sin unidades registradas.', 'truck') }}{% endfor %}</div>
 <div class="card-head"><h2 style="flex:1">Conductores</h2><button class="btn sec" data-open="dlg-d-new">{{ ic('plus') }} Agregar conductor</button></div>

@@ -1,0 +1,16 @@
+{% extends "base.html" %}{% from "_m.html" import b, csrf, ic, empty %}
+{% block content %}
+<div class="page-head"><div><h1>OV desde las exportaciones de SAP</h1><p class="sub">Para la marcha blanca mientras se habilita la conexión directa con SAP (Service Layer).</p></div></div>
+<div class="cards">
+<article class="xcard"><div class="xcard-head"><b>1 · Lista de pedidos de cliente</b></div><p class="small">La exportación con una fila por OV (# SAP, Cliente, Fecha de vencimiento, Status…). Las <b>abiertas</b> quedan esperando su detalle; las <b>cerradas</b> no se importan y, si ya estaban abiertas aquí sin preparar, se cierran como «Atendida en SAP» sin descontar stock. Puede cargarla varias veces al día: no se duplica nada.</p></article>
+<article class="xcard"><div class="xcard-head"><b>2 · Detalle de cada OV</b></div><p class="small">La exportación de los productos de una OV. Se crea la OV con la <b>cantidad pendiente</b> de cada producto. Nombre el archivo con el número de la OV (p. ej. <span class="mono">1636048.xlsx</span>) para subir varios a la vez, o súbalo desde la fila de la OV abajo.</p></article></div>
+<form method="post" enctype="multipart/form-data" class="card row">{{ csrf() }}<div class="grow"><label class="req">Archivos de SAP (lista de pedidos y/o detalles)</label><input type="file" name="archivos" accept=".xlsx,.xlsm" multiple required></div><div><button>{{ ic('upload') }} Cargar</button></div></form>
+
+<div class="card"><h3>OV abiertas esperando su detalle ({{ pendientes|length }})</h3>
+{% if pendientes %}<div class="tw"><table class="list small"><thead><tr><th># SAP</th><th>Cliente</th><th>Entrega</th><th>Vendedor</th><th class="r">Peso</th><th>Destino</th><th>Detalle</th></tr></thead>
+{% for h in pendientes %}<tr><td class="mono">{{ h.numero }}</td><td>{{ h.cliente }}<br><span class="muted">{{ h.card_code }}</span></td><td>{{ h.fecha_venc|d }}{% if h.fecha_venc and h.fecha_venc < today %} <span class="b ALTA">vencida</span>{% endif %}</td><td>{{ h.vendedor }}</td><td class="r">{{ h.peso_total|n if h.peso_total is not none }}</td><td>{{ h.destino[:60] }}<br><span class="muted">{{ h.comentario[:60] }}</span></td>
+<td><form method="post" enctype="multipart/form-data" class="row">{{ csrf() }}<input type="hidden" name="numero" value="{{ h.numero }}"><input type="file" name="archivos" accept=".xlsx,.xlsm" required aria-label="Detalle de la OV {{ h.numero }}"><button class="small">Subir</button></form></td></tr>{% endfor %}</table></div>
+{% else %}{{ empty('No hay OV abiertas esperando su detalle.', 'check') }}{% endif %}</div>
+{% if recientes %}<div class="card"><h3>Últimas OV creadas desde SAP</h3><div class="tw"><table class="list small"><thead><tr><th># SAP</th><th>Cliente</th><th>Entrega</th><th>Estado en el módulo</th></tr></thead>
+{% for h in recientes %}<tr><td><a href="{{ url_for('com.order_detail', oid=h.order_id) }}">{{ h.numero }}</a></td><td>{{ h.cliente }}</td><td>{{ h.fecha_venc|d }}</td><td>{{ b(h.order.estado) }}</td></tr>{% endfor %}</table></div></div>{% endif %}
+{% endblock %}

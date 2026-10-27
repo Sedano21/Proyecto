@@ -238,6 +238,8 @@ def update_route(route, user, vehicle_id=None, driver_id=None, auxiliar_id=None)
             raise BusinessError("Unidad no válida.")
         from .fleet import check_soat
         check_soat(v, route.fecha)
+        if not v.capacidad_kg or v.capacidad_kg <= 0:
+            raise BusinessError(f"Registre la capacidad (kg) de {v.placa} en Flota antes de asignarla.")
         if route.peso_total > v.capacidad_kg + 1e-9:
             raise BusinessError(f"La carga ({route.peso_total:,.0f} kg) supera la capacidad de {v.placa} ({v.capacidad_kg:,.0f} kg).")
         busy_v, _ = _busy(route.fecha)

@@ -888,6 +888,14 @@ class Vehicle(Base):
     km_actual: Mapped[float | None] = mapped_column(Float, nullable=True)  # último kilometraje registrado
     # V7: enlace de seguimiento compartido por GEOSATELITAL para esta unidad (sin API: se muestra embebido o en ventana)
     geosat_link: Mapped[str] = mapped_column(String(500), default="", server_default="")
+    geosat_link_vence: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)  # V8: el enlace dura 15 min a 24 h
+    # V8: datos de la unidad como figuran en GEOSATELITAL (Nombre, Flota, Marca, Modelo, Año, Tipo, Odómetro)
+    nombre_geosat: Mapped[str] = mapped_column(String(60), default="", server_default="")
+    flota: Mapped[str] = mapped_column(String(60), default="", server_default="")
+    marca: Mapped[str] = mapped_column(String(60), default="", server_default="")
+    modelo: Mapped[str] = mapped_column(String(60), default="", server_default="")
+    anio: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    tipo_unidad: Mapped[str] = mapped_column(String(30), default="", server_default="")
 
 
 class Driver(Base):
@@ -1880,3 +1888,27 @@ class ProductDocument(Base):
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     ts: Mapped[datetime] = mapped_column(DateTime, default=now)
     user = relationship("User")
+
+
+class SapOrderHeader(Base):
+    """V8: cabecera de una OV tal como la exporta SAP (lista de pedidos). Las OV abiertas esperan aquí su detalle
+    (exportación de líneas de cada OV); al llegar, se crea la OV del módulo. Se identifica por el número de SAP."""
+    __tablename__ = "sap_order_headers"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    numero: Mapped[str] = mapped_column(String(30), unique=True, index=True)
+    fecha: Mapped[date | None] = mapped_column(Date, nullable=True)
+    fecha_venc: Mapped[date | None] = mapped_column(Date, nullable=True)
+    cliente: Mapped[str] = mapped_column(String(200), default="")
+    card_code: Mapped[str] = mapped_column(String(30), default="")
+    ruc: Mapped[str] = mapped_column(String(20), default="")
+    vendedor: Mapped[str] = mapped_column(String(120), default="")
+    comentario: Mapped[str] = mapped_column(Text, default="")
+    destino: Mapped[str] = mapped_column(String(250), default="")
+    peso_total: Mapped[float | None] = mapped_column(Float, nullable=True)
+    estado_sap: Mapped[str] = mapped_column(String(20), default="")  # Abiertos / Cerrado
+    cancelado: Mapped[bool] = mapped_column(Boolean, default=False)
+    order_id: Mapped[int | None] = mapped_column(ForeignKey("sales_orders.id"), nullable=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    actualizado_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    order = relationship("SalesOrder")

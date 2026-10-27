@@ -171,3 +171,87 @@ def check_soat(vehicle, fecha=None):
 
 def drivers():
     return list(db().execute(select(Driver).order_by(Driver.nombre)).scalars())
+
+
+# ------------------------------------------------------------------ V8: carga de unidades (formato GEOSATELITAL)
+COLS_UNIDADES = {"placa": ("placa",), "nombre": ("nombre",), "conductor": ("conductor",), "flota": ("flota",),
+                 "marca": ("marca",), "modelo": ("modelo",), "anio": ("año", "ano", "anio"), "tipo": ("tipo",),
+                 "odometro": ("odometro", "odómetro", "kilometraje", "km"), "capacidad": ("capacidad (kg)", "capacidad kg",
+                                                                                     "capacidad")}
+SIN_DATO = {"", "SIN MARCA", "SIN MODELO", "N/A", "NA", "-", "NONE"}
+
+
+def _limpio(v):
+    t = " ".join(str(v if v is not None else "").split())
+    return "" if t.upper() in SIN_DATO else t
+
+
+def import_vehicles(user, path):
+    """Unidades desde el Excel o CSV que exporta GEOSATELITAL (Nombre, Conductor, Flota, Placa, Marca, Modelo, Año, Tipo,
+    Odómetro) u otro con esas columnas. Se identifica por la placa: si existe se actualiza, si no se crea. La capacidad
+    no viene en GEOSATELITAL: si falta, la unidad queda «no disponible» hasta registrarla."""
+    import csv
+    import unicodedata
+    _req(user)
+    if str(path).lower().endswith(".csv"):
+        with open(path, newline="", encoding="utf-8-sig") as fh:
+            filas = list(csv.reader(fh))
+    else:
+        from openpyxl import load_workbook
+        filas = [list(r) for r in load_workbook(path, read_only=True, data_only=True).active.iter_rows(values_only=True)]
+    if not filas:
+        raise BusinessError("El archivo está vacío.")
+
+    def norm(x):
+        x = unicodedata.normalize("NFKD", str(x or "")).encode("ascii", "ignore").decode().lower()
+        return " ".join(x.split())
+    cab = [norm(c) for c in filas[0]]
+    idx = {}
+    for k, alias in COLS_UNIDADES.items():
+        for a in alias:
+            if norm(a) in cab:
+                idx[k] = cab.index(norm(a))
+                break
+    if "placa" not in idx:
+        raise BusinessError("Falta la columna «Placa».")
+    nuevas = actualizadas = 0
+    errores = []
+    for n, r in enumerate(filas[1:], start=2):
+        def val(k):
+            return r[idx[k]] if k in idx and idx[k] < len(r) else None
+        placa = _limpio(val("placa")).upper().replace(" ", "")
+        if not placa:
+            continue
+        if not (5 <= len(placa.replace("-", "")) <= 8):
+            errores.append(f"Fila {n}: placa «{placa}» inválida.")
+            continue
+        v = db().execute(select(Vehicle).where(Vehicle.placa == placa)).scalars().first()
+        if v is None:
+            v = Vehicle(placa=placa, capacidad_kg=0, propio=True, disponible=False)
+            db().add(v)
+            nuevas += 1
+        else:
+            actualizadas += 1
+        for campo, k in (("nombre_geosat", "nombre"), ("flota", "flota"), ("marca", "marca"), ("modelo", "modelo"),
+                         ("tipo_unidad", "tipo")):
+            t = _limpio(val(k))
+            if t:
+                setattr(v, campo, t[:60].upper() if campo in ("marca", "modelo") else t[:60])
+        try:
+            a = _limpio(val("anio"))
+            v.anio = int(float(a)) if a else v.anio
+            km = _limpio(val("odometro"))
+            if km and float(km) > 0 and (v.km_actual is None or float(km) >= v.km_actual):
+                v.km_actual = float(km)
+            cap = _limpio(val("capacidad"))
+            if cap and float(cap) > 0:
+                v.capacidad_kg = float(cap)
+        except ValueError:
+            errores.append(f"Fila {n}: año, odómetro o capacidad no numérico.")
+        if not v.descripcion:
+            v.descripcion = " ".join(x for x in (v.tipo_unidad, v.marca, v.modelo) if x)[:80]
+        if v.capacidad_kg <= 0:
+            v.disponible = False
+    db().flush()
+    audit(user, "FLOTA_CARGADA", "Vehicle", "", {"nuevas": nuevas, "actualizadas": actualizadas, "errores": len(errores)})
+    return {"nuevas": nuevas, "actualizadas": actualizadas, "errores": errores}
