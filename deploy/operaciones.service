@@ -1,0 +1,19 @@
+[Unit]
+Description=Sistema de Automatizacion - Modulo de Operaciones
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+User=operaciones
+Group=operaciones
+WorkingDirectory=/opt/operaciones
+EnvironmentFile=/etc/operaciones/operaciones.env
+ExecStart=/opt/operaciones/.venv/bin/gunicorn -w 3 --timeout 120 -b 127.0.0.1:8000 run:app
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=full
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
