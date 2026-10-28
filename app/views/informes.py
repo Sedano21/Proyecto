@@ -1,5 +1,7 @@
 """Informes por área con gráficos, tendencias y recomendaciones (observaciones al demo v0.5, 13-oct)."""
-from flask import Blueprint, abort, g, render_template, request, send_file
+from urllib.parse import urlencode
+
+from flask import Blueprint, abort, flash, g, redirect, render_template, request, send_file, url_for
 
 from ..services import charts
 from ..services import reports as rsvc
@@ -30,27 +32,75 @@ def _periodo():
         return None, None
 
 
-@bp.route("/personalizado")
+def _resumen(fuentes, fuente, cols, r, indicadores, elementos):
+    """Resumen legible de la configuración del informe personalizado (se muestra antes del resultado y va en el PDF)."""
+    a = request.args
+    nom = {c: t for c, t, _ in cols}
+    sel = [nom[c] for c in a.getlist("col") if c in nom] or [t for _, t, _ in cols]
+    ag = nom.get(a.get("agrupar", ""), "")
+    return [("Fuente de datos", fuentes[fuente]), ("Periodo", f"{r['desde']:%d/%m/%Y} – {r['hasta']:%d/%m/%Y}" if r else "—"),
+            ("Columnas", ", ".join(sel)), ("Agrupado por", ag or "sin agrupar"), ("Texto buscado", a.get("q") or "—"),
+            ("Indicadores", ", ".join(x["nombre"] for x in indicadores) or "ninguno"),
+            ("Secciones", ", ".join({"kpis": "totales", "grafico": "gráfico", "tabla": "tabla",
+                                     "recomendaciones": "recomendaciones", "indicadores": "indicadores"}.get(e, e)
+                                    for e in elementos))]
+
+
+@bp.route("/personalizado", methods=["GET", "POST"])
 @login_required
 def custom():
-    """Arme su informe (obs. demo v0.7): fuente, columnas, periodo, filtro y agrupación; pantalla, PDF o Excel."""
+    """Personalizar informe (obs. demo v0.7; rediseño 28-oct-2026): fuente, columnas, periodo, filtro, agrupación e
+    indicadores del área; vista previa con el resumen de la configuración; PDF o Excel; plantillas personales y
+    compartidas. Solo se ofrece y se calcula lo que el perfil puede ver (matriz de indicadores)."""
     import io
+    from werkzeug.datastructures import MultiDict
     from ..services import custom_report as cr
+    from ..services import indicators as ind
     from ..services import pdfreport
+    from ..services import report_center as rc
+    from .common import act
     fuentes = cr.sources_for(g.user)
     if not fuentes:
         abort(403)
+    if request.method == "POST":
+        f = request.form
+        if f.get("accion") == "eliminar":
+            return act(lambda: rc.delete_template(g.user, f.get("id")), "Plantilla eliminada.", url_for("rep.custom"))
+        args = MultiDict(__import__("urllib.parse", fromlist=["x"]).parse_qsl(f.get("qs", ""), keep_blank_values=False))
+        return act(lambda: rc.save_template(g.user, f.get("nombre"), rc.config_from_args(args), f.get("compartir") == "1"),
+                   lambda t: f"Plantilla «{t.nombre}» guardada" + (f" y compartida con {t.area}." if t.alcance == "COMPARTIDA" else "."),
+                   url_for("rep.custom"), redirect_fn=lambda t: url_for("rep.custom", plantilla=t.id))
+    if request.args.get("plantilla") and not request.args.get("fuente"):
+        from datetime import date, timedelta
+        try:
+            t = rc.get_template(g.user, request.args["plantilla"])
+        except Exception as e:  # noqa: BLE001
+            flash(str(e), "error")
+            return redirect(url_for("rep.custom"))
+        cfg = dict(t.config)
+        q = [(k, v) for k, vs in cfg.items() if k != "dias" for v in (vs if isinstance(vs, list) else [vs])]
+        if cfg.get("dias") is not None:
+            q.append(("desde", (date.today() - timedelta(days=int(cfg["dias"]))).isoformat()))
+        return redirect(url_for("rep.custom") + "?" + urlencode(q + [("ver", "1"), ("cfg", "1"), ("plantilla", t.id)]))
     fuente = request.args.get("fuente") or next(iter(fuentes))
     if fuente not in fuentes:
         abort(403)
+    columnas = cr.columns(fuente, g.user)
     desde, hasta = _periodo()
-    r = None
+    # sin configurar (primera vez o enlace): los indicadores del informe predeterminado del área; «cfg» marca que el
+    # usuario ya eligió (aunque haya desmarcado todos)
+    sel_ind = request.args.getlist("ind") if request.args.get("cfg") else sorted(ind.default_set(g.user))
+    elementos = request.args.getlist("elem") or ["indicadores", "kpis", "grafico", "tabla", "recomendaciones"]
+    r, indicadores = None, []
     if request.args.get("ver") or request.args.get("formato"):
         r = cr.run(g.user, fuente, request.args.getlist("col"), desde, hasta, request.args.get("q", ""),
                    request.args.get("agrupar", ""))
+        if "indicadores" in elementos:
+            indicadores = ind.values(g.user, sel_ind, r["desde"], r["hasta"])
         nombre = f"informe_{fuente}_{r['hasta']:%Y%m%d}"
-        elementos = request.args.getlist("elem") or ["tabla", "grafico", "kpis", "recomendaciones"]
-        notas_pdf = r["notas"] + ([f"{k}: {v}" for k, v in r["kpis"]] if "kpis" in elementos else []) + (
+        resumen = _resumen(fuentes, fuente, columnas, r, indicadores, elementos)
+        notas_pdf = [f"{k}: {v}" for k, v in resumen] + [f"{x['nombre']}: {x['valor']} ({x['detalle']})" for x in indicadores] \
+            + r["notas"] + ([f"{k}: {v}" for k, v in r["kpis"]] if "kpis" in elementos else []) + (
             ["Recomendación: " + x for x in r["recomendaciones"]] if "recomendaciones" in elementos else [])
         if request.args.get("formato") == "pdf":
             return send_file(io.BytesIO(pdfreport.table_pdf(r["titulo"], r["columnas"], r["filas"] if "tabla" in elementos else [],
@@ -66,33 +116,43 @@ def custom():
             ws["A1"].font = Font(bold=True, size=12)
             for n in notas_pdf:
                 ws.append([n])
-            ws.append(r["columnas"])
-            for c in ws[ws.max_row]:
-                c.font = Font(bold=True)
-            for f in r["filas"]:
-                ws.append(list(f))
+            if "tabla" in elementos:
+                ws.append(r["columnas"])
+                for c in ws[ws.max_row]:
+                    c.font = Font(bold=True)
+                for fila in r["filas"]:
+                    ws.append(list(fila))
             out = io.BytesIO()
             wb.save(out)
             return send_file(io.BytesIO(out.getvalue()), as_attachment=True, download_name=nombre + ".xlsx",
                              mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    elementos = request.args.getlist("elem") or ["tabla", "grafico", "kpis", "recomendaciones"]
     grafico = None
     if r is not None and "grafico" in elementos:
         med = request.args.get("medida")
         grafico = cr.chart(r, request.args.get("tipo_grafico", "barras"), int(med) if (med or "").isdigit() else None)
-    return render_template("informe_personalizado.html", fuentes=fuentes, fuente=fuente, columnas=cr.columns(fuente),
+    qs = urlencode([(k, v) for k, v in request.args.items(multi=True) if k not in ("ver", "formato", "plantilla")])
+    return render_template("informe_personalizado.html", fuentes=fuentes, fuente=fuente, columnas=columnas,
                            r=r, sel=request.args.getlist("col"), items=disponibles(), por_area=cr.sources_by_area(g.user),
-                           elementos=elementos, grafico=grafico)
+                           elementos=elementos, grafico=grafico, grupos_ind=ind.for_user(g.user), sel_ind=sel_ind,
+                           indicadores=indicadores, resumen=_resumen(fuentes, fuente, columnas, r, indicadores, elementos) if r else [],
+                           plantillas=rc.templates_for(g.user), qs=qs, plantilla_id=request.args.get("plantilla", type=int),
+                           predeterminado=rc.default_for(g.user, dict(disponibles()), fuentes))
 
 
 @bp.route("/")
 @login_required
 def home():
+    """Portada de informes: el informe predeterminado del área y «Personalizar informe», más los demás informes
+    autorizados y las plantillas guardadas."""
+    from ..services import report_center as rc
     from ..services.custom_report import sources_for
     items = disponibles()
-    if not items and not sources_for(g.user):
+    fuentes = sources_for(g.user)
+    if not items and not fuentes:
         abort(403)
-    return render_template("informes_home.html", items=items)
+    pred = rc.default_for(g.user, dict(items), fuentes)
+    return render_template("informes_home.html", items=items, pred=pred, plantillas=rc.templates_for(g.user) if fuentes else [],
+                           personalizar=bool(fuentes))
 
 
 def _descarga(html, titulo):

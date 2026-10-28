@@ -1,28 +1,58 @@
-{% extends "base.html" %}{% from "_m.html" import ic, empty %}
+{% extends "base.html" %}{% from "_m.html" import ic, empty, csrf %}
 {% block content %}
-<div class="page-head"><div><h1>Arme su informe</h1><p class="sub">Elija la fuente de datos, las columnas, el periodo y, si desea, una columna para agrupar. Véalo en pantalla o descárguelo en PDF o Excel.</p></div>
-{% if items %}<a class="btn sec" href="{{ url_for('rep.home') }}">{{ ic('chart') }}Informes del área</a>{% endif %}</div>
-<form class="card noprint" method="get" id="crform">
-<div class="row"><div class="grow"><label for="cr_f">Fuente de datos</label><select id="cr_f" name="fuente" onchange="location.href='{{ url_for('rep.custom') }}?fuente='+this.value">{% for area, lst in por_area.items() %}<optgroup label="{{ area }}">{% for k, tt in lst %}<option value="{{ k }}" {{ 'selected' if k == fuente }}>{{ tt }}</option>{% endfor %}</optgroup>{% endfor %}</select></div>
+<header class="rep-head"><img src="{{ logo_url }}" alt="Corporación Productiva">
+<div><h1>Personalizar informe</h1><div class="meta">Elija el periodo, los indicadores de su área, los datos y las secciones. Revise la vista previa y descárguela o guárdela como plantilla.</div></div>
+<div class="acciones noprint">{% if predeterminado %}<a class="btn sec" href="{{ url_for('rep.show', nombre=predeterminado.nombre) if predeterminado.tipo == 'informe' else url_for('rep.custom', **predeterminado.config) }}">{{ ic('chart') }}Informe predeterminado</a>{% endif %}</div></header>
+
+{% if plantillas %}<form class="card row noprint" method="get" aria-label="Abrir plantilla"><div class="grow"><label for="tpl">Plantillas guardadas</label>
+<select id="tpl" name="plantilla">{% for t in plantillas %}<option value="{{ t.id }}" {{ 'selected' if t.id == plantilla_id }}>{{ t.nombre }} · {{ 'compartida (' ~ t.area ~ ')' if t.alcance == 'COMPARTIDA' else 'personal' }}</option>{% endfor %}</select></div>
+<div><button class="sec">Abrir</button></div>
+{% set mia = plantillas|selectattr('id', 'equalto', plantilla_id)|selectattr('user_id', 'equalto', user.id)|list %}
+{% if mia %}<div><button class="sec" formmethod="post" name="accion" value="eliminar" formnovalidate onclick="return confirm('¿Eliminar la plantilla «{{ mia[0].nombre }}»?')">Eliminar «{{ mia[0].nombre }}»</button><input type="hidden" name="id" value="{{ plantilla_id }}">{{ csrf() }}</div>{% endif %}</form>{% endif %}
+
+<form class="card noprint" method="get" id="crform"><input type="hidden" name="cfg" value="1">
+<div class="row"><div class="grow"><label for="cr_f">Datos (fuente)</label><select id="cr_f" name="fuente" onchange="location.href='{{ url_for('rep.custom') }}?fuente='+this.value">{% for area, lst in por_area.items() %}<optgroup label="{{ area }}">{% for k, tt in lst %}<option value="{{ k }}" {{ 'selected' if k == fuente }}>{{ tt }}</option>{% endfor %}</optgroup>{% endfor %}</select></div>
 <div><label for="cr_d">Desde</label><input id="cr_d" type="date" name="desde" value="{{ r.desde.isoformat() if r else request.args.get('desde', '') }}"></div>
 <div><label for="cr_h">Hasta</label><input id="cr_h" type="date" name="hasta" value="{{ r.hasta.isoformat() if r else request.args.get('hasta', '') }}"></div>
-<div class="grow"><label for="cr_q">Buscar texto</label><input id="cr_q" name="q" value="{{ request.args.get('q', '') }}" placeholder="cliente, producto, estado…"></div>
+<div class="grow"><label for="cr_q">Buscar texto</label><input id="cr_q" name="q" value="{{ request.args.get('q', '') }}" placeholder="cliente, producto, línea, estado…"></div>
 <div><label for="cr_a">Agrupar por</label><select id="cr_a" name="agrupar"><option value="">(sin agrupar)</option>{% for c, t, num in columnas if not num %}<option value="{{ c }}" {{ 'selected' if request.args.get('agrupar') == c }}>{{ t }}</option>{% endfor %}</select></div></div>
-<fieldset><legend>Columnas</legend><div class="row">{% for c, t, num in columnas %}<label class="chk"><input type="checkbox" name="col" value="{{ c }}" {{ 'checked' if not sel or c in sel }}> {{ t }}</label>{% endfor %}</div></fieldset>
-<fieldset><legend>Qué mostrar</legend><div class="row">{% for k, tt in [('kpis','Indicadores'),('grafico','Gráfico'),('tabla','Tabla'),('recomendaciones','Recomendaciones')] %}<label class="chk"><input type="checkbox" name="elem" value="{{ k }}" {{ 'checked' if k in elementos }}> {{ tt }}</label>{% endfor %}
-<div><label for="cr_g">Tipo de gráfico</label><select id="cr_g" name="tipo_grafico">{% for k, tt in [('barras','Barras'),('columnas','Columnas'),('lineas','Líneas (tendencia)')] %}<option value="{{ k }}" {{ 'selected' if request.args.get('tipo_grafico') == k }}>{{ tt }}</option>{% endfor %}</select></div>
+<p class="small muted">Sin periodo se toman los últimos 90 días.</p>
+
+{% if grupos_ind %}<details {{ 'open' if not r }}><summary><b>Indicadores de su área</b> <span class="muted small">({{ sel_ind|length }} elegidos · <span class="tag-obl">predeterminado</span> = los del informe de su área)</span></summary>
+<div class="grid g2" style="margin-top:8px">{% for bloque, lst in grupos_ind %}<fieldset class="ind-group"><legend>{{ bloque }}</legend>
+{% for c, nom, nivel in lst %}<label class="chk" style="display:flex"><input type="checkbox" name="ind" value="{{ c }}" {{ 'checked' if c in sel_ind }}> {{ nom }}{% if nivel == 'OBLIGATORIO' %}<span class="tag-obl">predeterminado</span>{% endif %}</label>{% endfor %}</fieldset>{% endfor %}</div></details>{% endif %}
+
+<details {{ 'open' if not r }}><summary><b>Columnas de la tabla</b> <span class="muted small">({{ columnas|length }} disponibles para su perfil)</span></summary>
+<div class="row" style="margin-top:8px">{% for c, t, num in columnas %}<label class="chk"><input type="checkbox" name="col" value="{{ c }}" {{ 'checked' if not sel or c in sel }}> {{ t }}</label>{% endfor %}</div></details>
+
+<fieldset><legend>Secciones</legend><div class="row">{% for k, tt in [('indicadores','Indicadores'),('kpis','Totales de la tabla'),('grafico','Gráfico'),('tabla','Tabla'),('recomendaciones','Qué requiere atención')] %}<label class="chk"><input type="checkbox" name="elem" value="{{ k }}" {{ 'checked' if k in elementos }}> {{ tt }}</label>{% endfor %}
+<div><label for="cr_g">Gráfico</label><select id="cr_g" name="tipo_grafico">{% for k, tt in [('barras','Barras (comparar)'),('columnas','Columnas'),('lineas','Líneas (tendencia)')] %}<option value="{{ k }}" {{ 'selected' if request.args.get('tipo_grafico') == k }}>{{ tt }}</option>{% endfor %}</select></div>
 {% if r %}<div><label for="cr_m">Medida del gráfico</label><select id="cr_m" name="medida"><option value="">(automática)</option>{% for c in r.columnas %}<option value="{{ loop.index0 }}" {{ 'selected' if request.args.get('medida') == loop.index0|string }}>{{ c }}</option>{% endfor %}</select></div>{% endif %}</div>
-<p class="small muted">El gráfico usa la primera columna (o el grupo) como categoría y una columna numérica como medida. Para un informe por línea, cliente o vendedor, agrupe por esa columna.</p></fieldset>
-<p class="small muted">Si no indica periodo se toman los últimos 90 días. Al agrupar se cuentan los registros y se suman las columnas numéricas elegidas.</p>
-<p><button name="ver" value="1">{{ ic('eye') }}Ver informe</button> <button class="sec" name="formato" value="pdf">{{ ic('download') }}Descargar PDF</button> <button class="sec" name="formato" value="xlsx">{{ ic('download') }}Excel</button></p>
+<p class="small muted">El gráfico compara la primera columna (o el grupo) con una columna numérica. Para ver por línea, cliente o vendedor, agrupe por esa columna.</p></fieldset>
+<p><button name="ver" value="1">{{ ic('eye') }}Vista previa</button>{% if r %} <button class="sec" name="formato" value="pdf">{{ ic('download') }}PDF</button> <button class="sec" name="formato" value="xlsx">{{ ic('download') }}Excel</button>{% endif %}</p>
 </form>
-{% if r %}<div class="card"><div class="card-head"><h3>{{ r.titulo }}</h3><span class="muted small">{{ r.total }} fila(s)</span></div>
+
+{% if r %}
+<section class="card"><div class="card-head"><h3>Resumen de la configuración</h3><span class="muted small">Actualizado {{ ahora().strftime('%d/%m/%Y %H:%M') }}</span></div>
+<dl class="rep-summary">{% for k, v in resumen %}<div><dt>{{ k }}</dt><dd>{{ v }}</dd></div>{% endfor %}</dl>
+<form class="row noprint" method="post" style="margin-top:12px">{{ csrf() }}<input type="hidden" name="qs" value="{{ qs }}">
+<div class="grow"><label for="tpl_n">Guardar como plantilla</label><input id="tpl_n" name="nombre" maxlength="80" placeholder="p. ej. Rendimiento semanal por línea" required></div>
+{% if can('informes.plantillas_compartidas') %}<label class="chk"><input type="checkbox" name="compartir" value="1"> Compartir con mi área</label>{% endif %}
+<div><button class="sec">Guardar</button></div></form>
+<p class="small muted">La plantilla guarda el periodo como «últimos N días». Quien la abra verá solo lo que su perfil puede ver.</p></section>
+
+{% if indicadores %}<div class="section-title">Indicadores</div>
+<div class="kpis">{% for x in indicadores %}<div class="kpi"><b>{{ x.valor }}</b><span>{{ x.nombre }}</span><small>{{ x.detalle }}</small></div>{% endfor %}</div>{% endif %}
+
+<div class="section-title">{{ r.titulo }} <span class="muted small">· {{ r.total }} fila(s)</span></div>
+<div class="card">
 {% for n in r.notas %}<p class="small muted">{{ n }}</p>{% endfor %}
 {% if 'kpis' in elementos %}<div class="kpis">{% for k, v in r.kpis %}<div class="kpi"><b>{{ v|n if v is number else v }}</b><span>{{ k }}</span></div>{% endfor %}</div>{% endif %}
-{% if grafico %}<div class="card">{{ grafico }}</div>{% endif %}
-{% if 'recomendaciones' in elementos and r.recomendaciones %}<div class="note"><b>Recomendaciones</b><ul class="small">{% for x in r.recomendaciones %}<li>{{ x }}</li>{% endfor %}</ul></div>{% endif %}
-{% if r.filas and 'tabla' in elementos %}<div class="tw"><table class="small"><tr>{% for c in r.columnas %}<th>{{ c }}</th>{% endfor %}</tr>
-{% for f in r.filas[:1000] %}<tr>{% for v in f %}<td{% if v is number %} class="r"{% endif %}>{{ v if v is not none else '' }}</td>{% endfor %}</tr>{% endfor %}</table></div>
+{% if grafico %}<div>{{ grafico }}</div>{% endif %}
+{% if 'recomendaciones' in elementos and r.recomendaciones %}<div class="note"><b>Qué requiere atención</b><ul class="small">{% for x in r.recomendaciones %}<li>{{ x }}</li>{% endfor %}</ul><span class="small muted">Observaciones calculadas con reglas sobre los datos mostrados; requieren revisión del responsable.</span></div>{% endif %}
+{% if r.filas and 'tabla' in elementos %}<div class="tw"><table class="small"><thead><tr>{% for c in r.columnas %}<th>{{ c }}</th>{% endfor %}</tr></thead><tbody>
+{% for f in r.filas[:1000] %}<tr>{% for v in f %}<td{% if v is number %} class="r"{% endif %}>{{ v if v is not none else '' }}</td>{% endfor %}</tr>{% endfor %}</tbody></table></div>
 {% if r.total > 1000 %}<p class="small muted">Se muestran 1000 filas; el PDF y el Excel incluyen todas.</p>{% endif %}
-{% elif not r.filas %}{{ empty('No hay registros con estos filtros.') }}{% endif %}</div>{% endif %}
+{% elif not r.filas %}{{ empty('No hay registros con estos filtros.') }}{% endif %}</div>
+{% endif %}
 {% endblock %}

@@ -1901,3 +1901,22 @@ ALERT_TYPES += [
     ("SAP_OV_ERROR", "OV no registrada en SAP", "Sistemas", "Integración SAP", "ALTA", ["SISTEMAS", "COORD_VENTAS"],
      "DEFINIDO", f"{V10}", "SAP rechazó crear, actualizar o cancelar una OV del módulo; se reintenta solo.", True),
 ]
+
+# ----------------------------------------------------------------------------------------------------------------------
+# V11: rediseño de informes y tableros (28-oct-2026): pertinencia de indicadores por área, informe predeterminado y
+# personalizado con plantillas
+V11 = "Rediseño de informes y tableros (28-oct-2026)"
+PARAMS += [
+    ("indicadores_ocultos", {}, "dict", "Informes",
+     "Indicadores retirados de un área o perfil: {«Producción» o código de rol: [códigos]}. Prevalece sobre la matriz de "
+     "indicadores (docs/26) en el inicio, los informes, el informe personalizado, sus exportaciones y las plantillas.",
+     "DEFINIDO", f"{V11}: «si el usuario indica que un indicador no debe mostrarse a un área, se elimina de su vista»"),
+]
+for _code, _n, _m, _t, _roles in [
+        ("informes.plantillas_compartidas", "Publicar plantillas de informe para su área", "Informes", "administracion",
+         ["GERENCIA_GENERAL", "GERENCIA_OPERACIONES", "SISTEMAS", "GERENTE_COMERCIAL", "JEFE_VENTAS", "JEFE_LOGISTICA",
+          "COORD_ALMACEN", "COORD_ALMACEN_MP", "COORD_DISTRIBUCION", "JEFE_PRODUCCION", "JEFE_CALIDAD", "COMPRAS",
+          "COORD_FINANZAS"])]:
+    PERMISSIONS.append((_code, _n, _m, _t))
+    for _r in _roles:
+        ROLE_PERMISSIONS.setdefault(_r, []).append((_code, "PROPUESTO", f"{V11}: jefaturas y coordinaciones de área"))

@@ -282,8 +282,11 @@ def sources_for(user):
     return {k: v[0] for k, v in FUENTES.items() if has_perm(user, "vista.total") or any(has_perm(user, p) for p in v[1])}
 
 
-def columns(fuente):
-    return [(c, t, num) for c, t, _, num in FUENTES[fuente][4]]
+def columns(fuente, user=None):
+    """Columnas de la fuente que el perfil puede ver (matriz de indicadores: p. ej. montos de venta solo para Comercial,
+    Finanzas y Gerencia). Sin usuario, todas (uso interno)."""
+    from .indicators import column_allowed
+    return [(c, t, num) for c, t, _, num in FUENTES[fuente][4] if user is None or column_allowed(user, fuente, c)]
 
 
 def _fmt(v):
@@ -301,7 +304,9 @@ def run(user, fuente, cols=None, desde=None, hasta=None, texto="", agrupar="", l
     from .alerts import can_see
     if fuente not in sources_for(user):
         raise PermissionError("Fuente no autorizada para su rol.")
+    from .indicators import column_allowed
     titulo, _, consulta, campo, defs = FUENTES[fuente]
+    defs = [d for d in defs if column_allowed(user, fuente, d[0])]  # lo no visible para el perfil no sale ni exportado
     defs_map = {c: (t, fn, num) for c, t, fn, num in defs}
     cols = [c for c in (cols or []) if c in defs_map] or [c for c, *_ in defs]
     hasta = hasta or date.today()

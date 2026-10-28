@@ -1,3 +1,17 @@
-{% extends "base.html" %}
-{% block content %}<h1>Informes</h1><p class="muted small">Indicadores con gráficos, tendencias y recomendaciones automáticas por área. Elija un informe:</p>
-<div class="kpis">{% for k, t in items %}<a class="kpi" href="{{ url_for('rep.show', nombre=k) }}"><b>{{ t }}</b><span>Ver informe · PDF · Excel</span></a>{% endfor %}<a class="kpi primary" href="{{ url_for('rep.custom') }}"><b>Arme su informe</b><span>Elija datos, columnas y periodo</span></a></div>{% endblock %}
+{% extends "base.html" %}{% from "_m.html" import ic %}
+{% block content %}
+<div class="page-head"><div><h1>Informes</h1><p class="sub">{{ user.role.nombre }} · solo la información pertinente a su área</p></div></div>
+<div class="rep-choice">
+{% if pred %}<a class="rep-option primary" href="{{ url_for('rep.show', nombre=pred.nombre) if pred.tipo == 'informe' else url_for('rep.custom', **pred.config) }}">
+  <span class="rep-ic">{{ ic('chart') }}</span><span><b>Informe predeterminado</b><span class="rep-t">{{ pred.titulo }}</span>
+  <small>Listo para usar: indicadores, desviaciones y detalle de {{ pred.area|lower if pred.area else "su área" }}. El periodo se indica en el encabezado y puede cambiarse.</small></span></a>{% endif %}
+{% if personalizar %}<a class="rep-option" href="{{ url_for('rep.custom') }}"><span class="rep-ic">{{ ic('edit') }}</span><span><b>Personalizar informe</b><span class="rep-t">Elija periodo, indicadores, datos y secciones</span>
+  <small>Vea la vista previa, descárguela en PDF o Excel y guárdela como plantilla.</small></span></a>{% endif %}
+</div>
+{% if plantillas %}<div class="section-title">Plantillas guardadas</div>
+<div class="card"><table class="small"><thead><tr><th>Plantilla</th><th>Tipo</th><th>Creada por</th><th></th></tr></thead><tbody>
+{% for t in plantillas %}<tr><td><a href="{{ url_for('rep.custom', plantilla=t.id) }}">{{ t.nombre }}</a></td><td>{{ 'Compartida · ' ~ t.area if t.alcance == 'COMPARTIDA' else 'Personal' }}</td><td>{{ t.user.nombre }}</td><td class="r"><a class="btn sec small" href="{{ url_for('rep.custom', plantilla=t.id) }}">Abrir</a></td></tr>{% endfor %}</tbody></table></div>{% endif %}
+{% set otros = items|rejectattr(0, 'equalto', pred.nombre if pred and pred.tipo == 'informe' else '')|list %}
+{% if otros %}<div class="section-title">Otros informes autorizados para su perfil</div>
+<div class="rep-list">{% for k, t in otros %}<a href="{{ url_for('rep.show', nombre=k) }}">{{ ic('chart') }}<span>{{ t }}</span></a>{% endfor %}</div>{% endif %}
+{% endblock %}

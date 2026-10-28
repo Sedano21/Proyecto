@@ -1,9 +1,16 @@
-{% extends "base.html" %}{% from "_informe.html" import cabecera %}
-{% block content %}{{ cabecera('de producción', d, items, actual) }}
-<form class="row card" method="get"><input type="hidden" name="desde" value="{{ d.desde.isoformat() }}"><input type="hidden" name="hasta" value="{{ d.hasta.isoformat() }}">
+{% extends "base.html" %}{% from "_informe.html" import cabecera, requiere_atencion %}
+{% block content %}{{ cabecera('de producción', d, items, actual, atencion=False) }}
+
+<div class="kpis"><div class="kpi primary"><b>{{ d.kg|n }} kg</b><span>Producido (liquidado)</span><small>{{ d.unidades|n }} unidades · {{ d.liquidaciones }} liquidaciones</small></div>
+<div class="kpi {{ '' if d.plan.tasa is none else ('ok' if d.plan.tasa >= 90 else 'warn') }}"><b>{{ d.plan.tasa if d.plan.tasa is not none else '—' }}{{ ' %' if d.plan.tasa is not none }}</b><span>Cumplimiento del plan diario</span><small>Σ mín(real, plan) / Σ plan · referencia 90 %</small></div>
+{% set mf = d.merma|selectattr('fuera')|list|length %}<div class="kpi {{ 'warn' if mf }}"><b>{{ mf }}</b><span>Mermas fuera de lo proyectado</span><small>de {{ d.merma|length }} liquidaciones con proyección</small></div>
+<div class="kpi {{ 'warn' if cap.paradas }}"><b>{{ cap.paradas|length }}</b><span>Paradas de línea</span><small>{{ cap.paradas_min }} min · {{ cap.demoradas|length }} solicitudes atendidas tarde</small></div>
+<div class="kpi"><b>{{ d.programados|length }}</b><span>Partes programados pendientes</span><small>sin completar en el periodo</small></div></div>
+{{ requiere_atencion(d.recomendaciones + cap.recomendaciones) }}
+<div class="card"><h3>1. Capacidad de producción vs producido (kg procesados)</h3>
+<form class="row noprint" method="get"><input type="hidden" name="desde" value="{{ d.desde.isoformat() }}"><input type="hidden" name="hasta" value="{{ d.hasta.isoformat() }}">
 <div><label>Agrupar</label><select name="agrupar"><option value="DIA" {{ 'selected' if cap.agrupar=='DIA' }}>Diario</option><option value="N" {{ 'selected' if cap.agrupar=='N' }}>Cada N días</option><option value="MES" {{ 'selected' if cap.agrupar=='MES' }}>Mensual</option></select></div>
 <div><label>N días</label><input type="number" name="n" min="1" value="{{ cap.n }}" style="width:80px"></div><div><button class="sec">Aplicar</button></div></form>
-<div class="card"><h3>1. Capacidad de producción vs producido (kg procesados)</h3>
 <p class="small muted">Capacidad = kg/día de la tabla de capacidades × días operativos del periodo (sábado medio día; domingos y feriados no se opera). Producido = kg de entrada de los partes completados. La correspondencia de grupos con las líneas del sistema está por confirmar.</p>
 {{ graf_cap }}
 <div class="tw"><table class="small"><tr><th>Proceso</th><th>Línea</th><th class="r">Capacidad kg</th><th class="r">Producido kg</th><th class="r">Uso</th><th class="r">Programado kg</th><th class="r">Programado vs ejecutado</th><th>Caídas</th></tr>
@@ -16,11 +23,7 @@
 <div class="card"><h3>Demoras, atención y paradas</h3><table class="kv small"><tr><td>Tiempo promedio de atención de solicitudes</td><td>{{ cap.atencion_h if cap.atencion_h is not none else '—' }} h</td></tr>
 <tr><td>Solicitudes atendidas tarde o vencidas</td><td>{{ cap.demoradas|length }}</td></tr><tr><td>Paradas de línea registradas</td><td>{{ cap.paradas|length }} ({{ cap.paradas_min }} min)</td></tr></table>
 {% if cap.paradas %}<table class="small"><tr><th>Fecha</th><th>Línea</th><th class="r">Min</th><th>Motivo</th></tr>{% for r in cap.paradas %}<tr><td>{{ r.fecha|d }}</td><td>{{ r.linea }}</td><td class="r">{{ r.parada_min }}</td><td>{{ r.motivo_parada or '—' }}</td></tr>{% endfor %}</table>{% endif %}
-{% if cap.recomendaciones %}{% for r in cap.recomendaciones %}<div class="reco">{{ r }}</div>{% endfor %}{% endif %}</div></div>
-<div class="kpis"><div class="kpi"><b>{{ d.kg|n }} kg</b><span>Producido (liquidado)</span><small>{{ d.unidades|n }} unidades · {{ d.liquidaciones }} liquidaciones</small></div>
-<div class="kpi"><b>{{ d.plan.tasa if d.plan.tasa is not none else '-' }} %</b><span>Cumplimiento del plan diario</span></div>
-<div class="kpi"><b>{{ d.merma|selectattr('fuera')|list|length }}</b><span>Mermas fuera de lo proyectado</span></div>
-<div class="kpi"><b>{{ d.programados|length }}</b><span>Partes programados pendientes</span></div></div>
+</div></div>
 <div class="grid g2"><div class="card"><h3>Producción por día (kg)</h3>{{ charts.line([('kg producidos', d.serie_kg)], 'kg') }}
 <details class="tabla"><summary>Ver tabla</summary><table class="small">{% for k, v in d.serie_kg %}<tr><td>{{ k }}</td><td class="r">{{ v|n }}</td></tr>{% endfor %}</table></details></div>
 <div class="card"><h3>Plan vs real (diario)</h3>{% set ns = namespace(p=[], r=[]) %}{% for k, v in d.plan.serie %}{% set ns.p = ns.p + [(k.strftime('%d/%m'), v.plan)] %}{% set ns.r = ns.r + [(k.strftime('%d/%m'), v.real)] %}{% endfor %}

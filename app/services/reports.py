@@ -576,7 +576,9 @@ def produccion_capacidad(desde=None, hasta=None, agrupar="DIA", n=7):
                                                            or (not r.fin_ts and r.fecha_requerida < date.today()
                                                                and r.estado not in ("RECHAZADA", "CANCELADA")))]
     reco = []
-    for f in filas:
+    if filas and not any(f["producido"] for f in filas):  # sin partes no se mide el uso: un solo aviso, no uno por línea
+        reco.append("Sin partes completados en el periodo: registre los partes para medir el uso de capacidad.")
+    for f in filas if any(f["producido"] for f in filas) else []:
         if f["uso"] is not None and f["capacidad"] and f["uso"] < 50:
             reco.append(f"{f['grupo']}: uso de capacidad {f['uso']} % en el periodo.")
         if f["caidas"]:

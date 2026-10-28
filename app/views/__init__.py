@@ -188,11 +188,16 @@ def privacy_notice():
 @bp.route("/")
 @login_required
 def dashboard():
+    from ..services import indicators as ind
     from ..services.kpis import compute
     desde = request.args.get("desde")
     hasta = request.args.get("hasta")
-    k = compute(date.fromisoformat(desde) if desde else None, date.fromisoformat(hasta) if hasta else None) \
-        if "dashboard.ver" in g.perms else None
+    d1 = date.fromisoformat(desde) if desde else None
+    d2 = date.fromisoformat(hasta) if hasta else None
+    mios = ind.default_set(g.user) if "dashboard.ver" in g.perms else set()
+    # rediseño 28-oct-2026: cada perfil ve solo los indicadores pertinentes (matriz de indicadores)
+    k = compute(d1, d2) if mios - {c for c in mios if c.startswith("PROD_")} else None
+    prod = ind.production_summary(d1, d2, mios) if any(c.startswith("PROD_") for c in mios) else None
     tareas = alert_svc.my_tasks(g.user)
     ids = {a.id for a in tareas}
     mis = alert_svc.by_priority(g.user, [a for a in alert_svc.inbox(g.user, solo_abiertas=True) if a.id not in ids])[:40]
@@ -202,7 +207,7 @@ def dashboard():
     if g.user.role_code in ("COORD_VENTAS", "JEFE_VENTAS", "GERENTE_COMERCIAL", "GERENCIA_GENERAL"):
         from ..services.commercial_mgmt import home_summary
         com = home_summary(g.user)  # V7: metas por vendedor/canal/total (S/ y kg) y pedidos del mes en la portada
-    return render_template("dashboard.html", k=k, mis_alertas=mis, tareas=tareas, desde=desde or "", hasta=hasta or "",
+    return render_template("dashboard.html", k=k, prod=prod, mis_alertas=mis, tareas=tareas, desde=desde or "", hasta=hasta or "",
                            estado_txt=alert_svc.ESTADO_TXT, arrastre=pending_carryover(g.user), com=com)
 
 

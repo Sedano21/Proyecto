@@ -131,7 +131,13 @@ class _PDF:
         pdf = self.pdf
         tit, sub = self.t(titulo), self.t(subtitulo)
 
+        img = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static", "img")
+        logo = next((os.path.join(img, n) for n in ("logo_oficial.png", "logo_corporacion_productiva.png")
+                     if os.path.exists(os.path.join(img, n))), None)
+
         def header():
+            if logo:  # logo institucional discreto a la derecha, con su proporción original
+                pdf.image(logo, x=pdf.w - 12 - 28, y=6, h=10)
             pdf.set_font(self.f, "B", 9)
             pdf.set_text_color(0, 122, 61)
             pdf.cell(0, 5, tit, new_x="LMARGIN", new_y="NEXT")

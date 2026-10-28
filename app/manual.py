@@ -13,7 +13,7 @@ from .models import RolePermission
 PANTALLAS = [
     (["dashboard.ver", "alertas.ver"], "Panel", "Inicio", "main.dashboard", {}, "Sus tareas y alertas abiertas (las urgentes primero), indicadores de su área y accesos rápidos."),
     (["alertas.ver"], "Panel", "Alertas y tareas", "main.alerts", {}, "Todo lo que requiere su acción («Acción requerida») y los avisos («Información»). Lo que su perfil no puede aprobar, desestimar ni asignar aparece como información."),
-    (["informes.comercial", "informes.reempaque", "informes.produccion", "informes.distribucion", "informes.almacen"], "Panel", "Informes", "rep.home", {}, "Informes de su área con gráficos, descarga en PDF y Excel, y el informe personalizado («Arme su informe»)."),
+    (["informes.comercial", "informes.reempaque", "informes.produccion", "informes.distribucion", "informes.almacen"], "Panel", "Informes", "rep.home", {}, "Informe predeterminado de su área (listo para usar) y «Personalizar informe», con plantillas propias o compartidas; descarga en PDF y Excel. Solo se muestran los indicadores pertinentes a su perfil."),
     (["ov.ver"], "Comercial", "Órdenes de venta", "com.orders", {}, "Lista priorizada. En cada OV: ojo = ver detalle, lápiz = editar, tres puntos = más opciones (renegociar fecha, proponer producto disponible, expediente, imprimir, cancelar)."),
     (["ov.crear"], "Comercial", "Registrar OV", "com.order_new", {}, "Alta de OV: cliente, fecha vigente, entrega y líneas con producto, cantidad y precio (obligatorios)."),
     (["ov.regularizar"], "Comercial", "Regularización de OV", "com.regularization", {}, "OV con fecha pasada u hora ya transcurrida: se registran sin reservar stock y luego se liberan con fecha vigente o se cierran como registro."),
@@ -66,7 +66,7 @@ GENERAL = [
         "Toda carga muestra una revisión previa y solo se aplica cuando usted la confirma."]},
     {"titulo": "Informes en PDF y su propio informe", "pasos": [
         "Cada informe tiene el botón «Descargar PDF» y «Excel».",
-        "En «Arme su informe» elige la fuente de datos, las columnas, el periodo y los filtros; puede verlo en pantalla y descargarlo en PDF o Excel."]},
+        "En «Personalizar informe» elige el periodo, los indicadores de su área, los datos, las columnas y las secciones; revisa la vista previa, la descarga en PDF o Excel y la guarda como plantilla."]},
 ]
 
 

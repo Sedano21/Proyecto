@@ -1926,3 +1926,19 @@ class SapOrderHeader(Base):
     ts: Mapped[datetime] = mapped_column(DateTime, default=now)
     actualizado_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     order = relationship("SalesOrder")
+
+
+class ReportTemplate(Base):
+    """V11 (28-oct-2026): configuración guardada de un informe personalizado. PERSONAL (solo su dueño) o COMPARTIDA
+    (la publica una jefatura para su área). Al usarla se vuelven a aplicar las reglas de visibilidad del perfil que la
+    abre: una plantilla nunca muestra indicadores o columnas que ese perfil no puede ver."""
+    __tablename__ = "report_templates"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    nombre: Mapped[str] = mapped_column(String(80))
+    alcance: Mapped[str] = mapped_column(String(12), default="PERSONAL")  # PERSONAL / COMPARTIDA
+    area: Mapped[str] = mapped_column(String(40), default="")  # área a la que se comparte
+    config: Mapped[dict] = mapped_column(JSON, default=dict)  # {fuente, col, desde_dias, q, agrupar, elem, ind, ...}
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    creado_ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    actualizado_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    user = relationship("User")

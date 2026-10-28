@@ -37,6 +37,8 @@ def line(series, unit="", height=220, width=640, title=""):
         return Markup('<p class="muted small">Sin datos para el periodo.</p>')
     labels = [l for l, _ in series[0][1]]
     vals = [v for _, pts in series for _, v in pts if v is not None]
+    if not any(vals):  # una línea plana en cero no informa nada: se dice que no hay datos
+        return Markup('<p class="muted small">Sin datos para el periodo.</p>')
     vmax = _nice_max(max(vals) if vals else 1)
     vmin = min(0, min(vals) if vals else 0)
     L, R, T, B = 48, 12, 12, 28
@@ -52,7 +54,7 @@ def line(series, unit="", height=220, width=640, title=""):
     for k in range(5):
         v = vmin + (vmax - vmin) * k / 4
         out.append(f'<line x1="{L}" x2="{width - R}" y1="{y(v):.1f}" y2="{y(v):.1f}" class="grid"/>'
-                   f'<text x="{L - 6}" y="{y(v) + 4:.1f}" class="ax" text-anchor="end">{_fmt(v, 0)}</text>')
+                   f'<text x="{L - 6}" y="{y(v) + 4:.1f}" class="ax" text-anchor="end">{_fmt(v, 0 if vmax - vmin >= 4 else 1)}</text>')
     paso = max(1, len(labels) // 8)
     for i, lb in enumerate(labels):
         if i % paso == 0 or i == len(labels) - 1:

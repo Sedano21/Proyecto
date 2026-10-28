@@ -29,7 +29,7 @@ def test_informes_en_pdf_y_excel(app, nombre):
 def test_informe_personalizado(app):
     c = app.test_client()
     login(c, "coord.ventas")
-    assert "Arme su informe" in _get(c, "/informes/personalizado").get_data(as_text=True)
+    assert "Personalizar informe" in _get(c, "/informes/personalizado").get_data(as_text=True)
     hoy = date.today()
     q = f"fuente=ov_lineas&desde={(hoy - timedelta(days=60)).isoformat()}&hasta={(hoy + timedelta(days=60)).isoformat()}"
     html = _get(c, f"/informes/personalizado?{q}&ver=1&col=ov&col=producto&col=cantidad").get_data(as_text=True)

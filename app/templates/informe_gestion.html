@@ -1,11 +1,14 @@
 {% extends "base.html" %}{% from "_m.html" import ic %}
 {% block content %}
 {% set f = d.filtros %}{% set qs = request.args.to_dict(flat=False) %}
-<div class="page-head"><div><h1>Informe de gestión comercial</h1><p class="sub">Periodo {{ d.desde|d }} – {{ d.hasta|d }} · metas, servicio al cliente, desempeño, embudo, cobranza y productos</p></div>
-<div class="row noprint">{% set base = request.query_string.decode() %}
-<a class="btn" href="{{ request.path }}?{{ base }}{{ '&' if base }}formato=pdf">{{ ic('download') }}PDF</a>
+{% set m = informe_meta('gestion') %}{% set base = request.query_string.decode() %}
+<header class="rep-head"><img src="{{ logo_url }}" alt="Corporación Productiva">
+<div><h1>Informe de gestión comercial</h1><div class="meta">Comercial · Periodo {{ d.desde|d }} – {{ d.hasta|d }} · Actualizado {{ ahora().strftime('%d/%m/%Y %H:%M') }}</div>
+<div class="meta">Metas, servicio al cliente, desempeño, embudo, cobranza y productos. Fuentes: {{ m.fuentes }}. {{ m.limites }}</div></div>
+<div class="acciones noprint"><a class="btn" href="{{ request.path }}?{{ base }}{{ '&' if base }}formato=pdf">{{ ic('download') }}PDF</a>
 <a class="btn sec" href="{{ request.path }}?{{ base }}{{ '&' if base }}formato=xlsx">{{ ic('download') }}Excel</a>
-<a class="btn sec" href="{{ request.path }}?{{ base }}{{ '&' if base }}formato=pptx">{{ ic('download') }}PowerPoint</a></div></div>
+<a class="btn sec" href="{{ request.path }}?{{ base }}{{ '&' if base }}formato=pptx">{{ ic('download') }}PowerPoint</a>
+<a class="btn sec" href="{{ url_for('rep.custom') }}">{{ ic('edit') }}Personalizar</a></div></header>
 <p class="tabs noprint">{% for k, t in items %}<a class="btn {{ '' if k == actual else 'sec' }}" href="{{ url_for('rep.show', nombre=k) }}">{{ t }}</a> {% endfor %}</p>
 
 <form class="card filters noprint" method="get">

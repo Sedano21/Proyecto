@@ -184,10 +184,19 @@ def install(app):
                 abiertas = 0
         return {"csrf_token": csrf_token, "user": u, "perms": g.get("perms", set()), "can": lambda p: p in g.get("perms", set()),
                 "ve": lambda p: p in g.get("perms", set()) or "vista.total" in g.get("perms", set()),
-                "logo_url": _logo_url(),
+                "logo_url": _logo_url(), "vi": _vi,
                 "fmt_date": fmt_date, "fmt_num": fmt_num, "stock_info": stock_freshness() if u else None,
                 "alertas_abiertas": abiertas, "today": date.today(), "demo_mode": app.config.get("DEMO_MODE"),
                 "contingencia": _contingencia() if u else {}}
+
+    def _vi(code):
+        """El indicador es pertinente para el perfil del usuario (matriz de indicadores); se calcula una vez por pedido."""
+        from flask import request
+        from ..services.indicators import visible
+        cache = request.environ.setdefault("cp.vi", {})  # por pedido HTTP (g puede durar más que un pedido)
+        if code not in cache:
+            cache[code] = visible(g.get("user"), code)
+        return cache[code]
 
     def _contingencia():
         from ..services.core import contingency
@@ -197,6 +206,10 @@ def install(app):
             return {}
 
     app.jinja_env.globals["csrf_token"] = csrf_token
+    # rediseño de informes (28-oct-2026): cabecera institucional disponible también dentro de las macros
+    app.jinja_env.globals["logo_src"] = _logo_url
+    app.jinja_env.globals["informe_meta"] = lambda n: __import__("app.services.report_center", fromlist=["x"]).META.get(n, {})
+    app.jinja_env.globals["ahora"] = datetime.now
 
     def es_tarea(a):
         """La alerta es tarea para el usuario actual solo si puede accionarla (si no, se le muestra como información)."""
