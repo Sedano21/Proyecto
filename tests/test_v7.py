@@ -63,12 +63,9 @@ def test_fuera_del_corte_queda_borrador_y_se_registra_en_horario(s, U, cust):
     o = osvc.create_order(U("coord.ventas"), "CT-1", cust().id, manana, LN, oc_archivo="oc.pdf", evaluar=False)
     s.flush()
     assert o.estado == "BORRADOR"
-    assert "materia prima y granel" in o.motivo_detencion  # 28-oct-2026: después del corte, solo MP y granel
+    assert "producto terminado" in o.motivo_detencion
     osvc.modify_order(o, U("coord.ventas"), {"fecha_compromiso": manana + timedelta(days=2)})
-    assert o.estado == "BORRADOR"  # se guarda el cambio, pero sigue en borrador hasta el horario permitido
-    set_param("hora_corte_ov_dia_siguiente", "23:59")
-    osvc.complete_draft(o, U("coord.ventas"))
-    assert o.estado != "BORRADOR"
+    assert o.estado != "BORRADOR"  # con otra fecha de despacho ya no aplica el corte: se registra
 
 
 def test_precio_bajo_base_en_vivo(s, U, cust):

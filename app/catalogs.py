@@ -1276,8 +1276,8 @@ PARAMS += [
      "los kg de las líneas en unidades se calculan con el peso del artículo.", "DEFINIDO",
      f"{R23}: «todo lo que es granel o MP es en kilos… producto terminado en unidades»"),
     ("hora_corte_ov_dia_siguiente", "12:00", "str", "Comercial",
-     "Hora de corte: hasta esta hora se registran OV de producto terminado; después, solo de materia prima y granel "
-     "(tipos_ov_despues_corte). La OV de producto terminado registrada después del corte queda en borrador.",
+     "Hora de corte: después de esta hora no se registra una OV de producto terminado para despachar al día siguiente "
+     "(materia prima y granel no tienen corte; las demás fechas, sin problema). Fuera del corte queda en borrador.",
      "DEFINIDO", f"{R23}: regla acordada con Comercial (corte al mediodía); precisada el 28-oct-2026"),
     ("exigir_oc_ov_modulo", True, "bool", "Comercial",
      "Las OV registradas en el módulo necesitan la orden de compra del cliente (o la plantilla del pedido por WhatsApp/correo). "
@@ -1893,9 +1893,9 @@ PARAMS += [
      "«sap_escritura_empresas».", "DEFINIDO",
      f"{V10}: «todo lo que se haga en el sistema debe verse reflejado en el SAP (subir OV…)»"),
     ("tipos_ov_despues_corte", ["MP", "GR"], "list", "Comercial",
-     "Tipos de producto que se pueden registrar en una OV después de la hora de corte (MP = materia prima, GR = granel).",
-     "DEFINIDO", f"{V10}: «solo se puede registrar OV de producto terminado hasta antes de las 12; después solo de "
-                 "materia prima y granel»"),
+     "Tipos de producto sin hora de corte para el despacho del día siguiente (MP = materia prima, GR = granel).",
+     "DEFINIDO", f"{V10}: «el corte de las 12 es siempre y cuando el despacho se realice al día siguiente y no aplica "
+                 "para materia prima ni granel, solo para producto terminado»"),
 ]
 ALERT_TYPES += [
     ("SAP_OV_ERROR", "OV no registrada en SAP", "Sistemas", "Integración SAP", "ALTA", ["SISTEMAS", "COORD_VENTAS"],

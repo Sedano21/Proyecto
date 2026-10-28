@@ -19,19 +19,18 @@ def _producto(s, code, tipo):
     return p
 
 
-def test_despues_del_corte_solo_materia_prima_y_granel(s, U):
+def test_corte_solo_producto_terminado_para_despachar_manana(s, U):
     from app.services import orders as osvc
     set_param("hora_corte_ov_dia_siguiente", "12:00")
     _producto(s, "MP-TEST", "MP")
     _producto(s, "GR-TEST", "GR")
     hoy = datetime.combine(date.today(), datetime.min.time())
-    fecha = date.today() + timedelta(days=3)
-    osvc.check_cutoff(fecha, hoy.replace(hour=11, minute=59), productos=["PT-905"])
-    osvc.check_cutoff(fecha, hoy.replace(hour=15), productos=["MP-TEST", "GR-TEST"])
-    with pytest.raises(BusinessError, match="materia prima y granel"):
-        osvc.check_cutoff(fecha, hoy.replace(hour=12, minute=1), productos=["MP-TEST", "PT-905"])
-    # MP y granel también para mañana después del corte
-    osvc.check_cutoff(date.today() + timedelta(days=1), hoy.replace(hour=17), productos=["GR-TEST"])
+    manana = date.today() + timedelta(days=1)
+    osvc.check_cutoff(manana, hoy.replace(hour=11, minute=59), productos=["PT-905"])
+    osvc.check_cutoff(manana, hoy.replace(hour=15), productos=["MP-TEST", "GR-TEST"])  # MP y granel: sin corte
+    osvc.check_cutoff(manana + timedelta(days=1), hoy.replace(hour=17), productos=["PT-905"])  # otra fecha: sin corte
+    with pytest.raises(BusinessError, match="producto terminado"):
+        osvc.check_cutoff(manana, hoy.replace(hour=12, minute=1), productos=["MP-TEST", "PT-905"])
 
 
 class FakeSL:

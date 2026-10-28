@@ -38,28 +38,26 @@ def check_not_past(fecha, hora_cita="", hoy=None, ahora=None):
 
 
 def check_cutoff(fecha, ahora=None, productos=None):
-    """Hora de corte de las OV (ronda 23-oct-2026, regla vigente del 28-oct-2026): hasta las 12:00 se registran OV de
-    cualquier producto; después de esa hora solo OV de materia prima y granel (`tipos_ov_despues_corte`). Una OV con
-    producto terminado (u otro tipo) registrada después del corte queda en borrador y se registra al día siguiente
-    antes de las 12:00. productos: códigos de la OV; sin productos se aplica a toda OV que se despacha mañana."""
+    """Hora de corte de las OV (ronda 23-oct-2026; precisada el 28-oct-2026): después de las 12:00 no se registra una OV
+    de PRODUCTO TERMINADO para despachar al día siguiente. No aplica a materia prima ni granel (`tipos_ov_despues_corte`)
+    ni a otras fechas de despacho. La OV fuera del corte queda en borrador (no se pierde lo digitado).
+    productos: códigos de la OV; sin productos se aplica a toda OV que se despacha mañana."""
     corte = (param("hora_corte_ov_dia_siguiente", "") or "").strip()[:5]
     if not corte or not isinstance(fecha, date):
         return
     ahora = ahora or datetime.now()
-    if f"{ahora:%H:%M}" <= corte:
+    if f"{ahora:%H:%M}" <= corte or fecha != ahora.date() + timedelta(days=1):
         return
     if productos is None:
-        if fecha == ahora.date() + timedelta(days=1):
-            raise BusinessError(f"Después de las {corte} no se registra una OV para despachar mañana ({fecha:%d/%m/%Y}). "
-                                "Elija otra fecha de despacho.")
-        return
+        raise BusinessError(f"Después de las {corte} no se registra una OV para despachar mañana ({fecha:%d/%m/%Y}). "
+                            "Elija otra fecha de despacho.")
     from .stock import product_kind
-    permitidos = [t.upper() for t in (param("tipos_ov_despues_corte", ["MP", "GR"]) or [])]
-    fuera = [c for c in dict.fromkeys(productos) if product_kind(db().get(Product, c)) not in permitidos]
+    exentos = [t.upper() for t in (param("tipos_ov_despues_corte", ["MP", "GR"]) or [])]
+    fuera = [c for c in dict.fromkeys(productos) if product_kind(db().get(Product, c)) not in exentos]
     if fuera:
-        raise BusinessError(f"Después de las {corte} solo se registran OV de materia prima y granel; "
-                            f"{', '.join(fuera[:5])} {'es' if len(fuera) == 1 else 'son'} de otro tipo (producto terminado). "
-                            f"Regístrela mañana antes de las {corte}.")
+        raise BusinessError(f"Después de las {corte} no se registra producto terminado para despachar mañana "
+                            f"({fecha:%d/%m/%Y}): {', '.join(fuera[:5])}. La materia prima y el granel sí. "
+                            "Cambie la fecha de despacho o regístrela mañana antes de las " + corte + ".")
 
 
 def order_by_number(numero):
