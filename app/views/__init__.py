@@ -734,6 +734,25 @@ def channels():
 @perm_required("usuarios.administrar")
 def users():
     s = db()
+    if request.method == "POST" and request.form.get("accion") == "excel":
+        def _xls():
+            import os
+            from flask import current_app
+            from ..services.users_import import import_users
+            arch = request.files.get("archivo")
+            if not arch or not arch.filename.lower().endswith((".xlsx", ".xlsm")):
+                raise BusinessError("Suba el Excel (.xlsx) de usuarios.")
+            up = current_app.config["UPLOAD_DIR"]
+            os.makedirs(up, exist_ok=True)
+            path = os.path.join(up, f"usuarios_{os.urandom(4).hex()}.xlsx")
+            arch.save(path)
+            try:
+                return import_users(g.user, path)
+            finally:
+                os.remove(path)  # contiene datos personales: no se conserva
+        return act(_xls, lambda r: f"Usuarios: {len(r['creados'])} creados, {len(r['actualizados'])} actualizados."
+                   + (f" Sin perfil válido (no se cargaron): {'; '.join(r['sin_rol'][:8])}." if r["sin_rol"] else "")
+                   + (f" Errores: {'; '.join(r['errores'][:8])}." if r["errores"] else ""), url_for("main.users"))
     if request.method == "POST":
         def _do():
             uid = request.form.get("id")

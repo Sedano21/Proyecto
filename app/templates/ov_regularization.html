@@ -3,7 +3,7 @@
 <div class="page-head"><div><h1>Regularización de OV</h1><p class="sub">Pedidos de <b>fechas pasadas</b> que no se registraron a tiempo en el módulo. Para un pedido de hoy o de una fecha futura use <a href="{{ url_for('com.order_new') }}">Nueva OV</a>.</p></div></div>
 <div class="card explain"><h3>{{ ic('info') }} ¿Qué pasa después de registrarla?</h3>
 <div class="cards">
-<article class="xcard st-LIQUIDADO"><div class="xcard-head"><b>1 · La mercadería ya salió</b></div><p class="small">El pedido se atendió físicamente (p. ej. por teléfono o en contingencia). El sistema <b>descuenta del inventario</b> lo que salió, por FEFO (o los lotes que usted elija), lo registra en el historial de ventas y <b>cierra</b> la OV. Si la salida ya está descontada en SAP, marque «ya descontado en SAP» para no descontar dos veces.</p></article>
+<article class="xcard st-LIQUIDADO"><div class="xcard-head"><b>1 · La mercadería ya salió</b></div><p class="small">El pedido se atendió físicamente (p. ej. por teléfono o en contingencia). Con la <b>guía de remisión</b> adjunta (obligatoria), el sistema <b>descuenta del inventario</b> lo que salió, por FEFO (o los lotes y almacén de la guía), lo registra en el historial de ventas y <b>cierra</b> la OV. Si la salida ya está descontada en SAP, marque «ya descontado en SAP» para no descontar dos veces.</p></article>
 <article class="xcard st-PENDIENTE"><div class="xcard-head"><b>2 · Aún no se atiende</b></div><p class="small">El pedido llegó tarde pero todavía no sale. Se le pone una <b>fecha vigente</b> y pasa al <b>flujo normal</b>: se evalúa, reserva stock, va a picking y despacho como cualquier OV.</p></article>
 </div>
 <p class="small muted">Mientras no elija una de las dos, la OV no reserva ni descuenta stock. Si registra una fecha de hoy o posterior, se guarda como <b>borrador observado</b> y se le alerta para corregirla.</p></div>
@@ -34,7 +34,12 @@
 <div class="pending-why">{{ o.motivo_detencion }}</div>
 <form method="post" class="row">{{ csrf() }}<input type="hidden" name="accion" value="corregir_fecha"><input type="hidden" name="oid" value="{{ o.id }}"><div><label>Fecha correcta (anterior a hoy)</label><input type="date" name="nueva_fecha" max="{{ ayer.isoformat() }}" required></div><div><button class="small">Corregir fecha</button></div></form>
 {% elif o.estado == 'REGULARIZADA' %}
-<div class="row"><button type="button" class="small" data-open="#dlg-cerrar-{{ o.id }}">{{ ic('check') }} La mercadería ya salió: descontar y cerrar</button>
+{% set gu = o.regularizacion.guia %}
+{% if gu %}<p class="small">{{ ic('file') }} Guía <b>{{ gu.numero }}</b> <a class="ibtn" href="{{ url_for('main.evidence', name=gu.archivo) }}" title="Ver guía" aria-label="Ver guía">{{ ic('eye') }}</a> · {{ gu.user }} {{ gu.ts|replace('T', ' ') }}</p>
+{% else %}<div class="pending-why">Falta la guía de lo que salió: sin guía no se descuenta el inventario.</div>
+<form method="post" enctype="multipart/form-data" class="row">{{ csrf() }}<input type="hidden" name="accion" value="guia"><input type="hidden" name="oid" value="{{ o.id }}"><div><label>N° de guía</label><input name="guia_numero" required size="12"></div><div class="grow"><label>Archivo de la guía</label><input type="file" name="guia_archivo" accept="image/*,.pdf" required></div><div><button class="small">Adjuntar guía</button></div></form>
+{% if can('ov.regularizar') %}<form method="post">{{ csrf() }}<input type="hidden" name="accion" value="pedir_guia"><input type="hidden" name="oid" value="{{ o.id }}"><button class="sec small">Pedir la guía a Distribución</button></form>{% endif %}{% endif %}
+<div class="row">{% if can('ov.regularizar_cerrar') and gu %}<button type="button" class="small" data-open="#dlg-cerrar-{{ o.id }}">{{ ic('check') }} La mercadería ya salió: descontar y cerrar</button>{% elif not can('ov.regularizar_cerrar') %}<span class="small muted">La cierran el Coordinador, el Jefe o el Gerente Comercial.</span>{% endif %}
 <button type="button" class="sec small" data-open="#dlg-liberar-{{ o.id }}">Aún no se atiende: pasar al flujo normal</button></div>
 <dialog class="modal" id="dlg-cerrar-{{ o.id }}"><form method="post" data-confirm="¿Descontar del inventario y cerrar la OV {{ o.numero }}?">{{ csrf() }}<input type="hidden" name="accion" value="cerrar"><input type="hidden" name="oid" value="{{ o.id }}">
 <h3>{{ o.numero }}: descontar la mercadería que salió</h3><p class="small muted">Propuesta FEFO con el stock libre (no toca lo reservado para otras OV). Ajuste las cantidades si salió de otros lotes.</p>

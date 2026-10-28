@@ -170,8 +170,11 @@ def resolve(p, user, estado, monto_pagado=None, comentario=""):
             raise BusinessError("Indique el monto pagado.")
         if monto_pagado < 0:
             raise BusinessError("Monto pagado inválido.")
-    elif not (comentario or "").strip():
-        raise BusinessError("Indique por qué se desestimó.")
+    else:
+        if not has_perm(user, "clientes.penalidad_desestimar"):  # V9 (C05): desestima el Jefe Comercial
+            raise BusinessError("Desestimar una penalidad le corresponde al Jefe Comercial.")
+        if not (comentario or "").strip():
+            raise BusinessError("Indique por qué se desestimó.")
     p.estado = estado
     p.monto_pagado = monto_pagado if estado == "PAGADA" else 0.0
     p.comentario = (comentario or "").strip()
@@ -223,3 +226,22 @@ def next_customer_code():
         ancho = max(len(n) for n in nums)
         mayor = max(int(n) for n in nums)
     return f"{pref}{mayor + 1:0{ancho}d}"
+
+
+def check_overdue(hoy=None):
+    """V9 (C05): penalidades sin resolver después del plazo: alerta al Jefe Comercial (una vez por penalidad)."""
+    from datetime import timedelta
+    from .core import param
+    hoy = hoy or date.today()
+    dias = int(param("penalidad_dias_resolver", 7) or 0)
+    if not dias:
+        return 0
+    n = 0
+    for p in db().execute(select(CustomerPenalty).where(CustomerPenalty.estado == "PENDIENTE",
+                                                        CustomerPenalty.fecha <= hoy - timedelta(days=dias))).scalars():
+        alerts.emit("PENALIDAD_VENCIDA", f"Penalidad sin resolver hace más de {dias} días: {p.customer.nombre}",
+                    f"{_txt(p.tipo)} · S/ {p.monto_calculado:,.2f} · {p.fecha:%d/%m/%Y}. Registre si se pagó o se desestimó.",
+                    "CustomerPenalty", p.id, extra_users=[p.vendedor_id] if p.vendedor_id else None,
+                    dedup_key=f"PEN_VENC:{p.id}")
+        n += 1
+    return n

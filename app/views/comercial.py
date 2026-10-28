@@ -276,13 +276,23 @@ def order_file(oid):
 
 
 @bp.route("/regularizacion", methods=["GET", "POST"])
-@perm_required("ov.regularizar")
+@perm_required("ov.regularizar", "distribucion.documentos")
 def regularization():
     """Regularización de OV: pedidos de fechas PASADAS que no se registraron a tiempo. Si la mercadería ya salió se
     descuenta del inventario (FEFO o lotes elegidos) y se cierra; si aún no se atiende, pasa al flujo normal con una
     fecha vigente. Con fecha de hoy o posterior se guarda como borrador observado (V7)."""
     if request.method == "POST":
         fm = request.form
+        if fm.get("accion") in ("guia", "pedir_guia"):
+            o = db().get(SalesOrder, int(fm.get("oid") or 0)) or abort(404)
+            if fm["accion"] == "pedir_guia":
+                return act(lambda: osvc.request_regularization_guide(o, g.user), "Se pidió la guía a Distribución.",
+                           url_for("com.regularization"))
+            from flask import current_app
+            from ..services.distribution import save_upload
+            return act(lambda: osvc.attach_regularization_guide(o, g.user, fm.get("guia_numero", ""), save_upload(
+                request.files.get("guia_archivo"), current_app.config["UPLOAD_DIR"], f"guia_reg_{o.numero}")),
+                "Guía adjuntada: ya se puede cerrar la regularización.", url_for("com.regularization"))
         if fm.get("accion") in ("liberar", "cerrar", "corregir_fecha"):
             o = db().get(SalesOrder, int(fm.get("oid") or 0)) or abort(404)
             if fm["accion"] == "liberar":

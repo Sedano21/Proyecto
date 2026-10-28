@@ -1058,10 +1058,14 @@ def regularize_close(order, user, comentario, salidas=None, descontar=True):
     descontó en SAP y la próxima carga lo reflejará (se registra el motivo)."""
     from ..models import StockLot
     from .stock import free_qty
-    if not has_perm(user, "ov.regularizar"):
-        raise BusinessError("Su rol no gestiona regularizaciones de OV.")
+    if not has_perm(user, "ov.regularizar_cerrar"):  # V9 (C02): cierran el Coordinador, el Jefe o el Gerente Comercial
+        raise BusinessError("La regularización la cierran el Coordinador, el Jefe o el Gerente Comercial.")
     if order.estado != "REGULARIZADA":
         raise BusinessError("La OV no está en regularización.")
+    if param("regularizacion_exige_guia", True) and not (order.regularizacion or {}).get("guia"):
+        # V9 (C01): sin la guía de lo que realmente salió no se descuenta: queda en borrador hasta adjuntarla
+        raise BusinessError("Adjunte la guía de remisión de lo que salió (o pídala a Distribución) antes de cerrar: "
+                            "sin guía no se descuenta el inventario.")
     if not (comentario or "").strip():
         raise BusinessError("Indique cómo se regularizó el pedido.")
     movs = []
@@ -1106,6 +1110,34 @@ def regularize_close(order, user, comentario, salidas=None, descontar=True):
     audit(user, "OV_REGULARIZACION_CERRADA", "SalesOrder", order.numero, {"comentario": comentario,
                                                                           "salidas": reg["salidas"],
                                                                           "descontado": descontar})
+
+
+def attach_regularization_guide(order, user, numero, archivo):
+    """V9 (C01): la guía de remisión de lo que salió la adjunta quien regulariza o Distribución."""
+    if not (has_perm(user, "ov.regularizar") or has_perm(user, "distribucion.documentos")):
+        raise BusinessError("Adjuntan la guía Comercial (quien regulariza) o Distribución.")
+    if order.estado not in ("REGULARIZADA", "REGULARIZACION_OBSERVADA"):
+        raise BusinessError("La OV no está en regularización.")
+    numero = (numero or "").strip().upper()
+    if not numero or not archivo:
+        raise BusinessError("Indique el número de la guía y adjunte el archivo.")
+    reg = dict(order.regularizacion or {})
+    reg["guia"] = {"numero": numero[:40], "archivo": archivo, "user": user.nombre, "ts": now().isoformat(timespec="minutes")}
+    order.regularizacion = reg
+    alerts.close_by_system(f"REG_GUIA:{order.id}", f"Guía {numero} adjuntada por {user.nombre}")
+    audit(user, "OV_REGULARIZACION_GUIA", "SalesOrder", order.numero, reg["guia"])
+
+
+def request_regularization_guide(order, user):
+    """V9 (C01): pide a Distribución que adjunte la guía de la regularización."""
+    if not has_perm(user, "ov.regularizar"):
+        raise BusinessError("Su rol no gestiona regularizaciones de OV.")
+    if order.estado != "REGULARIZADA":
+        raise BusinessError("La OV no está en regularización.")
+    alerts.emit("REGULARIZACION_GUIA", f"Adjuntar la guía de la regularización {order.numero}",
+                f"{order.customer.nombre} · pedido del {order.fecha_compromiso:%d/%m/%Y}. Comercial necesita la guía de lo que "
+                "salió para descontar el inventario.", "SalesOrder", order.id, dedup_key=f"REG_GUIA:{order.id}",
+                creado_por=user)
 
 
 def request_date_change(order, user, nueva_fecha, motivo):

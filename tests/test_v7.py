@@ -35,6 +35,7 @@ def test_regularizacion_mercaderia_salio_descuenta_fefo(s, U, cust):
     antes = sum(l.cantidad for l in lots_of("PT-905"))
     prop = osvc.regularization_exits(o)
     assert prop and prop[0]["propuesta"]
+    osvc.attach_regularization_guide(o, u, "T001-1", "guia.pdf")  # V9 (C01): sin guía no se cierra
     osvc.regularize_close(o, U("coord.ventas"), "Guía 001-1")
     s.flush()
     assert o.estado == "REGULARIZADA_CERRADA" and o.lines[0].despachado == 5
@@ -49,6 +50,7 @@ def test_regularizacion_ya_descontada_en_sap_no_descuenta(s, U, cust):
     o = osvc.create_order(U("asist.ventas"), "RG-3", cust().id, date.today() - timedelta(days=2), LN, regularizacion="x")
     s.flush()
     antes = sum(l.cantidad for l in lots_of("PT-905"))
+    osvc.attach_regularization_guide(o, U("coord.distribucion"), "T001-2", "guia.pdf")
     osvc.regularize_close(o, U("coord.ventas"), "Ya en SAP", descontar=False)
     assert sum(l.cantidad for l in lots_of("PT-905")) == antes and o.regularizacion["descontado"] is False
 
@@ -119,9 +121,9 @@ def test_penalidades_ilimitadas_deteccion_y_resultado(s, U, cust):
     assert pen.detect_for_order(o, U("coord.ventas"), fecha_entrega=o.fecha_compromiso + timedelta(days=1)) == []
     assert alerts_of(s, "CLIENTE_PENALIDAD", nuevas[0].id)
     with pytest.raises(BusinessError, match="desestim"):
-        pen.resolve(nuevas[0], U("coord.ventas"), "DESESTIMADA")
+        pen.resolve(nuevas[0], U("jefe.ventas"), "DESESTIMADA")
     pen.resolve(nuevas[0], U("coord.ventas"), "PAGADA", 100)
-    pen.resolve(nuevas[1], U("coord.ventas"), "DESESTIMADA", comentario="El cliente aceptó la reposición")
+    pen.resolve(nuevas[1], U("jefe.ventas"), "DESESTIMADA", comentario="El cliente aceptó la reposición")
     ind = pen.indicator(customer_id=c.id)["total"]
     assert ind["pagada"] == 100 and ind["calculada"] == 150 + round(50 * 0.10, 2) and ind["pendientes"] == 0
 

@@ -55,6 +55,8 @@ def run_checks(user=None, today=None):
             n += 1
     out["lotes_tiempo_maximo"] = n
     out["reposicion_solicitudes"] = len(run_replenishment(user, ref=today))
+    from .penalties import check_overdue as penalidades_vencidas
+    out["penalidades_vencidas"] = penalidades_vencidas(today)
     from .inventory import check_cycle_counts
     out["conteos_ciclicos"] = check_cycle_counts(today)
     from .supply import check_scheduled_moves

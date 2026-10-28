@@ -1850,3 +1850,34 @@ PARAMS_CAMBIO += [
 ]
 _NUEVOS = {k: n for k, _a, n, _f in PARAMS_CAMBIO}
 PARAMS = [(k, _NUEVOS.get(k, v), *rest) for k, v, *rest in PARAMS]
+
+V9 = "Respuestas del cuestionario operativo (28-oct-2026)"
+for _code, _n, _m, _t, _roles in [
+        ("ov.regularizar_cerrar", "Cerrar una regularización de OV (descuenta el inventario con la guía)", "Comercial", "aprobacion",
+         ["COORD_VENTAS", "JEFE_VENTAS", "GERENTE_COMERCIAL", "GERENCIA_GENERAL"]),
+        ("clientes.penalidad_desestimar", "Desestimar una penalidad de cliente (con motivo)", "Comercial", "aprobacion",
+         ["JEFE_VENTAS", "GERENCIA_GENERAL"])]:
+    PERMISSIONS.append((_code, _n, _m, _t))
+    for _r in _roles:
+        ROLE_PERMISSIONS.setdefault(_r, []).append((_code, "DEFINIDO", V9))
+# C02: también registra regularizaciones el Gerente Comercial
+if not any(p[0] == "ov.regularizar" for p in ROLE_PERMISSIONS["GERENTE_COMERCIAL"]):
+    ROLE_PERMISSIONS["GERENTE_COMERCIAL"].append(("ov.regularizar", "DEFINIDO", f"{V9}: C02"))
+PARAMS += [
+    ("regularizacion_exige_guia", True, "bool", "Comercial",
+     "Para cerrar una regularización (descontar lo que salió) es obligatoria la guía de remisión; sin guía queda en borrador.",
+     "DEFINIDO", f"{V9}: C01"),
+    ("penalidad_dias_resolver", 7, "int", "Comercial",
+     "Días para registrar si una penalidad se pagó o se desestimó; vencido el plazo se alerta al Jefe Comercial.",
+     "DEFINIDO", f"{V9}: C05"),
+    ("correo_dominio_corporativo", "corporacionproductiva.com", "str", "Sistemas",
+     "Dominio aceptado al cargar usuarios por Excel (vacío = cualquier dominio).",
+     "PROPUESTO", f"{V9}: dominio de los correos corporativos recibidos"),
+]
+ALERT_TYPES += [
+    ("REGULARIZACION_GUIA", "Adjuntar la guía de una regularización de OV", "Distribución", "Documentos", "MEDIA",
+     ["COORD_DISTRIBUCION", "ASIST_DISTRIBUCION"], "DEFINIDO", f"{V9}: C01",
+     "Comercial pide la guía de lo que salió para cerrar la regularización.", True),
+    ("PENALIDAD_VENCIDA", "Penalidad sin resolver en el plazo", "Comercial", "Clientes", "ALTA", ["JEFE_VENTAS"], "DEFINIDO",
+     f"{V9}: C05", "Pasaron los días configurados sin registrar si la penalidad se pagó o se desestimó.", True),
+]

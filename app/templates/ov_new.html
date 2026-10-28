@@ -91,9 +91,8 @@
     var q = new URLSearchParams({producto: p.value, cliente: cid.value, precio: pr.value, um: um ? um.value : '', canal: (document.getElementById('canal_precio') || {}).value || ''});
     fetch('{{ url_for('com.price_check_api') }}?' + q, {credentials: 'same-origin'}).then(function(r){ return r.json(); }).then(function(d){
       tr.classList.toggle('precio-bajo', d.estado === 'DEBAJO');
-      av.className = 'precio-aviso small ' + (d.estado === 'DEBAJO' ? 'err' : (d.estado === 'LIMITE' ? 'warn' : 'muted'));
+      av.className = 'precio-aviso small ' + (d.estado === 'DEBAJO' ? 'err' : 'muted');  // V9 (C03): solo bajo el precio base
       av.textContent = d.estado === 'DEBAJO' ? 'Bajo el precio base (S/ ' + Number(d.minimo).toFixed(2) + '). Confirme o modifique.' :
-        d.estado === 'LIMITE' ? 'En el límite del precio base (S/ ' + Number(d.minimo).toFixed(2) + ').' :
         d.estado === 'SIN_MINIMO' ? d.detalle : '';
     }).catch(function(){});
   }
