@@ -418,6 +418,11 @@ class SalesOrder(Base):
     plan_picking_validado: Mapped[bool] = mapped_column(Boolean, default=False)
     # obs. demo v0.7: OV registrada con fecha pasada u hora transcurrida (no reserva stock) {motivo, user, ts, ...}
     regularizacion: Mapped[dict] = mapped_column(JSON, default=dict)
+    # V10 (28-oct-2026): la OV registrada en el módulo se crea en SAP (Orders). sap_envio: {estado, hash, error, ts,
+    # intentos, cancelada}; sap_docnum es el número que SAP le asigna (las cargas de SAP la reconocen por él).
+    sap_docnum: Mapped[str] = mapped_column(String(20), default="", server_default="", index=True)
+    sap_docentry: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    sap_envio: Mapped[dict] = mapped_column(JSON, default=dict)
     customer = relationship("Customer")
     # canal / grupo de precios elegido al registrar (el mínimo varía por canal; observaciones al demo v0.6)
     canal_precio: Mapped[str] = mapped_column(String(60), default="")

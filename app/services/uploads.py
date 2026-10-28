@@ -17,13 +17,18 @@ from collections import Counter, defaultdict
 from datetime import date, datetime, timedelta
 
 import openpyxl
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
 from ..db import db
 from ..models import (BOMLine, BOMVersion, Customer, Liquidation, PriceItem, Product, SalesHistory, SalesOrder, StockLot,
                       UploadBatch, UploadRow, User, Warehouse, now)
 from . import alerts
 from .core import BusinessError, audit, has_perm, param
+
+
+def order_by_number(numero):
+    from .orders import order_by_number as _f  # import diferido: orders importa servicios que importan este módulo
+    return _f(numero)
 
 
 def norm(s):
@@ -631,7 +636,7 @@ def _v_ov(b):
             w.append("OV cerrada en SAP: no se importará")
         if _txt(d.get("producto")) and _txt(d.get("producto")) not in prods:
             w.append("Producto no está en el catálogo (se creará con la descripción)")
-        existing = s.execute(select(SalesOrder).where(SalesOrder.numero == _txt(d.get("numero")))).scalars().first()
+        existing = order_by_number(_txt(d.get("numero")))  # V10: también por el número que SAP le asignó
         if existing is not None:
             w.append(f"La OV ya existe (estado {existing.estado}): se aplicarán cambios como modificación")
         r.errores, r.advertencias = e, w
@@ -1054,7 +1059,7 @@ def _c_ov(b, user, opciones):
         if not lines:
             continue
         vend = s.execute(select(User).where(User.nombre == _txt(d0.get("vendedor")))).scalars().first()
-        o = s.execute(select(SalesOrder).where(SalesOrder.numero == numero)).scalars().first()
+        o = order_by_number(numero)
         try:
             if o is None:
                 o = create_order(user, numero, c.id, _date(d0["fecha_compromiso"]), lines, comentarios=_txt(d0.get("comentarios")),
@@ -1109,9 +1114,10 @@ def _c_ov(b, user, opciones):
     cerradas_auto = 0
     if param("cerrar_ov_cerrada_en_sap", True):
         from .stock import release_order
-        for o in s.execute(select(SalesOrder).where(SalesOrder.numero.in_(cerradas_sap or {""}),
+        for o in s.execute(select(SalesOrder).where(or_(SalesOrder.numero.in_(cerradas_sap or {""}),
+                                                        SalesOrder.sap_docnum.in_(cerradas_sap or {""})),
                                                     SalesOrder.estado.in_(("BORRADOR", "REGISTRADA", "EVALUADA", "BLOQUEADA")))).scalars():
-            if o.numero in grupos:
+            if o.numero in grupos or (o.sap_docnum and o.sap_docnum in grupos):
                 continue
             release_order(o, "OV atendida y cerrada en SAP")
             antes = o.estado
@@ -1565,7 +1571,7 @@ def _c_despachos(b, user, opciones):
             g["facturas"].add(_txt(d["factura"]))
         g["cant"][_txt(d["producto"])] += _num(d["cantidad"]) or 0
     for numero, g in por_ov.items():
-        o = s.execute(select(SalesOrder).where(SalesOrder.numero == numero)).scalars().first()
+        o = order_by_number(numero)
         if o is None:
             conc.add("DESPACHO", numero, "Existencia", "Despachada en SAP", "No existe en el módulo")
             continue

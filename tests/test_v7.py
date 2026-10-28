@@ -55,7 +55,7 @@ def test_regularizacion_ya_descontada_en_sap_no_descuenta(s, U, cust):
     assert sum(l.cantidad for l in lots_of("PT-905")) == antes and o.regularizacion["descontado"] is False
 
 
-def test_fuera_del_corte_queda_borrador_y_se_registra_al_corregir_fecha(s, U, cust):
+def test_fuera_del_corte_queda_borrador_y_se_registra_en_horario(s, U, cust):
     from app.services import orders as osvc
     from app.services.core import set_param
     set_param("hora_corte_ov_dia_siguiente", "00:00")
@@ -63,8 +63,11 @@ def test_fuera_del_corte_queda_borrador_y_se_registra_al_corregir_fecha(s, U, cu
     o = osvc.create_order(U("coord.ventas"), "CT-1", cust().id, manana, LN, oc_archivo="oc.pdf", evaluar=False)
     s.flush()
     assert o.estado == "BORRADOR"
-    assert "Corrija la fecha" in o.motivo_detencion
+    assert "materia prima y granel" in o.motivo_detencion  # 28-oct-2026: después del corte, solo MP y granel
     osvc.modify_order(o, U("coord.ventas"), {"fecha_compromiso": manana + timedelta(days=2)})
+    assert o.estado == "BORRADOR"  # se guarda el cambio, pero sigue en borrador hasta el horario permitido
+    set_param("hora_corte_ov_dia_siguiente", "23:59")
+    osvc.complete_draft(o, U("coord.ventas"))
     assert o.estado != "BORRADOR"
 
 

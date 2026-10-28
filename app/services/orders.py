@@ -37,15 +37,39 @@ def check_not_past(fecha, hora_cita="", hoy=None, ahora=None):
                                 "Use «Regularización de OV» o indique una fecha u hora vigente.")
 
 
-def check_cutoff(fecha, ahora=None):
-    """Ronda 23-oct-2026: después de la hora de corte (12:00) no se registra ni se programa una OV para el día siguiente."""
+def check_cutoff(fecha, ahora=None, productos=None):
+    """Hora de corte de las OV (ronda 23-oct-2026, regla vigente del 28-oct-2026): hasta las 12:00 se registran OV de
+    cualquier producto; después de esa hora solo OV de materia prima y granel (`tipos_ov_despues_corte`). Una OV con
+    producto terminado (u otro tipo) registrada después del corte queda en borrador y se registra al día siguiente
+    antes de las 12:00. productos: códigos de la OV; sin productos se aplica a toda OV que se despacha mañana."""
     corte = (param("hora_corte_ov_dia_siguiente", "") or "").strip()[:5]
     if not corte or not isinstance(fecha, date):
         return
     ahora = ahora or datetime.now()
-    if fecha == ahora.date() + timedelta(days=1) and f"{ahora:%H:%M}" > corte:
-        raise BusinessError(f"Después de las {corte} no se registra una OV para despachar mañana ({fecha:%d/%m/%Y}). "
-                            "Elija otra fecha de despacho.")
+    if f"{ahora:%H:%M}" <= corte:
+        return
+    if productos is None:
+        if fecha == ahora.date() + timedelta(days=1):
+            raise BusinessError(f"Después de las {corte} no se registra una OV para despachar mañana ({fecha:%d/%m/%Y}). "
+                                "Elija otra fecha de despacho.")
+        return
+    from .stock import product_kind
+    permitidos = [t.upper() for t in (param("tipos_ov_despues_corte", ["MP", "GR"]) or [])]
+    fuera = [c for c in dict.fromkeys(productos) if product_kind(db().get(Product, c)) not in permitidos]
+    if fuera:
+        raise BusinessError(f"Después de las {corte} solo se registran OV de materia prima y granel; "
+                            f"{', '.join(fuera[:5])} {'es' if len(fuera) == 1 else 'son'} de otro tipo (producto terminado). "
+                            f"Regístrela mañana antes de las {corte}.")
+
+
+def order_by_number(numero):
+    """OV por su número del módulo o por el número que SAP le asignó al crearla (V10)."""
+    from sqlalchemy import or_
+    numero = (numero or "").strip()
+    if not numero:
+        return None
+    return db().execute(select(SalesOrder).where(or_(SalesOrder.numero == numero, SalesOrder.sap_docnum == numero))
+                        .order_by(SalesOrder.id)).scalars().first()
 
 
 def unit_for(product):
@@ -240,8 +264,8 @@ def create_order(user, numero, customer_id, fecha_compromiso, lines, urgente=Fal
     if origen == "MODULO" and not regularizacion:
         check_not_past(fecha_compromiso, hora_cita)
         try:
-            check_cutoff(fecha_compromiso)
-        except BusinessError as e:  # V7: no se pierde lo digitado; queda como borrador para corregir la fecha
+            check_cutoff(fecha_compromiso, productos=[ln["product_code"].strip() for ln in lines])
+        except BusinessError as e:  # V7: no se pierde lo digitado; queda como borrador
             fuera_de_corte = str(e)
         customer_can_order(db().get(Customer, int(customer_id)), muestra)
     if origen == "MODULO":
@@ -302,8 +326,7 @@ def create_order(user, numero, customer_id, fecha_compromiso, lines, urgente=Fal
     if fuera_de_corte:
         o.estado = "BORRADOR"
         o.estado_stock = ""
-        o.motivo_detencion = "Borrador: " + fuera_de_corte.replace("Elija otra fecha de despacho.",
-                                                                    "Corrija la fecha de despacho para registrarla.")
+        o.motivo_detencion = ("Borrador: " + fuera_de_corte)[:250]
         audit(user, "OV_BORRADOR_CORTE", "SalesOrder", o.numero, {"fecha_compromiso": fecha_compromiso})
         return o
     if origen == "MODULO" and not muestra and not oc_archivo and param("exigir_oc_ov_modulo", True):
@@ -488,6 +511,18 @@ def attach_oc(order, user, archivo, numero=""):
     return order
 
 
+def complete_draft(order, user):
+    """Registra un borrador que ya cumple todo (p. ej. el que quedó fuera del corte, al día siguiente antes de las 12:00)."""
+    if not (has_perm(user, "ov.crear") or has_perm(user, "ov.modificar")):
+        raise BusinessError("Su rol no registra OV.")
+    if order.estado != "BORRADOR":
+        raise BusinessError("La OV no está en borrador.")
+    if not _complete_draft(order, user):
+        raise BusinessError(order.motivo_detencion or "La OV aún no cumple lo necesario para registrarse.")
+    audit(user, "OV_BORRADOR_REGISTRADA", "SalesOrder", order.numero, {})
+    return order
+
+
 def _complete_draft(order, user):
     """Registra y evalúa un borrador cuando ya cumple todo: orden de compra (si se exige), fecha vigente y fuera del
     corte de las 12:00 (V7: la OV fuera de corte queda en borrador hasta corregir la fecha)."""
@@ -496,7 +531,12 @@ def _complete_draft(order, user):
         order.motivo_detencion = "Borrador: falta adjuntar la orden de compra del cliente"
         return False
     check_not_past(order.fecha_compromiso, order.hora_cita)
-    check_cutoff(order.fecha_compromiso)
+    if order.origen == "MODULO":
+        try:
+            check_cutoff(order.fecha_compromiso, productos=[l.product_code for l in order.lines if l.activa])
+        except BusinessError as e:  # se conservan los cambios; sigue en borrador hasta el horario permitido
+            order.motivo_detencion = ("Borrador: " + str(e))[:250]
+            return False
     customer_can_order(order.customer, muestra)
     order.estado = "REGISTRADA"
     order.estado_stock = "SIN_EVALUAR"
@@ -513,10 +553,13 @@ def _apply_changes(order, user, changes):
     antes = snapshot(order)
     if "fecha_compromiso" in changes and changes["fecha_compromiso"]:
         fc = changes["fecha_compromiso"]
-        if isinstance(fc, str) and fc and date.fromisoformat(fc[:10]) != order.fecha_compromiso:
-            check_cutoff(date.fromisoformat(fc[:10]))
+        prods = [l.product_code for l in order.lines if l.activa] if order.origen == "MODULO" else None
+        if order.estado == "BORRADOR":
+            pass  # el corte se revisa al registrar el borrador (_complete_draft); se conservan los cambios
+        elif isinstance(fc, str) and fc and date.fromisoformat(fc[:10]) != order.fecha_compromiso:
+            check_cutoff(date.fromisoformat(fc[:10]), productos=prods)
         elif isinstance(fc, date) and fc != order.fecha_compromiso:
-            check_cutoff(fc)
+            check_cutoff(fc, productos=prods)
         if isinstance(fc, str):
             fc = date.fromisoformat(fc)
         if fc != order.fecha_compromiso:

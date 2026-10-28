@@ -221,7 +221,7 @@ def order_detail(oid):
     from ..services import commitment as cmsvc
     from ..services.finance import TIPOS_DOC_OV, order_documents
     paradas = list(db().execute(select(RouteStop).where(RouteStop.order_id == o.id).order_by(RouteStop.id)).scalars())
-    return render_template("ov_detail.html", o=o, prioridades_gg=osvc.PRIORIDADES_GG, alts=alts, paradas=paradas, docs=order_documents(o), tipos_doc=TIPOS_DOC_OV,
+    return render_template("ov_detail.html", o=o, sap_pendiente=__import__("app.services.sap_sl", fromlist=["x"]).pending_action(o), prioridades_gg=osvc.PRIORIDADES_GG, alts=alts, paradas=paradas, docs=order_documents(o), tipos_doc=TIPOS_DOC_OV,
                            comp_estados=cmsvc.ESTADOS, dias_prod=cmsvc.production_days(), whs=whs, reqs=reqs, decs=decs, hist=hist, certs=certs,
                            products=products, line_reserved=line_reserved, monto=osvc.order_amount(o), peso=peso,
                            sin_peso=sin_peso, can_auth=osvc.can_authorize_change(g.user, o), prep=osvc.prep_progress(o),
@@ -390,6 +390,10 @@ def order_action(oid, accion):
                        "Solicitud preliminar de producción creada (borrador para revisión de Almacén)."),
         "compra": (lambda: buysvc.create_request(u, f.get("product_code"), f_float("cantidad", True), o.fecha_compromiso, "OV", o),
                    "Solicitud de compra enviada a Compras."),
+        # V10 (28-oct-2026): borrador fuera de corte y envío a SAP
+        "registrar": (lambda: osvc.complete_draft(o, u), "OV registrada y evaluada."),
+        "sap": (lambda: __import__("app.services.sap_sl", fromlist=["x"]).push_order_now(o, u),
+                lambda r: f"OV enviada a SAP ({o.sap_docnum or r})."),
         # ronda 23-oct-2026
         "oc": (lambda: osvc.attach_oc(o, u, _doc("oc"), f.get("oc_numero", "")),
                lambda r: "Orden de compra adjunta." + (" La OV quedó registrada y evaluada." if o.estado != "BORRADOR" else "")),

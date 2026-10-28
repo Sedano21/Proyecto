@@ -22,6 +22,11 @@ from ..models import Customer, SalesOrder, SapOrderHeader, now
 from .core import BusinessError, audit, has_perm
 
 
+def order_by_number(numero):
+    from .orders import order_by_number as _f  # import diferido: orders importa servicios que importan este módulo
+    return _f(numero)
+
+
 def _n(x):
     x = unicodedata.normalize("NFKD", str(x or "")).encode("ascii", "ignore").decode().lower()
     return " ".join(x.replace("#", " # ").split())
@@ -104,7 +109,7 @@ def import_headers(user, path):
             res["errores"].append(f"Fila {n} (OV {numero}): {e}")
             continue
         h = db().execute(select(SapOrderHeader).where(SapOrderHeader.numero == numero)).scalars().first()
-        o = db().execute(select(SalesOrder).where(SalesOrder.numero == numero)).scalars().first()
+        o = order_by_number(numero)  # V10: también la OV del módulo creada en SAP
         cerrada = estado.lower().startswith("cerr") or cancelado
         if cerrada:
             if cancelado:

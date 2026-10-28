@@ -92,6 +92,24 @@ Elija una opción:
 
 ## 4. Microsoft 365 (ingreso con el correo corporativo)
 
+### 4.0 Qué necesito exactamente
+**El dominio solo no alcanza.** El dominio (`corporacionproductiva.com`) ya lo tengo: con él se validan los correos al cargar los usuarios. Pero Microsoft no deja que una aplicación externa compruebe la identidad de los trabajadores solo con el dominio. Hace falta que la empresa **registre el módulo como aplicación** en su Microsoft 365. Así, cuando un trabajador pulsa «Ingresar con Microsoft 365», es Microsoft quien valida su usuario, su contraseña y su verificación en dos pasos. Después le confirma al módulo quién es.
+
+| Dato | ¿Es secreto? | Cómo me llega |
+|---|---|---|
+| **Id. de directorio (inquilino / tenant ID)** | No | Me lo envían |
+| **Id. de aplicación (cliente / client ID)** | No | Me lo envían |
+| **Secreto de cliente (client secret)** | **Sí** | Lo escribe Sistemas directamente en el servidor (§5.3) |
+| Aprobación de un **administrador global** o de aplicaciones de Microsoft 365 | — | Hace el registro (pasos siguientes) |
+
+Lo que **no** necesito:
+- las contraseñas de los trabajadores: nunca pasan por el módulo;
+- crear cuentas nuevas en Microsoft 365: se usan las que ya tienen;
+- cambiar los buzones ni el DNS del dominio.
+
+Cada trabajador entra con su correo de siempre. Para que pueda entrar, su correo debe estar cargado en el módulo con un perfil (§8).
+
+### 4.1 Registro de la aplicación
 Lo hace un **administrador de Microsoft 365** de la empresa en https://entra.microsoft.com:
 
 1. **Identidad → Aplicaciones → Registros de aplicaciones → Nuevo registro**.
@@ -156,8 +174,8 @@ sudo nano /etc/operaciones/operaciones.env
 | `SAP_SL_CA` | `/etc/operaciones/sap_ca.pem` (§7.3) |
 | `SAP_SYNC_MIN` | `1` (cada minuto, de 06:00 a 21:00) |
 | `SAP_SYNC_USER` | `sistemas` |
-| `M365_TENANT_ID` / `M365_CLIENT_ID` | Datos del §4.2 |
-| `M365_CLIENT_SECRET` | Valor del §4.3 |
+| `M365_TENANT_ID` / `M365_CLIENT_ID` | Datos del §4.1, paso 2 |
+| `M365_CLIENT_SECRET` | Valor del §4.1, paso 3 |
 | `M365_REDIRECT_URI` | `https://<subdominio>.duckdns.org/auth/microsoft/callback` |
 | `GEOSAT_API_URL` / `GEOSAT_TOKEN` | Vacíos. El panel de GEOSATELITAL se abre con la sesión de cada usuario; **su usuario y contraseña no se guardan en el módulo**. |
 
@@ -222,12 +240,12 @@ curl -vk https://172.18.103.1:50000/b1s/v1/ 2>&1 | head -20   # debe responder e
 - Asígnele la **licencia de acceso indirecto / integración** anunciada por el partner.
 - Permisos mínimos:
   - **lectura** de pedidos de cliente, socios de negocio, artículos, stock por almacén, entregas y facturas;
-  - **creación de ofertas de venta (cotizaciones)** solo en la base de pruebas.
+  - en la base de pruebas: **crear, actualizar y cancelar órdenes de venta** (pedidos de cliente) y **crear ofertas de venta** (cotizaciones).
 - Use una contraseña nueva y larga. Se escribe solo en `SAP_SL_PASSWORD` (§5.3).
 
 ### 7.2 Base de datos
 - Durante la marcha blanca: **`ZZZ_CORPRODUC_TEST260826`** (pruebas).
-- El módulo **solo escribe cotizaciones** en las bases listadas en el parámetro `sap_escritura_empresas`, que hoy contiene únicamente la de pruebas.
+- El módulo **escribe OV y cotizaciones** solo en las bases listadas en el parámetro `sap_escritura_empresas`, que hoy contiene únicamente la de pruebas.
 - Pasar a la base productiva es una **decisión de la Gerencia**, posterior a la marcha blanca.
 
 ### 7.3 Certificado del Service Layer
@@ -248,6 +266,41 @@ sudo systemctl restart operaciones   # activa la sincronización automática cad
 ```
 - `sap-probar` debe responder con la sesión iniciada y la versión.
 - `sap-traer` crea una carga **para revisar**: no se aplica sola.
+
+### 7.5 Qué se refleja en cada sentido
+**Del módulo a SAP (escritura, solo en la base autorizada).** Cada minuto, de 06:00 a 21:00:
+
+| En el módulo | En SAP |
+|---|---|
+| OV **registrada** | Se crea la orden de venta (`Orders`), con cliente, fecha de entrega, OC del cliente (`NumAtCard`), dirección, productos, cantidades, precios, descuento e impuesto. El número que SAP asigna se guarda en la OV del módulo y se ve en su ficha. |
+| OV **modificada** (productos, cantidades, precios, fecha) | Se actualiza la misma orden en SAP. |
+| OV **cancelada** | Se cancela en SAP. |
+
+Qué **no** se envía a SAP:
+- **borradores**, incluida la OV fuera del corte;
+- OV **bloqueadas** o **retenidas por precio**: se envían cuando se liberan;
+- **regularizaciones**: registran pedidos que ya ocurrieron.
+
+Si SAP rechaza una OV (por ejemplo, el cliente o un artículo no existe en SAP):
+- se reintenta cada 10 minutos;
+- se alerta a Sistemas, al Coordinador de Ventas y a quien la registró;
+- en la ficha se ve el error y el botón **Enviar a SAP ahora**.
+
+Si la OV la crea alguien en SAP (o la modifica, cancela o cierra), llega al módulo en la siguiente sincronización. La OV que el módulo creó en SAP **no se duplica** al volver, porque se reconoce por su número de SAP.
+
+**De SAP al módulo (lectura, cada minuto).** Llegan:
+- las OV abiertas, sus cambios y las cerradas o canceladas;
+- clientes y artículos;
+- entregas (guías);
+- stock por lote y liquidaciones, en cuanto el partner cree sus consultas en el Service Layer.
+
+**Pendiente de definir con el partner.** Para crear en SAP otros documentos desde el módulo, hay que confirmar con el partner series, almacenes y cuentas de cada uno (§12):
+- entregas (guías de remisión);
+- transferencias entre almacenes;
+- recepciones de producción;
+- clientes nuevos.
+
+Hoy esos documentos se siguen registrando en SAP, y el módulo los lee de allí.
 
 ---
 
@@ -324,14 +377,33 @@ Estas áreas no tienen un perfil equivalente en el módulo. No los inventé: esa
 **Verificado en este entorno:**
 - pruebas automáticas;
 - carga de las exportaciones reales de SAP en una base temporal;
-- carga de usuarios por Excel con datos ficticios.
+- carga de usuarios por Excel con datos ficticios;
+- creación, actualización y cancelación de OV en SAP, **contra un SAP simulado**.
 
 **No ejecutado todavía:**
 - la creación del servidor;
 - la conexión real al Service Layer, porque desde aquí no hay acceso a la red interna;
-- el ingreso con el Microsoft 365 de la empresa.
+- el ingreso con el Microsoft 365 de la empresa;
+- la creación de una OV real en la base de pruebas de SAP. Es la primera prueba que haremos al conectar: una OV de prueba, para revisar en SAP cómo queda.
 
 El sistema **no está listo para producción** hasta completar los §2 a §8, ver `sap-probar` en verde y probar con los usuarios de cada área.
+
+## 12. Para que «todo lo del sistema se refleje en SAP»: qué falta definir
+
+Hoy se escriben en SAP las **OV** (crear, actualizar, cancelar) y las **cotizaciones**. Para los demás documentos, necesito que el partner de SAP confirme, en cada caso, cómo debe quedar el documento en SAP:
+- serie de numeración;
+- almacén de origen y destino;
+- campos obligatorios y campos de usuario (UDF);
+- si el documento contabiliza.
+
+| Hecho en el módulo | Documento de SAP propuesto | Qué confirmar |
+|---|---|---|
+| Despacho / guía de remisión | Entrega (`DeliveryNotes`) basada en la OV | ¿Se emite en SAP o en el módulo? Serie de guías y numeración electrónica (SUNAT) |
+| Traslado entre almacenes | Transferencia de stock (`StockTransfers`) | Almacenes y lotes |
+| Ingreso de producción / liquidación | Recibo de producción (`InventoryGenEntries`) contra la orden de fabricación | Si se usan órdenes de fabricación en SAP |
+| Cliente nuevo | Socio de negocio (`BusinessPartners`) | Grupo, condición de pago, lista de precios, serie de códigos |
+
+Mientras no se defina, esos datos se siguen registrando en SAP y el módulo los toma de allí. Nada se pierde ni se duplica.
 
 ## Anexo: cambios de la ronda V9 (respuestas C01–C05)
 
@@ -343,3 +415,11 @@ El sistema **no está listo para producción** hasta completar los §2 a §8, ve
 | C04 | Ya implementado: penalidades según las condiciones de la ficha del cliente; indicador calculada vs pagada vs desestimada. |
 | C05 | Plazo de **7 días** (`penalidad_dias_resolver`) para registrar si se pagó o se desestimó; vencido el plazo se alerta al Jefe Comercial. **Solo el Jefe Comercial desestima** (y la Gerencia General), con motivo obligatorio. |
 | Usuarios | Carga por Excel en *Usuarios y permisos*, con dominio corporativo validado (`correo_dominio_corporativo`); sin guardar DNI; sin adivinar perfiles. |
+
+## Anexo: indicaciones del 28-oct-2026 (V10)
+
+| Indicación | Qué se aplicó |
+|---|---|
+| Lo que se registra en el sistema debe quedar en SAP | La OV registrada en el módulo se **crea en SAP**; sus cambios y su cancelación también se envían (§7.5). Solo en la base autorizada (`sap_escritura_empresas`, hoy la de pruebas) y con `sap_escritura_ov`. En la ficha de la OV se ven el número de SAP, el error si lo hubo y el botón «Enviar a SAP ahora». |
+| Lo que se hace en SAP debe verse en el sistema | Ya estaba: sincronización cada minuto de 06:00 a 21:00 (OV, clientes, artículos, entregas). Ahora además la OV creada por el módulo se reconoce por su número de SAP y no se duplica. |
+| OV de producto terminado solo hasta las 12:00 | Hasta las 12:00 se registran OV de cualquier producto. Después, **solo de materia prima y granel** (`tipos_ov_despues_corte`). La OV con producto terminado registrada después del corte no se pierde: queda en **borrador** con el motivo, y al día siguiente antes de las 12:00 se registra con «Registrar ahora». |

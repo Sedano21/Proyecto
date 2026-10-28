@@ -1276,8 +1276,9 @@ PARAMS += [
      "los kg de las líneas en unidades se calculan con el peso del artículo.", "DEFINIDO",
      f"{R23}: «todo lo que es granel o MP es en kilos… producto terminado en unidades»"),
     ("hora_corte_ov_dia_siguiente", "12:00", "str", "Comercial",
-     "Una OV registrada después de esta hora no puede tener despacho para el día siguiente (las demás fechas, sin problema).",
-     "DEFINIDO", f"{R23}: regla acordada con Comercial (corte al mediodía)"),
+     "Hora de corte: hasta esta hora se registran OV de producto terminado; después, solo de materia prima y granel "
+     "(tipos_ov_despues_corte). La OV de producto terminado registrada después del corte queda en borrador.",
+     "DEFINIDO", f"{R23}: regla acordada con Comercial (corte al mediodía); precisada el 28-oct-2026"),
     ("exigir_oc_ov_modulo", True, "bool", "Comercial",
      "Las OV registradas en el módulo necesitan la orden de compra del cliente (o la plantilla del pedido por WhatsApp/correo). "
      "Sin ella se guardan como BORRADOR y no se evalúan. Las OV cargadas desde SAP no la piden.", "DEFINIDO",
@@ -1836,7 +1837,7 @@ PARAMS += [
      "Horario de la sincronización automática con SAP (HH:MM-HH:MM). La frecuencia se fija en el servidor (SAP_SYNC_MIN=1: "
      "cada minuto). Si SAP no cambió, no se crea una carga nueva.", "DEFINIDO", f"{V8}: S07 (cada 1 minuto de 6:00 a 21:00)"),
     ("sap_escritura_empresas", ["ZZZ_CORPRODUC_TEST260826"], "list", "Integración SAP",
-     "Bases de SAP (CompanyDB) en las que el módulo puede escribir (cotizaciones). Solo la base de pruebas.", "DEFINIDO",
+     "Bases de SAP (CompanyDB) en las que el módulo puede escribir (cotizaciones y OV). Solo la base de pruebas.", "DEFINIDO",
      f"{V8}: S06 (escritura autorizada para conectarlo con la base de pruebas de SAP)"),
 ]
 PARAMS_CAMBIO += [
@@ -1880,4 +1881,23 @@ ALERT_TYPES += [
      "Comercial pide la guía de lo que salió para cerrar la regularización.", True),
     ("PENALIDAD_VENCIDA", "Penalidad sin resolver en el plazo", "Comercial", "Clientes", "ALTA", ["JEFE_VENTAS"], "DEFINIDO",
      f"{V9}: C05", "Pasaron los días configurados sin registrar si la penalidad se pagó o se desestimó.", True),
+]
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+# V10: indicaciones del 28-oct-2026 (OV del módulo reflejadas en SAP; corte de las 12:00 por tipo de producto)
+V10 = "Indicaciones de la empresa (28-oct-2026)"
+PARAMS += [
+    ("sap_escritura_ov", True, "bool", "Integración SAP",
+     "La OV registrada en el módulo se crea en SAP (y se envían sus cambios y su cancelación), solo en las bases de "
+     "«sap_escritura_empresas».", "DEFINIDO",
+     f"{V10}: «todo lo que se haga en el sistema debe verse reflejado en el SAP (subir OV…)»"),
+    ("tipos_ov_despues_corte", ["MP", "GR"], "list", "Comercial",
+     "Tipos de producto que se pueden registrar en una OV después de la hora de corte (MP = materia prima, GR = granel).",
+     "DEFINIDO", f"{V10}: «solo se puede registrar OV de producto terminado hasta antes de las 12; después solo de "
+                 "materia prima y granel»"),
+]
+ALERT_TYPES += [
+    ("SAP_OV_ERROR", "OV no registrada en SAP", "Sistemas", "Integración SAP", "ALTA", ["SISTEMAS", "COORD_VENTAS"],
+     "DEFINIDO", f"{V10}", "SAP rechazó crear, actualizar o cancelar una OV del módulo; se reintenta solo.", True),
 ]

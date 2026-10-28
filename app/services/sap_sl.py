@@ -1,8 +1,9 @@
-"""Conexión con SAP Business One mediante el Service Layer (ronda del 26-oct-2026). SOLO LECTURA.
+"""Conexión con SAP Business One mediante el Service Layer (ronda del 26-oct-2026).
 
 El conector trae de SAP las órdenes de venta abiertas, los clientes, los artículos, las entregas (guías) y, con consultas
-SQL guardadas en el Service Layer, el stock por lote y las liquidaciones de producción. No escribe nada en SAP: solo
-usa GET y el inicio y cierre de sesión (POST /Login y /Logout).
+SQL guardadas en el Service Layer, el stock por lote y las liquidaciones de producción. Escritura en SAP (solo en las
+bases de «sap_escritura_empresas»): las cotizaciones y, desde V10, las OV registradas en el módulo (crear, actualizar,
+cancelar; ver push_order).
 
 Los datos traídos se convierten al mismo formato de las exportaciones de SAP y pasan por el mismo flujo de las cargas:
 validación, revisión y autorización (o autorización automática para los tipos configurados en `sap_autoconfirmar`),
@@ -11,7 +12,7 @@ con su auditoría y la conciliación de la marcha blanca.
 Configuración en el servidor (variables de entorno; nunca en la base ni en el repositorio):
   SAP_SL_URL       https://servidor-sap:50000/b1s/v1   (o /b1s/v2)
   SAP_SL_COMPANY   base de datos de la empresa en SAP (CompanyDB)
-  SAP_SL_USER      usuario de SAP B1 de solo consulta para la integración
+  SAP_SL_USER      usuario de integración de SAP B1 (lectura; escribe OV y cotizaciones solo en bases autorizadas)
   SAP_SL_PASSWORD  su contraseña
   SAP_SL_CA        ruta del certificado de la CA del servidor SAP (si usa un certificado propio); SAP_SL_VERIFY=0 lo
                    desactiva (solo para pruebas internas)
@@ -322,6 +323,12 @@ def scheduled_sync(ahora=None):
         ini, fin = [x.strip() for x in horario.split("-", 1)]
         if not (ini <= f"{ahora:%H:%M}" <= fin):
             return 0
+    try:  # V10: primero se envían a SAP las OV del módulo; luego se trae lo que cambió en SAP
+        push_pending_orders(ahora)
+    except BusinessError as e:
+        from . import alerts
+        alerts.emit("CARGA_SAP_DESACTUALIZADA", "No se pudo enviar las OV a SAP", str(e), "UploadBatch", "",
+                    dedup_key=f"SAP_SL_PUSH:{ahora:%Y%m%d%H}")
     u = db().execute(select(User).where(User.username == os.environ.get("SAP_SYNC_USER", ""))).scalars().first()
     if u is None:
         return 0
@@ -429,3 +436,168 @@ def push_quote(q, user, sl=None):
     q.sap_docnum = str(r.get("DocNum") or "")
     audit(user, "SAP_COTIZACION_ENVIADA", "Quote", q.numero, {"sap_docnum": q.sap_docnum})
     return q.sap_docnum
+
+
+# ------------------------------------------------------------------ OV del módulo → SAP (V10, 28-oct-2026)
+# Lo registrado en el módulo debe quedar en SAP: la OV se crea en SAP (POST Orders), sus cambios se envían (PATCH) y su
+# cancelación también (Cancel). Es ESCRITURA en SAP: solo en las bases de «sap_escritura_empresas» (hoy, solo la de
+# pruebas) y con «sap_escritura_ov» activo. Se procesa en la sincronización automática, no al guardar: si SAP no
+# responde, la OV queda pendiente y se reintenta, sin perder nada en el módulo.
+OV_NO_SE_ENVIAN = ("BORRADOR", "BLOQUEADA", "REGULARIZADA", "REGULARIZADA_CERRADA", "REGULARIZACION_OBSERVADA")
+OV_SE_ACTUALIZAN = ("REGISTRADA", "EVALUADA", "EN_PREPARACION", "PREPARADA")
+REINTENTO_MIN = 10
+
+
+def write_enabled(cfg=None):
+    """None si se puede escribir OV en SAP; si no, el motivo."""
+    if not param("sap_escritura_ov", False):
+        return "La creación de OV en SAP está desactivada (parámetro «sap_escritura_ov»)."
+    cfg = cfg or config()
+    empresas = [e.strip().upper() for e in (param("sap_escritura_empresas", []) or [])]
+    if (cfg.get("company") or "").upper() not in empresas:
+        return f"La escritura en SAP no está autorizada para la base «{cfg.get('company') or '-'}» («sap_escritura_empresas»)."
+    return None
+
+
+def order_payload(o):
+    lines = []
+    for l in o.lines:
+        if not l.activa or l.cantidad <= 0:
+            continue
+        d = {"ItemCode": l.product_code, "Quantity": round(l.cantidad, 6), "UnitPrice": round(l.precio_unitario or 0, 6)}
+        bruto = l.cantidad * (l.precio_unitario or 0)
+        if (l.descuento or 0) > 0 and bruto > 0:  # en el módulo el descuento es un importe; SAP lo recibe en %
+            d["DiscountPercent"] = round(100 * l.descuento / bruto, 4)
+        if l.tax_code:
+            d["TaxCode"] = l.tax_code
+        lines.append(d)
+    body = {"CardCode": o.customer.codigo_sap or "", "DocDate": (o.fecha_emision or date.today()).isoformat(),
+            "DocDueDate": o.fecha_compromiso.isoformat(), "NumAtCard": (o.oc_numero or "")[:100],
+            "Comments": f"OV {o.numero} del módulo de operaciones. {o.comentarios or ''}".strip()[:254],
+            "DocumentLines": lines}
+    if o.direccion:
+        body["Address2"] = ", ".join(x for x in (o.direccion, o.distrito, o.provincia) if x)[:254]
+    return body
+
+
+def _hash(body):
+    import hashlib
+    return hashlib.sha1(json.dumps(body, sort_keys=True, default=str).encode()).hexdigest()
+
+
+def pending_action(o):
+    """Qué falta hacer en SAP con la OV: CREAR, ACTUALIZAR, CANCELAR o None."""
+    if o.origen != "MODULO" or o.estado in OV_NO_SE_ENVIAN or o.retenida_precio:
+        return None
+    env = o.sap_envio or {}
+    if o.estado == "CANCELADA":
+        return "CANCELAR" if o.sap_docentry and not env.get("cancelada") else None
+    if not o.sap_docentry:
+        return "CREAR"
+    if o.estado in OV_SE_ACTUALIZAN and env.get("hash") != _hash(order_payload(o)):
+        return "ACTUALIZAR"
+    return None
+
+
+def push_order(o, user=None, sl=None):
+    """Crea, actualiza o cancela en SAP la OV del módulo. Devuelve la acción realizada (o None si no había nada)."""
+    from . import alerts
+    accion = pending_action(o)
+    if accion is None:
+        return None
+    motivo = write_enabled(sl.cfg if sl is not None else None)
+    if motivo:
+        raise BusinessError(motivo)
+    body = order_payload(o)
+    env = dict(o.sap_envio or {})
+    env.update({"ts": datetime.now().isoformat(timespec="seconds"), "accion": accion})
+    own = sl is None
+    try:
+        if accion != "CANCELAR":
+            if not body["CardCode"]:
+                raise BusinessError(f"El cliente {o.customer.nombre} no tiene código de SAP: créelo en SAP o registre su código.")
+            if not body["DocumentLines"]:
+                raise BusinessError("La OV no tiene líneas activas.")
+        sl = sl or ServiceLayer()
+        if own:
+            sl.login()
+        try:
+            if accion == "CREAR":
+                r = sl._req("POST", "Orders", body)
+                o.sap_docentry = int(r.get("DocEntry")) if r.get("DocEntry") is not None else None
+                o.sap_docnum = str(r.get("DocNum") or "")
+            elif accion == "ACTUALIZAR":
+                sl._req("PATCH", f"Orders({o.sap_docentry})", body, headers={"B1S-ReplaceCollectionsOnPatch": "true"})
+            else:
+                sl._req("POST", f"Orders({o.sap_docentry})/Cancel")
+                env["cancelada"] = True
+        finally:
+            if own:
+                sl.logout()
+    except BusinessError as e:
+        env.update({"estado": "ERROR", "error": str(e)[:300], "intentos": int(env.get("intentos") or 0) + 1})
+        o.sap_envio = env
+        alerts.emit("SAP_OV_ERROR", f"OV {o.numero} no se pudo {'crear' if accion == 'CREAR' else 'actualizar'} en SAP",
+                    f"{e}. Se reintenta automáticamente cada {REINTENTO_MIN} minutos.", "SalesOrder", o.id,
+                    prioridad="ALTA", extra_users=[o.creado_por] if o.creado_por else None,
+                    dedup_key=f"SAP_OV_ERR:{o.id}")
+        raise
+    env.update({"estado": "CANCELADA" if accion == "CANCELAR" else "ENVIADA", "error": "", "intentos": 0,
+                "hash": _hash(body)})
+    o.sap_envio = env
+    alerts.close_by_system(f"SAP_OV_ERR:{o.id}", f"OV registrada en SAP ({o.sap_docnum})")
+    audit(user, f"SAP_OV_{accion}", "SalesOrder", o.numero, {"sap_docnum": o.sap_docnum, "docentry": o.sap_docentry})
+    return accion
+
+
+def push_pending_orders(ahora=None, sl=None):
+    """Envía a SAP las OV del módulo pendientes (las que fallaron se reintentan cada REINTENTO_MIN minutos)."""
+    from sqlalchemy import or_, select
+    from ..db import db
+    from ..models import SalesOrder
+    if write_enabled(sl.cfg if sl is not None else None) or (sl is None and not configured()):
+        return 0
+    ahora = ahora or datetime.now()
+    cand = []
+    for o in db().execute(select(SalesOrder).where(SalesOrder.origen == "MODULO",
+                                                   SalesOrder.estado.notin_(OV_NO_SE_ENVIAN),
+                                                   or_(SalesOrder.sap_docentry.is_(None),
+                                                       SalesOrder.estado.in_(OV_SE_ACTUALIZAN + ("CANCELADA",))))).scalars():
+        env = o.sap_envio or {}
+        if env.get("estado") == "ERROR" and env.get("ts") and \
+                (ahora - datetime.fromisoformat(env["ts"])).total_seconds() < REINTENTO_MIN * 60:
+            continue
+        if pending_action(o):
+            cand.append(o)
+    if not cand:
+        return 0
+    own = sl is None
+    sl = sl or ServiceLayer()
+    if own:
+        sl.login()
+    n = 0
+    try:
+        for o in cand:
+            try:
+                if push_order(o, None, sl):
+                    n += 1
+            except BusinessError:
+                continue
+    finally:
+        if own:
+            sl.logout()
+    return n
+
+
+def push_order_now(o, user):
+    """Envío manual (o reintento) de una OV a SAP desde su ficha."""
+    from .core import has_perm
+    if not (has_perm(user, "ov.modificar") or has_perm(user, "usuarios.administrar")):
+        raise BusinessError("Envían la OV a SAP el Coordinador o el Jefe Comercial, o Sistemas.")
+    if pending_action(o) is None:
+        raise BusinessError("La OV no tiene nada pendiente de enviar a SAP." if o.sap_docnum or o.estado == "CANCELADA" else
+                            "Esta OV no se envía a SAP en su estado actual (borrador, bloqueada, retenida por precio, "
+                            "regularización o cargada desde SAP).")
+    if not configured():
+        raise BusinessError("La conexión con SAP no está configurada en el servidor.")
+    return push_order(o, user)
