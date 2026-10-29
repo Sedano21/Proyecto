@@ -57,12 +57,12 @@
   {% if vi('MONTO_OV') and not dup %}<div class="kpi primary"><b>S/ {{ k.monto_total|n }}</b><span>Monto de OV</span><small>pendiente S/ {{ k.monto_pendiente|n }}</small></div>{% endif %}
   {% if vi('PRECIO_BAJO_MINIMO') %}<div class="kpi {{ 'warn' if k.precio_bajo_minimo else '' }}"><b>{{ k.precio_bajo_minimo }}</b><span>OV con precio en el límite o bajo el mínimo</span><small>{{ k.ov_sin_precio }} OV sin precio de venta</small></div>{% endif %}
 </div>{% endif %}
-{% if vi('T_PREPARACION') or vi('T_DESPACHO') or vi('COMPRAS_PENDIENTES') or vi('PRODUCCION_PENDIENTE') or vi('DIF_INVENTARIO') or vi('DIF_RECEPCION_PT') %}<div class="section-title">Operación</div>
+{% if vi('T_PREPARACION') or vi('T_DESPACHO') or vi('COMPRAS_PENDIENTES') or (vi('PRODUCCION_PENDIENTE') and not hp) or vi('DIF_INVENTARIO') or vi('DIF_RECEPCION_PT') %}<div class="section-title">Operación</div>
 <div class="kpis">
   {% if vi('T_PREPARACION') %}<div class="kpi"><b>{{ k.tiempo_preparacion_h if k.tiempo_preparacion_h is not none else '—' }} h</b><span>Tiempo promedio de preparación</span><small>de inicio a fin del picking</small></div>{% endif %}
   {% if vi('T_DESPACHO') %}<div class="kpi"><b>{{ k.tiempo_despacho_h if k.tiempo_despacho_h is not none else '—' }} h</b><span>De preparado a salida</span><small>promedio por pedido</small></div>{% endif %}
   {% if vi('COMPRAS_PENDIENTES') %}<div class="kpi"><b>{{ k.compras_pendientes }}</b><span>Compras pendientes</span><small>solicitudes abiertas</small></div>{% endif %}
-  {% if vi('PRODUCCION_PENDIENTE') %}<div class="kpi"><b>{{ k.produccion_pendiente }}</b><span>Solicitudes de producción pendientes</span><small>enviadas, validadas, programadas o en proceso</small></div>{% endif %}
+  {% if vi('PRODUCCION_PENDIENTE') and not hp %}<div class="kpi"><b>{{ k.produccion_pendiente }}</b><span>Solicitudes de producción pendientes</span><small>enviadas, validadas, programadas o en proceso</small></div>{% endif %}
   {% if vi('DIF_INVENTARIO') %}<div class="kpi {{ 'warn' if k.diferencias_inventario else '' }}"><b>{{ k.diferencias_inventario }}</b><span>Diferencias en conteos</span><small>líneas con faltante o sobrante</small></div>{% endif %}
   {% if vi('DIF_RECEPCION_PT') %}<div class="kpi {{ 'warn' if k.diferencias_liquidacion else '' }}"><b>{{ k.diferencias_liquidacion }}</b><span>Diferencias en recepción de PT</span><small>liquidado vs recibido</small></div>{% endif %}
 </div>{% endif %}

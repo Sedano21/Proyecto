@@ -13,8 +13,8 @@ from ..models import Driver, FuelLog, Route, Vehicle, VehicleDocument, VehicleMa
 from . import alerts
 from .core import BusinessError, audit, has_perm, param
 
-TIPOS_DOC = {"SOAT": "SOAT", "REVISION_TECNICA": "Revisión técnica", "IMPUESTO_VEHICULAR": "Impuesto vehicular",
-             "MULTA": "Multa / papeleta", "OTRO": "Otro"}
+TIPOS_DOC = {"SOAT": "SOAT", "TARJETA_CIRCULACION": "Tarjeta de circulación", "REVISION_TECNICA": "Revisión técnica",
+             "IMPUESTO_VEHICULAR": "Impuesto vehicular", "MULTA": "Multa / papeleta", "OTRO": "Otro"}
 
 
 def _req(user):
@@ -41,6 +41,8 @@ def add_document(user, vehicle, tipo, numero="", fecha=None, vencimiento=None, m
     _req(user)
     if tipo not in TIPOS_DOC:
         raise BusinessError("Tipo de documento no válido.")
+    if tipo == "REVISION_TECNICA" and vencimiento is None and fecha is not None:
+        vencimiento = fecha + timedelta(days=365)  # V12: la revisión técnica es anual
     if tipo != "MULTA" and vencimiento is None:
         raise BusinessError("Indique la fecha de vencimiento.")
     if tipo == "MULTA" and fecha is None:
@@ -105,7 +107,7 @@ def status(vehicle, hoy=None):
     hoy = hoy or date.today()
     s = db()
     docs = list(s.execute(select(VehicleDocument).where(VehicleDocument.vehicle_id == vehicle.id)
-                          .order_by(VehicleDocument.vencimiento.desc().nullslast(), VehicleDocument.id.desc())).scalars())
+                          .order_by(VehicleDocument.id.desc())).scalars())  # V12: rige el último registrado de cada tipo
     ult = {}
     for d in docs:
         if d.tipo != "MULTA" and d.tipo not in ult:
@@ -114,33 +116,68 @@ def status(vehicle, hoy=None):
                      .order_by(VehicleMaintenance.fecha.desc(), VehicleMaintenance.id.desc())).scalars().first()
     ef = fuel_efficiency(vehicle)
     return {"documentos": ult, "multas": [d for d in docs if d.tipo == "MULTA"], "mantenimiento": mant,
-            "km_restantes": (mant.proximo_km - vehicle.km_actual) if mant and mant.proximo_km and vehicle.km_actual else None,
+            "proximo_km": next_maintenance_km(vehicle, mant if mant and mant.tipo == "PREVENTIVO" else None),
+            "km_restantes": (next_maintenance_km(vehicle, mant if mant and mant.tipo == "PREVENTIVO" else None) - vehicle.km_actual)
+            if vehicle.km_actual is not None and next_maintenance_km(vehicle, mant if mant and mant.tipo == "PREVENTIVO" else None) else None,
             "rendimiento": ef[-1]["km_galon"] if ef else None, "consumos": ef[-10:],
             "vencidos": [d for d in ult.values() if d.vencimiento and d.vencimiento < hoy]}
 
 
+def _aviso_dias(tipo):
+    cfg = param("aviso_documentos_vehiculo_dias", {}) or {}
+    return int(cfg.get(tipo, cfg.get("*", param("dias_aviso_documentos_vehiculo", 15) or 15)))
+
+
+def next_maintenance_km(vehicle, ultimo=None):
+    """V12: próximo mantenimiento preventivo por kilometraje (cada «km_mantenimiento_preventivo» km)."""
+    cada = float(param("km_mantenimiento_preventivo", 5000) or 0)
+    if ultimo is not None and ultimo.proximo_km:
+        return ultimo.proximo_km
+    if not cada:
+        return None
+    if ultimo is not None and ultimo.km is not None:
+        return ultimo.km + cada
+    if vehicle.km_actual is not None:
+        return (int(vehicle.km_actual // cada) + 1) * cada
+    return None
+
+
 def check_alerts(hoy=None):
-    """Tarea programada: documentos por vencer y mantenimiento por kilometraje o fecha."""
+    """Tarea programada (V12): documentos con aviso por tipo (SOAT 2 semanas, tarjeta de circulación y revisión técnica
+    1 mes), recordatorio un día antes y el mismo día; mantenimiento cada 5 000 km con aviso 500 km antes."""
     hoy = hoy or date.today()
-    dias = int(param("dias_aviso_documentos_vehiculo", 15) or 15)
     margen = float(param("margen_km_mantenimiento", 500) or 500)
     n = 0
     for v in db().execute(select(Vehicle)).scalars():
         st = status(v, hoy)
         for d in st["documentos"].values():
-            if d.vencimiento and d.vencimiento <= hoy + timedelta(days=dias):
-                vencido = d.vencimiento < hoy
-                alerts.emit("FLOTA_DOCUMENTO", f"{TIPOS_DOC[d.tipo]} del vehículo {v.placa} {'vencido' if vencido else 'por vencer'} "
-                            f"({d.vencimiento:%d/%m/%Y})", f"Documento {d.numero or '-'}.", "Vehicle", v.id,
-                            prioridad="ALTA" if vencido else None, dedup_key=f"FLOTA_DOC:{d.id}:{'V' if vencido else 'P'}")
-                n += 1
+            if not d.vencimiento:
+                continue
+            falta = (d.vencimiento - hoy).days
+            if falta < 0:
+                etapa, txt, prio = "V", "vencido", "ALTA"
+            elif falta == 0:
+                etapa, txt, prio = "D0", "vence hoy", "ALTA"
+            elif falta == 1:
+                etapa, txt, prio = "D1", "vence mañana", "ALTA"
+            elif falta <= _aviso_dias(d.tipo):
+                etapa, txt, prio = "P", "por vencer", None
+            else:
+                continue
+            alerts.emit("FLOTA_DOCUMENTO", f"{TIPOS_DOC.get(d.tipo, d.tipo)} del vehículo {v.placa} {txt} ({d.vencimiento:%d/%m/%Y})",
+                        f"Documento {d.numero or '-'}.", "Vehicle", v.id, prioridad=prio,
+                        dedup_key=f"FLOTA_DOC:{d.id}:{etapa}")
+            n += 1
         m = st["mantenimiento"]
-        if m and ((st["km_restantes"] is not None and st["km_restantes"] <= margen)
-                  or (m.proxima_fecha and m.proxima_fecha <= hoy + timedelta(days=dias))):
-            alerts.emit("FLOTA_MANTENIMIENTO", f"Mantenimiento próximo del vehículo {v.placa}",
-                        f"Km actual {v.km_actual or '-'}; próximo a los {m.proximo_km or '-'} km"
-                        f"{' o el ' + m.proxima_fecha.strftime('%d/%m/%Y') if m.proxima_fecha else ''}.", "Vehicle", v.id,
-                        dedup_key=f"FLOTA_MANT:{v.id}")
+        prox = next_maintenance_km(v, m if m and m.tipo == "PREVENTIVO" else None)
+        km_rest = prox - v.km_actual if prox is not None and v.km_actual is not None else None
+        if (km_rest is not None and km_rest <= margen) or (m and m.proxima_fecha and m.proxima_fecha <= hoy + timedelta(days=_aviso_dias("*"))):
+            alerts.emit("FLOTA_MANTENIMIENTO", f"Mantenimiento {'vencido' if km_rest is not None and km_rest <= 0 else 'próximo'} "
+                                               f"del vehículo {v.placa}",
+                        f"Km actual {v.km_actual or '-'}; mantenimiento a los {prox or '-'} km"
+                        f"{' o el ' + m.proxima_fecha.strftime('%d/%m/%Y') if m and m.proxima_fecha else ''}.", "Vehicle", v.id,
+                        prioridad="ALTA" if km_rest is not None and km_rest <= 0 else None,
+                        dedup_key=f"FLOTA_MANT:{v.id}:{int(prox or 0)}")
             n += 1
     return n
 

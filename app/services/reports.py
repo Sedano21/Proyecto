@@ -423,7 +423,10 @@ def distribucion(desde=None, hasta=None):
     if any(r.requiere_externo and r.costo_transporte is None for r in rutas):
         reco.append("Hay rutas con transporte externo sin costo registrado: registrar el costo para medir el gasto.")
     semanas = sorted(sem)
-    return {"desde": desde, "hasta": hasta, "rutas": n, "tot": tot, "pct_externo": pct_ext,
+    # V12: fill rate de lo que salió en las rutas del periodo (unidades, líneas y pedidos al 100 %)
+    from .kpis import fill_rate
+    fr = fill_rate([st.order for r in rutas if r.salida_ts for st in r.stops])
+    return {"desde": desde, "hasta": hasta, "rutas": n, "tot": tot, "pct_externo": pct_ext, "fill": fr,
             "salieron": len(salieron), "a_tiempo": a_tiempo, "pct_a_tiempo": _pct(a_tiempo, len(salieron)), "desviacion": desv,
             "costo_externo": round(costo_ext, 2), "costo_estiba": round(costo_est, 2),
             "costo_externo_kg": round(costo_ext / kg_ext, 4) if kg_ext and costo_ext else None,

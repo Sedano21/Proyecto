@@ -423,6 +423,8 @@ class SalesOrder(Base):
     sap_docnum: Mapped[str] = mapped_column(String(20), default="", server_default="", index=True)
     sap_docentry: Mapped[int | None] = mapped_column(Integer, nullable=True)
     sap_envio: Mapped[dict] = mapped_column(JSON, default=dict)
+    # V12: pre-guía generada al terminar el picking; la valida Distribución y se registra como guía en SAP
+    preguia: Mapped[dict] = mapped_column(JSON, default=dict)
     customer = relationship("Customer")
     # canal / grupo de precios elegido al registrar (el mínimo varía por canal; observaciones al demo v0.6)
     canal_precio: Mapped[str] = mapped_column(String(60), default="")
@@ -998,6 +1000,10 @@ class RouteStop(Base):
     receptor_tipo_doc: Mapped[str] = mapped_column(String(12), default="DNI", server_default="DNI")
     receptor_foto: Mapped[str] = mapped_column(String(250), default="", server_default="")
     receptor_motivo: Mapped[str] = mapped_column(String(250), default="", server_default="")
+    # V12: pre-guía validada por Distribución → guía en SAP (entrega) y expediente del cliente
+    fecha_guia: Mapped[date | None] = mapped_column(Date, nullable=True)
+    guia_sap_docentry: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    guia_cambios: Mapped[list] = mapped_column(JSON, default=list)  # [{campo, de, a, motivo, user, ts, origen}]
     firma_path: Mapped[str] = mapped_column(String(250), default="")
     route = relationship("Route", back_populates="stops")
     order = relationship("SalesOrder")
@@ -1075,6 +1081,9 @@ class VehicleMaintenance(Base):
     proxima_fecha: Mapped[date | None] = mapped_column(Date, nullable=True)
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    taller: Mapped[str] = mapped_column(String(120), default="", server_default="")
+    documentos: Mapped[list] = mapped_column(JSON, default=list)  # V12: informe y factura (Compras también la registra)
+    incidencias_taller: Mapped[list] = mapped_column(JSON, default=list)  # V12: motivo, tiempo fuera de servicio…
     vehicle = relationship("Vehicle")
 
 
@@ -1096,6 +1105,10 @@ class Incident(Base):
     # Observaciones al demo v0.6: entrega total o parcial y, si es parcial, qué productos se devolvieron y por qué
     entrega: Mapped[str] = mapped_column(String(10), default="")  # TOTAL / PARCIAL / NINGUNA
     lineas: Mapped[list] = mapped_column(JSON, default=list)  # [{line_id, producto, recibido, devuelto, motivo}]
+    # V12: parte 2 (al retorno: lo que realmente vuelve), flujo almacén → finanzas / devolución y cambios con motivo
+    parte2: Mapped[dict] = mapped_column(JSON, default=dict)
+    flujo: Mapped[dict] = mapped_column(JSON, default=dict)
+    historial: Mapped[list] = mapped_column(JSON, default=list)
     order = relationship("SalesOrder")
 
 
@@ -1773,6 +1786,8 @@ class Breakdown(Base):
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     ts: Mapped[datetime] = mapped_column(DateTime, default=now)
     cierre_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    documentos: Mapped[list] = mapped_column(JSON, default=list)  # V12: [{tipo INFORME/FACTURA, numero, archivo, user, ts}]
+    incidencias_taller: Mapped[list] = mapped_column(JSON, default=list)  # V12: [{motivo, dias_fuera, detalle, user, ts}]
     vehicle = relationship("Vehicle")
 
 
@@ -1944,3 +1959,131 @@ class ReportTemplate(Base):
     creado_ts: Mapped[datetime] = mapped_column(DateTime, default=now)
     actualizado_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     user = relationship("User")
+
+
+# ---------------------------------------------------------------------------
+# V12 (29-oct-2026): Distribución
+# ---------------------------------------------------------------------------
+class VehicleChecklist(Base):
+    """Checklist de inspección vehicular CP-OPE-004 a la salida y al retorno: el chofer lo registra (B/M/NA por ítem,
+    kilometraje y observaciones de choques o raspaduras) y Seguridad lo valida. Un punto NN (no negociable) en «M»
+    impide la salida hasta corregirlo."""
+    __tablename__ = "vehicle_checklists"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    vehicle_id: Mapped[int] = mapped_column(ForeignKey("vehicles.id"), index=True)
+    route_id: Mapped[int | None] = mapped_column(ForeignKey("routes.id"), nullable=True, index=True)
+    momento: Mapped[str] = mapped_column(String(10))  # SALIDA / RETORNO
+    fecha: Mapped[date] = mapped_column(Date)
+    driver_id: Mapped[int | None] = mapped_column(ForeignKey("drivers.id"), nullable=True)
+    items: Mapped[dict] = mapped_column(JSON, default=dict)  # {código: B / M / NA}
+    observaciones: Mapped[str] = mapped_column(Text, default="")
+    km: Mapped[float | None] = mapped_column(Float, nullable=True)  # declarado por el chofer
+    nn_fallidos: Mapped[list] = mapped_column(JSON, default=list)
+    estado: Mapped[str] = mapped_column(String(15), default="REGISTRADO")  # REGISTRADO / VALIDADO / OBSERVADO
+    registrado_por: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    registrado_ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    validado_por: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    validado_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    km_seguridad: Mapped[float | None] = mapped_column(Float, nullable=True)  # kilometraje que registra Seguridad
+    nota_seguridad: Mapped[str] = mapped_column(Text, default="")
+    vehicle = relationship("Vehicle")
+    driver = relationship("Driver")
+    route = relationship("Route")
+
+
+class TransportRate(Base):
+    """Tarifario de transporte tercero (lo mantiene el Coordinador de Distribución; cada cambio alerta a Gerencia de
+    Operaciones y a Administración y Finanzas)."""
+    __tablename__ = "transport_rates"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    proveedor: Mapped[str] = mapped_column(String(160), default="")  # vacío = cualquier proveedor
+    tipo_vehiculo: Mapped[str] = mapped_column(String(60), default="")
+    origen: Mapped[str] = mapped_column(String(120), default="")
+    destino: Mapped[str] = mapped_column(String(120))
+    precio: Mapped[float] = mapped_column(Float)  # S/ con IGV por servicio
+    vigente: Mapped[bool] = mapped_column(Boolean, default=True)
+    historial: Mapped[list] = mapped_column(JSON, default=list)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+
+class ThirdPartyTransport(Base):
+    """Servicio de transporte tercero: aprobación previa de Gerencia de Operaciones, registro y comparación con el
+    tarifario, factura del proveedor (centro de costo y tipo de servicio de SAP), guía remitente, OC de Compras,
+    validación y programación de pagos de Administración y Finanzas, con su expediente."""
+    __tablename__ = "third_party_transports"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    estado: Mapped[str] = mapped_column(String(20), default="POR_APROBAR")
+    # POR_APROBAR / RECHAZADO / APROBADO / FACTURADO / OC_GENERADA / VALIDADO / PAGO_PARCIAL / PAGADO
+    proveedor: Mapped[str] = mapped_column(String(160))
+    customer_id: Mapped[int | None] = mapped_column(ForeignKey("customers.id"), nullable=True)
+    motivo: Mapped[str] = mapped_column(String(40), default="DESPACHO VENTA")  # despacho venta / recojo compras / traslado…
+    tipo_vehiculo: Mapped[str] = mapped_column(String(60), default="")
+    origen: Mapped[str] = mapped_column(String(120), default="")
+    destino: Mapped[str] = mapped_column(String(120), default="")
+    fecha_servicio: Mapped[date | None] = mapped_column(Date, nullable=True)  # la fecha de la guía
+    toneladas: Mapped[float | None] = mapped_column(Float, nullable=True)
+    monto: Mapped[float | None] = mapped_column(Float, nullable=True)  # S/ incluido IGV
+    tarifa: Mapped[float | None] = mapped_column(Float, nullable=True)
+    motivo_sobre_tarifa: Mapped[str] = mapped_column(Text, default="")
+    route_id: Mapped[int | None] = mapped_column(ForeignKey("routes.id"), nullable=True)
+    aprobacion: Mapped[dict] = mapped_column(JSON, default=dict)  # Gerencia de Operaciones antes de contratar
+    factura_numero: Mapped[str] = mapped_column(String(40), default="")
+    factura_archivo: Mapped[str] = mapped_column(String(250), default="")
+    centro_costo: Mapped[str] = mapped_column(String(60), default="")
+    tipo_servicio: Mapped[str] = mapped_column(String(60), default="")  # Fletes / Estibas (SAP)
+    subtipo_servicio: Mapped[str] = mapped_column(String(80), default="")
+    guia_numero: Mapped[str] = mapped_column(String(40), default="")
+    guia: Mapped[dict] = mapped_column(JSON, default=dict)  # traída de SAP y validada por Distribución
+    oc_numero: Mapped[str] = mapped_column(String(40), default="")
+    oc_archivo: Mapped[str] = mapped_column(String(250), default="")
+    finanzas: Mapped[dict] = mapped_column(JSON, default=dict)  # {validado_por, ts, observaciones}
+    pagos: Mapped[list] = mapped_column(JSON, default=list)  # [{fecha_programada, monto, estado, comprobante, ...}]
+    documentos: Mapped[list] = mapped_column(JSON, default=list)
+    historial: Mapped[list] = mapped_column(JSON, default=list)
+    creado_por: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    customer = relationship("Customer")
+
+
+class ProviderIncident(Base):
+    """Incidencia con un proveedor de transporte tercero (para sus indicadores)."""
+    __tablename__ = "provider_incidents"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    proveedor: Mapped[str] = mapped_column(String(160), index=True)
+    servicio_id: Mapped[int | None] = mapped_column(ForeignKey("third_party_transports.id"), nullable=True)
+    tipo: Mapped[str] = mapped_column(String(40))
+    descripcion: Mapped[str] = mapped_column(Text, default="")
+    fecha: Mapped[date] = mapped_column(Date)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+
+class AreaBudget(Base):
+    """Presupuesto anual del área (modelo «Presupuesto proyectado – Logística»): lo registra el Coordinador de
+    Distribución y lo aprueba Administración y Finanzas."""
+    __tablename__ = "area_budgets"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    area: Mapped[str] = mapped_column(String(40))
+    anio: Mapped[int] = mapped_column(Integer)
+    estado: Mapped[str] = mapped_column(String(15), default="BORRADOR")  # BORRADOR / ENVIADO / APROBADO / OBSERVADO
+    aprobacion: Mapped[dict] = mapped_column(JSON, default=dict)
+    historial: Mapped[list] = mapped_column(JSON, default=list)
+    creado_por: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    lines = relationship("BudgetLine", back_populates="budget", cascade="all, delete-orphan", order_by="BudgetLine.id")
+    __table_args__ = (UniqueConstraint("area", "anio", name="uq_area_budget"),)
+
+
+class BudgetLine(Base):
+    __tablename__ = "budget_lines"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    budget_id: Mapped[int] = mapped_column(ForeignKey("area_budgets.id"), index=True)
+    categoria: Mapped[str] = mapped_column(String(80))
+    concepto: Mapped[str] = mapped_column(String(160))
+    glosa: Mapped[str] = mapped_column(String(80), default="")  # p. ej. tipo de vehículo
+    placa: Mapped[str] = mapped_column(String(20), default="")
+    fuente_real: Mapped[str] = mapped_column(String(30), default="MANUAL")  # MANUAL / TERCEROS / MANT_PREVENTIVO / …
+    presupuesto: Mapped[dict] = mapped_column(JSON, default=dict)  # {"1": S/, …, "12": S/}
+    real: Mapped[dict] = mapped_column(JSON, default=dict)  # real registrado a mano por mes
+    budget = relationship("AreaBudget", back_populates="lines")

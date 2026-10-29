@@ -196,7 +196,8 @@ def test_informe_cumplimiento(app, s, U):
     gg = app.test_client()
     login(gg, "gerente.general")
     html = gg.get("/informes/cumplimiento").get_data(as_text=True)
-    assert "Interacciones y cumplimiento" in html and "Coordinador de Ventas" in html
+    # V12: solo lo relacionado con las funciones (tareas, asistencia, rendimiento); no la interacción con el sistema
+    assert "Cumplimiento por persona" in html and "Tareas asignadas" in html and "Dentro de turno" not in html
     assert gg.get("/informes/cumplimiento?formato=xlsx").status_code == 200
     jefe = app.test_client()
     login(jefe, "aux.almacen")

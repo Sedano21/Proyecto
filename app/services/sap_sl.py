@@ -323,8 +323,9 @@ def scheduled_sync(ahora=None):
         ini, fin = [x.strip() for x in horario.split("-", 1)]
         if not (ini <= f"{ahora:%H:%M}" <= fin):
             return 0
-    try:  # V10: primero se envían a SAP las OV del módulo; luego se trae lo que cambió en SAP
+    try:  # V10: primero se envían a SAP las OV del módulo (y, V12, las guías validadas); luego se trae lo que cambió en SAP
         push_pending_orders(ahora)
+        push_pending_guides()
     except BusinessError as e:
         from . import alerts
         alerts.emit("CARGA_SAP_DESACTUALIZADA", "No se pudo enviar las OV a SAP", str(e), "UploadBatch", "",
@@ -601,3 +602,75 @@ def push_order_now(o, user):
     if not configured():
         raise BusinessError("La conexión con SAP no está configurada en el servidor.")
     return push_order(o, user)
+
+
+# ------------------------------------------------------------------ guía (entrega) en SAP – V12, 29-oct-2026
+def push_delivery(o, preguia, sl=None):
+    """Crea en SAP la entrega (DeliveryNotes) basada en la OV ya registrada en SAP, con lo preparado y sus lotes.
+    BaseLine es la posición de la línea en la OV enviada por el módulo (mismo orden que order_payload)."""
+    motivo = write_enabled(sl.cfg if sl is not None else None)
+    if motivo:
+        raise BusinessError(motivo)
+    if not o.sap_docentry:
+        raise BusinessError("La OV aún no está registrada en SAP: la guía se registrará cuando se cree la OV en SAP.")
+    prep = {x["codigo"]: x for x in (preguia or {}).get("items") or []}
+    lines = []
+    pos = 0
+    for l in o.lines:
+        if not l.activa or l.cantidad <= 0:
+            continue
+        x = prep.get(l.product_code)
+        if x and x["preparado"] > 0:
+            d = {"BaseType": 17, "BaseEntry": o.sap_docentry, "BaseLine": pos, "Quantity": x["preparado"]}
+            lotes = [{"BatchNumber": b["lote"], "Quantity": b["cantidad"]} for b in x.get("lotes") or [] if b.get("lote")]
+            if lotes:
+                d["BatchNumbers"] = lotes
+            lines.append(d)
+        pos += 1
+    if not lines:
+        raise BusinessError("La pre-guía no tiene cantidades preparadas.")
+    body = {"CardCode": o.customer.codigo_sap or "", "DocDate": preguia.get("fecha_guia"), "TaxDate": preguia.get("fecha_guia"),
+            "Comments": f"Guía de la OV {o.numero} (pre-guía validada en el módulo).", "DocumentLines": lines}
+    own = sl is None
+    sl = sl or ServiceLayer()
+    if own:
+        sl.login()
+    try:
+        r = sl._req("POST", "DeliveryNotes", body)
+    finally:
+        if own:
+            sl.logout()
+    audit(None, "SAP_GUIA_CREADA", "SalesOrder", o.numero, {"docnum": r.get("DocNum")})
+    return r
+
+
+def patch_delivery_date(docentry, fecha, sl=None):
+    motivo = write_enabled(sl.cfg if sl is not None else None)
+    if motivo:
+        raise BusinessError(motivo)
+    own = sl is None
+    sl = sl or ServiceLayer()
+    if own:
+        sl.login()
+    try:
+        sl._req("PATCH", f"DeliveryNotes({docentry})", {"DocDate": fecha, "TaxDate": fecha})
+    finally:
+        if own:
+            sl.logout()
+
+
+def push_pending_guides(sl=None):
+    """Reintento de las guías validadas que aún no están en SAP (o con un cambio de fecha pendiente)."""
+    from sqlalchemy import select
+    from ..db import db
+    from ..models import SalesOrder
+    from .guides import try_push
+    if write_enabled(sl.cfg if sl is not None else None) or (sl is None and not configured()):
+        return 0
+    n = 0
+    for o in db().execute(select(SalesOrder).where(SalesOrder.sap_docentry.isnot(None))).scalars():
+        sap = (o.preguia or {}).get("sap") or {}
+        if (o.preguia or {}).get("estado") == "VALIDADA" and (sap.get("estado") == "PENDIENTE" or sap.get("fecha_pendiente")):
+            if try_push(o, None, sl).get("estado") == "ENVIADA":
+                n += 1
+    return n

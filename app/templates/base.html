@@ -96,7 +96,13 @@
       {% if ve('distribucion.documentos') %}{{ nl(url_for('alm.uploads', area='Distribución'), 'upload', 'Cargas de SAP (despachos)') }}{% endif %}
       {% if ve('distribucion.flota') %}{{ nl(url_for('dist.fleet'), 'truck', 'Flota y conductores') }}{% endif %}
       {% if ve('flota.ver') or ve('distribucion.flota') %}{{ nl(url_for('dist.fleet_tracking'), 'wrench', 'Seguimiento de flota') }}{% endif %}
+      {% if ve('distribucion.guia_modificar') %}{{ nl(url_for('dist.preguias'), 'file', 'Pre-guías') }}{% endif %}
+      {% if ve('terceros.ver') %}{{ nl(url_for('dist.terceros'), 'truck', 'Transporte tercero') }}{% endif %}
+      {% if ve('presupuesto.ver') %}{{ nl(url_for('dist.presupuesto'), 'chart', 'Presupuesto') }}{% endif %}
     </div>{% endif %}
+    {% if not ve('distribucion.ver') and (ve('terceros.ver') or ve('presupuesto.ver')) %}<div class="grp" data-grupo="Distribución"><h4><span class="lbl">Distribución</span></h4>
+      {% if ve('terceros.ver') %}{{ nl(url_for('dist.terceros'), 'truck', 'Transporte tercero') }}{% endif %}
+      {% if ve('presupuesto.ver') %}{{ nl(url_for('dist.presupuesto'), 'chart', 'Presupuesto') }}{% endif %}</div>{% endif %}
     {% if ve('mantenimiento.ver') or ve('mantenimiento.flota') or ve('saneamiento.registrar') %}<div class="grp" data-grupo="Mantenimiento"><h4><span class="lbl">Mantenimiento</span></h4>
       {% if ve('mantenimiento.ver') or ve('mantenimiento.flota') %}{{ nl(url_for('mant.home', tab='flota'), 'wrench', 'Flota: preventivo') }}
       {{ nl(url_for('mant.home', tab='correctivo'), 'alert', 'Flota: correctivo') }}{% endif %}

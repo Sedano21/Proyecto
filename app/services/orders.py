@@ -318,6 +318,9 @@ def create_order(user, numero, customer_id, fecha_compromiso, lines, urgente=Fal
         from ..models import OrderAttachment
         db().add(OrderAttachment(order_id=o.id, tipo="OC", nombre=o.oc_numero or "Orden de compra", archivo=oc_archivo,
                                  user_id=user.id if user else None))
+    if origen == "MODULO" and not fuera_de_corte:
+        from .guides import alert_after_cutoff  # V12: pedido para mañana después del corte de rutas
+        alert_after_cutoff(o, "Pedido registrado", user)
     audit(user, "OV_CREADA", "SalesOrder", o.numero, {"lineas": lines, "fecha_compromiso": fecha_compromiso,
                                                       "urgente": urgente, "canal_precio": o.canal_precio,
                                                       "oc": bool(oc_archivo)})
@@ -999,6 +1002,9 @@ def finish_preparation(order, user):
                 "SalesOrder", order.id, extra_users=[order.vendedor_id] if order.vendedor_id else None, creado_por=user)
     from .quality import autogenerate_for_order
     autogenerate_for_order(order, user)
+    from . import guides  # V12: pre-guía para Distribución y aviso si se prepara para mañana después del corte de rutas
+    guides.generate(order, user)
+    guides.alert_after_cutoff(order, "Picking terminado", user)
 
 
 def order_weight_kg(order, base="reservado"):

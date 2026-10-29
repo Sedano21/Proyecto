@@ -178,8 +178,8 @@ def validate_load(route, user, lineas, observacion=""):
 def set_guide(stop, user, numero, origen, archivo="", motivo=None):
     """Distribución: registrar la guía de SAP (la válida, con su número y archivo) o, si SAP no está disponible,
     generarla en el sistema como contingencia (marcha blanca, 22-oct-2026), indicando el motivo."""
-    if not has_perm(user, "distribucion.documentos"):
-        raise BusinessError("La guía la genera o carga Distribución.")
+    if not has_perm(user, "distribucion.guia_modificar"):  # V12: solo el Coordinador y el Asistente de Distribución
+        raise BusinessError("Las guías las registran y modifican el Coordinador y el Asistente de Distribución.")
     if origen not in ("SAP", "SISTEMA"):
         raise BusinessError("Origen de guía no válido.")
     if origen == "SAP" and not (numero.strip() and archivo):
@@ -367,6 +367,11 @@ def register_return(route, user, km_retorno=None):
         raise BusinessError("La ruta no está en curso.")
     if needs_vehicle_photos(route) and not (route.fotos or {}).get("vehiculo_retorno"):
         raise BusinessError("El chofer debe subir la foto de cómo devuelve el vehículo.")
+    if param("exigir_checklist_vehicular", True):  # V12: checklist de retorno validado por Seguridad
+        from .vehicle_checklist import can_close_return
+        motivo = can_close_return(route)
+        if motivo:
+            raise BusinessError(motivo)
     if km_retorno is not None:
         if route.km_salida is not None and km_retorno < route.km_salida:
             raise BusinessError("El kilometraje de retorno no puede ser menor al de salida.")

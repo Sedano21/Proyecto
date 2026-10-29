@@ -377,7 +377,7 @@ def fleet_tracking():
 
 
 @bp.route("/flota/vehiculo/<int:vid>", methods=["GET", "POST"])
-@perm_required("flota.ver", "distribucion.flota")
+@perm_required("flota.ver", "distribucion.flota", "mantenimiento.factura")
 def vehicle_detail(vid):
     from ..models import VehicleDocument, VehicleMaintenance
     from ..services import fleet

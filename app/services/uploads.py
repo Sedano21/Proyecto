@@ -1559,7 +1559,7 @@ def _c_despachos(b, user, opciones):
     from .conciliation import Collector
     s = db()
     conc = Collector(b, user)
-    por_ov = defaultdict(lambda: {"guias": set(), "facturas": set(), "cant": defaultdict(float)})
+    por_ov = defaultdict(lambda: {"guias": set(), "facturas": set(), "cant": defaultdict(float), "fechas": {}})
     for r in b.rows:
         if r.excluida:
             continue
@@ -1567,6 +1567,8 @@ def _c_despachos(b, user, opciones):
         g = por_ov[_txt(d["ov"])]
         if _txt(d.get("guia")):
             g["guias"].add(_txt(d["guia"]))
+            if d.get("fecha"):
+                g["fechas"][_txt(d["guia"])] = _date(d.get("fecha"))
         if _txt(d.get("factura")):
             g["facturas"].add(_txt(d["factura"]))
         g["cant"][_txt(d["producto"])] += _num(d["cantidad"]) or 0
@@ -1575,6 +1577,9 @@ def _c_despachos(b, user, opciones):
         if o is None:
             conc.add("DESPACHO", numero, "Existencia", "Despachada en SAP", "No existe en el módulo")
             continue
+        from .guides import apply_sap_date  # V12: el cambio de fecha de la guía hecho en SAP llega al módulo
+        for gnum, gf in g["fechas"].items():
+            apply_sap_date(o, gnum, gf)
         stops = list(s.execute(select(RouteStop).where(RouteStop.order_id == o.id)).scalars())
         guias_mod = {st.guia_numero for st in stops if st.guia_numero}
         fact_mod = {st.factura_numero for st in stops if st.factura_numero}

@@ -1,0 +1,17 @@
+{% extends "base.html" %}{% from "_m.html" import b, csrf, ic, empty %}
+{% block content %}<div class="page-head"><div><h1>Pre-guías</h1><p class="sub">Generadas al terminar el picking. Validadas, se registran como guía en SAP y quedan en el expediente del cliente. Corte de rutas: {{ corte }} del día anterior.</p></div></div>
+{% for o in pend %}{% set pg = o.preguia %}<div class="card"><div class="card-head"><h3>OV {{ o.numero }} · {{ o.customer.nombre }}</h3>{{ b(pg.estado) }}</div>
+<p class="small">Despacho {{ o.fecha_compromiso|d }} · fecha de la guía {{ pg.fecha_guia }} · generada {{ pg.generada_ts|replace('T',' ') }}</p>
+{% if pg.diferencias %}<div class="note warn small"><b>Diferencias con la OV:</b> {{ pg.diferencias|join('; ') }}</div>{% endif %}
+<table class="small"><thead><tr><th>Producto</th><th class="r">Pedido</th><th class="r">Preparado</th><th>Lotes</th></tr></thead><tbody>
+{% for x in pg['items'] %}<tr><td>{{ x.codigo }} <span class="muted">{{ x.descripcion[:40] }}</span></td><td class="r">{{ x.pedido|n }}</td><td class="r">{% if x.preparado != x.pedido %}<b class="err">{{ x.preparado|n }}</b>{% else %}{{ x.preparado|n }}{% endif %}</td><td>{% for l in x.lotes %}{{ l.lote }} ({{ l.cantidad|n }}){{ ', ' if not loop.last }}{% endfor %}</td></tr>{% endfor %}</tbody></table>
+{% if can('distribucion.guia_modificar') %}<form method="post" class="row">{{ csrf() }}<input type="hidden" name="oid" value="{{ o.id }}">
+<div><label>Fecha de la guía</label><input type="date" name="fecha" value="{{ pg.fecha_guia }}"></div><div class="grow"><label>Observación{{ ' (obligatoria: hay diferencias)' if pg.diferencias }}</label><input name="observacion"></div>
+<div><button name="aprobar" value="1">Validar y registrar en SAP</button> <button class="sec" name="aprobar" value="0">Observar</button></div></form>{% endif %}</div>
+{% else %}{{ empty('No hay pre-guías por validar.', 'file') }}{% endfor %}
+{% if recientes %}<div class="section-title">Guías validadas</div><div class="card"><table class="small"><thead><tr><th>OV</th><th>Cliente</th><th>Fecha de la guía</th><th>SAP</th><th>Cambios</th><th></th></tr></thead><tbody>
+{% for o in recientes %}{% set pg = o.preguia %}<tr><td>{{ o.numero }}</td><td>{{ o.customer.nombre }}</td><td>{{ pg.fecha_guia }}</td>
+<td>{% if (pg.sap or {}).docnum %}N.° {{ pg.sap.docnum }}{% if pg.sap.fecha_pendiente %} · cambio de fecha pendiente{% endif %}{% else %}<span class="muted">pendiente{{ ': ' ~ pg.sap.error if (pg.sap or {}).error }}</span>{% endif %}</td>
+<td>{% for c in pg.cambios or [] %}<div class="small">{{ c.de }} → {{ c.a }} · {{ c.motivo }} ({{ c.origen }})</div>{% endfor %}</td>
+<td>{% if can('distribucion.guia_modificar') %}<details class="small"><summary>Cambiar fecha</summary><form method="post" class="row">{{ csrf() }}<input type="hidden" name="accion" value="fecha"><input type="hidden" name="oid" value="{{ o.id }}"><input type="date" name="fecha" required><input name="motivo" required placeholder="motivo (p. ej. sale mañana)"><button class="small">Guardar</button></form></details>{% endif %}</td></tr>{% endfor %}</tbody></table></div>{% endif %}
+{% endblock %}

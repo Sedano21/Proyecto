@@ -32,6 +32,9 @@ def app():
         # se prueba con hora fija en test_ronda_23oct.py
         from app.services.core import set_param
         set_param("hora_corte_ov_dia_siguiente", "")
+        # V12: el checklist vehicular (salida y retorno) se prueba en test_v12.py; los flujos anteriores no lo incluyen
+        set_param("exigir_checklist_vehicular", False)
+        set_param("hora_corte_rutas", "")  # V12: corte de rutas de las 15:00 (se prueba con hora fija)
         SessionLocal().commit()
         yield app
         SessionLocal.remove()

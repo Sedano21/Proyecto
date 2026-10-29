@@ -25,7 +25,7 @@ _FAILS = {}
 def register_views(app):
     install(app)
     from . import calidad, comercial, compras, distribucion, produccion, almacen
-    from . import comercial_mb2, produccion_mb2  # noqa: F401  (rutas de la ronda 23-oct-2026 en los mismos blueprints)
+    from . import comercial_mb2, distribucion_v12, produccion_mb2  # noqa: F401  (rutas adicionales en los mismos blueprints)
     app.register_blueprint(bp)
     app.register_blueprint(comercial.bp)
     app.register_blueprint(almacen.bp)

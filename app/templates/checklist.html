@@ -1,0 +1,27 @@
+{% extends "base.html" %}{% from "_m.html" import b, csrf, ic, empty %}
+{% block content %}<div class="page-head"><div><h1>Checklist vehicular · ruta #{{ r.id }}</h1><p class="sub">CP-OPE-004 · {{ r.vehicle.placa if r.vehicle else 'sin vehículo' }} · {{ r.driver.nombre if r.driver else 'sin chofer' }} · {{ r.fecha|d }}</p></div>
+<a class="btn sec" href="{{ url_for('dist.route_detail', rid=r.id) }}">Volver a la ruta</a></div>
+<div class="note {{ 'warn' if puede_salir else '' }}">{% if puede_salir %}<b>No puede salir:</b> {{ puede_salir }}{% else %}Checklist de salida validado por Seguridad: el vehículo puede salir.{% endif %}
+Los puntos <b>NN (no negociables)</b> en mal estado impiden la salida hasta corregirlos.</div>
+{% if pend_paso2 %}<div class="note warn">Antes del checklist de <b>retorno</b> complete el paso 2 de: {% for i in pend_paso2 %}<a href="{{ url_for('dist.incident_detail', iid=i.id) }}">incidencia #{{ i.id }}</a>{{ ', ' if not loop.last }}{% endfor %}.</div>{% endif %}
+{% if can('distribucion.checklist') %}<form method="post" class="card">{{ csrf() }}
+<div class="row"><div><label class="req">Momento</label><select name="momento"><option value="SALIDA">Salida</option><option value="RETORNO" {{ 'selected' if r.estado in ['EN_RUTA','CERRADA'] }}>Retorno</option></select></div>
+<div><label class="req">Kilometraje</label><input name="km" type="number" step="any" min="0" required value="{{ r.vehicle.km_actual or '' }}" style="width:130px"></div>
+<div class="grow"><label>Observaciones de choques o raspaduras</label><input name="observaciones"></div></div>
+<p class="small muted">B = bien · M = mal · NA = no aplica. Marque todos los ítems.</p>
+<div class="grid g2">{% for zona, lst in zonas.items() %}<fieldset class="ind-group"><legend>{{ zona }}</legend>
+<table class="small"><tbody>{% for code, item, nn in lst %}<tr><td>{{ item }}{% if nn %} <b class="err" title="No negociable">NN</b>{% endif %}</td>
+<td class="r" style="white-space:nowrap">{% for v in ['B','M','NA'] %}<label class="chk" style="margin-left:6px"><input type="radio" name="i_{{ code }}" value="{{ v }}" required {{ 'checked' if v == 'B' }}> {{ v }}</label>{% endfor %}</td></tr>{% endfor %}</tbody></table></fieldset>{% endfor %}</div>
+<p><button>{{ ic('check') }} Registrar checklist</button></p></form>{% endif %}
+<div class="section-title">Checklists registrados</div>
+{% for c in lista %}<div class="card"><div class="card-head"><h3>{{ c.momento|capitalize }} · {{ c.registrado_ts.strftime('%d/%m %H:%M') }}</h3>{{ b(c.estado) }}</div>
+<p class="small">Km declarado {{ c.km|n }}{% if c.km_seguridad is not none %} · km registrado por Seguridad <b>{{ c.km_seguridad|n }}</b>{% endif %}{% if c.nota_seguridad %} · Seguridad: {{ c.nota_seguridad }}{% endif %}</p>
+{% set malos = c.items.items()|selectattr(1, 'equalto', 'M')|list %}
+{% if c.nn_fallidos %}<p class="err small"><b>NN en mal estado:</b> {{ c.nn_fallidos|join(', ') }}</p>{% endif %}
+{% if malos %}<p class="small"><b>En mal estado:</b> {% for k, v in malos %}{{ items.get(k, k) }}{{ ', ' if not loop.last }}{% endfor %}</p>{% else %}<p class="small muted">Todos los ítems en buen estado o no aplican.</p>{% endif %}
+{% if c.observaciones %}<p class="small">Observaciones: {{ c.observaciones }}</p>{% endif %}
+{% if c.estado == 'REGISTRADO' and can('distribucion.checklist_validar') %}<form method="post" class="row">{{ csrf() }}<input type="hidden" name="accion" value="validar"><input type="hidden" name="cid" value="{{ c.id }}">
+<div><label class="req">Km que ve Seguridad</label><input name="km" type="number" step="any" min="0" required value="{{ c.km|n }}" style="width:130px"></div><div class="grow"><label>Nota</label><input name="nota"></div>
+<div><button name="aprobar" value="1">Validar</button> <button class="sec" name="aprobar" value="0">Observar</button></div></form>{% endif %}</div>
+{% else %}{{ empty('Aún no hay checklist registrado para esta ruta.', 'check') }}{% endfor %}
+{% endblock %}

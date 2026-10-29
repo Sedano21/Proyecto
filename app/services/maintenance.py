@@ -311,3 +311,41 @@ def check_alerts(hoy=None):
                         prioridad="ALTA" if x["estado"] == "VENCIDO" else None, dedup_key=f"SAN:V{v.id}")
             n += 1
     return n
+
+
+# ------------------------------------------------------------------ V12: documentos e incidencias con el taller
+def attach_document(user, obj, tipo, numero="", archivo=""):
+    """Informe del taller o factura de un mantenimiento preventivo (VehicleMaintenance) o correctivo (Breakdown).
+    La factura la puede registrar también Compras."""
+    tipo = (tipo or "").upper()
+    if tipo not in ("INFORME", "FACTURA"):
+        raise BusinessError("Adjunte el informe o la factura.")
+    if tipo == "FACTURA" and not (has_perm(user, "mantenimiento.factura") or has_perm(user, "mantenimiento.flota")):
+        raise BusinessError("La factura la registran Distribución o Compras.")
+    if tipo == "INFORME" and not (has_perm(user, "mantenimiento.flota") or has_perm(user, "distribucion.flota")):
+        raise BusinessError("El informe lo adjunta Distribución.")
+    if not archivo:
+        raise BusinessError("Adjunte el archivo.")
+    if tipo == "FACTURA" and not (numero or "").strip():
+        raise BusinessError("Indique el número de la factura.")
+    obj.documentos = list(obj.documentos or []) + [{"tipo": tipo, "numero": (numero or "").strip(), "archivo": archivo,
+                                                    "user": user.nombre, "ts": now().isoformat(timespec="minutes")}]
+    audit(user, f"MANT_{tipo}", type(obj).__name__, obj.id, {"numero": numero})
+    return obj
+
+
+def workshop_incident(user, obj, motivo, dias_fuera=None, detalle="", taller=""):
+    """Incidencia con el taller: motivo, tiempo del vehículo fuera de servicio y detalle."""
+    if not (has_perm(user, "mantenimiento.flota") or has_perm(user, "distribucion.flota")):
+        raise BusinessError("Registra la incidencia con el taller Distribución.")
+    if not (motivo or "").strip():
+        raise BusinessError("Indique el motivo de la incidencia con el taller.")
+    d = _num(dias_fuera)
+    if d is not None and d < 0:
+        raise BusinessError("El tiempo fuera de servicio no puede ser negativo.")
+    obj.incidencias_taller = list(obj.incidencias_taller or []) + [{
+        "motivo": motivo.strip(), "dias_fuera": d, "detalle": (detalle or "").strip(),
+        "taller": (taller or getattr(obj, "taller", "") or "").strip(), "user": user.nombre,
+        "ts": now().isoformat(timespec="minutes")}]
+    audit(user, "MANT_INCIDENCIA_TALLER", type(obj).__name__, obj.id, {"motivo": motivo, "dias_fuera": d})
+    return obj

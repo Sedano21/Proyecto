@@ -35,6 +35,12 @@ def run_checks(user=None, today=None):
     out["paradas_prolongadas"] = check_long_stops()  # V12: paradas de línea que superan el tiempo configurado
     from .demand_plan import check_purchase_deadlines
     out["proyeccion_compras"] = check_purchase_deadlines(today)
+    from .third_party import check_payments
+    out["terceros_pagos_vencidos"] = check_payments(today)
+    from .budget import check_consumption
+    out["presupuesto_consumo"] = check_consumption(today)
+    from .guides import check_route_planning
+    out["rutas_manana_sin_planificar"] = check_route_planning()
     # Vencimiento próximo (solo si el umbral está configurado)
     dias = param("dias_vencimiento_proximo")
     n = 0

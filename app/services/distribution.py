@@ -433,6 +433,11 @@ def confirm_departure(route, user, checklist):
     faltan_vb = missing_exit_approvals(route)
     if faltan_vb:
         raise BusinessError("Falta el visto bueno de: " + ", ".join(VB_LABEL.get(r, r) for r in faltan_vb) + " (Q16).")
+    if param("exigir_checklist_vehicular", True):  # V12: checklist CP-OPE-004 del chofer validado por Seguridad
+        from .vehicle_checklist import can_depart
+        motivo = can_depart(route)
+        if motivo:
+            raise BusinessError(motivo)
     from .despacho import needs_vehicle_photos
     if needs_vehicle_photos(route) and not (route.fotos or {}).get("vehiculo_salida"):
         raise BusinessError("El chofer debe subir la foto de cómo saca el vehículo antes de la salida.")
