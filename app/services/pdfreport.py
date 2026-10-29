@@ -123,7 +123,7 @@ def _limpio(t):
 class _PDF:
     def __init__(self, titulo, subtitulo=""):
         from fpdf import FPDF
-        self.pdf = FPDF(orientation="L", unit="mm", format="A4")
+        self.pdf = FPDF(orientation="P", unit="mm", format="A4")  # V12: los informes se exportan en vertical
         self.pdf.set_auto_page_break(True, margin=12)
         self.pdf.set_margins(12, 12, 12)
         self.titulo = titulo
@@ -198,11 +198,12 @@ class _PDF:
         if not kpis:
             return
         pdf = self.pdf
-        ancho = (pdf.w - 24) / min(len(kpis), 5) - 2
+        por_fila = 5 if pdf.w > pdf.h else 3
+        ancho = (pdf.w - 24) / min(len(kpis), por_fila) - 2
         for i, (valor, etiqueta, nota) in enumerate(kpis):
-            if i and i % 5 == 0:
+            if i and i % por_fila == 0:
                 pdf.ln(20)
-            x, y = 12 + (i % 5) * (ancho + 2), pdf.get_y()
+            x, y = 12 + (i % por_fila) * (ancho + 2), pdf.get_y()
             pdf.set_draw_color(207, 213, 209)
             pdf.set_fill_color(247, 248, 247)
             pdf.rect(x, y, ancho, 18, style="DF")

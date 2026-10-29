@@ -20,9 +20,16 @@ bp = Blueprint("sup", __name__, url_prefix="/suministro")
 def demand():
     back = url_for("sup.demand", desde=request.args.get("desde", ""))
     if request.method == "POST":
+        f = request.form
+        from ..services import demand_plan as dp
+        if f.get("accion") == "a_plan":  # V12: preprogramación → planeamiento (Producción)
+            return act(lambda: dp.to_plan(g.user, f.get("mes")), lambda r: f"{len(r)} entrada(s) agregadas al planeamiento "
+                       "como preprogramación del sistema (el Jefe de Producción las revisa).", back)
+        if f.get("accion") == "presolicitud":  # V12: Compras genera la presolicitud de una MP faltante
+            return act(lambda: dp.create_presolicitud(g.user, f.get("mes"), f.get("code")),
+                       lambda r: f"Presolicitud de compra #{r.id} creada en borrador.", back)
         if "demanda.cargar" not in g.perms:
             abort(403)
-        f = request.form
         if f.get("accion") == "excel":
             def _x():
                 arch = request.files.get("archivo")
@@ -48,8 +55,12 @@ def demand():
     from ..models import Customer
     from .comercial_mb2 import _canales
     clientes = list(db().execute(select(Customer).where(Customer.es_prospecto.is_(False)).order_by(Customer.nombre)).scalars())
+    from ..services import demand_plan as dp
+    mes = (request.args.get("desde") or d["meses"][0])[:7]
+    vistas = {v: dp.can_see(g.user, v) for v in ("compras", "llegadas", "produccion")}
+    an = dp.analyze(mes) if any(vistas.values()) or "demanda.cargar" in g.perms else None
     return render_template("demand.html", d=d, prods=prods, f=request.args, canales=_canales(), clientes=clientes,
-                           pendientes=ssvc.pending_changes())
+                           pendientes=ssvc.pending_changes(), an=an, vistas=vistas, mes=mes)
 
 
 @bp.route("/demanda/cambio/<int:fid>", methods=["POST"])
@@ -80,11 +91,17 @@ def moves():
         acc = f.get("accion")
         up = current_app.config["UPLOAD_DIR"]
         if acc == "solicitar":
-            return act(lambda: ssvc.request_move(g.user, f.get("origen"), f.get("destino"), f.get("detalle", ""), f.get("cantidad", ""),
-                                                 f.get("prioridad"), f.get("almacen", ""), f.get("observacion", ""),
-                                                 f.get("programado_para") if f.get("cuando") == "PROGRAMADO" else None,
-                                                 f.get("asignado_id") or None, f.get("aviso_min")),
-                       "Movimiento solicitado.", back)
+            def _sol():
+                prog = None
+                if f.get("cuando") == "PROGRAMADO":  # V12: el día y la hora por separado (la hora se puede cambiar)
+                    prog = ssvc._when(f.get("prog_fecha"), f.get("prog_hora")) or f.get("programado_para")
+                    if prog is None:
+                        raise BusinessError("Indique el día del movimiento programado.")
+                carga = {k: f.get(f"carga_{k}") for k in ("tipo", "cantidad", "producto", "kg", "mp", "customer_id")}
+                return ssvc.request_move(g.user, f.get("origen"), f.get("destino"), f.get("detalle", ""), f.get("cantidad", ""),
+                                         f.get("prioridad"), f.get("almacen", ""), f.get("observacion", ""), prog,
+                                         f.get("asignado_id") or None, f.get("aviso_min"), carga=carga)
+            return act(_sol, "Movimiento solicitado.", back)
         m = db().get(MoveRequest, int(f.get("move_id") or 0)) or abort(404)
         if acc == "iniciar":
             return act(lambda: ssvc.start_move(g.user, m, save_upload(request.files.get("foto"), up, f"mov{m.id}_ini")),
@@ -95,10 +112,20 @@ def moves():
         if acc == "reasignar":
             return act(lambda: ssvc.reassign_move(g.user, m, f.get("asignado_id") or None, f.get("motivo", "")),
                        "Movimiento reasignado (queda registrado el cambio).", back)
+        if acc == "reprogramar":
+            return act(lambda: ssvc.reschedule_move(g.user, m, f.get("prog_fecha"), f.get("prog_hora"), f.get("motivo", "")),
+                       "Movimiento reprogramado.", back)
         if acc == "anular":
             return act(lambda: ssvc.cancel_move(g.user, m, f.get("motivo", "")), "Solicitud eliminada.", back)
         abort(400)
+    from ..models import Customer, Product
+    prods = list(db().execute(select(Product).order_by(Product.code)).scalars())
+    from ..services.stock import product_kind
     return render_template("moves.html", rows=ssvc.moves(g.user), ejecutores=ssvc.move_executors(),
+                           tipos_carga=ssvc.TIPOS_CARGA, prod_pt=[p for p in prods if product_kind(p) == "PT"],
+                           prod_mp=[p for p in prods if product_kind(p) in ("MP", "GR")],
+                           clientes=list(db().execute(select(Customer).order_by(Customer.nombre)).scalars()),
+                           hora_def=__import__("app.services.core", fromlist=["x"]).param("hora_movimiento_programado", "08:00"),
                            puntos=ssvc.move_points(g.user.almacen or ""),
                            almacenes=list(db().execute(select(Warehouse).where(Warehouse.habilitado.is_(True))
                                                        .order_by(Warehouse.code)).scalars()))

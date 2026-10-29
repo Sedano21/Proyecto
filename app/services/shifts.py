@@ -378,27 +378,26 @@ def check_overdue(ahora=None):
     return n
 
 
-def compliance(desde, hasta):
-    """Interacciones y cumplimiento por persona en el periodo: acciones registradas (dentro y fuera de turno, solo para
-    análisis), tareas recibidas, completadas a tiempo o fuera de plazo y vencidas abiertas, y pickings."""
+def compliance(desde, hasta, user=None):
+    """Cumplimiento por persona (V12, 29-oct-2026): solo el personal del área de quien consulta (Gerencia y Sistemas,
+    todas) y solo lo que tiene que ver con sus funciones: tareas recibidas, cerradas a tiempo o fuera de plazo y
+    vencidas abiertas (la interacción general con el sistema no se muestra). Además, por área:
+    - Almacén: pickings asignados, listos, tarde y atrasados;
+    - Producción: tasa de ausencia, rendimiento (kg/h), merma y remanente por persona (partes y Asistencia);
+    - Distribución: rutas, entregas y entregas con incidencia por chofer;
+    - cualquier área con personal en Asistencia: tasa de ausencia."""
     s = db()
     plazos = deadlines()
+    areas = managed_areas(user) if user is not None else None
     t0, t1 = datetime.combine(desde, time.min), datetime.combine(hasta, time.max)
-    users = {u.id: u for u in s.execute(select(User)).scalars()}
-    cache = defaultdict(list)
-    for us in s.execute(select(UserShift)).scalars():
-        cache[us.user_id].append(us)
+    users = {u.id: u for u in s.execute(select(User)).scalars()
+             if areas is None or (u.role and u.role.area in areas)}
     acc = defaultdict(Counter)
-    for a in s.execute(select(AuditLog).where(AuditLog.ts >= t0, AuditLog.ts <= t1, AuditLog.user_id.isnot(None))).scalars():
-        c = acc[a.user_id]
-        c["acciones"] += 1
-        if cache.get(a.user_id):
-            c["dentro" if in_shift_at(a.user_id, a.ts, cache) else "fuera"] += 1
     for a in s.execute(select(Alert).where(Alert.creado_ts >= t0, Alert.creado_ts <= t1)).scalars():
         if not alerts.is_task(a):
             continue
         uid = a.asignado_a or a.cerrado_por
-        if not uid:
+        if not uid or uid not in users:
             continue
         c = acc[uid]
         c["tareas"] += 1
@@ -408,41 +407,75 @@ def compliance(desde, hasta):
             c["a_tiempo" if (lim is None or a.cerrado_ts <= lim) else "fuera_plazo"] += 1
         elif lim and now() > lim:
             c["vencidas"] += 1
-    for t in s.execute(select(PickingTask).where(PickingTask.fecha >= desde, PickingTask.fecha <= hasta)).scalars():
-        for uid in t.asignados or []:
-            c = acc[uid]
-            c["picking"] += 1
-            if t.estado == "LISTO":
-                c["picking_listo"] += 1
-                if t.fin_ts and t.fin_ts.date() > t.fecha:
-                    c["picking_tarde"] += 1
-            elif t.fecha < date.today():
-                c["picking_atrasado"] += 1
+    ver_picking = areas is None or "Almacén" in areas
+    if ver_picking:
+        for t in s.execute(select(PickingTask).where(PickingTask.fecha >= desde, PickingTask.fecha <= hasta)).scalars():
+            for uid in t.asignados or []:
+                if uid not in users:
+                    continue
+                c = acc[uid]
+                c["picking"] += 1
+                if t.estado == "LISTO":
+                    c["picking_listo"] += 1
+                    if t.fin_ts and t.fin_ts.date() > t.fecha:
+                        c["picking_tarde"] += 1
+                elif t.fecha < date.today():
+                    c["picking_atrasado"] += 1
     filas = []
     for uid, c in acc.items():
-        u = users.get(uid)
-        if u is None:
-            continue
+        u = users[uid]
         cerr = c["a_tiempo"] + c["fuera_plazo"]
-        filas.append({"user": u, "acciones": c["acciones"], "dentro": c["dentro"], "fuera": c["fuera"],
-                      "con_turno": bool(cache.get(uid)), "tareas": c["tareas"], "a_tiempo": c["a_tiempo"],
-                      "fuera_plazo": c["fuera_plazo"], "vencidas": c["vencidas"],
-                      "cumplimiento": round(100.0 * c["a_tiempo"] / cerr, 1) if cerr else None,
+        filas.append({"user": u, "tareas": c["tareas"], "a_tiempo": c["a_tiempo"], "fuera_plazo": c["fuera_plazo"],
+                      "vencidas": c["vencidas"], "cumplimiento": round(100.0 * c["a_tiempo"] / cerr, 1) if cerr else None,
                       "picking": c["picking"], "picking_listo": c["picking_listo"], "picking_tarde": c["picking_tarde"],
                       "picking_atrasado": c["picking_atrasado"]})
     filas.sort(key=lambda x: (x["user"].role_code, x["user"].nombre))
     reco = []
     venc = [f for f in filas if f["vencidas"] or f["picking_atrasado"]]
     if venc:
-        reco.append(f"{len(venc)} persona(s) con tareas vencidas o pickings atrasados: revisar carga de trabajo y turnos.")
-    fuera = sorted((f for f in filas if f["fuera"]), key=lambda f: -f["fuera"])[:3]
-    if fuera:
-        reco.append("Más acciones fuera de su turno (solo análisis): " + ", ".join(f"{f['user'].nombre} ({f['fuera']})" for f in fuera) + ".")
-    if not any(cache.values()):
-        reco.append("Aún no hay turnos configurados: las acciones no se separan en dentro y fuera de turno.")
-    return {"desde": desde, "hasta": hasta, "filas": filas, "plazos": param("horas_plazo_tarea", {}) or {},
-            "plazos_area": {a: {k: fmt_plazo(float(v)) for k, v in f.items()} for a, f in plazos[1].items()},
-            "turnos_configurados": any(cache.values()), "recomendaciones": reco}
+        reco.append(("MEDIA", f"{len(venc)} persona(s) con tareas vencidas o pickings atrasados: "
+                              + ", ".join(f["user"].nombre for f in venc[:4]) + ". Revisar carga de trabajo y turnos."))
+    bajos = [f for f in filas if f["cumplimiento"] is not None and f["cumplimiento"] < 70 and f["tareas"] >= 3]
+    for f in bajos[:3]:
+        reco.append(("MEDIA", f"{f['user'].nombre} cierra a tiempo solo el {f['cumplimiento']} % de sus tareas: conversar "
+                              "sobre prioridades y plazos."))
+    out = {"desde": desde, "hasta": hasta, "filas": filas, "plazos": param("horas_plazo_tarea", {}) or {},
+           "plazos_area": {a: {k: fmt_plazo(float(v)) for k, v in f.items()} for a, f in plazos[1].items()},
+           "areas": sorted(areas) if areas is not None else None, "ver_picking": ver_picking,
+           "produccion": None, "distribucion": None, "asistencia": None}
+    # Producción: personal operativo (no son usuarios del sistema)
+    if areas is None or "Producción" in areas:
+        from .prod_analytics import analyze
+        pa = analyze(desde, hasta)
+        out["produccion"] = pa["personas"]
+        reco += [x for x in pa["recomendaciones"] if not x[1].startswith(("La línea", "Hay "))]
+    # Distribución: desempeño por chofer
+    if areas is None or "Distribución" in areas:
+        from ..models import Incident, Route, RouteStop
+        por = defaultdict(lambda: {"rutas": 0, "paradas": 0, "entregadas": 0, "con_incidencia": 0})
+        for r in s.execute(select(Route).where(Route.fecha >= desde, Route.fecha <= hasta)).scalars():
+            if not r.driver_id:
+                continue
+            x = por[r.driver.nombre if r.driver else str(r.driver_id)]
+            x["rutas"] += 1
+            for st in r.stops:
+                x["paradas"] += 1
+                x["entregadas"] += st.estado in ("ENTREGADA", "ENTREGADO")
+                x["con_incidencia"] += bool(s.execute(select(Incident.id).where(Incident.order_id == st.order_id)).first())
+        out["distribucion"] = [{"chofer": k, **v, "efectividad": round(100 * v["entregadas"] / v["paradas"], 1) if v["paradas"] else None}
+                               for k, v in sorted(por.items())]
+    # asistencia del personal de las demás áreas registradas en Asistencia
+    from ..models import Attendance
+    asis = defaultdict(Counter)
+    for a in s.execute(select(Attendance).where(Attendance.fecha >= desde, Attendance.fecha <= hasta)).scalars():
+        ar = a.worker.area or "Producción"
+        if ar != "Producción" and (areas is None or ar in areas):
+            asis[(ar, a.worker.nombre)][a.estado] += 1
+    if asis:
+        out["asistencia"] = [{"area": ar, "nombre": n, "dias": sum(c.values()), "faltas": c.get("FALTA", 0),
+                              "ausencia_pct": round(100 * c.get("FALTA", 0) / sum(c.values()), 1)} for (ar, n), c in sorted(asis.items())]
+    out["recomendaciones"] = reco
+    return out
 
 
 # ------------------------------------------------------------------ cierre de turno (ronda 23-oct-2026, decisión 7)

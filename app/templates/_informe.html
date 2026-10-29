@@ -6,11 +6,11 @@
 <div class="acciones noprint"><a class="btn" href="{{ request.path }}?{{ qs|urlencode }}{{ '&' if qs }}formato=pdf">{{ ic('download') }}PDF</a>
 <a class="btn sec" href="{{ request.path }}?{{ qs|urlencode }}{{ '&' if qs }}formato=xlsx">{{ ic('download') }}Excel</a>
 <a class="btn sec" href="{{ url_for('rep.custom') }}">{{ ic('edit') }}Personalizar informe</a></div></header>
-<p class="tabs noprint">{% for k, t in items %}<a class="btn {{ '' if k == actual else 'sec' }}" href="{{ url_for('rep.show', nombre=k) }}">{{ t }}</a> {% endfor %}</p>
+<p class="tabs noprint">{% for k, t in items %}<a class="btn {{ '' if k == actual else 'sec' }}" href="{{ informe_url(k) }}">{{ t }}</a> {% endfor %}</p>
 <form class="row card noprint" method="get"><div><label>Desde</label><input type="date" name="desde" value="{{ d.desde.isoformat() }}"></div><div><label>Hasta</label><input type="date" name="hasta" value="{{ d.hasta.isoformat() }}"></div><div><button class="sec">Actualizar</button></div>
 </form>
 {% if atencion %}{{ requiere_atencion(d.recomendaciones) }}{% endif %}
 {% endmacro %}
-{% macro requiere_atencion(recos) %}{% if recos %}<div class="card"><h3>Qué requiere atención</h3>{% for r in recos %}<div class="reco">{{ r }}</div>{% endfor %}<p class="small muted">Sugerencias calculadas con reglas y umbrales configurables; requieren revisión del responsable.</p></div>
+{% macro requiere_atencion(recos) %}{% if recos %}<div class="card"><h3>Qué requiere atención</h3>{% for r in recos %}{% if r is string %}<div class="reco">{{ r }}</div>{% else %}<div class="reco-item {{ r[0] }}"><b>{{ {"ALTA": "Prioridad alta", "MEDIA": "Atención", "INFO": "Sugerencia"}[r[0]] }}</b><span>{{ r[1] }}</span></div>{% endif %}{% endfor %}<p class="small muted">Sugerencias calculadas con reglas y umbrales configurables; requieren revisión del responsable.</p></div>
 {% else %}<p class="small muted">Sin desviaciones que requieran atención en el periodo.</p>{% endif %}
 {% endmacro %}

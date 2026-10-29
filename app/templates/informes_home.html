@@ -13,5 +13,5 @@
 {% for t in plantillas %}<tr><td><a href="{{ url_for('rep.custom', plantilla=t.id) }}">{{ t.nombre }}</a></td><td>{{ 'Compartida · ' ~ t.area if t.alcance == 'COMPARTIDA' else 'Personal' }}</td><td>{{ t.user.nombre }}</td><td class="r"><a class="btn sec small" href="{{ url_for('rep.custom', plantilla=t.id) }}">Abrir</a></td></tr>{% endfor %}</tbody></table></div>{% endif %}
 {% set otros = items|rejectattr(0, 'equalto', pred.nombre if pred and pred.tipo == 'informe' else '')|list %}
 {% if otros %}<div class="section-title">Otros informes autorizados para su perfil</div>
-<div class="rep-list">{% for k, t in otros %}<a href="{{ url_for('rep.show', nombre=k) }}">{{ ic('chart') }}<span>{{ t }}</span></a>{% endfor %}</div>{% endif %}
+<div class="rep-list">{% for k, t in otros %}<a href="{{ informe_url(k) }}">{{ ic('chart') }}<span>{{ t }}</span></a>{% endfor %}</div>{% endif %}
 {% endblock %}

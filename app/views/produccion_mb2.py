@@ -75,9 +75,12 @@ def part_detail(pid):
             pallets = [{"destino": d, "cantidad": float(q)} for d, q in zip(f.getlist("pallet_destino"), f.getlist("pallet_cantidad"))
                        if (q or "").strip()]
             defectos = {c: v for c, v in zip(f.getlist("defecto_causa"), f.getlist("defecto_und")) if (v or "").strip()}
-            colab = [{"worker_id": w, "inicio": i, "fin": fi, "refrigerio_min": rf, "kg": kg} for w, i, fi, rf, kg in
-                     zip(f.getlist("col_worker"), f.getlist("col_inicio"), f.getlist("col_fin"), f.getlist("col_refrigerio"),
-                         f.getlist("col_kg"))]
+            n = len(f.getlist("col_worker"))
+            mermas = (f.getlist("col_merma") + [""] * n)[:n]
+            rems = (f.getlist("col_remanente") + [""] * n)[:n]
+            colab = [{"worker_id": w, "inicio": i, "fin": fi, "refrigerio_min": rf, "kg": kg, "merma_kg": me, "remanente_kg": re}
+                     for w, i, fi, rf, kg, me, re in zip(f.getlist("col_worker"), f.getlist("col_inicio"), f.getlist("col_fin"),
+                                                          f.getlist("col_refrigerio"), f.getlist("col_kg"), mermas, rems)]
             if len([c for c in colab if c["worker_id"]]) < len(colab):
                 return act(lambda: _err("Elija el colaborador de cada tarjeta."), "", back)
             datos = {k: f.get(k) for k in ("hora_fin", "refrigerio_min", "operarios", "unidades", "unidades_sueltas", "granel_kg",

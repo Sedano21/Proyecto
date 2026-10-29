@@ -208,15 +208,21 @@ def _horas(a, b):
     return (b - a).total_seconds() / 3600 if a and b else None
 
 
-def reempaque(desde=None, hasta=None):
+def reempaque(desde=None, hasta=None, solo_aprobadas=False):
     """Evolución de solicitudes de reempaque, tasas de aprobación/desestimación, motivos y tiempos de respuesta
-    (Almacén, Calidad y Comercial)."""
+    (Almacén, Calidad y Comercial). solo_aprobadas (V12, Producción): solo las que Calidad aprobó, que son las que
+    recién llegan a Producción; las demás no le competen."""
     from ..catalogs import REPACK_TYPES
     from ..models import OVDecision, RepackRequest
     desde, hasta = periodo(desde, hasta)
     s = db()
-    rows = [r for r in s.execute(select(RepackRequest).order_by(RepackRequest.ts)).scalars()
-            if desde <= r.ts.date() <= hasta]
+    if solo_aprobadas:
+        rows = [r for r in s.execute(select(RepackRequest).where(RepackRequest.estado.in_(
+            ("APROBADA", "EN_EJECUCION", "EJECUTADA"))).order_by(RepackRequest.ts)).scalars()
+            if r.evaluado_ts and desde <= r.evaluado_ts.date() <= hasta]
+    else:
+        rows = [r for r in s.execute(select(RepackRequest).order_by(RepackRequest.ts)).scalars()
+                if desde <= r.ts.date() <= hasta]
     tipos = dict((k, n) for k, n, _ in REPACK_TYPES)
     por_estado = Counter(r.estado for r in rows)
     por_tipo = Counter(tipos.get(r.tipo, r.tipo) for r in rows)
@@ -268,7 +274,20 @@ def reempaque(desde=None, hasta=None):
     if motivos:
         m, n = motivos.most_common(1)[0]
         reco.append(f"Motivo más frecuente ({n}): {m}.")
+    # V12: ejecución en Producción (desde la aprobación de Calidad)
+    t_espera = [h for r in rows if r.evaluado_ts and (h := _horas(r.evaluado_ts, r.ejecucion_inicio)) is not None]
+    t_ejec = [h for r in rows if (h := _horas(r.ejecucion_inicio, r.ejecucion_fin)) is not None]
+    if solo_aprobadas:
+        reco = []
+        pend = [r for r in rows if r.estado == "APROBADA"]
+        if pend:
+            reco.append(f"{len(pend)} reempaque(s) aprobados por Calidad aún sin iniciar: programarlos en una línea libre.")
+        if t_espera and mean(t_espera) > 24:
+            reco.append(f"Desde la aprobación hasta el inicio pasan {mean(t_espera):.1f} h en promedio: reservar capacidad "
+                        "diaria para reempaques.")
     return {"desde": desde, "hasta": hasta, "total": len(rows), "por_estado": dict(por_estado), "por_tipo": por_tipo.most_common(),
+            "solo_aprobadas": solo_aprobadas, "t_espera": round(mean(t_espera), 1) if t_espera else None,
+            "t_ejecucion": round(mean(t_ejec), 1) if t_ejec else None,
             "tasa_aprobacion": tasa_ap, "tasa_desestimacion": tasa_des, "evaluadas": len(evaluadas),
             "serie_solicitudes": [(f"{w:%d/%m}", sem_n[w]) for w in semanas],
             "serie_aprobacion": [(f"{w:%d/%m}", _pct(sem_ok[w], sem_ev[w])) for w in semanas],

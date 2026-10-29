@@ -1,11 +1,15 @@
 {% extends "base.html" %}{% from "_informe.html" import cabecera, requiere_atencion %}
 {% block content %}{{ cabecera('de producción', d, items, actual, atencion=False) }}
 
-<div class="kpis"><div class="kpi primary"><b>{{ d.kg|n }} kg</b><span>Producido (liquidado)</span><small>{{ d.unidades|n }} unidades · {{ d.liquidaciones }} liquidaciones</small></div>
-<div class="kpi {{ '' if d.plan.tasa is none else ('ok' if d.plan.tasa >= 90 else 'warn') }}"><b>{{ d.plan.tasa if d.plan.tasa is not none else '—' }}{{ ' %' if d.plan.tasa is not none }}</b><span>Cumplimiento del plan diario</span><small>Σ mín(real, plan) / Σ plan · referencia 90 %</small></div>
-{% set mf = d.merma|selectattr('fuera')|list|length %}<div class="kpi {{ 'warn' if mf }}"><b>{{ mf }}</b><span>Mermas fuera de lo proyectado</span><small>de {{ d.merma|length }} liquidaciones con proyección</small></div>
-<div class="kpi {{ 'warn' if cap.paradas }}"><b>{{ cap.paradas|length }}</b><span>Paradas de línea</span><small>{{ cap.paradas_min }} min · {{ cap.demoradas|length }} solicitudes atendidas tarde</small></div>
-<div class="kpi"><b>{{ d.programados|length }}</b><span>Partes programados pendientes</span><small>sin completar en el periodo</small></div></div>
+<p class="story-lead">Entre el {{ d.desde|d }} y el {{ d.hasta|d }} se liquidaron <b>{{ d.kg|n }} kg</b> ({{ d.unidades|n }} unidades) en {{ d.liquidaciones }} liquidaciones.
+{% if d.plan.tasa is not none %}El cumplimiento del plan diario fue <b>{{ d.plan.tasa }} %</b>{% if d.plan.tasa < 90 %}, por debajo de la referencia de 90 %{% endif %}.{% else %}No hay plan registrado para medir el cumplimiento.{% endif %}
+{% if d.merma_pct is not none %} La merma fue <b>{{ d.merma_pct }} %</b> ({{ d.merma_kg|n }} kg) y quedaron {{ d.remanente_kg|n }} kg de remanente de MP.{% endif %}</p>
+<div class="story-hero">
+<div class="story-fig"><b>{{ d.kg|n }} kg</b><span>Producido (liquidado)</span><small>{{ d.unidades|n }} unidades · {{ d.liquidaciones }} liquidaciones</small></div>
+<div class="story-fig"><b>{{ d.plan.tasa if d.plan.tasa is not none else '—' }}{{ ' %' if d.plan.tasa is not none }}</b><span>Cumplimiento del plan diario</span><small>Σ mín(real, plan) / Σ plan · referencia 90 %</small></div>
+<div class="story-fig"><b>{{ d.merma_pct if d.merma_pct is not none else '—' }}{{ ' %' if d.merma_pct is not none }}</b><span>Merma</span><small>{{ d.merma|selectattr('fuera')|list|length }} liquidaciones fuera de lo proyectado</small></div>
+<div class="story-fig"><b>{{ cap.paradas|length }}</b><span>Paradas de línea</span><small>{{ cap.paradas_min }} min · {{ cap.demoradas|length }} solicitudes atendidas tarde</small></div>
+<div class="story-fig"><b>{{ d.programados|length }}</b><span>Partes programados pendientes</span><small>sin completar en el periodo</small></div></div>
 {{ requiere_atencion(d.recomendaciones + cap.recomendaciones) }}
 <div class="card"><h3>1. Capacidad de producción vs producido (kg procesados)</h3>
 <form class="row noprint" method="get"><input type="hidden" name="desde" value="{{ d.desde.isoformat() }}"><input type="hidden" name="hasta" value="{{ d.hasta.isoformat() }}">

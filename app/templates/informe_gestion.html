@@ -9,7 +9,7 @@
 <a class="btn sec" href="{{ request.path }}?{{ base }}{{ '&' if base }}formato=xlsx">{{ ic('download') }}Excel</a>
 <a class="btn sec" href="{{ request.path }}?{{ base }}{{ '&' if base }}formato=pptx">{{ ic('download') }}PowerPoint</a>
 <a class="btn sec" href="{{ url_for('rep.custom') }}">{{ ic('edit') }}Personalizar</a></div></header>
-<p class="tabs noprint">{% for k, t in items %}<a class="btn {{ '' if k == actual else 'sec' }}" href="{{ url_for('rep.show', nombre=k) }}">{{ t }}</a> {% endfor %}</p>
+<p class="tabs noprint">{% for k, t in items %}<a class="btn {{ '' if k == actual else 'sec' }}" href="{{ informe_url(k) }}">{{ t }}</a> {% endfor %}</p>
 
 <form class="card filters noprint" method="get">
 <div class="row">

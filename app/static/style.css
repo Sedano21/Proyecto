@@ -487,3 +487,21 @@ a.prod-card{color:inherit;text-decoration:none;transition:transform .12s ease,bo
 .tag-obl{font-size:10.5px;color:var(--cp-verde-700);background:var(--cp-verde-50);border-radius:4px;padding:0 5px;margin-left:4px}
 @media (max-width:720px){.rep-head{grid-template-columns:1fr}.rep-head img{height:32px}.rep-head .acciones{justify-content:flex-start}}
 @media print{.rep-head{box-shadow:none;border:none;border-bottom:2px solid var(--cp-verde);border-radius:0}}
+
+/* ---------- V12: informes «resumen» (cifras grandes, frases que se leen solas) ---------- */
+.story-hero{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,170px),1fr));gap:2px;border-radius:var(--r-lg);overflow:hidden;margin:4px 0 16px;box-shadow:var(--sh)}
+.story-fig{background:linear-gradient(160deg,var(--cp-verde-700),var(--cp-verde));color:#fff;padding:18px 20px}
+.story-fig:nth-child(2n){background:linear-gradient(160deg,var(--cp-verde-800),var(--cp-verde-700))}
+.story-fig b{display:block;font-size:30px;line-height:1.1;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.story-fig span{display:block;font-size:13px;opacity:.95;margin-top:6px}
+.story-fig small{display:block;font-size:11.5px;opacity:.8;margin-top:2px}
+.story-lead{font-size:16px;line-height:1.55;color:var(--ink-2);max-width:900px;margin:0 0 14px}
+.story-lead b{color:var(--cp-verde-800)}
+.story-section{margin-top:20px}
+.story-section > h2{font-size:18px;margin:0 0 4px;color:var(--ink)}
+.story-section > p.q{margin:0 0 10px;color:var(--muted);font-size:var(--fs-sm)}
+.reco-item{display:flex;gap:12px;align-items:flex-start;padding:10px 12px;border-left:4px solid var(--info);background:var(--infobg);border-radius:6px;margin:6px 0}
+.reco-item b{flex:0 0 auto;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--info);margin-top:2px;min-width:92px}
+.reco-item.ALTA{border-color:var(--err);background:var(--errbg)}.reco-item.ALTA b{color:var(--err)}
+.reco-item.MEDIA{border-color:#d08a00;background:var(--warnbg)}.reco-item.MEDIA b{color:var(--warn)}
+@media print{.story-fig{-webkit-print-color-adjust:exact;print-color-adjust:exact}}

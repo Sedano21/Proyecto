@@ -48,8 +48,8 @@
     </div>{% endif %}
     {% if ve('stock.ver') or ve('traslados.ver') or ve('reempaque.ver') or ve('tareas.ejecutar') or ve('movimiento.solicitar') or ve('movimiento.ejecutar') or ve('demanda.ver') or ve('ingresos.ver') or ve('asistencia.area') %}<div class="grp" data-grupo="Almacén"><h4><span class="lbl">Almacén</span></h4>
       {% if ve('stock.ver') %}{{ nl(url_for('alm.stock'), 'box', 'Stock y reservas') }}{% endif %}
-      {% if ve('preparacion.registrar') or ve('ov.ver') %}{{ nl(url_for('com.preparation'), 'clipboard', 'Preparación (picking)') }}{% endif %}
-      {% if ve('picking.asignar') or ve('tareas.ejecutar') or ve('preparacion.registrar') %}{{ nl(url_for('alm.picking_schedule'), 'calendar', 'Programación de picking') }}{% endif %}
+      {% if (ve('preparacion.registrar') or ve('ov.ver')) and user.role.area != 'Producción' %}{{ nl(url_for('com.preparation'), 'clipboard', 'Preparación (picking)') }}{% endif %}{# V12: a Producción no le suma; si lo necesita, lo consulta desde la OV #}
+      {% if (ve('picking.asignar') or ve('tareas.ejecutar') or ve('preparacion.registrar')) and user.role.area != 'Producción' %}{{ nl(url_for('alm.picking_schedule'), 'calendar', 'Programación de picking') }}{% endif %}
       {% if ve('traslados.ver') %}{{ nl(url_for('alm.transfers'), 'swap', 'Traslados') }}{% endif %}
       {% if ve('reempaque.ver') %}{{ nl(url_for('alm.repacks'), 'refresh', 'Reempaque') }}{% endif %}
       {% if ve('stock.conteo') %}{{ nl(url_for('alm.counts'), 'count', 'Conteos físicos') }}{% endif %}

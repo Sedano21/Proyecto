@@ -31,6 +31,10 @@ def run_checks(user=None, today=None):
                     extra_users=[o.vendedor_id] if o.vendedor_id else None, dedup_key=f"OV_RETRASO:{o.id}")
         n += 1
     out["ov_retrasadas"] = n
+    from .prod_home import check_long_stops
+    out["paradas_prolongadas"] = check_long_stops()  # V12: paradas de línea que superan el tiempo configurado
+    from .demand_plan import check_purchase_deadlines
+    out["proyeccion_compras"] = check_purchase_deadlines(today)
     # Vencimiento próximo (solo si el umbral está configurado)
     dias = param("dias_vencimiento_proximo")
     n = 0

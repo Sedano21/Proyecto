@@ -198,6 +198,10 @@ def dashboard():
     # rediseño 28-oct-2026: cada perfil ve solo los indicadores pertinentes (matriz de indicadores)
     k = compute(d1, d2) if mios - {c for c in mios if c.startswith("PROD_")} else None
     prod = ind.production_summary(d1, d2, mios) if any(c.startswith("PROD_") for c in mios) else None
+    hoy_prod = None
+    if mios & {"PROD_LINEAS_HOY", "PROD_PLAN_HOY", "PROD_PENDIENTES", "PROD_REEMPAQUES"}:
+        from ..services.prod_home import summary as prod_hoy  # V12: la operación del día para el Jefe de Producción
+        hoy_prod = prod_hoy()
     tareas = alert_svc.my_tasks(g.user)
     ids = {a.id for a in tareas}
     mis = alert_svc.by_priority(g.user, [a for a in alert_svc.inbox(g.user, solo_abiertas=True) if a.id not in ids])[:40]
@@ -207,7 +211,7 @@ def dashboard():
     if g.user.role_code in ("COORD_VENTAS", "JEFE_VENTAS", "GERENTE_COMERCIAL", "GERENCIA_GENERAL"):
         from ..services.commercial_mgmt import home_summary
         com = home_summary(g.user)  # V7: metas por vendedor/canal/total (S/ y kg) y pedidos del mes en la portada
-    return render_template("dashboard.html", k=k, prod=prod, mis_alertas=mis, tareas=tareas, desde=desde or "", hasta=hasta or "",
+    return render_template("dashboard.html", k=k, prod=prod, hp=hoy_prod, mis_alertas=mis, tareas=tareas, desde=desde or "", hasta=hasta or "",
                            estado_txt=alert_svc.ESTADO_TXT, arrastre=pending_carryover(g.user), com=com)
 
 

@@ -1848,6 +1848,8 @@ class MoveRequest(Base):
     aviso_min: Mapped[int | None] = mapped_column(Integer, nullable=True)  # V8 (A04): aviso antes de la hora programada
     avisado_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     historial: Mapped[list] = mapped_column(JSON, default=list)  # V8 (A05): reasignaciones con rastro
+    # V12: qué se mueve: {tipo: PALLET_PT/MERMA/REMANENTE/MUESTRA/PALLET, cantidad, producto, kg, mp, customer_id}
+    carga: Mapped[dict] = mapped_column(JSON, default=dict)
     estado: Mapped[str] = mapped_column(String(15), default="SOLICITADA")  # SOLICITADA / EN_CURSO / COMPLETADA / ANULADA
     solicitado_por: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     asignado_a: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)

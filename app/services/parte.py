@@ -151,8 +151,15 @@ def validate_workers(colaboradores, operarios=None, fecha=None):
         if ini and fin and fin < ini:
             raise BusinessError(f"{w.nombre}: la hora de fin no puede ser menor que la de inicio.")
         kg = c.get("kg")
-        out.append({"worker_id": w.id, "nombre": w.nombre, "inicio": ini, "fin": fin,
-                    "refrigerio_min": c.get("refrigerio_min") or "", "kg": kg if kg not in (None, "") else ""})
+        x = {"worker_id": w.id, "nombre": w.nombre, "inicio": ini, "fin": fin,
+             "refrigerio_min": c.get("refrigerio_min") or "", "kg": kg if kg not in (None, "") else ""}
+        for k in ("merma_kg", "remanente_kg"):  # V12: líneas manuales, por persona
+            v = _f(c.get(k))
+            if v is not None:
+                if v < 0:
+                    raise BusinessError(f"{w.nombre}: {k.replace('_kg', '')} no puede ser negativo.")
+                x[k] = v
+        out.append(x)
     if operarios and len(out) > int(operarios):
         raise BusinessError(f"Registró {len(out)} colaboradores para {int(operarios)} operarios.")
     return out
@@ -353,6 +360,18 @@ def _alert_merma(r, user):
         alerts.emit("MERMA_FUERA_PARAMETRO", f"Desmedro {r.desmedro_pct}% en {r.linea} (OF {r.of or '-'})",
                     f"Umbral configurado {umbral}%. Producto {r.product_code}, lote {r.lote}. Rendimiento {r.rendimiento_pct}%.",
                     "ProductionRequest", "", creado_por=user)
+    # V12: la merma y el remanente de MP de cada parte necesitan un destino: deciden Calidad, Operaciones y Logística
+    merma = r.desmedro_kg or ((r.desmedro_pct or 0) * (r.peso_entrada_kg or 0) / 100)
+    rem = r.sobrante_kg or 0
+    if merma > 0 or rem > 0:
+        por_persona = [f"{c['nombre']}: merma {c.get('merma_kg', 0):g} kg, remanente {c.get('remanente_kg', 0):g} kg"
+                       for c in (r.colaboradores or []) if c.get("merma_kg") or c.get("remanente_kg")]
+        alerts.emit("MERMA_REMANENTE_DESTINO", f"Definir destino: {merma:,.1f} kg de merma y {rem:,.1f} kg de remanente "
+                                               f"de MP en {r.linea} (OF {r.of or '-'})",
+                    f"Producto {r.product_code}, MP {r.mp_codigo or '-'}, lote {r.lote or '-'}. "
+                    + ("Por persona: " + "; ".join(por_persona) + ". " if por_persona else "")
+                    + "Decidir si se reprocesa, reingresa al almacén o se usa en el próximo lote.",
+                    "ProductionReport", r.id, creado_por=user, dedup_key=f"MERMA_REM:{r.id}")
 
 
 def velocity(r):

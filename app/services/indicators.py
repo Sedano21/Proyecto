@@ -90,6 +90,16 @@ INDICADORES = {
                      "Reducir paradas y solicitudes atendidas tarde."),
     "PROD_OEE": ("OEE (disponibilidad, rendimiento y calidad)", "Producción", "Producción", ("Producción",), (), (),
                  "Eficiencia global de los equipos."),
+    # --- operación del día de Producción (V12) ---
+    "PROD_LINEAS_HOY": ("Estado de las líneas hoy (en proceso, paradas y motivo, ritmo, fin estimado)", "Producción",
+                        "Producción hoy", ("Producción",), ("Logística",), (),
+                        "Saber qué produce cada línea, qué está parado y si se termina lo programado."),
+    "PROD_PLAN_HOY": ("Planificado vs ejecutado hoy y proyección al cierre", "Producción", "Producción hoy",
+                      ("Producción",), ("Logística",), (), "Detectar a tiempo la desviación del día."),
+    "PROD_PENDIENTES": ("Productos pendientes de producción (solicitudes)", "Producción", "Producción hoy",
+                        ("Producción",), ("Logística", "Almacén"), (), "Priorizar qué producir."),
+    "PROD_REEMPAQUES": ("Reempaques aprobados por Calidad por ejecutar", "Producción", "Producción hoy",
+                        ("Producción",), ("Calidad", "Almacén"), (), "Solo los aprobados le competen a Producción."),
     # --- columnas sensibles del informe personalizado ---
     "MONTOS_VENTA": ("Montos de venta (precio, importe, total, proyección, gasto)", "Comercial", "Datos",
                      ("Comercial",), ("Finanzas", "Facturación"), ("dashboard.precios", "finanzas.ver"),
@@ -217,6 +227,8 @@ def values(user, codes, desde=None, hasta=None):
         return []
     k = compute(desde, hasta) if any(not c.startswith("PROD_") for c in codes) else {}
     p = production_summary(desde, hasta, set(codes)) if any(c.startswith("PROD_") for c in codes) else {}
+    hoy_codes = {"PROD_LINEAS_HOY", "PROD_PLAN_HOY", "PROD_PENDIENTES", "PROD_REEMPAQUES"}
+    h = __import__("app.services.prod_home", fromlist=["x"]).summary() if hoy_codes & set(codes) else {}
 
     def otif(t):
         return (f"{t[0]} %", f"{t[1]} de {t[2]} pedidos completos y a tiempo") if t else ("—", "sin despachos en el periodo")
@@ -241,6 +253,13 @@ def values(user, codes, desde=None, hasta=None):
         "FILL_DETALLE": lambda: (len(k["fill_detalle"]), "pedidos despachados con su fill rate"),
         "CAUSAS_ERROR": lambda: (len(k["fill_causas"]), (lambda c: f"principal: {c[0][1]} ({c[0][2]})" if c else "sin fallas")(k["fill_causas"])),
         "INCIDENCIAS": lambda: (sum(k["incidencias"].values()), ", ".join(f"{t} {n}" for t, n in k["incidencias"].items())[:120]),
+        "PROD_LINEAS_HOY": lambda: (f"{h['en_proceso']} en proceso · {len(h['paradas'])} paradas",
+                                    "; ".join(f"{f['linea']}: {f['parada']['causa']} ({f['parada']['minutos']} min)"
+                                              for f in h["paradas"]) or "sin paradas"),
+        "PROD_PLAN_HOY": lambda: (f"{h['ejecutado_kg']:,.0f} / {h['plan_kg']:,.0f} kg",
+                                  f"al cierre ~{h['al_cierre_kg']:,.0f} kg · desviación {_pct(h['desviacion'])}"),
+        "PROD_PENDIENTES": lambda: (len(h["pendientes"]), ", ".join(c for c, _ in h["pendientes"][:5])),
+        "PROD_REEMPAQUES": lambda: (len(h["reempaques"]), "aprobados por Calidad"),
         "PROD_CUMPLIMIENTO": lambda: (_pct(p["d"]["plan"]["tasa"]), "Σ mín(real, plan) / Σ plan · referencia 90 %"),
         "PROD_PRODUCIDO": lambda: (f"{p['d']['kg']:,.0f} kg", f"{p['d']['unidades']:,.0f} unidades · {p['d']['liquidaciones']} liquidaciones"),
         "PROD_RENDIMIENTO": lambda: (_pct(p["rend"]), f"desmedro {_pct(p['desm'])} (umbral {p['umbral_merma']:g} %)"),

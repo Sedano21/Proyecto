@@ -319,10 +319,77 @@ def move_points(almacen=""):
     return list(dict.fromkeys(list(cfg.get(almacen or "", [])) + list(cfg.get("*", []))))
 
 
+TIPOS_CARGA = {"PALLET_PT": "Pallet de PT", "MERMA": "Merma", "REMANENTE": "Remanente de MP", "MUESTRA": "Muestra",
+               "PALLET": "Pallet (vacío)"}
+
+
+def move_cargo(datos):
+    """V12: valida el tipo de carga y sus datos y arma el detalle legible.
+    PALLET_PT: n.° de pallets y código de PT · MERMA: kg · REMANENTE: kg y código de MP ·
+    MUESTRA: PT, cantidad y cliente al que se envía · PALLET: cantidad."""
+    from ..models import Customer, Product
+    from .stock import product_kind
+    tipo = (datos.get("tipo") or "").strip().upper()
+    if not tipo:
+        return {}, ""
+    if tipo not in TIPOS_CARGA:
+        raise BusinessError("Elija qué se mueve de la lista.")
+
+    def num(k, txt, entero=False):
+        try:
+            v = float(datos.get(k))
+        except (TypeError, ValueError):
+            raise BusinessError(f"Indique {txt}.")
+        if v <= 0 or (entero and v != int(v)):
+            raise BusinessError(f"{txt[0].upper() + txt[1:]}: debe ser {'un entero ' if entero else ''}mayor que cero.")
+        return int(v) if entero else v
+
+    def prod(k, tipos, txt):
+        code = (datos.get(k) or "").strip().upper().split(" ")[0]
+        p = db().get(Product, code) if code else None
+        if p is None:
+            raise BusinessError(f"Elija el {txt} de la lista.")
+        if tipos and product_kind(p) not in tipos:
+            raise BusinessError(f"{code} no es {txt}.")
+        return p
+    c = {"tipo": tipo}
+    if tipo == "PALLET_PT":
+        c["cantidad"] = num("cantidad", "la cantidad de pallets", True)
+        p = prod("producto", ("PT",), "producto terminado")
+        c["producto"] = p.code
+        det = f"{c['cantidad']} pallet(s) de PT {p.code} {p.descripcion}"
+    elif tipo == "MERMA":
+        c["kg"] = num("kg", "el peso en kg")
+        det = f"Merma {c['kg']:g} kg"
+    elif tipo == "REMANENTE":
+        c["kg"] = num("kg", "el peso en kg")
+        p = prod("mp", ("MP", "GR"), "materia prima")
+        c["mp"] = p.code
+        det = f"Remanente de MP {p.code} {p.descripcion}: {c['kg']:g} kg"
+    elif tipo == "MUESTRA":
+        p = prod("producto", ("PT",), "producto terminado")
+        c["producto"] = p.code
+        c["cantidad"] = num("cantidad", "la cantidad de la muestra")
+        cid = datos.get("customer_id")
+        cu = db().get(Customer, int(cid)) if str(cid or "").isdigit() else None
+        if cu is None:
+            raise BusinessError("Indique a qué cliente se enviará la muestra.")
+        c["customer_id"] = cu.id
+        det = f"Muestra de {p.code} {p.descripcion} × {c['cantidad']:g} para {cu.nombre}"
+    else:
+        c["cantidad"] = num("cantidad", "la cantidad de pallets", True)
+        det = f"{c['cantidad']} pallet(s)"
+    return c, det
+
+
 def request_move(user, origen, destino, detalle="", cantidad="", prioridad="MEDIA", almacen="", observacion="",
-                 programado_para=None, asignado_id=None, aviso_min=None):
+                 programado_para=None, asignado_id=None, aviso_min=None, carga=None):
     if not has_perm(user, "movimiento.solicitar"):
         raise BusinessError("Su rol no solicita movimientos al montacarguista.")
+    carga_d, det = move_cargo(carga or {})
+    if det:
+        detalle = det + ((" · " + detalle.strip()) if (detalle or "").strip() else "")
+        cantidad = str(carga_d.get("cantidad") or carga_d.get("kg") or cantidad or "")
     if isinstance(programado_para, str):
         try:
             programado_para = datetime.fromisoformat(programado_para) if programado_para.strip() else None
@@ -348,7 +415,7 @@ def request_move(user, origen, destino, detalle="", cantidad="", prioridad="MEDI
                     detalle=(detalle or "").strip(), cantidad=(cantidad or "").strip(), prioridad=prioridad,
                     observacion=(observacion or "").strip(), solicitado_por=user.id,
                     tipo="PROGRAMADO" if programado_para else "INMEDIATO", programado_para=programado_para,
-                    asignado_a=ejecutor.id if ejecutor else None,
+                    asignado_a=ejecutor.id if ejecutor else None, carga=carga_d,
                     aviso_min=_aviso(aviso_min) if programado_para else None)
     db().add(m)
     db().flush()
@@ -360,6 +427,39 @@ def request_move(user, origen, destino, detalle="", cantidad="", prioridad="MEDI
                 dedup_key=f"MOV:{m.id}", creado_por=user)
     audit(user, "MOVIMIENTO_SOLICITADO", "MoveRequest", m.id, {"origen": origen, "destino": destino})
     return m
+
+
+def reschedule_move(user, m, fecha, hora, motivo=""):
+    """V12: quien solicitó un movimiento programado puede cambiar el día y la hora."""
+    if m.solicitado_por != user.id:
+        raise BusinessError("Solo quien solicitó el movimiento lo reprograma.")
+    if m.estado != "SOLICITADA":
+        raise BusinessError("El movimiento ya se inició o terminó.")
+    nuevo = _when(fecha, hora)
+    if nuevo is None:
+        raise BusinessError("Indique el día y la hora.")
+    if nuevo < datetime.now() - timedelta(minutes=1):
+        raise BusinessError("La nueva fecha y hora ya pasaron.")
+    antes = m.programado_para
+    m.programado_para, m.tipo, m.avisado_ts = nuevo, "PROGRAMADO", None
+    m.historial = list(m.historial or []) + [{"evento": "REPROGRAMADO", "de": antes.isoformat(timespec="minutes") if antes else "",
+                                              "a": nuevo.isoformat(timespec="minutes"), "motivo": (motivo or "").strip(),
+                                              "user": user.nombre, "ts": datetime.now().isoformat(timespec="minutes")}]
+    audit(user, "MOVIMIENTO_REPROGRAMADO", "MoveRequest", m.id, {"de": str(antes), "a": str(nuevo)})
+    return m
+
+
+def _when(fecha, hora):
+    """Día (obligatorio) y hora (editable; por defecto la del parámetro) del movimiento programado."""
+    if not (fecha or "").strip():
+        return None
+    try:
+        d = date.fromisoformat(fecha.strip()[:10])
+        h = (hora or param("hora_movimiento_programado", "08:00") or "08:00").strip()[:5]
+        hh, mm = [int(x) for x in h.split(":")]
+        return datetime.combine(d, datetime.min.time()).replace(hour=hh, minute=mm)
+    except (ValueError, TypeError):
+        raise BusinessError("Fecha u hora programadas inválidas.")
 
 
 def _aviso(v):

@@ -1920,3 +1920,65 @@ for _code, _n, _m, _t, _roles in [
     PERMISSIONS.append((_code, _n, _m, _t))
     for _r in _roles:
         ROLE_PERMISSIONS.setdefault(_r, []).append((_code, "PROPUESTO", f"{V11}: jefaturas y coordinaciones de área"))
+
+# ----------------------------------------------------------------------------------------------------------------------
+# V12: indicaciones del 29-oct-2026 (Producción y Distribución)
+V12 = "Indicaciones de la empresa (29-oct-2026)"
+PARAMS += [
+    ("hora_inicio_produccion", "08:00", "str", "Producción",
+     "Inicio de la jornada de producción: base para lo esperado a cada hora (planificado vs ejecutado del día).",
+     "PROPUESTO", f"{V12}: inicio de Producción (por confirmar el horario real)"),
+    ("hora_fin_produccion", "17:00", "str", "Producción",
+     "Cierre de la jornada: base para estimar cuánto se producirá y si las líneas terminan lo programado.",
+     "PROPUESTO", f"{V12}: inicio de Producción (por confirmar el horario real)"),
+    ("horas_jornada_produccion", 8, "int", "Producción",
+     "Horas productivas por día: convierte la capacidad kg/día de la tabla en kg/hora cuando aún no hay ritmo real.",
+     "PROPUESTO", f"{V12}: tiempo estimado por línea"),
+    ("parada_prolongada_min", 30, "int", "Producción",
+     "Minutos de parada continua de una línea para alertar como parada prolongada.",
+     "PROPUESTO", f"{V12}: «alertar paradas prolongadas»"),
+    ("desviacion_plan_alerta_pct", 10, "int", "Producción",
+     "Desviación (%) de lo producido frente a lo esperado a la hora para alertar en el inicio de Producción.",
+     "PROPUESTO", f"{V12}: «indicar si hay desviación entre lo planificado y lo que se está produciendo»"),
+]
+ALERT_TYPES += [
+    ("PARADA_PROLONGADA", "Parada prolongada de línea", "Producción", "Producción", "ALTA",
+     ["JEFE_PRODUCCION", "ASIST_PRODUCCION", "GERENCIA_OPERACIONES"], "DEFINIDO", f"{V12}",
+     "Una línea lleva parada más del tiempo configurado; se indica el motivo registrado.", True),
+]
+PARAMS += [
+    ("reglas_recomendacion_produccion", {"bajo_promedio_pct": 15, "merma_sobre_promedio_pct": 30, "ausencia_alta_pct": 10,
+                                         "mejor_linea_pct": 20, "capacidad_baja_pct": 60, "min_partes": 3}, "dict", "Producción",
+     "Umbrales de las recomendaciones del informe de Producción: persona por debajo del promedio de su línea, merma "
+     "sobre el promedio, tasa de faltas alta, línea donde rinde más, capacidad poco aprovechada y mínimo de partes.",
+     "PROPUESTO", f"{V12}: recomendaciones en base a los análisis"),
+]
+ALERT_TYPES += [
+    ("MERMA_REMANENTE_DESTINO", "Definir destino de merma y remanente de MP", "Producción", "Producción", "MEDIA",
+     ["JEFE_CALIDAD", "SUPERV_CALIDAD", "GERENCIA_OPERACIONES", "JEFE_LOGISTICA"], "DEFINIDO", f"{V12}",
+     "Al cerrar un parte con merma o remanente de materia prima, Calidad, Operaciones y Logística deciden qué hacer.", True),
+]
+PARAMS += [
+    ("hora_movimiento_programado", "08:00", "str", "Almacén",
+     "Hora sugerida al programar un movimiento por día (se puede cambiar al solicitar o reprogramar).",
+     "PROPUESTO", f"{V12}: «cuando es programado se puede indicar por día pero también modificar la hora»"),
+]
+PARAMS += [
+    ("stock_reserva_dias", 7, "int", "Producción",
+     "Días de demanda que se mantienen como stock de reserva en almacén (nuevos pedidos o variaciones) al preprogramar "
+     "la producción desde la proyección de demanda.", "PROPUESTO", f"{V12}: «manteniendo siempre un stock de reserva»"),
+    ("marcas_propias", [], "list", "Comercial",
+     "Marcas propias: un producto terminado de otra marca se muestra como «marca blanca» en la proyección.",
+     "PROPUESTO", f"{V12}: «se diferencia producto terminado, marca blanca, granel y demás»"),
+    ("demanda_presolicitud_roles", ["COMPRAS", "GERENCIA_OPERACIONES", "GERENCIA_GENERAL"], "list", "Compras",
+     "Perfiles que ven las presolicitudes de compra de la proyección de demanda (no se muestran a Producción).",
+     "DEFINIDO", f"{V12}: «a compras nacionales, jefatura de operaciones y gerente general adjunto»"),
+    ("demanda_aviso_compra_dias", 7, "int", "Compras",
+     "Días antes de la fecha máxima para pedir una MP faltante de la proyección en que se avisa.",
+     "PROPUESTO", f"{V12}: presolicitud con fecha máxima"),
+]
+ALERT_TYPES += [
+    ("PROYECCION_COMPRA", "Fecha máxima para pedir MP de la proyección", "Compras", "Compras", "MEDIA",
+     ["COMPRAS", "GERENCIA_OPERACIONES", "GERENCIA_GENERAL"], "DEFINIDO", f"{V12}",
+     "Se acerca o pasó la fecha máxima para pedir una materia prima que falta para cubrir la proyección de demanda.", True),
+]

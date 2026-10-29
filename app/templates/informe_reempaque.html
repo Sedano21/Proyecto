@@ -1,6 +1,16 @@
 {% extends "base.html" %}{% from "_informe.html" import cabecera %}{% from "_m.html" import b %}
 {% block content %}{{ cabecera('de reempaque', d, items, actual) }}
-<div class="kpis"><div class="kpi"><b>{{ d.total }}</b><span>Solicitudes</span></div>
+{% if d.solo_aprobadas %}{# V12: Producción ve solo lo que Calidad aprobó (lo que recién le llega) #}
+<p class="small muted">Se muestran solo las solicitudes aprobadas por Calidad: son las que llegan a Producción para ejecutarse.</p>
+<div class="kpis"><div class="kpi primary"><b>{{ d.total }}</b><span>Reempaques recibidos</span><small>aprobados por Calidad en el periodo</small></div>
+<div class="kpi {{ 'warn' if d.por_estado.get('APROBADA', 0) }}"><b>{{ d.por_estado.get('APROBADA', 0) }}</b><span>Por iniciar</span></div>
+<div class="kpi"><b>{{ d.por_estado.get('EN_EJECUCION', 0) }}</b><span>En ejecución</span></div>
+<div class="kpi ok"><b>{{ d.por_estado.get('EJECUTADA', 0) }}</b><span>Ejecutados</span></div>
+<div class="kpi"><b>{{ d.t_espera or '—' }} h</b><span>De aprobado a inicio</span><small>promedio</small></div>
+<div class="kpi"><b>{{ d.t_ejecucion or '—' }} h</b><span>Tiempo de ejecución</span><small>promedio</small></div></div>
+<div class="grid g2"><div class="card"><h3>Recibidos por semana</h3>{{ charts.line([('Recibidos', d.serie_solicitudes)], 'solicitudes') }}</div>
+<div class="card"><h3>Por tipo</h3>{{ charts.bars(d.por_tipo, '', color=6) }}</div></div>
+{% else %}<div class="kpis"><div class="kpi"><b>{{ d.total }}</b><span>Solicitudes</span></div>
 <div class="kpi"><b>{{ d.tasa_aprobacion if d.tasa_aprobacion is not none else '-' }} %</b><span>Aprobadas por Calidad</span><small>de {{ d.evaluadas }} evaluadas</small></div>
 <div class="kpi"><b>{{ d.por_estado.get('DESAPROBADA', 0) }}</b><span>Desaprobadas</span></div>
 <div class="kpi"><b>{{ d.tasa_desestimacion or 0 }} %</b><span>Desestimadas (pre-solicitud)</span></div>
@@ -10,6 +20,7 @@
 <div class="card"><h3>Tasa de aprobación por semana (%)</h3>{{ charts.line([('Aprobación %', d.serie_aprobacion)], '%') }}</div></div>
 <div class="grid g2"><div class="card"><h3>Por tipo</h3>{{ charts.bars(d.por_tipo, '', color=6) }}<table class="small">{% for k, v in d.por_estado.items() %}<tr><td>{{ b(k) }}</td><td class="r">{{ v }}</td></tr>{% endfor %}</table></div>
 <div class="card"><h3>Motivos de desaprobación / desestimación</h3>{{ charts.bars(d.motivos, '', color=1) }}</div></div>
+{% endif %}
 <div class="card"><h3>Detalle</h3><div class="tw"><table class="small"><tr><th>#</th><th>Fecha</th><th>Tipo</th><th>Lote</th><th>OV</th><th>Estado</th><th>Motivo / resultado</th></tr>
 {% for r in d.filas %}<tr><td><a href="{{ url_for('alm.repack_detail', rid=r.id) }}">{{ r.id }}</a></td><td>{{ r.ts|d }}</td><td>{{ d.tipos.get(r.tipo, r.tipo) }}</td><td>{{ r.lot.product_code }} {{ pd(r.lot.product_code) }} / {{ r.lot.lote }}</td><td>{{ r.order.numero if r.order }}</td><td>{{ b(r.estado) }}</td><td>{{ r.resultado_calidad or r.motivo }}</td></tr>{% else %}<tr><td colspan="7" class="muted">Sin solicitudes en el periodo</td></tr>{% endfor %}</table></div></div>
 {% endblock %}

@@ -68,6 +68,40 @@
 </div>{% endif %}
 {% endif %}
 
+{% if hp %}{# V12: la operación del día de Producción #}
+<div class="section-title">Producción de hoy <span class="muted small">· {{ hp.ahora.strftime('%H:%M') }} · cierre de jornada {{ hp.fin_turno.strftime('%H:%M') }}</span> <a class="small" href="{{ url_for('prod.monitor') }}">Monitoreo en tiempo real</a></div>
+{% if hp.alertas %}<section class="recos">{% for nivel, texto in hp.alertas %}<div class="reco-big {{ nivel }}"><b>{{ {'ALTA': 'Requiere acción', 'MEDIA': 'Atención'}[nivel] }}</b><span>{{ texto }}</span></div>{% endfor %}</section>{% endif %}
+<div class="kpis">
+{% if vi('PROD_PLAN_HOY') %}{% set dv = hp.desviacion %}<div class="kpi primary"><b>{{ hp.ejecutado_kg|n }} kg</b><span>Ejecutado hoy de {{ hp.plan_kg|n }} kg planificados</span><small>{% if hp.plan_kg %}{{ hp.plan_fuente }}{% if hp.esperado_ahora %} · a esta hora se esperaban {{ hp.esperado_ahora|n }} kg{% endif %}{% else %}sin plan ni partes programados hoy{% endif %}</small></div>
+<div class="kpi {{ '' if dv is none else ('ok' if dv >= -5 else 'warn') }}"><b>{{ ('%+.1f'|format(dv) ~ ' %') if dv is not none else '—' }}</b><span>Desviación frente a lo planificado</span><small>{{ 'producido vs esperado a la hora' if dv is not none else 'sin plan para comparar' }}</small></div>
+<div class="kpi {{ '' if hp.cumplira is none else ('ok' if hp.cumplira else 'alert') }}"><b>{{ hp.al_cierre_kg|n }} kg</b><span>Producirá al cierre (estimado)</span><small>{% if hp.cumplira is none %}sin plan del día{% elif hp.cumplira %}✔ alcanza lo planificado{% else %}✖ no alcanza lo planificado{% endif %}</small></div>{% endif %}
+{% if vi('PROD_LINEAS_HOY') %}<div class="kpi"><b>{{ hp.en_proceso }}</b><span>Líneas en proceso</span><small>de {{ hp.lineas|length }} líneas</small></div>
+<div class="kpi {{ 'alert' if hp.paradas }}"><b>{{ hp.paradas|length }}</b><span>Líneas paradas</span><small>{% for f in hp.paradas %}{{ f.linea }}: {{ f.parada.causa }} ({{ f.parada.minutos }} min){{ '; ' if not loop.last }}{% else %}sin paradas{% endfor %}</small></div>{% endif %}
+<div class="kpi {{ 'warn' if hp.merma_hoy is not none and hp.merma_hoy > hp.umbral_merma }}"><b>{{ hp.merma_hoy if hp.merma_hoy is not none else '—' }}{{ ' %' if hp.merma_hoy is not none }}</b><span>Merma de hoy</span><small>7 días: {{ hp.merma_7d if hp.merma_7d is not none else '—' }} % · umbral {{ hp.umbral_merma|n }} %</small></div>
+{% if vi('PROD_PENDIENTES') %}<div class="kpi"><b>{{ hp.solicitudes|length }}</b><span>Solicitudes de producción pendientes</span><small>{% for e, n in hp.solicitudes_por_estado.items() %}{{ e|replace('_',' ')|lower }} {{ n }}{{ ' · ' if not loop.last }}{% else %}ninguna{% endfor %}</small></div>{% endif %}
+{% if vi('PROD_REEMPAQUES') %}<div class="kpi"><b>{{ hp.reempaques|length }}</b><span>Reempaques por ejecutar</span><small>aprobados por Calidad</small></div>{% endif %}
+</div>
+{% if vi('PROD_LINEAS_HOY') %}<div class="card"><div class="card-head"><h3>Estado de las líneas</h3><span class="muted small">ritmo real del parte en curso; si aún no hay avance, capacidad nominal</span></div>
+<div class="tw"><table class="small"><thead><tr><th>Línea</th><th>Estado</th><th>Producto</th><th class="r">Avance / objetivo kg</th><th class="r">Ritmo kg/h</th><th class="r">Tiempo restante</th><th>Fin estimado</th><th class="r">Kg al cierre</th><th>¿Termina?</th></tr></thead><tbody>
+{% for f in hp.lineas %}<tr><td><b>{{ f.linea }}</b></td>
+<td>{% if f.estado == 'PARADA' %}<span class="b ALTA">PARADA</span> {{ f.parada.causa }} · {{ f.parada.minutos }} min{% if f.parada.prolongada %} <b class="err">▲ prolongada</b>{% endif %}{% elif f.estado == 'EN PROCESO' %}<span class="b EN_PROCESO">EN PROCESO</span>{% elif f.estado == 'PROGRAMADA' %}<span class="b PROGRAMADA">PROGRAMADA</span> {{ f.programados|length }} parte(s){% else %}<span class="muted">sin programa</span>{% endif %}</td>
+<td>{{ f.producto or '' }}{% if f.producto %} <span class="muted">{{ pd(f.producto) }}</span>{% endif %}</td>
+<td class="r">{% if f.objetivo_kg %}{{ f.avance_kg|n }} / {{ f.objetivo_kg|n }}{% else %}—{% endif %}</td>
+<td class="r">{{ f.ritmo_kg_h|n if f.ritmo_kg_h else '—' }}{% if f.ritmo_fuente == 'nominal' %} <span class="muted" title="Sin avance registrado: capacidad nominal">(nom.)</span>{% endif %}</td>
+<td class="r">{% if f.restante_min is not none %}{{ (f.restante_min // 60) }} h {{ '%02d'|format(f.restante_min % 60) }} min{% else %}—{% endif %}</td>
+<td>{{ f.fin_estimado.strftime('%H:%M') if f.fin_estimado else '—' }}</td>
+<td class="r">{{ f.kg_al_cierre|n if f.kg_al_cierre is not none else '—' }}</td>
+<td>{% if f.termina is none %}—{% elif f.termina %}✔ sí{% else %}<b class="err">✖ no</b>{% endif %}</td></tr>{% endfor %}</tbody></table></div></div>{% endif %}
+<div class="grid g2">
+{% if vi('PROD_PENDIENTES') %}<div class="card"><div class="card-head"><h3>Productos pendientes de producción</h3><a class="small" href="{{ url_for('prod.requests') }}">Solicitudes</a></div>
+<table class="small"><thead><tr><th>Producto</th><th class="r">Cantidad</th><th class="r">kg</th><th>Requerido</th><th class="r">Solic.</th></tr></thead><tbody>
+{% for code, x in hp.pendientes[:12] %}<tr><td>{{ code }} <span class="muted">{{ pd(code) }}</span></td><td class="r">{{ x.cantidad|n }}</td><td class="r">{{ x.kg|n }}</td><td>{% if x.requerida %}{{ x.requerida|d }}{% if x.vencidas %} <b class="err">vencida</b>{% endif %}{% else %}—{% endif %}</td><td class="r">{{ x.n }}</td></tr>{% else %}<tr><td colspan="5" class="muted">Sin solicitudes pendientes</td></tr>{% endfor %}</tbody></table></div>{% endif %}
+{% if vi('PROD_REEMPAQUES') %}<div class="card"><div class="card-head"><h3>Reempaques aprobados por Calidad</h3><a class="small" href="{{ url_for('alm.repacks') }}">Reempaques</a></div>
+<table class="small"><thead><tr><th>#</th><th>Tipo</th><th>Lote → destino</th><th class="r">Cantidad</th><th>Estado</th></tr></thead><tbody>
+{% for r in hp.reempaques[:12] %}<tr><td><a href="{{ url_for('alm.repack_detail', rid=r.id) }}">{{ r.id }}</a></td><td>{{ r.tipo|replace('_',' ')|lower }}</td><td>{{ r.lot.lote }} → {{ r.producto_destino or r.lot.product_code }}</td><td class="r">{{ r.cantidad|n }}</td><td>{{ b(r.estado) }}</td></tr>{% else %}<tr><td colspan="5" class="muted">Sin reempaques por ejecutar</td></tr>{% endfor %}</tbody></table></div>{% endif %}
+</div>
+{% endif %}
+
 {% if prod %}{# Producción: programa, volumen, rendimiento, mermas, capacidad y paradas del periodo #}
 <div class="section-title">Producción <span class="muted small">· {{ prod.d.desde|d }} – {{ prod.d.hasta|d }}</span> <a class="small" href="{{ url_for('rep.show', nombre='produccion', desde=prod.d.desde.isoformat(), hasta=prod.d.hasta.isoformat()) }}">Ver informe completo</a></div>
 {% if prod.alertas %}<section class="recos">{% for nivel, texto in prod.alertas %}<div class="reco-big {{ nivel }}"><b>{{ {'ALTA': 'Requiere acción', 'MEDIA': 'Atención'}[nivel] }}</b><span>{{ texto }}</span></div>{% endfor %}</section>{% endif %}
@@ -111,7 +145,7 @@
 <nav class="quick" aria-label="Accesos rápidos">
   {% if can('ov.crear') %}<a href="{{ url_for('com.order_new') }}">{{ ic('plus') }}Registrar OV</a>{% endif %}
   {% if can('ov.ver') %}<a href="{{ url_for('com.orders') }}">{{ ic('cart') }}Órdenes de venta</a>{% endif %}
-  {% if can('picking.asignar') or can('tareas.ejecutar') or can('preparacion.registrar') %}<a href="{{ url_for('alm.picking_schedule') }}">{{ ic('calendar') }}Programación de picking</a>{% endif %}
+  {% if (can('picking.asignar') or can('tareas.ejecutar') or can('preparacion.registrar')) and user.role.area != 'Producción' %}<a href="{{ url_for('alm.picking_schedule') }}">{{ ic('calendar') }}Programación de picking</a>{% endif %}
   {% if can('stock.ver') %}<a href="{{ url_for('alm.stock') }}">{{ ic('box') }}Stock y reservas</a>{% endif %}
   {% if can('produccion.ver') %}<a href="{{ url_for('prod.requests') }}">{{ ic('factory') }}Solicitudes de producción</a>{% endif %}
   {% if can('calidad.ver') %}<a href="{{ url_for('cal.home') }}">{{ ic('shield') }}Liberación y registros</a>{% endif %}

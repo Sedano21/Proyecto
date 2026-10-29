@@ -17,12 +17,32 @@ INFORMES = {
     "produccion": ("Producción", ("informes.produccion",)),
     "distribucion": ("Distribución", ("informes.distribucion",)),
     "almacen": ("Movimiento de stock del almacén", ("informes.almacen",)),
-    "cumplimiento": ("Interacciones y cumplimiento por persona", ("informes.cumplimiento",)),
+    "cumplimiento": ("Cumplimiento por persona", ("informes.cumplimiento",)),
+    "merma": ("Merma y remanente de MP", ("informes.produccion",)),
 }
+# V12: tableros de Producción que también son informes de su área (se abren en su propia pantalla)
+EXTERNOS = {"control": ("Control de producción", ("produccion.partes_ver",), "prod.control"),
+            "oee": ("Tablero OEE", ("produccion.partes_ver",), "prod.oee_dashboard")}
+# V12: informes de Producción; a Producción no le suman los de otras áreas (p. ej. movimiento de stock)
+INFORMES_PRODUCCION = ("produccion", "merma", "reempaque", "control", "oee", "cumplimiento")
+
+
+def _area_produccion():
+    return getattr(g.user.role, "area", "") == "Producción"
 
 
 def disponibles():
-    return [(k, t) for k, (t, perms) in INFORMES.items() if any(p in g.perms for p in perms) or "vista.total" in g.perms]
+    ok = lambda perms: any(p in g.perms for p in perms) or "vista.total" in g.perms  # noqa: E731
+    items = [(k, t) for k, (t, perms) in INFORMES.items() if ok(perms)]
+    items += [(k, t) for k, (t, perms, _) in EXTERNOS.items() if ok(perms)]
+    if _area_produccion():
+        items = sorted([x for x in items if x[0] in INFORMES_PRODUCCION], key=lambda x: INFORMES_PRODUCCION.index(x[0]))
+    return items
+
+
+@bp.app_template_global()
+def informe_url(k):
+    return url_for(EXTERNOS[k][2]) if k in EXTERNOS else url_for("rep.show", nombre=k)
 
 
 def _periodo():
@@ -266,15 +286,45 @@ def _show(nombre):
                                 if f["capacidad"]], "%", title="Uso de capacidad por línea")
         graf_prog = charts.bars([(f["grupo"], f["cumplimiento"] or 0) for f in cap["filas"] if f["programado"]], "%",
                                 title="Programado vs ejecutado (cumplimiento)", color=2)
+        from ..services import prod_analytics as pa
+        reco_cap, _ = pa.capacity_recommendations(d["desde"], d["hasta"])
+        an = pa.analyze(d["desde"], d["hasta"])
+        d["recomendaciones"] = list(d["recomendaciones"]) + reco_cap + [x for x in an["recomendaciones"]
+                                                                        if x[1].startswith(("La línea", "Hay "))]
+        d["merma_kg"], d["remanente_kg"], d["merma_pct"] = an["merma_kg"], an["remanente_kg"], an["merma_pct"]
         return render_template("informe_produccion.html", d=d, cap=cap, graf_cap=graf_cap, graf_prog=graf_prog,
                                charts=charts, items=disponibles(), actual=nombre)
     if nombre == "cumplimiento":
         from datetime import date, timedelta
         from ..services.shifts import compliance
-        d = compliance(desde or date.today() - timedelta(days=6), hasta or date.today())
-        return render_template("informe_cumplimiento.html", d=d, items=disponibles(), actual=nombre)
+        d = compliance(desde or date.today() - timedelta(days=29), hasta or date.today(), user=g.user)
+        pp = d["produccion"] or []
+        graf = {"kg_h": charts.bars([(p["nombre"][:22], p["kg_h"]) for p in pp if p["kg_h"]], "kg/h",
+                                    title="Rendimiento por persona (kg/h)"),
+                "ausencia": charts.bars([(p["nombre"][:22], p["ausencia_pct"]) for p in pp if p["ausencia_pct"]], "%",
+                                        title="Tasa de ausencia (%)", color=1)}
+        return render_template("informe_cumplimiento.html", d=d, graf=graf, items=disponibles(), actual=nombre)
+    if nombre == "merma":
+        from ..services import prod_analytics as pa
+        d = pa.analyze(desde, hasta)
+        reco_cap, cap = pa.capacity_recommendations(d["desde"], d["hasta"])
+        d["recomendaciones"] = d["recomendaciones"] + reco_cap
+        graf = {"lineas": charts.columns([x["linea"] for x in d["lineas"]],
+                                         [("Merma kg", [x["merma"] for x in d["lineas"]]),
+                                          ("Remanente MP kg", [x["remanente"] for x in d["lineas"]])], "kg",
+                                         title="Merma y remanente por línea"),
+                "serie": charts.line([("Merma kg", [(a, m) for a, m, _ in d["serie"]]),
+                                      ("Remanente kg", [(a, r) for a, _, r in d["serie"]])], "kg",
+                                     title="Merma y remanente por día"),
+                "personas": charts.bars([(p["nombre"][:22], p["merma_pct"]) for p in d["personas"] if p["merma_pct"] is not None],
+                                        "%", title="Merma por persona (%)", color=1),
+                "rem_personas": charts.bars([(p["nombre"][:22], p["remanente"]) for p in d["personas"] if p["remanente"]],
+                                            "kg", title="Remanente de MP por persona", color=2)}
+        from ..services.core import param
+        return render_template("informe_merma.html", d=d, graf=graf, items=disponibles(), actual=nombre,
+                               umbral_merma=float(param("umbral_merma_pct", 5) or 5))
     fn = getattr(rsvc, nombre)
-    d = fn(desde, hasta)
+    d = fn(desde, hasta, solo_aprobadas=_area_produccion()) if nombre == "reempaque" else fn(desde, hasta)
     return render_template(f"informe_{nombre}.html", d=d, charts=charts, items=disponibles(), actual=nombre)
 
 
