@@ -82,7 +82,7 @@
 <div class="dlg-foot"><button class="btn sec" data-close>Cancelar</button><button class="btn">Guardar</button></div></form></dialog>
 <dialog class="drawer" id="dlg-san"><form method="post" enctype="multipart/form-data">{{ csrf() }}<input type="hidden" name="accion" value="saneamiento">
 <div class="dlg-head"><h3>Registrar en la bitácora</h3><button class="ibtn" data-close aria-label="Cerrar">{{ ic('x') }}</button></div>
-<div class="dlg-body"><label class="req">Zona</label><select name="zone_id" required>{% for z, st in d.zonas %}<option value="{{ z.id }}">{{ z.nombre }}</option>{% endfor %}</select>
+<div class="dlg-body"><label class="req">Zona</label>{% if d.zonas %}<select name="zone_id" required>{% for z, st in d.zonas %}<option value="{{ z.id }}">{{ z.nombre }}</option>{% endfor %}</select>{% else %}<p class="small warn">Aún no hay zonas activas: créelas con «Nueva zona» para poder registrar en la bitácora.</p>{% endif %}
 <div class="row"><div><label class="req">Tipo</label><select name="tipo">{% for k, t in tipos.items() %}<option value="{{ k }}">{{ t }}</option>{% endfor %}</select></div><div><label class="req">Fecha</label><input type="date" name="fecha" required></div></div>
 <label class="req">Realizado por (persona o empresa)</label><input name="responsable" required style="width:100%">
 <div class="row"><div><label>Producto utilizado</label><input name="producto"></div><div><label>N° de certificado</label><input name="certificado" size="12"></div></div>

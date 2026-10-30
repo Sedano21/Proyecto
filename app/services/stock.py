@@ -16,7 +16,7 @@ from ..db import db
 from ..models import (BOMLine, BOMVersion, Product, Reservation, SalesHistory, SalesOrder, SalesOrderLine,
                       StockLot, UploadBatch, Warehouse, now)
 from . import alerts
-from .core import BusinessError, audit, param
+from .core import BusinessError, audit, has_perm, param
 
 ESTADOS_LABEL = {
     "DISPONIBLE": "Disponible", "RESERVADO": "Reservado", "NO_UTILIZABLE": "No utilizable", "DANADO": "Dañado",
@@ -521,11 +521,18 @@ def alternatives_for_order(order):
 
 
 # ------------------------------ estados de lote ----------------------------
-def change_lot_state(lot, nuevo, user, motivo):
+BLOQUEADOS = ("OBSERVADO", "PENDIENTE_REVISION", "EN_FUMIGACION", "NO_UTILIZABLE", "DANADO")
+
+
+def change_lot_state(lot, nuevo, user, motivo, _calidad=False):
     if nuevo not in ESTADOS_FISICOS:
         raise BusinessError("Estado no válido. 'Reservado' se deriva de las reservas.")
     if not motivo.strip():
         raise BusinessError("Indique el motivo del cambio de estado.")
+    if (lot.estado in BLOQUEADOS and nuevo == "DISPONIBLE" and user is not None and not _calidad
+            and not has_perm(user, "calidad.liberar")):
+        # V13: un lote bloqueado solo lo libera Calidad; Almacén solicita la liberación
+        raise BusinessError("Un lote bloqueado solo lo libera Calidad: use «Solicitar liberación a Calidad».")
     from .core import check_warehouse_scope
     check_warehouse_scope(user, lot.warehouse_code)
     anterior = lot.estado

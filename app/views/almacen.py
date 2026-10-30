@@ -14,7 +14,7 @@ from ..services import repack as rsvc
 from ..services import transfers as tsvc
 from ..services import uploads as usvc
 from ..services.core import BusinessError
-from ..services.stock import (ESTADOS_FISICOS, ESTADOS_LABEL, base_qty, change_lot_state, free_qty, product_stock_summary,
+from ..services.stock import (BLOQUEADOS, ESTADOS_FISICOS, ESTADOS_LABEL, base_qty, change_lot_state, free_qty, product_stock_summary,
                               reserved_qty)
 from .common import act, f_date, f_float, fail, perm_required
 
@@ -42,7 +42,8 @@ def stock():
     productos = list(db().execute(select(Product).where(Product.code.in_(select(StockLot.product_code).where(StockLot.cantidad > 0)))
                                   .order_by(Product.code)).scalars())
     return render_template("stock.html", lots=lots, resumen=resumen, q=q, wh=wh, est=est, whs=whs, estados=ESTADOS_FISICOS,
-                           labels=ESTADOS_LABEL, reserved=reserved_qty, free=free_qty, base=base_qty, productos=productos)
+                           labels=ESTADOS_LABEL, reserved=reserved_qty, free=free_qty, base=base_qty, productos=productos,
+                           blocked=BLOQUEADOS)
 
 
 @bp.route("/lote/<int:lid>/estado", methods=["POST"])

@@ -16,7 +16,7 @@ python -m app.cli demo
 python run.py                                          # http://127.0.0.1:5000  · contraseña demo: Demo2026!
 ```
 
-Pruebas: `pip install -r requirements-dev.txt && python -m pytest tests -v` (355 pruebas; también en PostgreSQL con TEST_DATABASE_URL).
+Pruebas: `pip install -r requirements-dev.txt && python -m pytest tests -v` (379 pruebas; también en PostgreSQL con TEST_DATABASE_URL).
 
 ## Documentación entregada (`docs/`)
 
@@ -26,6 +26,7 @@ Pruebas: `pip install -r requirements-dev.txt && python -m pytest tests -v` (355
 | [25_PASO_A_PASO_DESPLIEGUE_AWS](docs/25_PASO_A_PASO_DESPLIEGUE_AWS.md) | Rondas V9 y V10: AWS Lightsail vs Oracle, paso a paso de servidor, DuckDNS, Microsoft 365 (qué se necesita), Tailscale y SAP; OV del módulo creadas en SAP; corte de las 12:00 solo MP y granel; carga de usuarios por Excel; regularización con guía (C01/C02), alerta de precio solo bajo la base (C03) y penalidades vencidas a 7 días (C05) |
 | [26_REDISENO_INFORMES_MATRIZ_INDICADORES](docs/26_REDISENO_INFORMES_MATRIZ_INDICADORES.md) | Rediseño de informes y tableros: matriz de indicadores por área (qué ve cada perfil y por qué), informe predeterminado por área, «Personalizar informe» con plantillas, cabecera institucional |
 | [27_RONDA_V12_PRODUCCION_DISTRIBUCION](docs/27_RONDA_V12_PRODUCCION_DISTRIBUCION.md) | Producción: inicio con la operación del día, merma y remanente de MP por línea y persona, recomendaciones, PDF vertical, movimientos por tipo de carga, proyección con preprogramación. Distribución: checklist vehicular, pre-guía y guía en SAP, corte de rutas, transporte tercero, presupuesto, flujo de incidencias, flota |
+| [28_RONDA_V13_CALIDAD](docs/28_RONDA_V13_CALIDAD.md) | Calidad: lote observado con motivo y alertas, solo Calidad libera, solicitudes de revisión, fumigación con liberación, fechas de producción por lote, bandeja (devoluciones, reempaques), observaciones en línea, validación de merma y reproceso, formatos (hora, zona, verificación por puntos, consolidado Excel), certificado, inspecciones, visitas a almacenes externos, quejas y NC |
 | [23_OBSERVACIONES_V7](docs/23_OBSERVACIONES_V7.md) | Observaciones del módulo V7: regularización, penalidades, informe de gestión comercial, catálogo, cotizaciones SAP, metas, proyección, turnos, movimientos, carga chofer→auxiliar, GEOSATELITAL |
 | [01_INVENTARIO_FUENTES](docs/01_INVENTARIO_FUENTES.md) | Los 30 archivos analizados, qué contiene cada uno y cómo se usó |
 | [02_ESPECIFICACION_CONSOLIDADA](docs/02_ESPECIFICACION_CONSOLIDADA.md) | Alcance consolidado, contradicciones, vacíos, dependencias, decisiones técnicas y **preguntas Q1–Q17** (Q1, Q3, Q4 resueltas) |

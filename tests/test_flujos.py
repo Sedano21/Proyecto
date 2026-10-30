@@ -408,7 +408,7 @@ def test_compra_nacional_flujo(s, U):
     buy.approve_go(r, U("gerente.operaciones"), True)
     buy.generate_order(r, U("compras"), "OC-1", date.today() + timedelta(days=10), "EXT-002")
     s.commit()
-    assert alerts_of(s, "COMPRA_RECEPCION_PROGRAMAR")[0].roles == ["COORD_ALMACEN_MP"]  # Q17: almacén 1524
+    assert alerts_of(s, "COMPRA_RECEPCION_PROGRAMAR")[0].roles == ["COORD_ALMACEN_MP", "JEFE_CALIDAD", "SUPERV_CALIDAD"]  # Q17: almacén 1524; V13: Calidad recibe compras e importaciones
     buy.change_date(r, U("compras"), date.today() + timedelta(days=15), "Proveedor reprograma")
     s.commit()
     a = alerts_of(s, "COMPRA_FECHA_CAMBIO")[0]

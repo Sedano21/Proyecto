@@ -69,20 +69,26 @@
       {{ nl(url_for('prod.monitor'), 'trend', 'Monitoreo en tiempo real') }}
       {{ nl(url_for('prod.control'), 'chart', 'Control de producción') }}
       {{ nl(url_for('prod.oee_dashboard'), 'gauge', 'Tablero OEE') }}
-      {{ nl(url_for('prod.productivity'), 'chart', 'Productividad por persona') }}{% endif %}
-      {{ nl(url_for('prod.attendance'), 'users', 'Asistencia') }}
+      {% if user.role.area != 'Calidad' %}{{ nl(url_for('prod.productivity'), 'chart', 'Productividad por persona') }}{% endif %}{% endif %}
+      {% if user.role.area != 'Calidad' %}{{ nl(url_for('prod.attendance'), 'users', 'Asistencia') }}{% endif %}{# V13: Calidad no ve productividad ni asistencia #}
+      {% if ve('produccion.lote_nuevo') %}{{ nl(url_for('cal.new_record', formato='LOTE_PRODUCIDO'), 'plus', 'Ingreso de nuevo lote') }}{% endif %}
+      {% if ve('produccion.liquidar') and not ve('calidad.ver') %}{{ nl(url_for('cal.line'), 'shield', 'Observaciones de Calidad y reproceso') }}{% endif %}
       {% if ve('produccion.configurar') %}{{ nl(url_for('prod.prod_config'), 'layers', 'Configuración de Producción') }}{% endif %}
       {% if ve('produccion.bom_cargar') or ve('produccion.liquidar') %}{{ nl(url_for('alm.uploads', area='Producción'), 'upload', 'Cargas de archivos') }}{% endif %}
     </div>{% endif %}
     {% if ve('calidad.ver') or ve('distribucion.seguridad') %}<div class="grp" data-grupo="Calidad"><h4><span class="lbl">{{ 'Calidad' if can('calidad.ver') else 'Seguridad' }}</span></h4>
-      {% if ve('calidad.ver') %}{{ nl(url_for('cal.home'), 'shield', 'Liberación y registros') }}
+      {% if ve('calidad.ver') %}{{ nl(url_for('cal.inbox'), 'clipboard', 'Bandeja de Calidad') }}
+      {{ nl(url_for('cal.home'), 'shield', 'Liberación y registros') }}
+      {{ nl(url_for('cal.line'), 'factory', 'En la línea y merma') }}
+      {{ nl(url_for('cal.materials'), 'layers', 'Material y saldo por línea') }}
+      {{ nl(url_for('cal.management'), 'check', 'Inspecciones, visitas, quejas y NC') }}
       {{ nl(url_for('cal.certificates'), 'award', 'Certificados') }}{% endif %}
       {% if can('distribucion.seguridad') and not can('calidad.ver') %}{{ nl(url_for('cal.new_record', formato='VEHICULO_SEGURIDAD'), 'shield', 'Control de vehículos') }}{% endif %}
       {% if ve('seguridad.llegadas') %}{{ nl(url_for('dist.arrivals'), 'truck', 'Llegadas de compras e importaciones') }}{% endif %}
     </div>{% endif %}
     {% if ve('compras.ver') or ve('importaciones.ver') %}<div class="grp" data-grupo="Abastecimiento"><h4><span class="lbl">Abastecimiento</span></h4>
       {% if ve('compras.ver') %}{{ nl(url_for('buy.purchases'), 'bag', 'Compras nacionales') }}
-      {{ nl(url_for('buy.replenishment'), 'trend', 'Análisis de reposición') }}{% endif %}
+      {% if user.role.area != 'Calidad' %}{{ nl(url_for('buy.replenishment'), 'trend', 'Análisis de reposición') }}{% endif %}{% endif %}
       {% if ve('importaciones.ver') %}{{ nl(url_for('buy.imports'), 'ship', 'Importaciones') }}{% endif %}
     </div>{% endif %}
     {% if ve('guias.estado') and not ve('distribucion.ver') %}<div class="grp" data-grupo="Distribución"><h4><span class="lbl">Distribución</span></h4>

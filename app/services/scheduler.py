@@ -35,6 +35,10 @@ def run_checks(user=None, today=None):
     out["paradas_prolongadas"] = check_long_stops()  # V12: paradas de línea que superan el tiempo configurado
     from .demand_plan import check_purchase_deadlines
     out["proyeccion_compras"] = check_purchase_deadlines(today)
+    from .quality_v13 import check_fumigation_release, check_observed, check_reprocess
+    out["lotes_observados"] = check_observed(today)
+    out["fumigaciones_por_liberar"] = check_fumigation_release(today)
+    out["reprocesos_vencidos"] = check_reprocess()
     from .third_party import check_payments
     out["terceros_pagos_vencidos"] = check_payments(today)
     from .budget import check_consumption

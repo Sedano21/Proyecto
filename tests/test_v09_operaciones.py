@@ -134,7 +134,7 @@ def test_calidad_antes_durante_y_lote_vs_liquidacion(s, U):
     rec = q.register(U("asist.calidad"), "PREVIO_PRODUCCION", {"personal_higiene": True, "equipos_calidad_higiene": False,
                                                                "linea": "TRUER", "detalle": "Faja sucia"})
     assert rec.resultado == "NO_CONFORME" and alerts_of(s, "CALIDAD_NO_CONFORME")
-    q.register(U("asist.calidad"), "LOTE_PRODUCIDO", {"cantidad": 90, "linea": "TRUER"}, "PT-903", "LQ-LOTE-1")
+    q.register(U("asist.produccion"), "LOTE_PRODUCIDO", {"cantidad": 90, "linea": "TRUER"}, "PT-903", "LQ-LOTE-1")
     liq = prod.register_liquidation(U("asist.produccion"), "LQ-77", "PT-903", 100, "LQ-LOTE-1", horas=8, operarios=4)
     s.flush()
     c = q.lot_entries_vs_liquidation(liq)

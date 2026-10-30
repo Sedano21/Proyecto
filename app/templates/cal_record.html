@@ -3,6 +3,8 @@
 <div class="doc">{{ encabezado_registro(fdef[1], enc, fdef[0]) }}
 <table class="kv box" style="margin-top:8px"><tr><td style="width:35%">Fecha</td><td>{{ r.fecha|d }}</td></tr><tr><td>Producto / lote</td><td>{{ r.product_code or '' }} {{ r.lote }}</td></tr>
 {% for key, label, tipo in fdef[2] %}<tr><td>{{ label }}</td><td>{% set v = r.datos.get(key) %}{% if v is sameas true %}√{% elif v is sameas false %}X{% else %}{{ v if v is not none else '' }}{% endif %}</td></tr>{% endfor %}
+{% for p, m in (r.datos.get('marcas') or {}).items() %}<tr><td>{{ p }}</td><td>{{ 'C' if m == 'C' else 'N/C' }}{{ ' · ' ~ r.datos.observaciones[p] if r.datos.observaciones and r.datos.observaciones.get(p) }}</td></tr>{% endfor %}
+{% if r.adjuntos %}<tr><td>Fotos / adjuntos</td><td>{% for f in r.adjuntos %}<a href="{{ url_for('main.evidence', name=f) }}" target="_blank">adjunto {{ loop.index }}</a>{{ ' · ' if not loop.last }}{% endfor %}</td></tr>{% endif %}
 <tr><td>Resultado</td><td><b>{{ r.resultado or '-' }}</b></td></tr><tr><td>Observaciones y/o acciones correctivas</td><td>{{ r.observaciones }}</td></tr><tr><td>Registrado por</td><td>{{ r.user.nombre if r.user }}</td></tr></table>
 {% set h = r.datos.get('_evaluacion_automatica', {}).get('hallazgos', []) %}{% if h %}<h3>Evaluación automática</h3>{{ errs(h, 'warn-list') }}{% endif %}
 {{ pie() }}</div>{% endblock %}

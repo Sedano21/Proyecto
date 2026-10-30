@@ -71,7 +71,7 @@ PAGES = ["/", "/alertas", "/alertas?agrupar=area", "/alertas?agrupar=grupo&prior
          ] + \
         [f"/calidad/registro/nuevo/{f}" for f in ["MUESTREO", "RECEPCION_MP", "FUMIGACION", "NO_CONFORME", "QUEJA", "NC_ACCION",
                                                   "CONTROL_PESOS", "CONTROL_GRANOS", "RECEPCION_IMPORTADO", "VEHICULO",
-                                                  "DISENO_BOBINA", "PROCESO", "INSPECCION_CARGA", "ANALISIS_LOTE"]]
+                                                  "DISENO_BOBINA", "INSPECCION_CARGA", "ANALISIS_LOTE"]]
 
 
 @pytest.mark.parametrize("username", ["gerente.general", "sistemas", "coord.almacen", "jefe.calidad", "coord.distribucion",

@@ -1,0 +1,12 @@
+{% extends "base.html" %}{% from "_m.html" import b, csrf, ic, empty %}
+{% block content %}<div class="page-head"><div><h1>{{ nombre }}</h1><p class="sub">{{ codigo }} · marque C (conforme) o N/C (no conforme); si es N/C indique la observación o acción correctiva</p></div></div>
+{% set ns = namespace(i=0) %}
+{% if total %}<form method="post" class="card">{{ csrf() }}<div class="row"><div><label class="req">Fecha</label><input type="date" name="fecha" value="{{ hoy.isoformat() }}" required></div></div>
+{% for titulo, puntos in grupos %}{% if titulo %}<h3>{{ titulo }}</h3>{% endif %}<table class="small"><thead><tr><th>Punto de verificación</th><th>C</th><th>N/C</th><th>Observación / acción correctiva</th></tr></thead><tbody>
+{% for p in puntos %}<tr><td>{{ p }}</td><td><input type="radio" name="v_{{ ns.i }}" value="C" required aria-label="Conforme"></td><td><input type="radio" name="v_{{ ns.i }}" value="NC" aria-label="No conforme"></td><td><input name="o_{{ ns.i }}" style="width:100%" aria-label="Observación"></td></tr>{% set ns.i = ns.i + 1 %}{% endfor %}</tbody></table>{% endfor %}
+<p><button>Guardar registro</button></p></form>
+{% else %}<div class="card"><p class="warn">Este formato aún no tiene puntos de verificación: falta el formato fuente. El Jefe de Calidad puede registrarlos abajo.</p></div>{% endif %}
+{% if configurable and can('calidad.formatos_configurar') %}<form method="post" class="card">{{ csrf() }}<input type="hidden" name="accion" value="puntos"><h3>Puntos de verificación (uno por línea)</h3>
+<textarea name="puntos" rows="8" style="width:100%" aria-label="Puntos">{% for t, ps in grupos %}{% for p in ps %}{{ p }}
+{% endfor %}{% endfor %}</textarea><p><button class="sec">Guardar puntos</button></p></form>{% endif %}
+{% endblock %}

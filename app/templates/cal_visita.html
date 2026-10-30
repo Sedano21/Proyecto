@@ -1,0 +1,9 @@
+{% extends "base.html" %}{% from "_m.html" import b, csrf, ic, empty %}
+{% block content %}<div class="page-head"><div><h1>{{ 'Visita' if v.tipo == 'VISITA' else 'Fumigación' }} · {{ v.warehouse.nombre if v.warehouse }}</h1><p class="sub">Propuesta para el {{ v.propuesta.strftime('%d/%m/%Y %H:%M') }}</p></div>{{ b(v.estado) }}</div>
+<div class="card">{% if v.observacion %}<p>{{ v.observacion }}</p>{% endif %}
+{% if v.estado in ['PROPUESTA','REPROGRAMADA'] and (can('stock.cambiar_estado') or can('stock.autorizar_carga')) %}<form method="post" class="row">{{ csrf() }}<input type="hidden" name="accion" value="responder"><div><button name="confirmar" value="1">Confirmar fecha</button></div></form>
+<form method="post" class="row">{{ csrf() }}<input type="hidden" name="accion" value="responder"><input type="hidden" name="confirmar" value="0"><div><label>Nueva fecha</label><input type="date" name="fecha" required></div><div><label>Hora</label><input type="time" name="hora" required></div><div class="grow"><label class="req">Motivo</label><input name="motivo" required></div><div><button class="sec">Reprogramar</button></div></form>{% endif %}
+{% if v.estado in ['CONFIRMADA','REPROGRAMADA'] and can('calidad.gestion') %}<form method="post" class="row">{{ csrf() }}<input type="hidden" name="accion" value="realizada"><div class="grow"><label>Observación de la visita</label><input name="observacion"></div><div><button>Registrar como realizada</button></div></form>{% endif %}</div>
+{% set obj = v %}{% include "_hallazgos.html" %}
+<div class="section-title">Historial</div><div class="card small">{% for h in v.historial %}<div>{{ h.ts }} · {{ h.evento|replace('_',' ') }} · {{ h.user }}{{ ' · ' ~ h.fecha if h.fecha }}{{ ' · ' ~ h.motivo if h.motivo }}</div>{% endfor %}</div>
+{% endblock %}

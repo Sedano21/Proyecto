@@ -330,6 +330,11 @@ def seed_demo(upload_dir=None, today=None):
     for i, v in enumerate(s.execute(select(Vehicle)).scalars()):  # SOAT ficticio vigente: sin él la unidad no se asigna
         s.add(VehicleDocument(vehicle_id=v.id, tipo="SOAT", numero=f"SOAT-DEMO-{i + 1:03d}", fecha=today - timedelta(days=60),
                               vencimiento=today + timedelta(days=300), estado="VIGENTE", observacion="Dato ficticio"))
+    # V13: zonas de saneamiento ficticias (sin zonas la bitácora y la fumigación no tienen dónde registrar)
+    from .models import SanitationZone
+    for nombre, area, lim, fum in (("Almacén PT – zona A (demo)", "Almacén", 7, 30), ("Almacén MP (demo)", "Almacén", 7, 30),
+                                   ("Línea de envasado (demo)", "Producción", 1, 60), ("Áreas externas (demo)", "Exteriores", 7, 90)):
+        s.add(SanitationZone(nombre=nombre, area=area, frecuencia_limpieza_dias=lim, frecuencia_fumigacion_dias=fum))
     s.flush()
     # archivos ficticios procesados por el mismo flujo de validación/autorización
     folder = upload_dir or tempfile.mkdtemp(prefix="demo_")

@@ -1,10 +1,10 @@
-{% extends "base.html" %}{% from "_m.html" import csrf %}
+{% extends "base.html" %}{% from "_m.html" import csrf %}{% from "_cal.html" import zona_sel %}
 {% block content %}<h1>{{ fdef[1] }} <span class="muted small">{{ fdef[0] }}</span></h1>
 {% if formato=='RECEPCION_MP' %}<div class="note info small">Límites críticos de humedad PCC1: {% for c, n, l in pcc1 %}{{ n }} ≤ {{ l }}%; {% endfor %}(REG-HACCP-CAL-002). La conformidad se evalúa automáticamente.</div>{% endif %}
 {% if formato in ['MUESTREO','RECEPCION_IMPORTADO','CONTROL_GRANOS'] %}<div class="note info small">Referencia automática: especificación "Calidad superior" (REG-CAL-005): {% for k, v in spec.items() %}{{ k }} ≤ {{ v }}; {% endfor %}La decisión final la registra Calidad.</div>{% endif %}
 {% if formato=='CONTROL_PESOS' %}<div class="note info small">Criterios de peso (REG-CAL-003): {% for k, v in pesos.items() %}{{ k }} kg → [{{ v[1] }}, {{ v[2] }}] kg; {% endfor %}{{ peso_pend }}</div>{% endif %}
 {% if formato=='FUMIGACION' %}<div class="note info small">Si se asocia un lote: con fecha de inicio pasa a "En fumigación"; con fecha de fin (desactivación) pasa a "Pendiente de revisión" para liberación.</div>{% endif %}
-<form method="post" class="card">{{ csrf() }}<div class="row">
+<form method="post" class="card" enctype="multipart/form-data">{{ csrf() }}<div class="row">
 <div><label>Fecha</label><input type="date" name="fecha" value="{{ today.isoformat() }}"></div>
 {% set sel = lots|selectattr('id', 'equalto', lot_id|int)|first if lot_id else None %}
 <div class="grow"><label for="cal_prod">Producto</label><input id="cal_prod" name="product_code" list="cal_prods" value="{{ sel.product_code if sel else '' }}" placeholder="Código o descripción" autocomplete="off">
@@ -14,7 +14,8 @@
 <script>(function(){var p=document.getElementById('cal_prod'),s=document.getElementById('cal_lot');function f(){var v=(p.value||'').trim().toUpperCase();for(var i=1;i<s.options.length;i++){var o=s.options[i];o.hidden=!!v&&o.dataset.prod!==v;}if(s.selectedIndex>0&&s.options[s.selectedIndex].hidden)s.selectedIndex=0;}p.addEventListener('input',f);p.addEventListener('change',f);f();})();</script>
 <div class="row">{% for key, label, tipo in fdef[2] %}<div>
 <label>{{ label }}</label>{% if tipo=='textarea' %}<textarea name="{{ key }}" style="min-width:320px"></textarea>{% elif tipo=='bool' %}<select name="{{ key }}"><option value="">-</option><option value="1">Conforme / Sí</option><option value="0">No conforme / No</option></select>
-{% elif tipo=='pcc1' %}<select name="{{ key }}">{% for c, n, l in pcc1 %}<option value="{{ c }}">{{ n }} (≤{{ l }}%)</option>{% endfor %}</select>{% elif tipo=='date' %}<input type="date" name="{{ key }}">{% elif tipo=='number' %}<input type="number" step="any" name="{{ key }}">{% else %}<input name="{{ key }}">{% endif %}</div>{% endfor %}</div>
+{% elif tipo=='pcc1' %}<select name="{{ key }}">{% for c, n, l in pcc1 %}<option value="{{ c }}">{{ n }} (≤{{ l }}%)</option>{% endfor %}</select>{% elif tipo=='date' %}<input type="date" name="{{ key }}">{% elif tipo=='time' %}<input type="time" name="{{ key }}">{% elif tipo=='zona' %}{{ zona_sel(zonas, externos, key) }}{% elif tipo=='number' %}<input type="number" step="any" name="{{ key }}">{% else %}<input name="{{ key }}">{% endif %}</div>{% endfor %}</div>
 <div class="row"><div><label>Resultado (vacío = evaluación automática)</label><select name="resultado"><option value="">(automático)</option><option>CONFORME</option><option>NO_CONFORME</option><option>APROBADO</option><option>DESAPROBADO</option></select></div>
 <div style="flex:1"><label>Observaciones / acciones correctivas</label><textarea name="observaciones"></textarea></div></div>
+<div class="row"><div><label>Fotos o adjuntos (opcional, uno o varios)</label><input type="file" name="adjuntos" accept="image/*,.pdf" multiple></div></div>
 <p><button>Guardar registro</button></p></form>{% endblock %}

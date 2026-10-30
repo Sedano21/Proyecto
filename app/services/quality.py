@@ -150,10 +150,18 @@ FORMATOS.update({
                             ("vehiculo_en_orden", "El vehículo está en orden", "bool"),
                             ("detalle", "Qué debe subsanarse (si no está en orden)", "textarea")]),
 })
+# V13 (30-oct-2026): las horas se eligen con reloj; la fumigación indica la zona (lista de zonas, almacén externo u
+# otro con «dónde»); el «registro de datos de proceso» se retira (se conserva para leer los registros anteriores) y
+# el «ingreso de nuevo lote» lo registra solo Producción.
+for _k, (_c, _n, _campos) in list(FORMATOS.items()):
+    FORMATOS[_k] = (_c, _n, [(k, l, "time" if (k == "hora" or k.endswith("_hora")) and t == "text" else t) for k, l, t in _campos])
+FORMATOS["FUMIGACION"][2].insert(0, ("zona", "Zona (lugar de la fumigación)", "zona"))
+FORMATOS_RETIRADOS = {"PROCESO"}
+FORMATOS_PRODUCCION = {"LOTE_PRODUCIDO"}
 # formatos por etapa del proceso (pantalla de Calidad)
 ETAPAS_PRODUCCION = {
     "Antes de producir": ["PREVIO_PRODUCCION", "RECEPCION_MP", "RECEPCION_IMPORTADO", "MUESTREO", "DISENO_BOBINA"],
-    "Durante la producción": ["LOTE_PRODUCIDO", "PROCESO", "CONTROL_GRANOS", "CONTROL_PESOS"],
+    "Durante la producción": ["CONTROL_GRANOS", "CONTROL_PESOS"],
     "Después de producir": ["POST_PRODUCCION", "ANALISIS_LOTE", "INSPECCION_CARGA", "NO_CONFORME"],
 }
 
@@ -295,6 +303,11 @@ def parse_form(formato, form):
             datos[key] = None if raw == "" else raw in ("1", "si", "sí", "on", "true", "C", "√")
         elif tipo == "date":
             datos[key] = _d.fromisoformat(raw).isoformat() if raw else None
+        elif tipo == "zona" and raw == "OTRO":
+            donde = (form.get(f"{key}_otro") or "").strip()
+            if not donde:
+                raise BusinessError("Indique dónde se realiza la fumigación.")
+            datos[key] = f"Otro: {donde}"
         else:
             datos[key] = raw
     return datos
@@ -302,10 +315,10 @@ def parse_form(formato, form):
 
 def register(user, formato, datos, product_code=None, lote="", lot_id=None, resultado=None, observaciones="",
              referencia_tipo="", referencia_id=None, fecha=None):
-    if formato not in FORMATOS:
+    if formato not in FORMATOS or formato in FORMATOS_RETIRADOS:
         raise BusinessError("Formato no válido.")
     perm = "distribucion.seguridad" if formato in ("VEHICULO", "VEHICULO_SEGURIDAD") and has_perm(user, "distribucion.seguridad") \
-        else "calidad.registrar"
+        else ("produccion.lote_nuevo" if formato in FORMATOS_PRODUCCION else "calidad.registrar")
     if not has_perm(user, perm):
         raise BusinessError("Su rol no registra este formato.")
     if formato == "VEHICULO_SEGURIDAD" and datos.get("vehiculo_en_orden") is False and not (datos.get("detalle") or "").strip():
@@ -369,13 +382,25 @@ def release_lot(lot, user, aprobar, motivo, estado_rechazo="NO_UTILIZABLE"):
     from .stock import change_lot_state
     if not has_perm(user, "calidad.liberar"):
         raise BusinessError("La liberación la realiza Calidad (IF §9.3).")
-    if lot.estado not in ("PENDIENTE_REVISION", "NO_UTILIZABLE"):
-        raise BusinessError("Solo se liberan lotes Pendientes de revisión o No utilizables tratados.")
+    if lot.estado not in ("PENDIENTE_REVISION", "NO_UTILIZABLE", "OBSERVADO", "EN_FUMIGACION"):
+        raise BusinessError("Solo se liberan lotes bloqueados (pendientes de revisión, observados, en fumigación o no utilizables tratados).")
     destino = "DISPONIBLE" if aprobar else estado_rechazo
     lot.verificado = True
     lot.fecha_verificacion = lot.fecha_verificacion or now()
-    change_lot_state(lot, destino, user, f"Calidad: {motivo}")
-    alerts.close_by_system(f"PEND_REV:{lot.id}", "Lote evaluado por Calidad")
+    lid = lot.id
+    change_lot_state(lot, destino, user, f"Calidad: {motivo}", _calidad=True)
+    if aprobar:  # V13: se cierran la observación, la fumigación y la solicitud de liberación
+        from .quality_v13 import _segment
+        lot = _segment(lot, destino)
+        lot.observacion, lot.liberacion_solicitada = {}, {}
+        if lot.fumigacion:
+            lot.fumigacion = dict(lot.fumigacion, liberado=now().isoformat(timespec="minutes"))
+        from ..models import ReviewRequest
+        for r in db().execute(select(ReviewRequest).where(ReviewRequest.lot_id == lid, ReviewRequest.estado == "PENDIENTE",
+                                                         ReviewRequest.tipo == "LIBERACION")).scalars():
+            r.estado, r.resultado, r.resuelto_por, r.resuelto_ts = "RESUELTA", "LIBERADO", user.id, now()
+            alerts.close_by_system(f"REVISION:{r.id}", "Lote liberado por Calidad")
+    alerts.close_by_system(f"PEND_REV:{lid}", "Lote evaluado por Calidad")
 
 
 # ------------------------------ certificados -------------------------------
@@ -410,6 +435,10 @@ CERT_ETIQUETAS = {"producto_declarado": "PRODUCTO DECLARADO", "lote": "LOTE", "f
                   "ruc": "RUC", "autorizacion_sanitaria": "AUTORIZACION SANITARIA", "registro_sanitario": "REGISTRO SANITARIO",
                   "presentacion_muestra": "PRESENTACIÓN DE LA MUESTRA", "pais_origen": "PAÍS DE ORIGEN",
                   "tamano_lote": "TAMAÑO DE LOTE", "fecha_analisis": "FECHA DE ANALISIS"}
+# V13: etiqueta de quién procesa (modelos del 30-oct-2026: «Procesado por», «Procesado y envasado por», «Importado,
+# procesado y envasado por») y filas de datos adicionales (etiqueta + descripción) que Calidad agrega o quita.
+CERT_PROCESADO = ["PROCESADO Y ENVASADO POR", "PROCESADO POR", "IMPORTADO, PROCESADO Y ENVASADO POR"]
+CERT_ETIQUETAS["procesado_por"] = CERT_PROCESADO[0]
 HUMEDAD_METODO = ("NTP 205.002-1979(Revisada 2016) Cereales y Menestras. Determinación de contenido de humedad, Método Usual.")
 MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Setiembre", "Octubre", "Noviembre", "Diciembre"]
 
@@ -619,6 +648,24 @@ def review_certificate(cert, user, cambios, aprobar=False):
         raise BusinessError("El certificado ya fue aprobado.")
     datos = dict(cert.datos)
     log = list(cert.cambios or [])
+    cambios = dict(cambios)
+    if "procesado_etiqueta" in cambios:
+        v = cambios.pop("procesado_etiqueta")
+        if v not in CERT_PROCESADO:
+            raise BusinessError("Etiqueta de «procesado por» no válida.")
+        if datos.get("procesado_etiqueta", CERT_PROCESADO[0]) != v:
+            log.append({"campo": "procesado_etiqueta", "antes": datos.get("procesado_etiqueta", CERT_PROCESADO[0]), "despues": v,
+                        "user": user.nombre, "ts": now().isoformat()})
+            datos["procesado_etiqueta"] = v
+    if "datos_adicionales" in cambios:
+        filas = [{"etiqueta": str(e).strip(), "descripcion": str(d).strip()} for e, d in cambios.pop("datos_adicionales")
+                 if str(e).strip() or str(d).strip()]
+        if any(not f["etiqueta"] for f in filas):
+            raise BusinessError("Cada dato adicional necesita su etiqueta.")
+        if filas != list(datos.get("datos_adicionales") or []):
+            log.append({"campo": "datos_adicionales", "antes": len(datos.get("datos_adicionales") or []), "despues": len(filas),
+                        "user": user.nombre, "ts": now().isoformat()})
+            datos["datos_adicionales"] = filas
     for k, v in cambios.items():
         if k.startswith("org_") or k.startswith("hum_"):
             continue

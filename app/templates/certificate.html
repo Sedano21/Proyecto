@@ -11,7 +11,10 @@
 <h2>CERTIFICADO DE CALIDAD N°{{ c.numero }}</h2>
 {% if td.subtitulo %}<p style="text-align:center;font-weight:bold">{{ td.subtitulo }}</p>{% endif %}
 <h3>I.&nbsp;&nbsp; DATOS DEL PRODUCTO{{ ':' if tipo=='CA' }}</h3>
-<table class="kv{{ ' box' if tipo=='CA' }}">{% for k in td.campos %}<tr><td style="width:42%">{{ etiquetas[k] }}</td><td>:</td><td>{{ f(k) }}</td></tr>{% endfor %}</table>
+<table class="kv{{ ' box' if tipo=='CA' }}">{% for k in td.campos %}<tr><td style="width:42%">{% if k == 'procesado_por' %}{% set pe = d.get('procesado_etiqueta') or procesado[0] %}{% if ro %}{{ pe }}{% else %}<select name="procesado_etiqueta" aria-label="Etiqueta">{% for x in procesado %}<option {{ 'selected' if x == pe }}>{{ x }}</option>{% endfor %}</select>{% endif %}{% else %}{{ etiquetas[k] }}{% endif %}</td><td>:</td><td>{{ f(k) }}</td></tr>{% endfor %}
+{% if ro %}{% for x in d.get('datos_adicionales') or [] %}<tr><td>{{ x.etiqueta|upper }}</td><td>:</td><td>{{ x.descripcion }}</td></tr>{% endfor %}{% endif %}</table>
+{% if not ro %}<div class="noprint"><p class="small muted">Datos adicionales (etiqueta y descripción): agregue o quite filas.</p><div id="cert-extra">{% for x in (d.get('datos_adicionales') or []) + [{}] %}<div class="dynrow row"><div><input name="extra_etiqueta" value="{{ x.etiqueta or '' }}" placeholder="Etiqueta" aria-label="Etiqueta"></div><div class="grow"><input name="extra_descripcion" value="{{ x.descripcion or '' }}" placeholder="Descripción" aria-label="Descripción"></div><div><button type="button" class="ibtn" data-delrow aria-label="Quitar fila">×</button></div></div>{% endfor %}</div>
+<button type="button" class="sec small" data-addrow="#cert-extra">+ Agregar dato</button></div>{% endif %}
 {% set org_n = 'II.' %}
 {% if tipo == 'CA' %}<h3>II.&nbsp;&nbsp; CARACTERISTICAS ORGANOLEPTICAS:</h3>{% else %}<h3>II.&nbsp;&nbsp; RESULTADOS</h3><h4>1. ANALISIS ORGANOLÉPTICO</h4>{% endif %}
 <table><tr><th>{{ 'CARACTERISTICAS' if tipo=='CA' else 'ANÁLISIS' }}</th><th>RESULTADO</th>{% if td.especificacion %}<th>{{ 'ESPECIFICACIÓN' if tipo=='CA' else 'ESPECIFICACIONES' }}</th>{% endif %}<th>CONCLUSIÓN</th></tr>

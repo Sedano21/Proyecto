@@ -349,6 +349,8 @@ def finish(user, r, datos):
     r.motivo_estado = "liquidación de la OF en SAP"
     db().flush()
     _alert_merma(r, user)
+    from .quality_v13 import open_merma_validation  # V13: Calidad valida la merma de cada proceso terminado
+    open_merma_validation(r, user)
     audit(user, "PARTE_FINALIZADO", "ProductionReport", r.id, {"oee": (r.indicadores or {}).get("oee"),
                                                                "rendimiento": r.rendimiento_pct})
     return r

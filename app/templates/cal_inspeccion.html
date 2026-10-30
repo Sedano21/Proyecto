@@ -1,0 +1,12 @@
+{% extends "base.html" %}{% from "_m.html" import b, csrf, ic, empty %}{% from "_cal.html" import fotos, galeria %}
+{% block content %}<div class="page-head"><div><h1>Inspección #{{ i.id }} · {{ i.tipo|title }}</h1><p class="sub">{{ i.cliente or '—' }} · ejecuta {{ i.empresa or '—' }} · {{ i.fecha|d }} {{ i.hora_inicio }}</p></div>{{ b(i.fase) }}</div>
+<div class="card"><p class="small"><b>Fases:</b> {% for f, t in [('PROGRAMADA','1 · Programación'),('EN_PROCESO','2 · Registro y proceso'),('CERRADA','3 · Resultado')] %}<span class="b {{ 'OK' if i.fase == f else '' }}">{{ t }}</span> {% endfor %}</p>
+{% if i.alcance %}<p>Alcance: {{ i.alcance }}</p>{% endif %}
+{% if i.fase == 'CERRADA' %}<p>Resultado: {{ b(i.resultado) }} · puntaje <b>{{ i.puntaje if i.puntaje is not none else '—' }}</b> · {{ i.n_hallazgos or 0 }} hallazgo(s)</p><p>Fotos del resultado: {{ galeria(i.fotos_resultado) or '—' }}<br>Fotos de los hallazgos: {{ galeria(i.fotos_hallazgos) or '—' }}</p>{% endif %}
+{% if can('calidad.gestion') and i.fase == 'PROGRAMADA' %}<form method="post" class="row">{{ csrf() }}<input type="hidden" name="accion" value="iniciar"><div><label>Hora de inicio</label><input type="time" name="hora_inicio" value="{{ i.hora_inicio }}"></div><div><button>Iniciar (fase 2)</button></div></form>{% endif %}
+{% if can('calidad.gestion') and i.fase == 'EN_PROCESO' %}<form method="post" enctype="multipart/form-data">{{ csrf() }}<input type="hidden" name="accion" value="cerrar"><h3>Fase 3 · Resultado</h3>
+<div class="row"><div><label class="req">Resultado</label><select name="resultado"><option value="APROBADO">Aprobado</option><option value="DESAPROBADO">Desaprobado</option></select></div><div><label>Puntaje</label><input type="number" step="any" name="puntaje" style="width:90px"></div><div><label>N° de hallazgos</label><input type="number" min="0" name="n_hallazgos" value="{{ i.hallazgos|length }}" style="width:80px"></div></div>
+<div class="row"><div>{{ fotos('fotos_resultado', 'Fotos del resultado') }}</div><div>{{ fotos('fotos_hallazgos', 'Fotos de los hallazgos') }}</div></div><p><button>Registrar resultado</button></p></form>{% endif %}</div>
+{% set obj = i %}{% include "_hallazgos.html" %}
+<div class="section-title">Historial</div><div class="card small">{% for h in i.historial %}<div>{{ h.ts }} · {{ h.evento|replace('_',' ') }} · {{ h.user }}</div>{% endfor %}</div>
+{% endblock %}

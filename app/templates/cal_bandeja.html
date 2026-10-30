@@ -1,0 +1,40 @@
+{% extends "base.html" %}{% from "_m.html" import b, csrf, ic, empty %}{% from "_cal.html" import zona_sel %}
+{% block content %}<div class="page-head"><div><h1>Bandeja de Calidad</h1><p class="sub">Devoluciones · reempaques · solicitudes de revisión · lotes bloqueados (solo Calidad los libera)</p></div>
+<a class="btn sec" href="{{ url_for('cal.home') }}">Formatos y registros</a></div>
+{% set dc = devoluciones|selectattr('calidad')|list %}
+{% if dc %}<div class="flash error" role="alert">{{ ic('alert') }} {{ dc|length }} devolución(es) por motivo de calidad: Calidad debe evaluarlas.</div>{% endif %}
+<div class="section-title">Solicitudes de revisión ({{ revisiones|length }})</div>
+<div class="card">{% if revisiones %}<div class="tw"><table class="small"><thead><tr><th>#</th><th>Solicitud</th><th>Lote</th><th class="r">Cantidad</th><th>Estado del lote</th><th>Solicita</th><th>Motivo</th><th>Resolver</th></tr></thead><tbody>
+{% for r in revisiones %}<tr><td>{{ r.id }}</td><td>{{ {'APTO_PROCESO':'¿Apto para proceso?','FUMIGACION':'¿Va a fumigación?','LIBERACION':'Liberación'}[r.tipo] }}</td>
+<td>{{ r.lot.product_code }} {{ r.lot.product.descripcion if r.lot.product }} · <b>{{ r.lot.lote }}</b> · {{ r.lot.warehouse_code }}</td><td class="r">{{ r.lot.cantidad|n }}</td><td>{{ b(r.lot.estado) }}</td>
+<td>{{ r.solicitante.nombre if r.solicitante }}<br><span class="muted">{{ r.ts.strftime('%d/%m %H:%M') }}</span></td><td>{{ r.motivo }}</td>
+<td>{% if can('calidad.liberar') %}<form method="post" action="{{ url_for('cal.review_resolve', rid=r.id) }}">{{ csrf() }}<input type="hidden" name="next" value="{{ url_for('cal.inbox') }}">
+<select name="resultado">{% if r.tipo == 'LIBERACION' %}<option value="LIBERADO">Liberar</option><option value="RECHAZADO">Rechazar</option>{% else %}<option value="APTO">Apto</option><option value="NO_APTO">No apto</option>{% endif %}<option value="A_FUMIGACION">A fumigación</option></select>
+<input name="comentario" placeholder="comentario / motivo" size="14">
+<details><summary>fechas si va a fumigación</summary>Inicio <input type="date" name="inicio" value="{{ hoy.isoformat() }}"> Liberación <input type="date" name="liberacion"><br>Zona {{ zona_sel(zonas, externos) }}</details>
+<button class="small">Resolver</button></form>{% endif %}</td></tr>{% endfor %}</tbody></table></div>
+{% else %}{{ empty('Sin solicitudes pendientes.') }}{% endif %}</div>
+
+<div class="section-title">Lotes bloqueados (no disponibles para reservas ni análisis)</div>
+<div class="card">{% if bloqueados %}<div class="tw"><table class="small"><thead><tr><th>Artículo / lote</th><th>Almacén</th><th class="r">Cantidad</th><th>Estado</th><th>Detalle</th><th>Acciones de Calidad</th></tr></thead><tbody>
+{% for l in bloqueados %}<tr class="{{ 'warn' if l.liberacion_solicitada }}"><td>{{ l.product_code }} {{ l.product.descripcion if l.product }} · <b>{{ l.lote }}</b></td><td>{{ l.warehouse_code }}</td><td class="r">{{ l.cantidad|n }}</td><td>{{ b(l.estado) }}</td>
+<td>{% if l.observacion %}<b>{{ l.observacion.nombre }}</b> {{ l.observacion.detalle }}<br>{% endif %}{% if l.fumigacion %}Fumigación {{ l.fumigacion.inicio }} → liberación <b>{{ l.fumigacion.liberacion }}</b>{{ ' · ' ~ l.fumigacion.zona if l.fumigacion.zona }}<br>{% endif %}{% if l.liberacion_solicitada %}<span class="b PENDIENTE">liberación solicitada</span> por {{ l.liberacion_solicitada.user }}: {{ l.liberacion_solicitada.motivo }}{% endif %}{{ l.motivo_estado if not (l.observacion or l.fumigacion) }}</td>
+<td>{% if can('calidad.registrar') or can('calidad.liberar') %}
+<details><summary>Observar</summary><form method="post" action="{{ url_for('cal.observe', lid=l.id) }}">{{ csrf() }}<input type="hidden" name="next" value="{{ url_for('cal.inbox') }}"><select name="categoria">{% for k, t in cats %}<option value="{{ k }}">{{ t }}</option>{% endfor %}</select> <input name="detalle" placeholder="detalle" size="12"><button class="small">Observar</button></form></details>
+<details><summary>Fumigar</summary><form method="post" action="{{ url_for('cal.fumigate', lid=l.id) }}">{{ csrf() }}<input type="hidden" name="next" value="{{ url_for('cal.inbox') }}">Inicio <input type="date" name="inicio" value="{{ hoy.isoformat() }}"> Liberación <input type="date" name="liberacion" required><br>Zona {{ zona_sel(zonas, externos) }} <button class="small">Poner en fumigación</button></form></details>{% endif %}
+{% if can('calidad.liberar') and l.estado in ['PENDIENTE_REVISION','NO_UTILIZABLE','OBSERVADO','EN_FUMIGACION'] %}<form method="post" action="{{ url_for('cal.release', lid=l.id) }}" class="inline">{{ csrf() }}<input name="motivo" placeholder="motivo" size="10"><button class="small" name="decision" value="liberar">Liberar</button></form>{% endif %}
+<a class="small" href="{{ url_for('cal.production_dates', lid=l.id) }}">fechas de producción</a></td></tr>{% endfor %}</tbody></table></div>
+{% else %}{{ empty('Sin lotes bloqueados.') }}{% endif %}</div>
+
+<div class="section-title">Devoluciones e incidencias</div>
+<div class="card">{% if devoluciones %}<div class="tw"><table class="small"><thead><tr><th>#</th><th>Fecha</th><th>Tipo</th><th>OV</th><th>Descripción</th><th class="r">Cantidad</th><th>Estado</th></tr></thead><tbody>
+{% for x in devoluciones %}{% set i = x.i %}<tr class="{{ 'alerta' if x.calidad }}"><td><a href="{{ url_for('dist.incident_detail', iid=i.id) }}">{{ i.id }}</a></td><td>{{ i.ts.strftime('%d/%m/%Y') }}</td><td>{% if x.calidad %}<span class="b ALTA">Calidad</span> {% endif %}{{ i.tipo|replace('_',' ') }}</td>
+<td>{{ i.order.numero if i.order else '—' }}</td><td>{{ i.descripcion }}</td><td class="r">{{ i.cantidad_afectada|n if i.cantidad_afectada else '—' }}</td><td>{{ b(i.estado) }}</td></tr>{% endfor %}</tbody></table></div>
+{% else %}{{ empty('Sin devoluciones.') }}{% endif %}</div>
+
+<div class="section-title">Solicitudes de reempaque</div>
+<div class="card">{% if reempaques %}<div class="tw"><table class="small"><thead><tr><th>#</th><th>Tipo</th><th>Lote origen</th><th>FV</th><th class="r">Cantidad</th><th>Destino</th><th>Marca</th><th>Presentación</th><th>Nueva FV</th><th>Estado</th></tr></thead><tbody>
+{% for r in reempaques %}{% set x = rep[r.id] %}<tr><td><a href="{{ url_for('alm.repack_detail', rid=r.id) }}">{{ r.id }}</a></td><td>{{ r.tipo|replace('_',' ') }}</td><td>{{ r.lot.product_code if r.lot }} · {{ r.lot.lote if r.lot }}</td><td>{{ x.fv|d if x.fv else '—' }}</td><td class="r">{{ r.cantidad|n }}</td>
+<td>{{ r.producto_destino or '—' }} {{ x.destino.descripcion if x.destino }}</td><td>{{ x.marca or '—' }}</td><td>{{ x.presentacion or '—' }}</td><td>{{ x.nueva_fv|d if x.nueva_fv else '—' }}</td><td>{{ b(r.estado) }}</td></tr>{% endfor %}</tbody></table></div>
+{% else %}{{ empty('Sin reempaques en curso.') }}{% endif %}</div>
+{% endblock %}

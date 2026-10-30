@@ -2112,3 +2112,113 @@ PARAMS += [
      "La flota propia solo sale con el checklist de salida del chofer validado por Seguridad (sin puntos NN en mal estado) "
      "y el retorno se cierra con el checklist de retorno validado.", "DEFINIDO", f"{V12}: checklist al salir y volver"),
 ]
+
+# ----------------------------------------------------------------------------------------------------------------------
+# V13: indicaciones de Calidad del 30-oct-2026
+V13 = "Indicaciones de Calidad (30-oct-2026)"
+# PCC1 (REG-HACCP-CAL-002): se agregan el trigo mote (12.5 %) y el trigo en grano / entero pelado con la cebada cruda (14.5 %)
+PCC1_HUMEDAD[:] = [(c, {"QUINUA_CANIHUA_MOTE": "Quinua y cañihua, maíz mote, trigo mote",
+                        "TRIGO_CEBADA_CRUDA": "Trigo en grano, trigo entero pelado, cebada cruda"}.get(c, n), v)
+                   for c, n, v in PCC1_HUMEDAD]
+# Lote observado: categoría que registra Calidad (durante el proceso de producción o en almacén)
+OBS_CATEGORIAS = [("PLAGA", "Presencia de plaga (para fumigar)"), ("PIEDRA", "Piedra"),
+                  ("VENCIMIENTO", "Fecha de vencimiento"), ("HONGUEADO", "Hongueados"),
+                  ("GRANOS_INFESTADOS", "Presencia de granos infestados")]
+# Formatos de verificación por puntos (L-M-Mi-J-V-S-D, C / N/C y observación o acción correctiva), transcritos de los
+# formatos enviados (PHS-001 y los de almacén de producto terminado y línea automática). Los de higiene personal y BPM
+# quedan sin puntos hasta recibir sus formatos: Calidad puede registrarlos en la pantalla del formato.
+CHECKLIST_CALIDAD = {
+    "LIMPIEZA_EXTERNAS": ("PHS-001", "Control de limpieza y desinfección de áreas externas, programa 5S y SST", [
+        ("", ["Zona de selección manual", "Patio de maniobras", "Contenedor de fumigación", "Zona de compresores",
+              "Zona de mantenimiento", "Zona de almacenamiento Calidad", "Zona de mermas", "Zona de pallets",
+              "Lavatorio - saneamiento", "Zona de insumos químicos", "Casilleros externos: hombres",
+              "Vestuario mujeres: lavamanos, baño, ducha, casilleros", "Vestuario hombres: lavamanos, baño, ducha, casilleros",
+              "Zona de lavamanos", "SS.HH. hombres", "Zona de comedor", "Parihuelas", "Zona de residuos",
+              "Mat. de limpieza (tacho, recogedor, escoba)", "Orden - identificación"])]),
+    "LIMPIEZA_ALMACEN_PT": ("Gestión de higiene y saneamiento", "Control de limpieza del área de almacén de producto terminado, "
+                                                                "programa 5S y SST", [
+        ("", ["Pisos", "Paredes", "Techo - iluminación", "Puerta", "Racks productos importados", "Racks materia prima",
+              "Miniracks x 5 kg", "Miniracks - suministros", "Parihuelas", "Mat. de limpieza (tacho, recogedor, escoba)",
+              "Balanza", "Montacarga / stoka", "Escalera", "Estiba de producto", "Orden - identificación"]),
+        ("Área de oficina", ["Escritorio", "Cuadernos y archivos rotulados y en su sitio", "Computadora (limpia y ordenada)"]),
+        ("Programa de 5S", ["Toda el área se encuentra debidamente rotulada", "Existen algún elemento innecesario en el área",
+                            "Se mantiene cada cosa en su lugar", "Zona de producto no conforme ordenada"]),
+        ("Programa de seguridad y salud", ["Pasadizos libres", "Equipo de protección personal en buen estado",
+                                           "Apilamiento de sacos y producto terminado según lo establecido",
+                                           "Escalera en buen estado para ser usada"])]),
+    "LIMPIEZA_LINEA": ("Gestión de higiene y saneamiento", "Control de limpieza de la línea de procesamiento automático, "
+                                                           "programa 5S y SST", [
+        ("", ["Pisos", "Paredes", "Techo - iluminación", "Cortina sanitaria", "Tolva 1 (para procesamiento óptico)", "Zaranda",
+              "Gravimétrica", "Selector óptico", "Tolva 2 (envasado óptico)", "Elevadores 1, 2, 3", "Tanque de recepción de granos",
+              "Tubos transportadores de granos", "Tolva máq. envasadora 01", "Tolva máq. envasadora 02", "Tolva máq. envasadora 03",
+              "Dosificadores máq. envasadora 01", "Dosificadores máq. envasadora 02", "Dosificadores máq. envasadora 03",
+              "Faja transportadora de máq. envasadora 1", "Faja transportadora de máq. envasadora 2", "Enfardadora",
+              "Mesa de envasado / balanza", "Parihuelas", "Mesa de selección (muestreo)", "Equipo insectocutor 2",
+              "Mat. de limpieza (tacho, recogedor, escoba)", "Orden - identificación"]),
+        ("Programa de 5S", ["Área identificada y delimitada", "Ausencia de elementos innecesarios", "Se mantiene cada cosa en su lugar"]),
+        ("Programa de seguridad y salud", ["Área libre de residuos en el piso", "Equipo de protección personal en buen estado",
+                                           "Equipos y máquinas operativos y en buen estado", "Ausencia de cables sueltos"])]),
+    "HIGIENE_PERSONAL": ("Por recibir", "Control de higiene personal", []),
+    "BPM": ("Por recibir", "Verificación de buenas prácticas de manufactura (BPM)", []),
+}
+_LOG13 = ["JEFE_LOGISTICA"]
+_OPS13 = ["GERENCIA_OPERACIONES"]
+ALERT_TYPES += [
+    ("LOTE_OBSERVADO", "Lote observado por Calidad", "Calidad", "Stock", "ALTA",
+     _CAL + ["COORD_ALMACEN", "COORD_ALMACEN_MP", "SUPERV_ALMACEN", "JEFE_PRODUCCION", "ASIST_PRODUCCION"], "DEFINIDO",
+     f"{V13}", "Calidad observó un lote (plaga, piedra, vencimiento, hongos o granos infestados). Se recuerda cada semana "
+               "mientras siga en stock.", True),
+    ("REVISION_LOTE", "Solicitud de revisión de lote a Calidad", "Calidad", "Solicitudes", "MEDIA", _CAL + ["ASIST_CALIDAD"],
+     "DEFINIDO", f"{V13}", "Revisar si el lote está apto para proceso, si va a fumigación o si se libera.", True),
+    ("FUMIGACION_LIBERAR", "Lote en fumigación por liberar", "Calidad", "Stock", "MEDIA", _CAL, "DEFINIDO", f"{V13}",
+     "Llegó la fecha prevista de liberación del lote en fumigación.", True),
+    ("OBS_LINEA", "Observación de Calidad en la línea", "Producción", "Producción", "ALTA",
+     ["JEFE_PRODUCCION", "ASIST_PRODUCCION"] + _CAL, "DEFINIDO", f"{V13}", "Calidad registró una observación en la línea.", True),
+    ("MERMA_VALIDAR", "Validar la merma del proceso", "Calidad", "Producción", "MEDIA", _CAL + ["ASIST_CALIDAD"], "DEFINIDO",
+     f"{V13}", "Terminó un proceso: Calidad valida que la merma cumpla el porcentaje y registra grano bueno y dañado.", True),
+    ("REPROCESO_SOLICITADO", "Reproceso solicitado por Calidad", "Producción", "Producción", "ALTA",
+     ["JEFE_PRODUCCION", "ASIST_PRODUCCION"], "DEFINIDO", f"{V13}", "Calidad pidió reprocesar la merma de un proceso.", True),
+    ("REPROCESO_VENCIDO", "Reproceso no atendido en 48 h", "Calidad", "Producción", "ALTA", _CAL + ["JEFE_PRODUCCION"],
+     "DEFINIDO", f"{V13}", "Producción no atendió el reproceso en el plazo.", True),
+    ("INSPECCION", "Inspección programada / resultado", "Calidad", "Inspecciones", "ALTA",
+     _CAL + ["JEFE_PRODUCCION", "COORD_ALMACEN", "COORD_ALMACEN_MP", "JEFE_LOGISTICA", "GERENCIA_OPERACIONES",
+             "GERENTE_COMERCIAL", "JEFE_VENTAS", "COORD_FINANZAS"], "DEFINIDO", f"{V13}",
+     "Inspección externa programada o con resultado: avisar a Producción, Almacén, Logística, Operaciones, Comercial y Finanzas.", True),
+    ("HALLAZGO_TAREA", "Hallazgo por levantar", "Calidad", "Inspecciones", "ALTA", _CAL, "DEFINIDO", f"{V13}",
+     "Hallazgo de inspección o visita asignado a un área para su levantamiento.", True),
+    ("VISITA_ALMACEN_EXTERNO", "Visita de Calidad a almacén externo", "Almacén", "Inspecciones", "MEDIA",
+     ["COORD_ALMACEN", "COORD_ALMACEN_MP", "SUPERV_ALMACEN"] + _CAL, "DEFINIDO", f"{V13}",
+     "Calidad propone fecha y hora; Almacén confirma o reprograma.", True),
+    ("DEVOLUCION_CALIDAD", "Devolución por causa de calidad", "Calidad", "Devoluciones", "ALTA", _CAL, "DEFINIDO", f"{V13}",
+     "Una devolución o rechazo con causa de calidad requiere que Calidad actúe.", True),
+]
+_ARRIBOS = ["COMPRA_RECEPCION_PROGRAMAR", "IMPORT_LLEGADA", "LLEGADA_INCIDENTE", "COMPRA_DIFERENCIA", "IMPORT_DIFERENCIA"]
+ALERT_TYPES[:] = [(c, n, a, g, p, (r + [x for x in _CAL if x not in r]) if c in _ARRIBOS else r, *rest)
+                  for c, n, a, g, p, r, *rest in ALERT_TYPES]
+ALERTAS_ROLES_CAMBIO += [(c, [], list(_CAL)) for c in _ARRIBOS]
+for _code, _n, _m, _t, _roles in [
+        ("calidad.gestion", "Quejas, no conformidades, inspecciones y visitas a almacenes externos", "Calidad", "edicion",
+         _CAL + ["ASIST_CALIDAD"]),
+        ("calidad.revision_solicitar", "Solicitar a Calidad la revisión o liberación de un lote", "Almacén", "edicion",
+         ["COORD_ALMACEN", "COORD_ALMACEN_MP", "SUPERV_ALMACEN", "JEFE_PRODUCCION", "ASIST_PRODUCCION", "JEFE_LOGISTICA"]),
+        ("calidad.formatos_configurar", "Configurar los puntos de los formatos de verificación", "Calidad", "administracion",
+         ["JEFE_CALIDAD"]),
+        ("produccion.lote_nuevo", "Registrar el ingreso de nuevo lote (formato de Producción)", "Producción", "edicion",
+         ["JEFE_PRODUCCION", "ASIST_PRODUCCION"])]:
+    PERMISSIONS.append((_code, _n, _m, _t))
+    for _r in _roles:
+        ROLE_PERMISSIONS.setdefault(_r, []).append((_code, "DEFINIDO", V13))
+for _r in _CAL + ["ASIST_CALIDAD"]:  # «Calidad recibe todas las compras nacionales e importaciones»: cuadro de llegadas
+    ROLE_PERMISSIONS.setdefault(_r, []).append(("seguridad.llegadas", "DEFINIDO", V13))
+PARAMS += [
+    ("dias_recordatorio_lote_observado", 7, "int", "Calidad",
+     "Cada cuántos días se recuerda un lote observado mientras no se use.", "DEFINIDO", f"{V13}: «alerta semanal hasta que lo utilicen»"),
+    ("horas_reproceso", 48, "int", "Calidad",
+     "Horas que tiene Producción para atender el reproceso pedido por Calidad antes de alertar a Calidad.", "DEFINIDO",
+     f"{V13}: «si no se atienden en las próximas 48 horas le devuelve alerta a Calidad»"),
+    ("merma_limite_gerencia_pct", {"*": 5}, "dict", "Calidad",
+     "Porcentaje de merma aceptado por Gerencia, por línea («*» = todas). Calidad valida contra este límite.",
+     "PROPUESTO", f"{V13}: «porcentaje requerido por gerencia» (por confirmar el valor por línea)"),
+    ("checklist_calidad_puntos", {}, "dict", "Calidad",
+     "Puntos de verificación registrados por Calidad para los formatos sin puntos (higiene personal, BPM).", "DEFINIDO", f"{V13}"),
+]

@@ -1,0 +1,15 @@
+{% extends "base.html" %}{% from "_m.html" import b, csrf, ic, empty %}
+{% block content %}<div class="page-head"><div><h1>Material para producción y saldo por línea</h1><p class="sub">Lotes disponibles que usará Producción (primero en vencer) · saldo por proceso en cada línea</p></div></div>
+<form method="get" class="row"><div><label>Solicitudes de los próximos (días)</label><input type="number" name="dias" min="1" max="60" value="{{ dias }}" style="width:80px"></div><div><button class="sec">Ver</button></div></form>
+<div class="card">{% if filas %}<div class="tw"><table class="small"><thead><tr><th>Solicitud</th><th>Producto a producir</th><th>Material</th><th class="r">Necesario</th><th>Lote</th><th>Calidad</th><th>FV</th><th>Almacén</th><th class="r">Cantidad</th><th class="r">Faltante</th></tr></thead><tbody>
+{% for f in filas %}{% set n = [f.lotes|length, 1]|max %}{% for i in range(n) %}{% set l = f.lotes[i] if f.lotes else none %}<tr class="{{ 'warn' if f.faltante > 0 and i == 0 }}">
+{% if i == 0 %}<td rowspan="{{ n }}">#{{ f.req.id }} · {{ f.req.fecha_programada|d if f.req.fecha_programada else 'sin fecha' }}</td><td rowspan="{{ n }}">{{ f.req.product_code }}</td><td rowspan="{{ n }}">{{ f.producto }} {{ f.descripcion }}</td><td rowspan="{{ n }}" class="r">{{ f.necesario|n }}</td>{% endif %}
+<td>{{ l.lote if l else '—' }}</td><td>{{ l.calidad if l else '' }}</td><td>{{ l.fv|d if l and l.fv else '—' }}</td><td>{{ l.almacen if l else '' }}</td><td class="r">{{ l.cantidad|n if l else '' }}</td>{% if i == 0 %}<td rowspan="{{ n }}" class="r">{{ f.faltante|n if f.faltante else '—' }}</td>{% endif %}</tr>{% endfor %}{% endfor %}</tbody></table></div>
+{% else %}{{ empty('Sin solicitudes de producción validadas o programadas en el periodo.') }}{% endif %}</div>
+<div class="section-title">Saldo por proceso en cada línea ({{ saldo.desde|d }} – {{ saldo.hasta|d }})</div>
+<form method="get" class="row"><input type="hidden" name="dias" value="{{ dias }}"><div><label>Desde</label><input type="date" name="desde" value="{{ saldo.desde.isoformat() }}"></div><div><label>Hasta</label><input type="date" name="hasta" value="{{ saldo.hasta.isoformat() }}"></div><div><button class="sec">Ver</button></div></form>
+<div class="card">{% if saldo.filas %}<table class="small"><thead><tr><th>Proceso</th><th>Línea</th><th class="r">Partes</th><th class="r">Entrada kg</th><th class="r">Producido kg</th><th class="r">Merma kg</th><th class="r">Remanente kg</th><th class="r">Saldo kg</th></tr></thead><tbody>
+{% for x in saldo.filas %}<tr><td>{{ x.proceso }}</td><td>{{ x.linea }}</td><td class="r">{{ x.partes }}</td><td class="r">{{ x.entrada|n }}</td><td class="r">{{ x.producido|n }}</td><td class="r">{{ x.merma|n }}</td><td class="r">{{ x.remanente|n }}</td><td class="r"><b>{{ x.saldo|n }}</b></td></tr>{% endfor %}</tbody></table>
+<p class="small muted">Saldo = entrada − producido − merma − remanente de los partes cerrados. Un saldo distinto de cero indica kilos sin explicar en el proceso.</p>
+{% else %}{{ empty('Sin partes cerrados en el periodo.') }}{% endif %}</div>
+{% endblock %}

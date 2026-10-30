@@ -1,0 +1,7 @@
+{# V13 Calidad: zona de fumigación (zonas de saneamiento + almacenes externos + otro con «dónde») #}
+{% macro zona_sel(zonas, externos, name='zona', value='') %}<select name="{{ name }}" data-zona-sel><option value="">—</option>
+<optgroup label="Zonas">{% for z in zonas %}<option {{ 'selected' if value == z }}>{{ z }}</option>{% endfor %}</optgroup>
+<optgroup label="Almacenes externos">{% for w in externos %}<option value="Almacén externo {{ w.nombre }}" {{ 'selected' if value == 'Almacén externo ' ~ w.nombre }}>{{ w.nombre }} ({{ w.code }})</option>{% endfor %}</optgroup>
+<option value="OTRO">Otro (indicar dónde)</option></select> <input name="{{ name }}_otro" placeholder="¿dónde?" size="14" aria-label="Dónde se fumiga">{% endmacro %}
+{% macro fotos(name='fotos', label='Fotos (opcional, una o varias)') %}<label>{{ label }}</label><input type="file" name="{{ name }}" accept="image/*,.pdf" multiple>{% endmacro %}
+{% macro galeria(lst) %}{% if lst %}<span class="small">{% for f in lst if f %}<a href="{{ url_for('main.evidence', name=f) }}" target="_blank">foto {{ loop.index }}</a>{{ ' · ' if not loop.last }}{% endfor %}</span>{% endif %}{% endmacro %}

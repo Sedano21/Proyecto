@@ -48,18 +48,28 @@ def save_opportunity(user, customer, datos, opp=None):
     opp.titulo = titulo
     # V7: varios productos del catálogo (se guarda el código; el texto libre se conserva si no es un código)
     vals = datos.getlist("productos") if hasattr(datos, "getlist") else [datos.get("productos") or ""]
+    # V13: proyección por producto (kg y S/ por mes en cada fila); el total de la oportunidad es la suma
+    kgs = datos.getlist("prod_kg") if hasattr(datos, "getlist") else []
+    sols = datos.getlist("prod_soles") if hasattr(datos, "getlist") else []
     from ..models import Product
-    prods = []
-    for v in vals:
+    prods, detalle = [], []
+    for i, v in enumerate(vals):
         for x in str(v or "").split(","):
             x = x.strip()
             code = x.split(" ")[0].upper() if x else ""
             item = code if code and db().get(Product, code) is not None else x
             if item and item not in prods:
                 prods.append(item)
+                kg, so = _num(kgs[i] if i < len(kgs) else None), _num(sols[i] if i < len(sols) else None)
+                if (kg is not None and kg < 0) or (so is not None and so < 0):
+                    raise BusinessError("La proyección por producto no puede ser negativa.")
+                detalle.append({"producto": item, "kg_mes": kg, "soles_mes": so})
     opp.productos = ", ".join(prods)
-    opp.proyeccion_mensual = _num(datos.get("proyeccion_mensual"))
-    opp.proyeccion_kg = _num(datos.get("proyeccion_kg"))
+    opp.detalle_productos = detalle
+    con_kg = [d["kg_mes"] for d in detalle if d["kg_mes"] is not None]
+    con_so = [d["soles_mes"] for d in detalle if d["soles_mes"] is not None]
+    opp.proyeccion_mensual = round(sum(con_so), 2) if con_so else _num(datos.get("proyeccion_mensual"))
+    opp.proyeccion_kg = round(sum(con_kg), 2) if con_kg else _num(datos.get("proyeccion_kg"))
     db().flush()
     audit(user, "OPORTUNIDAD_GUARDADA", "Opportunity", opp.id, {"cliente": customer.ruc, "nuevo": nuevo})
     return opp

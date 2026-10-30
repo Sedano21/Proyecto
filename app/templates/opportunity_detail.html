@@ -1,11 +1,11 @@
-{% extends "base.html" %}{% from "_m.html" import b, csrf, ic, prod_picker %}
+{% extends "base.html" %}{% from "_m.html" import prod_picker_proy, b, csrf, ic, prod_picker %}
 {% block content %}<p class="small"><a href="{{ url_for('com.opportunities') }}">← Oportunidades</a></p>
 <h1>{{ o.titulo }}</h1>
 <p class="sub">{% if o.customer.es_prospecto %}<span class="b MEDIA">PROSPECTO</span> {% endif %}<a href="{{ url_for('com.customer_card', cid=o.customer_id) }}">{{ o.customer.nombre }}</a> · {{ b(o.estado) }} · {{ 'Cliente nuevo' if o.tipo == 'NUEVO' else 'Venta adicional' }} · vendedor {{ o.vendedor.nombre if o.vendedor else '-' }}{% if o.motivo_cierre %} · {{ o.motivo_cierre }}{% endif %}</p>
 <div class="grid g2">
 <form method="post" class="card">{{ csrf() }}<h3>Datos</h3>
 <label>Título</label><input name="titulo" value="{{ o.titulo }}" style="width:100%" required>
-<label>Productos de interés</label>{{ prod_picker("opp-prods", products, o.productos) }}
+<label>Productos de interés</label>{{ prod_picker_proy("opp-prods", products, o.detalle_productos, o.productos) }}
 <div class="row"><div><label>Proyección S/ por mes</label><input name="proyeccion_mensual" type="number" step="0.01" value="{{ o.proyeccion_mensual or '' }}"></div><div><label>Proyección kg por mes</label><input name="proyeccion_kg" type="number" step="0.01" value="{{ o.proyeccion_kg or '' }}"></div></div>
 <p><button>Guardar</button></p></form>
 <form method="post" class="card">{{ csrf() }}<input type="hidden" name="accion" value="estado"><h3>Estado</h3>

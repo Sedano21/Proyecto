@@ -261,6 +261,12 @@ class StockLot(Base):
     origen: Mapped[str] = mapped_column(String(60), default="")
     upload_id: Mapped[int | None] = mapped_column(ForeignKey("upload_batches.id"), nullable=True)
     fumigacion_programada: Mapped[date | None] = mapped_column(Date, nullable=True)  # planeamiento de fumigación
+    # V13 (30-oct-2026): categoría de la observación de Calidad, fechas de producción del lote (varias, cada una con su
+    # estado), fumigación con inicio y liberación prevista y solicitud de liberación de Almacén
+    observacion: Mapped[dict] = mapped_column(JSON, default=dict)  # {categoria, detalle, user, ts}
+    fechas_produccion: Mapped[list] = mapped_column(JSON, default=list)  # [{fecha, cantidad, estado, nota, user, ts}]
+    fumigacion: Mapped[dict] = mapped_column(JSON, default=dict)  # {inicio, liberacion, zona, user, ts}
+    liberacion_solicitada: Mapped[dict] = mapped_column(JSON, default=dict)  # {user, ts, motivo}
     product = relationship("Product")
     warehouse = relationship("Warehouse")
     reservations = relationship("Reservation", back_populates="lot")
@@ -739,6 +745,7 @@ class QualityRecord(Base):
     estado: Mapped[str] = mapped_column(String(20), default="REGISTRADO")
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    adjuntos: Mapped[list] = mapped_column(JSON, default=list)  # V13: fotos y archivos (uno o varios, opcional)
     user = relationship("User")
 
 
@@ -1657,6 +1664,7 @@ class Opportunity(Base):
     productos: Mapped[str] = mapped_column(Text, default="")  # productos de interés
     proyeccion_mensual: Mapped[float | None] = mapped_column(Float, nullable=True)  # S/ por mes
     proyeccion_kg: Mapped[float | None] = mapped_column(Float, nullable=True)
+    detalle_productos: Mapped[list] = mapped_column(JSON, default=list)  # V13: [{product_code, kg_mes, soles_mes}]
     estado: Mapped[str] = mapped_column(String(15), default="ABIERTA")  # ABIERTA / COTIZADA / NEGOCIACION / GANADA / PERDIDA
     tipo: Mapped[str] = mapped_column(String(15), default="NUEVO")  # NUEVO (cliente nuevo) / ADICIONAL (venta adicional)
     motivo_cierre: Mapped[str] = mapped_column(Text, default="")
@@ -2087,3 +2095,102 @@ class BudgetLine(Base):
     presupuesto: Mapped[dict] = mapped_column(JSON, default=dict)  # {"1": S/, …, "12": S/}
     real: Mapped[dict] = mapped_column(JSON, default=dict)  # real registrado a mano por mes
     budget = relationship("AreaBudget", back_populates="lines")
+
+
+# ---------------------------------------------------------------------------
+# V13 (30-oct-2026): Calidad
+# ---------------------------------------------------------------------------
+class ReviewRequest(Base):
+    """Solicitud de revisión de un lote a Calidad: si está apto para proceso o si va a fumigación (o liberación de un
+    lote bloqueado pedida por Almacén). Solo Calidad resuelve."""
+    __tablename__ = "review_requests"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    lot_id: Mapped[int] = mapped_column(ForeignKey("stock_lots.id"), index=True)
+    tipo: Mapped[str] = mapped_column(String(20))  # APTO_PROCESO / FUMIGACION / LIBERACION
+    motivo: Mapped[str] = mapped_column(Text, default="")
+    estado: Mapped[str] = mapped_column(String(15), default="PENDIENTE")  # PENDIENTE / RESUELTA
+    resultado: Mapped[str] = mapped_column(String(20), default="")  # APTO / NO_APTO / A_FUMIGACION / LIBERADO / RECHAZADO
+    comentario: Mapped[str] = mapped_column(Text, default="")
+    solicitado_por: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    resuelto_por: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    resuelto_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    lot = relationship("StockLot")
+    solicitante = relationship("User", foreign_keys=[solicitado_por])
+
+
+class LineObservation(Base):
+    """Observación de Calidad en la línea de proceso: notificación → atención → fin (con motivo); por pallet."""
+    __tablename__ = "line_observations"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    report_id: Mapped[int | None] = mapped_column(ForeignKey("production_reports.id"), nullable=True, index=True)
+    linea: Mapped[str] = mapped_column(String(20))
+    pallets: Mapped[list] = mapped_column(JSON, default=list)  # [{pallet, detalle}]
+    descripcion: Mapped[str] = mapped_column(Text)
+    fase: Mapped[str] = mapped_column(String(15), default="NOTIFICADA")  # NOTIFICADA / EN_ATENCION / CERRADA
+    motivo_cierre: Mapped[str] = mapped_column(Text, default="")
+    fotos: Mapped[list] = mapped_column(JSON, default=list)
+    historial: Mapped[list] = mapped_column(JSON, default=list)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    report = relationship("ProductionReport")
+
+
+class MermaValidation(Base):
+    """Validación de la merma por Calidad al terminar el proceso: grano bueno y dañado, fotos, conformidad o reproceso."""
+    __tablename__ = "merma_validations"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    report_id: Mapped[int] = mapped_column(ForeignKey("production_reports.id"), index=True)
+    estado: Mapped[str] = mapped_column(String(20), default="PENDIENTE")  # PENDIENTE / CONFORME / REPROCESO / REPROCESADO
+    merma_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    limite_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    grano_bueno_kg: Mapped[float | None] = mapped_column(Float, nullable=True)
+    grano_danado_kg: Mapped[float | None] = mapped_column(Float, nullable=True)
+    fotos: Mapped[list] = mapped_column(JSON, default=list)
+    observacion: Mapped[str] = mapped_column(Text, default="")
+    validado_por: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    validado_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    reproceso: Mapped[dict] = mapped_column(JSON, default=dict)  # {solicitado_ts, atendido_ts, user, nota}
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    report = relationship("ProductionReport")
+
+
+class Inspection(Base):
+    """Inspecciones externas (de clientes o certificadoras) e internas: programación → ejecución → resultado, con
+    hallazgos que se asignan como tareas a las áreas."""
+    __tablename__ = "inspections"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    tipo: Mapped[str] = mapped_column(String(10))  # EXTERNA / INTERNA
+    cliente: Mapped[str] = mapped_column(String(160), default="")  # quien la solicitó
+    empresa: Mapped[str] = mapped_column(String(160), default="")  # quien la ejecuta
+    alcance: Mapped[str] = mapped_column(Text, default="")
+    fecha: Mapped[date] = mapped_column(Date)
+    hora_inicio: Mapped[str] = mapped_column(String(5), default="")
+    fase: Mapped[str] = mapped_column(String(15), default="PROGRAMADA")  # PROGRAMADA / EN_PROCESO / CERRADA
+    n_hallazgos: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    puntaje: Mapped[float | None] = mapped_column(Float, nullable=True)
+    resultado: Mapped[str] = mapped_column(String(15), default="")  # APROBADO / DESAPROBADO
+    fotos_resultado: Mapped[list] = mapped_column(JSON, default=list)
+    fotos_hallazgos: Mapped[list] = mapped_column(JSON, default=list)
+    hallazgos: Mapped[list] = mapped_column(JSON, default=list)  # [{n, descripcion, area, alert_id, estado}]
+    historial: Mapped[list] = mapped_column(JSON, default=list)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+
+class ExternalVisit(Base):
+    """Visita (o fumigación) de Calidad a un almacén externo: Calidad propone fecha y hora, Almacén confirma o
+    reprograma; se suben los hallazgos y se les da seguimiento con tareas a las áreas."""
+    __tablename__ = "external_visits"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    warehouse_code: Mapped[str] = mapped_column(ForeignKey("warehouses.code"))
+    tipo: Mapped[str] = mapped_column(String(12), default="VISITA")  # VISITA / FUMIGACION
+    propuesta: Mapped[datetime] = mapped_column(DateTime)
+    estado: Mapped[str] = mapped_column(String(15), default="PROPUESTA")  # PROPUESTA / CONFIRMADA / REALIZADA / CERRADA
+    confirmacion: Mapped[dict] = mapped_column(JSON, default=dict)
+    hallazgos: Mapped[list] = mapped_column(JSON, default=list)  # [{n, descripcion, area, alert_id, estado, foto}]
+    observacion: Mapped[str] = mapped_column(Text, default="")
+    historial: Mapped[list] = mapped_column(JSON, default=list)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    warehouse = relationship("Warehouse")

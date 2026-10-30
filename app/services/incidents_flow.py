@@ -76,6 +76,10 @@ def register_part2(user, i, lineas, observacion=""):
     alerts.emit("INCIDENCIA_ALMACEN", f"Confirmar retorno de la incidencia #{i.id}" + (f" (OV {i.order.numero})" if i.order else ""),
                 "Retorna: " + "; ".join(f"{x['producto']} × {x['cantidad']:g}" for x in filas) + ".",
                 "Incident", i.id, dedup_key=f"INC_ALM:{i.id}", creado_por=user)
+    if i.grupo == "CALIDAD":  # V13: la devolución por causa de calidad la evalúa Calidad
+        alerts.emit("DEVOLUCION_CALIDAD", f"Devolución por calidad: incidencia #{i.id}" + (f" (OV {i.order.numero})" if i.order else ""),
+                    "Retorna: " + "; ".join(f"{x['producto']} × {x['cantidad']:g}" for x in filas) + ". Evalúe el producto devuelto.",
+                    "Incident", i.id, dedup_key=f"DEV_CAL:{i.id}", creado_por=user)
     audit(user, "INCIDENCIA_PASO2", "Incident", i.id, i.parte2)
     return i
 

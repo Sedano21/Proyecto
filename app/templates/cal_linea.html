@@ -1,0 +1,31 @@
+{% extends "base.html" %}{% from "_m.html" import b, csrf, ic, empty %}{% from "_cal.html" import fotos, galeria %}
+{% block content %}<div class="page-head"><div><h1>Calidad en la línea de proceso</h1><p class="sub">Observaciones (notificación → atención → fin con motivo) · validación de merma al terminar el proceso · reproceso</p></div>
+{% if can('calidad.registrar') %}<button class="btn" data-open="dlg-obs">{{ ic('plus') }} Nueva observación</button>{% endif %}</div>
+<div class="section-title">Validación de merma</div>
+<div class="card">{% if mvs %}<div class="tw"><table class="small"><thead><tr><th>Parte</th><th>Línea</th><th>Producto</th><th class="r">Merma %</th><th class="r">Límite %</th><th>Estado</th><th>Grano bueno / dañado (kg)</th><th>Acción</th></tr></thead><tbody>
+{% for m in mvs %}{% set r = m.report %}<tr class="{{ 'warn' if m.merma_pct is not none and m.merma_pct > m.limite_pct }}"><td>{{ r.fecha|d }} · OF {{ r.of or '—' }}</td><td>{{ r.linea }}</td><td>{{ r.product_code }}</td><td class="r">{{ m.merma_pct if m.merma_pct is not none else '—' }}</td><td class="r">{{ m.limite_pct }}</td><td>{{ b(m.estado) }}</td>
+<td>{{ m.grano_bueno_kg|n if m.grano_bueno_kg is not none else '—' }} / {{ m.grano_danado_kg|n if m.grano_danado_kg is not none else '—' }} {{ galeria(m.fotos) }}{% if m.observacion %}<br>{{ m.observacion }}{% endif %}{% if m.reproceso.atendido_ts %}<br>Reprocesado {{ m.reproceso.atendido_ts }} · {{ m.reproceso.nota }}{% endif %}</td>
+<td>{% if m.estado == 'PENDIENTE' and can('calidad.registrar') %}<form method="post" enctype="multipart/form-data">{{ csrf() }}<input type="hidden" name="accion" value="merma"><input type="hidden" name="mid" value="{{ m.id }}">
+Bueno <input type="number" step="any" min="0" name="grano_bueno" required style="width:80px"> Dañado <input type="number" step="any" min="0" name="grano_danado" required style="width:80px"><br>
+<input name="observacion" placeholder="qué reprocesar / observación" size="22"> <input type="file" name="fotos" accept="image/*" multiple aria-label="Fotos"><br>
+<button class="small" name="decision" value="conforme">Conformidad</button> <button class="small sec" name="decision" value="reproceso">Solicitar reproceso</button></form>
+{% elif m.estado == 'REPROCESO' and can('produccion.liquidar') %}<form method="post" class="inline">{{ csrf() }}<input type="hidden" name="accion" value="reproceso"><input type="hidden" name="mid" value="{{ m.id }}"><input name="nota" placeholder="nota" size="12"><button class="small">Reproceso atendido</button></form>{% endif %}</td></tr>
+{% endfor %}</tbody></table></div><p class="small muted">Al terminar cada proceso se avisa a Calidad. Si se pide reproceso y Producción no lo atiende en el plazo configurado, la alerta vuelve a Calidad.</p>
+{% else %}{{ empty('Sin procesos terminados por validar.') }}{% endif %}</div>
+<div class="section-title">Observaciones en la línea</div>
+<div class="card">{% if obs %}<div class="tw"><table class="small"><thead><tr><th>#</th><th>Fecha</th><th>Línea</th><th>Observación</th><th>Pallets</th><th>Fase</th><th>Acción</th></tr></thead><tbody>
+{% for o in obs %}<tr><td>{{ o.id }}</td><td>{{ o.ts.strftime('%d/%m %H:%M') }}</td><td>{{ o.linea }}{{ ' · OF ' ~ o.report.of if o.report and o.report.of }}</td><td>{{ o.descripcion }} {{ galeria(o.fotos) }}{% if o.motivo_cierre %}<br><b>Fin:</b> {{ o.motivo_cierre }}{% endif %}</td>
+<td>{% for p in o.pallets %}<div>{{ p.pallet }}{{ ': ' ~ p.detalle if p.detalle }}</div>{% else %}—{% endfor %}</td><td>{{ b(o.fase) }}</td>
+<td>{% if o.fase == 'NOTIFICADA' and (can('produccion.liquidar') or can('calidad.registrar')) %}<form method="post" class="inline">{{ csrf() }}<input type="hidden" name="accion" value="fase"><input type="hidden" name="oid" value="{{ o.id }}"><input type="hidden" name="fase" value="EN_ATENCION"><button class="small sec">En atención</button></form>{% endif %}
+{% if o.fase != 'CERRADA' and can('calidad.registrar') %}<form method="post" class="inline">{{ csrf() }}<input type="hidden" name="accion" value="fase"><input type="hidden" name="oid" value="{{ o.id }}"><input type="hidden" name="fase" value="CERRADA"><input name="motivo" placeholder="motivo de cierre" size="14" required><button class="small">Fin</button></form>{% endif %}</td></tr>{% endfor %}</tbody></table></div>
+{% else %}{{ empty('Sin observaciones.') }}{% endif %}</div>
+{% if can('calidad.registrar') %}<dialog class="modal wide" id="dlg-obs"><form method="post" enctype="multipart/form-data">{{ csrf() }}<input type="hidden" name="accion" value="observar">
+<div class="dlg-head"><h3>Observación de Calidad en la línea</h3><button type="button" class="ibtn" data-close aria-label="Cerrar">{{ ic('x') }}</button></div>
+<div class="dlg-body"><div class="row"><div><label class="req">Línea</label><select name="linea" required>{% for l in lineas %}<option value="{{ l.code }}">{{ l.code }} · {{ l.nombre }}</option>{% endfor %}</select></div>
+<div class="grow"><label>Parte en proceso (opcional)</label><select name="report_id"><option value="">—</option>{% for p in partes %}<option value="{{ p.id }}">{{ p.linea }} · OF {{ p.of or '—' }} · {{ p.product_code }}</option>{% endfor %}</select></div></div>
+<label class="req">Observación</label><input name="descripcion" required style="width:100%">
+<label>Pallets observados (uno o varios)</label><div id="pls"><div class="dynrow row"><div><input name="pallet" placeholder="N° pallet" size="10"></div><div class="grow"><input name="pallet_detalle" placeholder="detalle"></div><div><button type="button" class="ibtn" data-delrow aria-label="Quitar">{{ ic('x') }}</button></div></div></div>
+<button type="button" class="sec small" data-addrow="#pls">{{ ic('plus') }} Agregar pallet</button>
+{{ fotos() }}</div>
+<div class="dlg-foot"><button type="button" class="btn sec" data-close>Cancelar</button><button class="btn">Notificar a Producción</button></div></form></dialog>{% endif %}
+{% endblock %}

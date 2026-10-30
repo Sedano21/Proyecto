@@ -48,7 +48,7 @@ def checklist(rid):
 
 # ------------------------------------------------------------------ incidencia: paso 2, flujo y modificaciones
 @bp.route("/incidencias/<int:iid>", methods=["GET", "POST"])
-@perm_required("distribucion.ver", "stock.cambiar_estado", "finanzas.gestionar", "distribucion.incidencia_editar")
+@perm_required("distribucion.ver", "stock.cambiar_estado", "finanzas.gestionar", "distribucion.incidencia_editar", "calidad.ver")
 def incident_detail(iid):
     i = db().get(Incident, iid) or abort(404)
     back = url_for("dist.incident_detail", iid=iid)
