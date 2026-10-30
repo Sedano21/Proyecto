@@ -442,3 +442,13 @@ El Service Layer (`172.18.103.1:50000`) solo se alcanza desde la VM Windows del 
 5. reinicia el servicio y comprueba que responda.
 
 Si no responde, vuelve al commit anterior. Registro: `/var/log/operaciones-actualizar.log`.
+
+### Base creada sin versión de Alembic
+Si `alembic upgrade head` falla con «relation ... already exists», las tablas las creó la propia app al iniciar (`SCHEMA_AUTO_CREATE`, activo por defecto) y la base no tiene su versión registrada.
+
+1. Agregue `SCHEMA_AUTO_CREATE=0` al `.env` **antes de ejecutar cualquier comando** de la app.
+2. Registre la versión del código con el que se creó la base: `alembic stamp <versión>`.
+3. Compruebe con `python -m app.cli esquema`: debe faltar solo lo de las migraciones posteriores.
+4. Aplique `alembic upgrade head` y vuelva a ejecutar `esquema`; debe responder «La base coincide con el código».
+
+`deploy/actualizar.sh` se detiene sin cambiar nada si la base no tiene versión registrada.

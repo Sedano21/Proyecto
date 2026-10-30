@@ -6,6 +6,7 @@
     python -m app.cli sap-probar      # prueba la conexión con SAP Service Layer (solo lectura)
     python -m app.cli sap-traer TIPO USUARIO   # trae de SAP un tipo de dato y crea la carga para revisar
     python -m app.cli verificar       # ejecuta verificaciones periódicas (alertas automáticas, correo)
+    python -m app.cli esquema         # compara la base con el modelo del código (tablas/columnas que faltan o sobran)
     python -m app.cli crear-usuario <usuario> <rol> <nombre> <email>
     python -m app.cli muestras <carpeta>   # genera los Excel ficticios de ejemplo
     python -m app.cli depurar [--aplicar]  # fotos de entrega más antiguas que la retención configurada (sin --aplicar: solo lista)
@@ -77,6 +78,33 @@ def main(argv):
             b = sap_sl.sync(argv[1].upper(), u, app.config["UPLOAD_DIR"])
             s.commit()
             print(f"Carga #{b.id}: {b.estado} ({len(b.rows)} filas)")
+        elif cmd == "esquema":
+            from alembic.autogenerate import compare_metadata
+            from alembic.migration import MigrationContext
+            from . import db as dbmod
+            from .models import Base
+            with dbmod.engine.connect() as c:
+                ctx = MigrationContext.configure(c)
+                dif = [d for d in compare_metadata(ctx, Base.metadata)
+                       if not (isinstance(d, tuple) and d[0] in ("add_index", "remove_index"))]
+                print(f"Versión de migración registrada: {ctx.get_current_revision() or 'NINGUNA'}")
+            if dif:
+                print("Diferencias entre la base y el código:")
+                for d in dif:
+                    d = d[0] if isinstance(d, list) else d
+                    k, o = d[0], d[-1] if d[0] != "add_column" else d[3]
+                    if k == "add_table":
+                        print(f"   falta la tabla {o.name}")
+                    elif k == "remove_table":
+                        print(f"   sobra la tabla {o.name} (no está en el código)")
+                    elif k == "add_column":
+                        print(f"   falta la columna {d[2]}.{o.name}")
+                    elif k == "remove_column":
+                        print(f"   sobra la columna {d[2]}.{d[3].name}")
+                    else:
+                        print(f"   {k}: {d[1:4]}")
+                return 1
+            print("La base coincide con el código.")
         elif cmd == "verificar":
             from .services.scheduler import run_checks
             print(run_checks())
