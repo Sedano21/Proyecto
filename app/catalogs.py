@@ -2222,3 +2222,15 @@ PARAMS += [
     ("checklist_calidad_puntos", {}, "dict", "Calidad",
      "Puntos de verificación registrados por Calidad para los formatos sin puntos (higiene personal, BPM).", "DEFINIDO", f"{V13}"),
 ]
+
+# ---------------------------------------------------------------------------------------------------------------------
+# V13b – Liquidación de proceso CP-OPE-004 (archivo «LIQUIDACIONES 2026», 30-oct-2026): solo Producción.
+V13B = "Liquidación de proceso CP-OPE-004 (30-oct-2026)"
+PERMISSIONS.append(("produccion.liquidacion_proceso", "Liquidación de proceso CP-OPE-004: registrar, editar y ver (solo Producción)",
+                    "Producción", "edicion"))
+for _r in ("JEFE_PRODUCCION", "ASIST_PRODUCCION"):
+    ROLE_PERMISSIONS.setdefault(_r, []).append(("produccion.liquidacion_proceso", "DEFINIDO", V13B))
+PARAMS += [
+    ("liquidacion_proceso_pie", ["CORPORACIÓN PRODUCTIVA SAC", "RUC: 20517540341", "AV. AVIACIÓN 1560 - LA VICTORIA"], "list",
+     "Documentos", "Pie del formato de liquidación de proceso CP-OPE-004.", "DEFINIDO", f"{V13B}: pie del formato"),
+]

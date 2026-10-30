@@ -127,3 +127,26 @@ El reporte del periodo muestra:
 1. Foto o archivo del formato **«Control de recepción de envases y embalajes»**.
 2. Formatos de **higiene personal** y **BPM**, con sus puntos de verificación.
 3. **Porcentaje de merma** que acepta Gerencia, por línea.
+
+## 9. Liquidación de proceso CP-OPE-004 (Producción)
+
+Fuente: archivo «LIQUIDACIONES 2026». Se tomó solo la estructura del formato; los datos, productos, proveedores y fotos del archivo no se guardaron en el repositorio. Las celdas de costo (S/ por hora, por unidad y por kg) quedan vacías: las llena Producción.
+
+| Indicación | Implementación |
+|---|---|
+| Agregar el formato tal cual | Pantalla y Excel con el mismo diseño: cabecera (logo, «LIQUIDACION DE PROCESO», CP- OPE - 004, OPERACIONES, N°), datos del servicio y del producto, tablas por proceso, desviación, horas, operarios y desmedro, referencias gráficas, observaciones y pie con logos. Dos variantes, como las hojas del archivo: **varios procesos** (graneal a MP, MP-T S, MP-T L…) y **un proceso con costo MO + CIF y costo del desmedro**. |
+| Jalar lo que llenan los asistentes | Se crea eligiendo uno o varios partes de producción del mismo SKU: cada parte es un proceso con ingreso, salida, desmedro, remanente, horas y operarios; el producto, el lote, la calidad y las fechas salen del artículo y del lote. |
+| Ver por línea, SKU o lote | Lista con filtros por línea, SKU y lote; acceso también desde el detalle del parte. |
+| Eliminar o añadir campos | Los campos del servicio y del producto, las filas de cada tabla y los procesos se agregan o quitan. |
+| Fotografía | Una o varias fotos del lote (cámara del celular), que también se insertan en el Excel. |
+| Solo Producción | Permiso `produccion.liquidacion_proceso` (Jefe y Asistente de Producción); Gerencia lo ve en solo lectura. Al cerrar ya no se edita; reabre el Jefe de Producción. |
+
+Cálculos, como en el archivo:
+- TOTAL = sacos × peso por saco + saldo.
+- MOVIMIENTO = −total en el ingreso y +total en cada salida.
+- % = movimiento ÷ total del ingreso.
+- DESVIACIÓN = suma de los movimientos.
+- DESMEDRO = filas de desmedro ÷ ingreso. En el archivo, la suma del tercer proceso incluía también la fila «SALIDA - GRANEL»; aquí solo cuentan las filas de desmedro.
+- Costos: MO = horas × costo por hora; CIF = unidades × costo por unidad; costo unitario = total ÷ unidades; costo del desmedro = kg × costo por kg.
+
+Datos técnicos: migración `0026` (tabla `process_liquidations`), parámetro `liquidacion_proceso_pie`, pruebas `tests/test_liq_proceso.py`.

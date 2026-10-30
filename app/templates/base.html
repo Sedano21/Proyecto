@@ -65,6 +65,7 @@
       {{ nl(url_for('prod.plan'), 'calendar', 'Planeamiento') }}
       {{ nl(url_for('prod.bom'), 'layers', 'Lista de materiales') }}
       {{ nl(url_for('prod.liquidations'), 'file', 'Liquidaciones') }}
+      {% if ve('produccion.liquidacion_proceso') %}{{ nl(url_for('prod.process_liqs'), 'clipboard', 'Liquidación de proceso (CP-OPE-004)') }}{% endif %}
       {% if ve('produccion.partes_ver') %}{{ nl(url_for('prod.reports'), 'gauge', 'Partes de producción') }}
       {{ nl(url_for('prod.monitor'), 'trend', 'Monitoreo en tiempo real') }}
       {{ nl(url_for('prod.control'), 'chart', 'Control de producción') }}

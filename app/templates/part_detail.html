@@ -2,6 +2,7 @@
 {% block content %}{% set ind = r.indicadores or {} %}
 <p class="small"><a href="{{ url_for('prod.reports') }}">← Partes de producción</a></p>
 <div class="card-head"><h1 style="flex:1">Parte {{ r.linea }} · {{ r.product_code }}</h1>
+{% if ve('produccion.liquidacion_proceso') %}<a class="btn sec" href="{{ url_for('prod.process_liqs', sku=r.product_code, lote=r.lote or r.lote_pt or '') }}">{{ ic('clipboard') }} Liquidación de proceso</a>{% endif %}
 {% if can('produccion.liquidar') and r.estado not in no_editables and r.estado != 'BLOQUEADO' %}<button class="ibtn" data-open="dlg-editar" aria-label="Editar fecha y cantidad">{{ ic('edit') }} Editar</button>{% endif %}
 {% if can('produccion.liquidar') and r.estado in ['EN PROCESO','PAUSADO'] %}<button class="btn" data-open="dlg-fin">{{ ic('check') }} Finalizar</button>{% endif %}</div>
 <p class="sub">{{ r.product.descripcion if r.product }} · {{ r.fecha|d }} · turno {{ r.turno or '-' }} · OF {{ r.of or '-' }} · {{ b(r.estado|replace(' ','_')) }}

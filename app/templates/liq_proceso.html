@@ -1,0 +1,94 @@
+{% extends "base.html" %}{% from "_m.html" import b, csrf, ic %}
+{% block content %}
+<style>
+.lq{--verde:#548235;--etq:#D6DCE4;--cel:#D9E1F2;--osc:#3A3838;--gris:#F2F2F2;--amar:#FFF2CC;background:#fff;color:#000;font:12px Calibri,Arial,sans-serif;max-width:900px;margin:0 auto;padding:18px 22px;border:1px solid #ddd}
+.lq table{border-collapse:collapse;width:100%}
+.lq td,.lq th{border:1px solid #9a9a9a;padding:2px 5px;font-size:11px;height:18px;vertical-align:middle}
+.lq th{background:var(--osc);color:#fff;font-weight:bold;text-align:center}
+.lq .v{background:var(--verde);color:#fff;font-weight:bold}
+.lq .e{background:var(--etq)}
+.lq .g{background:var(--gris)}
+.lq .c{background:var(--cel);font-weight:bold}
+.lq .r{text-align:right}.lq .ce{text-align:center}
+.lq .nb td{border:none}
+.lq input,.lq textarea{width:100%;border:0;background:transparent;font:inherit;padding:0 2px;min-height:0;height:18px;line-height:18px;color:#000;box-shadow:none;border-radius:0;margin:0}
+.lq textarea{height:auto;line-height:1.3}
+.lq input:focus,.lq textarea:focus{outline:1px solid #548235;background:#fff}
+.lq input[type=checkbox]{height:auto;width:auto}
+.lq input[type=number]{text-align:center}
+.lq .x{width:18px;min-height:0;height:16px;border:0;background:none;color:#a00;cursor:pointer;padding:0;font-size:13px;line-height:16px}
+.lq .x:hover{background:#fde8e8;color:#a00}
+.lq th{position:static;text-transform:none;letter-spacing:0;font-size:11px;color:#fff;background:var(--osc)}
+.lq-head td{border:1px solid #9a9a9a}
+.lq-fotos{display:flex;gap:6px;flex-wrap:wrap;padding:6px}
+.lq-fotos img{height:150px;max-width:100%;object-fit:cover}
+.lq-obs{background:var(--amar);text-align:center;font-size:11px;padding:8px;white-space:pre-wrap}
+.lq-pie{display:flex;justify-content:space-between;align-items:center;margin-top:18px;text-align:center;font-size:11px}
+.lq-pie img{height:70px}
+.lq .sec{margin-top:14px}
+@media print{.noprint{display:none!important}.lq{border:0;max-width:none;padding:0}}
+.lq-wrap{max-width:100%;overflow-x:auto}
+@media (max-width:640px){.lq{padding:8px;min-width:720px}.lq td,.lq th{font-size:10px;padding:1px 2px}}
+</style>
+<div class="noprint page-head" style="flex-wrap:wrap"><div><h1>Liquidación de proceso N° {{ '%05d'|format(liq.numero) }}</h1>
+<p class="sub">{{ liq.product_code }} · lote {{ liq.lote or '—' }} · {{ liq.linea }} · {{ b(liq.estado) }} · partes: {% for p in partes %}<a href="{{ url_for('prod.part_detail', pid=p.id) }}">#{{ p.id }}</a> {% endfor %}</p></div>
+<div><a class="btn sec" href="{{ url_for('prod.process_liqs') }}">Lista</a> <a class="btn sec" href="{{ url_for('prod.process_liq_excel', lid=liq.id) }}">Excel</a> <a class="btn sec" href="{{ url_for('prod.process_liq', lid=liq.id, imprimir=1) }}">Vista para imprimir / PDF</a>
+{% if print_mode %}<a class="btn" href="javascript:window.print()">Imprimir</a>{% endif %}</div></div>
+{% if editable %}<p class="noprint small muted">Edite directamente en el formato. Para quitar un campo o una fila use ×; para agregar, «+». Las celdas TOTAL, MOVIMIENTO, %, DESVIACIÓN y DESMEDRO se calculan al guardar.</p>
+<form method="post" id="lqf">{{ csrf() }}{% endif %}
+<div class="lq-wrap"><div class="lq">
+<table class="lq-head"><tr><td rowspan="3" style="width:26%;text-align:center"><img src="{{ url_for('static', filename='img/logo_corporacion_productiva.png') }}" alt="Corporación Productiva" style="height:42px"></td>
+<td rowspan="3" style="text-align:center;font-size:17px;font-weight:bold">LIQUIDACION DE PROCESO</td><td class="ce" style="width:18%;font-weight:bold;font-size:10px">{{ codigo }}</td></tr>
+<tr><td class="ce" style="font-weight:bold;font-size:10px">OPERACIONES</td></tr><tr><td class="ce" style="font-weight:bold;font-size:10px">N° {{ '%05d'|format(liq.numero) }}</td></tr></table>
+
+<div class="sec" style="display:grid;grid-template-columns:1fr 1.6fr;gap:16px">
+<table><tr><td class="v" colspan="{{ 3 if editable else 2 }}">DATOS DEL SERVICIO</td></tr><tbody id="serv">
+{% for x in liq.servicio %}<tr class="dynrow"><td class="e" style="width:45%">{% if editable %}<input name="s_etq" value="{{ x.etiqueta }}" aria-label="Campo">{% else %}{{ x.etiqueta }}{% endif %}</td><td class="g">{% if editable %}<input name="s_val" value="{{ x.valor }}" aria-label="{{ x.etiqueta }}">{% else %}{{ x.valor }}{% endif %}</td>{% if editable %}<td style="width:18px"><button type="button" class="x noprint" data-delrow title="Quitar campo">×</button></td>{% endif %}</tr>{% endfor %}
+{% if editable %}<tr class="dynrow"><td class="e"><input name="s_etq" placeholder="nuevo campo" aria-label="Nuevo campo"></td><td class="g"><input name="s_val" aria-label="Valor"></td><td><button type="button" class="x noprint" data-delrow>×</button></td></tr>{% endif %}</tbody></table>
+{% if not editable %}<table><tr><td class="v ce" colspan="4">DATOS DEL PRODUCTO</td></tr>
+{% for par in liq.producto|batch(2) %}<tr>{% for x in par %}<td class="e" style="width:22%">{{ x.etiqueta }}</td><td class="g" style="width:28%">{{ x.valor }}</td>{% endfor %}{% if par|length == 1 %}<td class="e"></td><td class="g"></td>{% endif %}</tr>{% endfor %}</table>
+{% else %}<table><tr><td class="v ce" colspan="3">DATOS DEL PRODUCTO</td></tr><tbody id="prod">
+{% for x in liq.producto %}<tr class="dynrow"><td class="e" style="width:40%">{% if editable %}<input name="p_etq" value="{{ x.etiqueta }}" aria-label="Campo">{% else %}{{ x.etiqueta }}{% endif %}</td><td class="g">{% if editable %}<input name="p_val" value="{{ x.valor }}" aria-label="{{ x.etiqueta }}">{% else %}{{ x.valor }}{% endif %}</td>{% if editable %}<td style="width:18px"><button type="button" class="x noprint" data-delrow title="Quitar campo">×</button></td>{% endif %}</tr>{% endfor %}
+{% if editable %}<tr class="dynrow"><td class="e"><input name="p_etq" placeholder="nuevo campo" aria-label="Nuevo campo"></td><td class="g"><input name="p_val" aria-label="Valor"></td><td><button type="button" class="x noprint" data-delrow>×</button></td></tr>{% endif %}</tbody></table>{% endif %}</div>
+{% if editable %}<p class="noprint"><button type="button" class="sec small" data-addrow="#serv">+ campo del servicio</button> <button type="button" class="sec small" data-addrow="#prod">+ campo del producto</button></p>{% endif %}
+
+{% for p in c.procesos %}{% set i = loop.index0 %}
+<div class="sec">{% if p.titulo or editable %}<table><tr><td class="c">{% if editable %}<input name="t{{ i }}" value="{{ p.titulo }}" aria-label="Título del proceso" placeholder="(sin título)">{% else %}{{ p.titulo }}{% endif %}</td>{% if editable and c.procesos|length > 1 %}<td class="noprint" style="width:110px;font-size:10px"><label><input type="checkbox" name="quitar_{{ i }}" value="1" style="width:auto"> quitar proceso</label></td>{% endif %}</tr></table>{% endif %}
+<div class="lq-tw" style="margin-top:6px"><table><thead><tr><th>PROCESO</th><th>CALIDAD</th><th>SACOS (UNI)</th><th>PESO POR SACO (KG)</th><th>SALDO (KG)</th><th>TOTAL (KG)</th><th>MOVIMIENTO (KG)</th>{% if liq.variante == 'PR' %}<th>%</th>{% endif %}{% if editable %}<th class="noprint"></th>{% endif %}</tr></thead><tbody id="filas{{ i }}">
+{% for f in p.filas %}<tr class="dynrow">{% if editable %}<td><input name="f{{ i }}_proceso" value="{{ f.proceso }}" aria-label="Proceso"></td><td><input name="f{{ i }}_calidad" value="{{ f.calidad }}" aria-label="Calidad"></td>
+<td><input type="number" step="any" name="f{{ i }}_sacos" value="{{ f.sacos if f.sacos is not none }}" aria-label="Sacos"></td><td><input type="number" step="any" name="f{{ i }}_peso" value="{{ f.peso_saco if f.peso_saco is not none }}" aria-label="Peso por saco"></td><td><input type="number" step="any" name="f{{ i }}_saldo" value="{{ f.saldo if f.saldo is not none }}" aria-label="Saldo"></td>
+{% else %}<td>{{ f.proceso }}</td><td>{{ f.calidad }}</td><td class="ce">{{ '%.2f'|format(f.sacos) if f.sacos is not none }}</td><td class="ce">{{ '%.2f'|format(f.peso_saco) if f.peso_saco is not none }}</td><td class="ce">{{ '%.2f'|format(f.saldo) if f.saldo is not none }}</td>{% endif %}
+<td class="r">{{ '{:,.2f}'.format(f.total) }}</td><td class="r">{{ '{:,.2f}'.format(f.mov) }}</td>{% if liq.variante == 'PR' %}<td class="ce">{{ '%.2f%%'|format(f.pct) if f.pct is not none }}</td>{% endif %}{% if editable %}<td class="noprint"><button type="button" class="x" data-delrow title="Quitar fila">×</button></td>{% endif %}</tr>{% endfor %}
+{% if editable %}<tr class="dynrow"><td><input name="f{{ i }}_proceso" placeholder="SALIDA - …" aria-label="Proceso"></td><td><input name="f{{ i }}_calidad" aria-label="Calidad"></td><td><input type="number" step="any" name="f{{ i }}_sacos" aria-label="Sacos"></td><td><input type="number" step="any" name="f{{ i }}_peso" aria-label="Peso por saco"></td><td><input type="number" step="any" name="f{{ i }}_saldo" aria-label="Saldo"></td><td></td><td></td>{% if liq.variante == 'PR' %}<td></td>{% endif %}<td class="noprint"><button type="button" class="x" data-delrow>×</button></td></tr>{% endif %}</tbody>
+<tr class="nb"><td colspan="5"></td><td class="c ce" style="border:1px solid #9a9a9a">DESVIACIÓN KG</td><td class="g r" style="border:1px solid #9a9a9a"><b>{{ '{:,.2f}'.format(p.desviacion) }}</b></td></tr>
+<tr class="nb"><td class="e" style="border:1px solid #9a9a9a"><b>TOTAL DE HR</b></td><td class="ce">{% if editable %}<input type="number" step="any" name="h{{ i }}" value="{{ p.horas if p.horas is not none }}" aria-label="Total de horas">{% else %}{{ '%g'|format(p.horas) if p.horas is not none }}{% endif %}</td><td></td><td class="e" style="border:1px solid #9a9a9a"><b>NRO DE OPE.</b></td><td class="ce">{% if editable %}<input type="number" step="any" name="o{{ i }}" value="{{ p.operarios if p.operarios is not none }}" aria-label="Número de operarios">{% else %}{{ '%g'|format(p.operarios) if p.operarios is not none }}{% endif %}</td>
+<td class="c ce" style="border:1px solid #9a9a9a">DESMEDRO</td><td class="g r" style="border:1px solid #9a9a9a"><b>{{ '%.2f%%'|format(p.desmedro_pct) if p.desmedro_pct is not none else '—' }}</b></td></tr></table></div>
+{% if editable %}<p class="noprint"><button type="button" class="sec small" data-addrow="#filas{{ i }}">+ fila</button></p>{% endif %}</div>{% endfor %}
+{% if editable and liq.variante == 'PR' %}<p class="noprint"><button class="sec small" name="agregar_proceso" value="1">+ agregar proceso</button></p>{% endif %}
+
+{% if liq.variante == 'PF' and c.costos %}{% set k = liq.costos or {} %}
+<div class="sec"><table><tr><td class="c ce">COSTO MO + CIF</td></tr></table>
+<table style="margin-top:6px"><tr><th>COSTOS</th><th>SELECCIÓN</th><th>REPROCESO</th><th>TOTAL</th><th>UNI. DE MEDIDA</th><th>COSTO</th><th>SUBTOTAL</th></tr>
+<tr><td>MANO DE OBRA</td><td class="ce">{% if editable %}<input type="number" step="any" name="mo_seleccion" value="{{ k.mo_seleccion if k.mo_seleccion is not none }}" aria-label="Horas de selección">{% else %}{{ k.mo_seleccion if k.mo_seleccion is not none }}{% endif %}</td><td class="ce">{% if editable %}<input type="number" step="any" name="mo_reproceso" value="{{ k.mo_reproceso if k.mo_reproceso is not none }}" aria-label="Horas de reproceso">{% else %}{{ k.mo_reproceso if k.mo_reproceso is not none }}{% endif %}</td><td class="ce">{{ '%g'|format(c.costos.horas) }}</td><td>HORAS</td><td class="r">S/ {% if editable %}<input type="number" step="any" name="costo_hora" value="{{ k.costo_hora if k.costo_hora is not none }}" aria-label="Costo por hora" style="width:70px">{% else %}{{ '%.2f'|format(k.costo_hora or 0) }}{% endif %}</td><td class="r">S/ {{ '{:,.2f}'.format(c.costos.mo) }}</td></tr>
+<tr><td>CIF</td><td class="ce">{{ '{:,.2f}'.format(c.procesos[0].ingreso) }}</td><td class="ce">{% if editable %}<input type="number" step="any" name="cif_reproceso" value="{{ k.cif_reproceso if k.cif_reproceso is not none }}" aria-label="Unidades de reproceso">{% else %}{{ k.cif_reproceso if k.cif_reproceso is not none }}{% endif %}</td><td class="ce">{{ '{:,.2f}'.format(c.costos.unidades) }}</td><td>UNIDADES</td><td class="r">S/ {% if editable %}<input type="number" step="any" name="costo_unidad" value="{{ k.costo_unidad if k.costo_unidad is not none }}" aria-label="Costo por unidad" style="width:70px">{% else %}{{ '%.2f'|format(k.costo_unidad or 0) }}{% endif %}</td><td class="r">S/ {{ '{:,.2f}'.format(c.costos.cif) }}</td></tr>
+<tr class="nb"><td colspan="5"></td><td style="border:1px solid #9a9a9a"><b>TOTAL</b></td><td class="r" style="border:1px solid #9a9a9a"><b>S/ {{ '{:,.2f}'.format(c.costos.total) }}</b></td></tr>
+<tr class="nb"><td colspan="5"></td><td style="border:1px solid #9a9a9a"><b>COSTO UNITARIO</b></td><td class="r" style="border:1px solid #9a9a9a"><b>S/ {{ '%.2f'|format(c.costos.unitario or 0) }}</b></td></tr></table></div>
+<div class="sec"><table><tr><td class="c ce">COSTO DE DESMEDRO</td></tr></table>
+<table style="margin-top:6px"><tr><th>GASTOS</th><th>TOTAL (KG)</th><th>COSTO (KG)</th><th>SUBTOTAL</th></tr>
+<tr><td>INGRESO</td><td class="ce">{{ '{:,.2f}'.format(c.costos.desmedro_kg) }}</td><td class="r">S/ {% if editable %}<input type="number" step="any" name="costo_kg_desmedro" value="{{ k.costo_kg_desmedro if k.costo_kg_desmedro is not none }}" aria-label="Costo por kg de desmedro" style="width:70px">{% else %}{{ '%.2f'|format(k.costo_kg_desmedro or 0) }}{% endif %}</td><td class="r">S/ {{ '{:,.2f}'.format(c.costos.desmedro_costo) }}</td></tr>
+<tr class="nb"><td colspan="2"></td><td style="border:1px solid #9a9a9a"><b>TOTAL</b></td><td class="r" style="border:1px solid #9a9a9a"><b>S/ {{ '{:,.2f}'.format(c.costos.desmedro_costo) }}</b></td></tr></table></div>{% endif %}
+
+<div class="sec" style="display:grid;grid-template-columns:1.8fr 1fr;gap:10px">
+<div><table><tr><td class="v ce">REFERENCIAS GRÁFICAS DEL LOTE RECEPCIONADO</td></tr></table>
+<div class="lq-fotos">{% for f in liq.fotos %}<figure style="margin:0"><a href="{{ url_for('main.evidence', name=f) }}" target="_blank"><img src="{{ url_for('main.evidence', name=f) }}" alt="Foto {{ loop.index }} del lote"></a>{% if editable %}<figcaption class="noprint small"><label><input type="checkbox" name="quitar_foto" value="{{ f }}" style="width:auto"> quitar</label></figcaption>{% endif %}</figure>{% else %}<span class="small muted">Sin fotografías.</span>{% endfor %}</div></div>
+<div><table><tr><td class="v ce">OBSERVACIONES</td></tr></table>
+<div class="lq-obs">{% if editable %}<textarea name="observaciones" rows="9" aria-label="Observaciones" style="text-align:center">{{ liq.observaciones }}</textarea>{% else %}{{ liq.observaciones }}{% endif %}</div></div></div>
+
+<div class="lq-pie"><img src="{{ url_for('static', filename='img/logo_cosecha_andina.png') }}" alt="Cosecha Andina"><div>{% for l in pie %}{{ l }}<br>{% endfor %}</div><img src="{{ url_for('static', filename='img/logo_cantaclaro.png') }}" alt="Cantaclaro"></div>
+</div></div>
+{% if editable %}<p class="noprint" style="margin-top:12px"><button>Guardar</button> <button class="sec" name="accion" value="cerrar" data-confirm="¿Cerrar la liquidación? Ya no se podrá editar.">Guardar y cerrar</button></p></form>
+<form method="post" enctype="multipart/form-data" class="card noprint" style="margin-top:12px">{{ csrf() }}<input type="hidden" name="accion" value="fotos"><h3>Agregar fotografías del lote</h3>
+<div class="row"><div class="grow"><input type="file" name="fotos" accept="image/*" capture="environment" multiple required aria-label="Fotografías"></div><div><button class="sec">Subir</button></div></div>
+<p class="small muted">Guarde primero lo editado: subir fotos no guarda los cambios del formato.</p></form>{% endif %}
+{% if liq.estado == 'CERRADA' and can('produccion.liquidacion_proceso') and not print_mode %}<form method="post" class="noprint" style="margin-top:10px">{{ csrf() }}<button class="sec" name="accion" value="reabrir">Reabrir (Jefe de Producción)</button></form>{% endif %}
+{% endblock %}

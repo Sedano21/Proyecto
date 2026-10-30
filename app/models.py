@@ -2194,3 +2194,33 @@ class ExternalVisit(Base):
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     ts: Mapped[datetime] = mapped_column(DateTime, default=now)
     warehouse = relationship("Warehouse")
+
+
+class ProcessLiquidation(Base):
+    """Liquidación de proceso CP-OPE-004 (formato «LIQUIDACIONES 2026», 30-oct-2026), solo Producción. Se prellena con
+    los partes que registran los asistentes de producción y se ve por línea, SKU o lote. variante: PR (uno o varios
+    procesos: graneal a MP, MP-T S, MP-T L…) o PF (un proceso con costo MO + CIF y costo del desmedro).
+    servicio / producto: [{etiqueta, valor}] (campos que se agregan o quitan); procesos: [{titulo, filas: [{proceso,
+    calidad, sacos, peso_saco, saldo}], horas, operarios, report_id}]; costos (PF): {mo_seleccion, mo_reproceso,
+    costo_hora, cif_reproceso, costo_unidad, costo_kg_desmedro}."""
+    __tablename__ = "process_liquidations"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    numero: Mapped[int] = mapped_column(Integer, unique=True)
+    variante: Mapped[str] = mapped_column(String(4), default="PR")
+    product_code: Mapped[str] = mapped_column(String(40), index=True)
+    lote: Mapped[str] = mapped_column(String(60), default="", index=True)
+    linea: Mapped[str] = mapped_column(String(80), default="", index=True)
+    fecha: Mapped[date] = mapped_column(Date, default=date.today)
+    servicio: Mapped[list] = mapped_column(JSON, default=list)
+    producto: Mapped[list] = mapped_column(JSON, default=list)
+    procesos: Mapped[list] = mapped_column(JSON, default=list)
+    costos: Mapped[dict] = mapped_column(JSON, default=dict)
+    fotos: Mapped[list] = mapped_column(JSON, default=list)
+    observaciones: Mapped[str] = mapped_column(Text, default="")
+    report_ids: Mapped[list] = mapped_column(JSON, default=list)
+    estado: Mapped[str] = mapped_column(String(15), default="BORRADOR")  # BORRADOR / CERRADA
+    historial: Mapped[list] = mapped_column(JSON, default=list)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    user = relationship("User")
+    product = relationship("Product", primaryjoin="foreign(ProcessLiquidation.product_code) == Product.code", viewonly=True)
