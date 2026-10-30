@@ -423,3 +423,22 @@ Mientras no se defina, esos datos se siguen registrando en SAP y el módulo los 
 | Lo que se registra en el sistema debe quedar en SAP | La OV registrada en el módulo se **crea en SAP**; sus cambios y su cancelación también se envían (§7.5). Solo en la base autorizada (`sap_escritura_empresas`, hoy la de pruebas) y con `sap_escritura_ov`. En la ficha de la OV se ven el número de SAP, el error si lo hubo y el botón «Enviar a SAP ahora». |
 | Lo que se hace en SAP debe verse en el sistema | Ya estaba: sincronización cada minuto de 06:00 a 21:00 (OV, clientes, artículos, entregas). Ahora además la OV creada por el módulo se reconoce por su número de SAP y no se duplica. |
 | Corte de las 12:00 | Precisado: después de las 12:00 no se registra una OV de **producto terminado para despachar al día siguiente**. **Materia prima y granel no tienen corte**, y las demás fechas de despacho tampoco. La OV fuera del corte queda en **borrador** con el motivo; al cambiar la fecha se registra, o al día siguiente antes de las 12:00 con «Registrar ahora». |
+
+## Anexo: túnel automático a SAP y actualización automática (30-oct-2026)
+
+### Túnel inverso desde la VM del proveedor
+El Service Layer (`172.18.103.1:50000`) solo se alcanza desde la VM Windows del proveedor. PuTTY o `plink` abren desde esa VM un **túnel inverso** (`-R`) hacia AWS: en AWS queda `127.0.0.1:50000` y la app usa `SAP_SL_URL=https://127.0.0.1:50000/b1s/v1` con `SAP_SL_VERIFY=0`.
+
+- `deploy/tunel_sap.bat`: se copia a la VM, se ajusta la ruta de la llave y se pone en la carpeta Inicio del usuario (`shell:startup`). Reconecta solo; no requiere administrador.
+- En AWS, `/etc/ssh/sshd_config.d/tunel.conf` con `ClientAliveInterval 15` y `ClientAliveCountMax 3`: libera el puerto en menos de un minuto si la conexión se corta, para que el reintento pueda volver a abrirlo.
+- El túnel funciona mientras la sesión de Windows esté iniciada (cerrar la ventana de RDP no la cierra; «Cerrar sesión» sí). Para producción conviene una VPN o un acceso publicado solo para la IP de AWS, con autorización del proveedor.
+
+### Actualización automática desde GitHub
+`deploy/actualizar.sh` con el temporizador `operaciones-actualizar.timer` revisa la rama cada 5 minutos. Si hay commits nuevos:
+1. respalda la base;
+2. trae el código;
+3. instala las dependencias;
+4. aplica las migraciones y `app.cli init`;
+5. reinicia el servicio y comprueba que responda.
+
+Si no responde, vuelve al commit anterior. Registro: `/var/log/operaciones-actualizar.log`.

@@ -1,0 +1,8 @@
+[Unit]
+Description=Actualiza el Modulo de Operaciones desde GitHub si hay cambios
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /opt/operaciones/deploy/actualizar.sh
