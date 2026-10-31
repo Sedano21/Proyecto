@@ -198,6 +198,7 @@ def test_inspeccion_externa_fases_alertas_y_hallazgos(s, U):
     assert alerts_of(s, "HALLAZGO_TAREA", i.id)
     qm.close_inspection(U("asist.calidad"), i, "APROBADO", "92.5", None, ["r.jpg"], ["h1.jpg", "h2.jpg"])
     assert i.fase == "CERRADA" and i.n_hallazgos == 1 and i.puntaje == 92.5 and len(i.fotos_hallazgos) == 2
+    assert i.resultado == "BUENO"  # V14: 86–95 % bueno
     with pytest.raises(BusinessError):
         qm.close_finding(U("asist.calidad"), i, 1, "")
     qm.close_finding(U("asist.calidad"), i, 1, "Se cambió la malla")
@@ -244,13 +245,7 @@ def test_formatos_de_verificacion_por_puntos(s, U):
         qm.register_checklist(U("asist.calidad"), "LIMPIEZA_EXTERNAS", None, vals, {})
     r = qm.register_checklist(U("asist.calidad"), "LIMPIEZA_EXTERNAS", None, vals, {"0": "se limpió de nuevo"})
     assert r.resultado == "NO_CONFORME"
-    assert not CHECKLIST_CALIDAD["HIGIENE_PERSONAL"][2]
-    with pytest.raises(BusinessError):
-        qm.register_checklist(U("asist.calidad"), "HIGIENE_PERSONAL", None, {}, {})
-    with pytest.raises(BusinessError):
-        qm.save_points(U("asist.calidad"), "HIGIENE_PERSONAL", "Uñas cortas")
-    qm.save_points(U("jefe.calidad"), "HIGIENE_PERSONAL", "Uñas cortas\n\nCabello cubierto")
-    assert qm.checklist_points("HIGIENE_PERSONAL")[2][0][1] == ["Uñas cortas", "Cabello cubierto"]
+    assert "HIGIENE_PERSONAL" not in CHECKLIST_CALIDAD and "BPM" not in CHECKLIST_CALIDAD  # V14: PHS-003 propio
 
 
 def test_consolidado_exportar_e_importar_sin_duplicar(s, U):
@@ -359,7 +354,7 @@ def test_paginas_v13_cargan(app, s, U):
     lot = _lot(s)
     s.commit()
     for p in ("/calidad/linea", "/calidad/gestion", "/calidad/gestion?tab=visitas", f"/calidad/inspeccion/{i.id}",
-              f"/calidad/visita/{v.id}", "/calidad/verificacion/LIMPIEZA_LINEA", "/calidad/verificacion/BPM",
+              f"/calidad/visita/{v.id}", "/calidad/verificacion/LIMPIEZA_LINEA", "/calidad/verificacion/LIMPIEZA_EXTERNAS", "/calidad/higiene-personal", "/calidad/higiene-equipos",
               f"/calidad/lote/{lot.id}/fechas"):
         _get(app, "asist.calidad", p)
     _get(app, "coord.almacen", f"/calidad/visita/{v.id}")

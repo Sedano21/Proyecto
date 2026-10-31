@@ -2135,8 +2135,8 @@ CHECKLIST_CALIDAD = {
               "Vestuario mujeres: lavamanos, baño, ducha, casilleros", "Vestuario hombres: lavamanos, baño, ducha, casilleros",
               "Zona de lavamanos", "SS.HH. hombres", "Zona de comedor", "Parihuelas", "Zona de residuos",
               "Mat. de limpieza (tacho, recogedor, escoba)", "Orden - identificación"])]),
-    "LIMPIEZA_ALMACEN_PT": ("Gestión de higiene y saneamiento", "Control de limpieza del área de almacén de producto terminado, "
-                                                                "programa 5S y SST", [
+    "LIMPIEZA_ALMACEN_PT": ("PHS-002", "Control de limpieza del área de almacén de producto terminado, "
+                                       "programa 5S y SST", [
         ("", ["Pisos", "Paredes", "Techo - iluminación", "Puerta", "Racks productos importados", "Racks materia prima",
               "Miniracks x 5 kg", "Miniracks - suministros", "Parihuelas", "Mat. de limpieza (tacho, recogedor, escoba)",
               "Balanza", "Montacarga / stoka", "Escalera", "Estiba de producto", "Orden - identificación"]),
@@ -2146,8 +2146,8 @@ CHECKLIST_CALIDAD = {
         ("Programa de seguridad y salud", ["Pasadizos libres", "Equipo de protección personal en buen estado",
                                            "Apilamiento de sacos y producto terminado según lo establecido",
                                            "Escalera en buen estado para ser usada"])]),
-    "LIMPIEZA_LINEA": ("Gestión de higiene y saneamiento", "Control de limpieza de la línea de procesamiento automático, "
-                                                           "programa 5S y SST", [
+    "LIMPIEZA_LINEA": ("PHS-002", "Control de limpieza y desinfección del área de óptica y envasado automático, "
+                                  "programa 5S y SST", [
         ("", ["Pisos", "Paredes", "Techo - iluminación", "Cortina sanitaria", "Tolva 1 (para procesamiento óptico)", "Zaranda",
               "Gravimétrica", "Selector óptico", "Tolva 2 (envasado óptico)", "Elevadores 1, 2, 3", "Tanque de recepción de granos",
               "Tubos transportadores de granos", "Tolva máq. envasadora 01", "Tolva máq. envasadora 02", "Tolva máq. envasadora 03",
@@ -2158,9 +2158,17 @@ CHECKLIST_CALIDAD = {
         ("Programa de 5S", ["Área identificada y delimitada", "Ausencia de elementos innecesarios", "Se mantiene cada cosa en su lugar"]),
         ("Programa de seguridad y salud", ["Área libre de residuos en el piso", "Equipo de protección personal en buen estado",
                                            "Equipos y máquinas operativos y en buen estado", "Ausencia de cables sueltos"])]),
-    "HIGIENE_PERSONAL": ("Por recibir", "Control de higiene personal", []),
-    "BPM": ("Por recibir", "Verificación de buenas prácticas de manufactura (BPM)", []),
 }
+# V14 (31-oct-2026): «higiene del personal» es el PHS-003 (grilla por persona y día: HP, ES, U/T, UÑ, H), que llegó en
+# el archivo «BPM.pdf»; por eso ya no hay un formato «BPM» separado sin puntos. Tiene su propia pantalla.
+HIGIENE_PERSONAL = ("PHS-003", "Control de higiene de personal")
+HIGIENE_CRITERIOS = [("HP", "Higiene personal"), ("ES", "Estado de salud"), ("UT", "Uso de uniforme / tapaboca"),
+                     ("UN", "Uñas"), ("H", "Heridas")]
+HIGIENE_AREAS = [("SM", "Selección manual"), ("P", "Producción manual"), ("L", "Logística"), ("M", "Mantenimiento"),
+                 ("S", "Saneamiento")]
+# encabezado de los formatos de higiene y saneamiento (código, versión, fecha)
+ENCABEZADOS_PHS = {"LIMPIEZA_EXTERNAS": ("PHS-001", "02", "13/12/21"), "LIMPIEZA_ALMACEN_PT": ("PHS-002", "02", "13/12/21"),
+                   "LIMPIEZA_LINEA": ("PHS-002", "02", "13/12/21"), "HIGIENE_PERSONAL": ("PHS-003", "3", "22/05/23")}
 _LOG13 = ["JEFE_LOGISTICA"]
 _OPS13 = ["GERENCIA_OPERACIONES"]
 ALERT_TYPES += [
@@ -2234,3 +2242,29 @@ PARAMS += [
     ("liquidacion_proceso_pie", ["CORPORACIÓN PRODUCTIVA SAC", "RUC: 20517540341", "AV. AVIACIÓN 1560 - LA VICTORIA"], "list",
      "Documentos", "Pie del formato de liquidación de proceso CP-OPE-004.", "DEFINIDO", f"{V13B}: pie del formato"),
 ]
+
+# ---------------------------------------------------------------------------------------------------------------------
+# V14 (31-oct-2026): «ya no se cuenta con Gerencia de Operaciones, solo con jefatura; las aprobaciones de compras nacionales
+# e importaciones las aprueba el Gerente General Adjunto, que tiene el mismo poder que el Gerente General».
+V14 = "Indicaciones del 31-oct-2026 (V14)"
+GGA = "GERENTE_GENERAL_ADJUNTO"
+ROLES.append((GGA, "Gerente General Adjunto", "Gerencia", V14,
+              "Mismo poder que Gerencia General; aprueba compras nacionales e importaciones."))
+ROLE_PERMISSIONS[GGA] = [(p, o, f"{V14}: mismo poder que Gerencia General") for p, o, _ in ROLE_PERMISSIONS["GERENCIA_GENERAL"]]
+for _perm in ("compras.aprobar_mayor_volumen", "compras.autorizar_bajo_observacion"):
+    if not any(p == _perm for p, _, _ in ROLE_PERMISSIONS[GGA]):
+        ROLE_PERMISSIONS[GGA].append((_perm, "DEFINIDO", V14))
+    PERMISOS_RETIRADOS.append(("GERENCIA_OPERACIONES", _perm, V14))
+    ROLE_PERMISSIONS["GERENCIA_OPERACIONES"] = [x for x in ROLE_PERMISSIONS["GERENCIA_OPERACIONES"] if x[0] != _perm]
+# alertas: el GGA recibe lo mismo que Gerencia General; las de compras e importaciones dejan de ir a Gerencia de Operaciones
+_COMPRAS_IMPORT = {c for c, *_ in ALERT_TYPES if c.startswith(("COMPRA_", "IMPORT_"))}
+_ajuste = []
+for _c, _n, _a, _g, _p, _r, *_rest in ALERT_TYPES:
+    _nr = list(_r)
+    _quita = ["GERENCIA_OPERACIONES"] if _c in _COMPRAS_IMPORT and "GERENCIA_OPERACIONES" in _nr else []
+    _agrega = [GGA] if (("GERENCIA_GENERAL" in _nr) or _quita) and GGA not in _nr else []
+    _nr = [x for x in _nr if x not in _quita] + _agrega
+    if _quita or _agrega:
+        ALERTAS_ROLES_CAMBIO.append((_c, _quita, _agrega))
+    _ajuste.append((_c, _n, _a, _g, _p, _nr, *_rest))
+ALERT_TYPES[:] = _ajuste

@@ -1,0 +1,5 @@
+{% extends "base.html" %}{% from "_m.html" import ic %}
+{% block content %}<div class="page-head"><div><h1>Higiene de equipos y áreas</h1><p class="sub">Gestión de higiene y saneamiento · control de limpieza y desinfección, programa 5S y SST · C conforme / N/C no conforme</p></div></div>
+<div class="grid g3">{% for k, f in formatos.items() %}<div class="card"><h3>{{ f[1] }}</h3><p class="small muted">{{ f[0] }} · {{ f[2]|map(attribute=1)|map('length')|sum }} puntos de verificación</p>
+<p><a class="btn" href="{{ url_for('cal.checklist_format', formato=k) }}">Registrar</a> <a class="btn sec" href="{{ url_for('cal.records_report', formato=k) }}">Reporte</a></p></div>{% endfor %}</div>
+{% endblock %}

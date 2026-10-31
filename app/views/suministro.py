@@ -97,7 +97,7 @@ def moves():
                     prog = ssvc._when(f.get("prog_fecha"), f.get("prog_hora")) or f.get("programado_para")
                     if prog is None:
                         raise BusinessError("Indique el día del movimiento programado.")
-                carga = {k: f.get(f"carga_{k}") for k in ("tipo", "cantidad", "producto", "kg", "mp", "customer_id")}
+                carga = {k: f.get(f"carga_{k}") for k in ("tipo", "cantidad", "producto", "kg", "mp", "customer_id", "sacos")}
                 return ssvc.request_move(g.user, f.get("origen"), f.get("destino"), f.get("detalle", ""), f.get("cantidad", ""),
                                          f.get("prioridad"), f.get("almacen", ""), f.get("observacion", ""), prog,
                                          f.get("asignado_id") or None, f.get("aviso_min"), carga=carga)

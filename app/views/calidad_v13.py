@@ -181,10 +181,10 @@ def _findings(obj, back):
     f = request.form
     if f.get("accion") == "hallazgo":
         return act(lambda: qm.add_finding(g.user, obj, f.get("descripcion", ""), f.get("area", ""), f_date("plazo"),
-                                          (_fotos("foto", "hallazgo") or [""])[0]),
+                                          fotos=_fotos("foto", "hallazgo")),
                    "Hallazgo registrado y asignado como tarea al área.", back)
     if f.get("accion") == "levantar":
-        return act(lambda: qm.close_finding(g.user, obj, f.get("n"), f.get("evidencia", ""), (_fotos("foto", "levanta") or [""])[0]),
+        return act(lambda: qm.close_finding(g.user, obj, f.get("n"), f.get("evidencia", ""), fotos=_fotos("foto", "levanta")),
                    "Hallazgo levantado.", back)
     return None
 
@@ -272,3 +272,51 @@ def consolidated():
     nombre = f"consolidado_calidad{'_MP' if request.args.get('solo_mp') == '1' else ''}_{date.today():%Y%m%d}.xlsx"
     return send_file(io.BytesIO(data), as_attachment=True, download_name=nombre,
                      mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+
+# ------------------------------------------------------------------ V14: higiene del personal (PHS-003) y de equipos
+@bp.route("/higiene-personal", methods=["GET", "POST"])
+@perm_required("calidad.registrar")
+def personal_hygiene():
+    from ..catalogs import HIGIENE_AREAS, HIGIENE_CRITERIOS, HIGIENE_PERSONAL
+    if request.method == "POST":
+        f = request.form
+        filas = [{"nombre": n, "area": a, "obs": o, **{k: f.get(f"m_{k}_{i}") for k, _ in HIGIENE_CRITERIOS}}
+                 for i, (n, a, o) in enumerate(zip(f.getlist("nombre"), f.getlist("area"), f.getlist("obs")))]
+        return act(lambda: qm.register_personal_hygiene(g.user, f_date("fecha"), filas, f.get("observaciones", "")),
+                   lambda r: f"Registro #{r.id} guardado: {r.resultado.replace('_', ' ').lower()}.", url_for("cal.personal_hygiene"),
+                   redirect_fn=lambda r: url_for("cal.record_detail", rid=r.id))
+    return render_template("cal_higiene_personal.html", personas=qm.personnel_default() or [{"nombre": "", "area": ""}],
+                           criterios=HIGIENE_CRITERIOS, areas=HIGIENE_AREAS, codigo=HIGIENE_PERSONAL[0],
+                           nombre=HIGIENE_PERSONAL[1], hoy=date.today())
+
+
+@bp.route("/higiene-equipos")
+@perm_required("calidad.registrar", "calidad.ver")
+def equipment_hygiene():
+    return render_template("cal_higiene_equipos.html", formatos=CHECKLIST_CALIDAD)
+
+
+# ------------------------------------------------------------------ V14: reporte de registros (fecha o rango; PDF o Excel)
+@bp.route("/reporte")
+@perm_required("calidad.ver")
+def records_report():
+    from ..services.pdfreport import html_to_pdf
+    a = request.args
+    dia = f_date("dia")
+    desde, hasta = (dia, dia) if dia else (f_date("desde"), f_date("hasta"))
+    formatos = [x for x in a.getlist("formato") if x]
+    ids = [x for x in a.getlist("id") if x.isdigit()]
+    recs = qm.report_records(formatos, desde, hasta, ids)
+    salida = a.get("salida", "html")
+    nombre = f"registros_calidad_{date.today():%Y%m%d}"
+    if salida == "xlsx":
+        return send_file(io.BytesIO(qm.report_excel(recs)), as_attachment=True, download_name=f"{nombre}.xlsx",
+                         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    html = render_template("cal_reporte.html", recs=recs, nombre_de=qm.record_name, desde=desde, hasta=hasta,
+                           solo=bool(ids), print_mode=salida == "pdf")
+    if salida == "pdf":
+        titulo = "Registros de Calidad" if len(recs) != 1 else " ".join(qm.record_name(recs[0].formato)[::-1])
+        return send_file(io.BytesIO(html_to_pdf(html, titulo)), as_attachment=True, download_name=f"{nombre}.pdf",
+                         mimetype="application/pdf")
+    return html

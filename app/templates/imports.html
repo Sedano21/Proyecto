@@ -1,6 +1,6 @@
 {% extends "base.html" %}{% from "_m.html" import b, csrf %}{% from "_market.html" import market_form %}
 {% block content %}<h1>Importaciones</h1>
-<p class="muted small">Primera etapa: seguimiento por fases configurables con fechas y recordatorios; alerta de fase fuera de fecha; aviso de llegada a Almacén y Logística y de modificaciones a Gerencia de Operaciones (IF §11).</p>
+<p class="muted small">Primera etapa: seguimiento por fases configurables con fechas y recordatorios; alerta de fase fuera de fecha; aviso de llegada a Almacén y Logística y de modificaciones al Gerente General Adjunto (IF §11).</p>
 {% if can('importaciones.gestionar') %}<form method="post" class="card">{{ csrf() }}<div class="row"><div><label>Referencia</label><input name="referencia" required></div><div><label>Proveedor</label><input name="proveedor" required></div>
 <div><label>Artículo</label><input name="product_code" list="prods" required></div><div><label>Cantidad</label><input type="number" step="any" name="cantidad" required></div>
 <div><label>Inicio (embarque)</label><input type="date" name="fecha_inicio" required></div><div><label>Llegada estimada (opcional)</label><input type="date" name="fecha_llegada"></div>

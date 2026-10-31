@@ -96,11 +96,11 @@ def test_ejecucion_de_compra_requiere_cotizaciones_y_go(s, U):
     buy.quote(r, U("compras"), "Proveedor C", "COT-C", precio=3.1)
     buy.choose_quote(r, U("compras"), 0)
     assert len(r.cotizaciones) == 3 and r.proveedor == "Proveedor A"
-    with pytest.raises(BusinessError, match="Gerencia de Operaciones"):
+    with pytest.raises(BusinessError, match="Gerente General Adjunto"):
         buy.generate_order(r, U("compras"), "OC-9", date.today() + timedelta(days=3), "EXT-002")
     buy.request_go_approval(r, U("compras"))
     assert alerts_of(s, "COMPRA_APROBACION_GERENCIA", r.id)
-    buy.approve_go(r, U("gerente.operaciones"), True)
+    buy.approve_go(r, U("gerente.adjunto"), True)
     buy.generate_order(r, U("compras"), "OC-9", date.today() + timedelta(days=3), "EXT-002")
     assert r.estado == "ORDEN_GENERADA"
 
@@ -131,7 +131,7 @@ def test_requerimientos_consolidados_y_preprogramacion(s, U):
 def test_calidad_antes_durante_y_lote_vs_liquidacion(s, U):
     from app.services import production as prod
     from app.services import quality as q
-    rec = q.register(U("asist.calidad"), "PREVIO_PRODUCCION", {"personal_higiene": True, "equipos_calidad_higiene": False,
+    rec = q.register(U("asist.calidad"), "POST_PRODUCCION", {"limpieza_equipos": True, "producto_conforme": False,
                                                                "linea": "TRUER", "detalle": "Faja sucia"})
     assert rec.resultado == "NO_CONFORME" and alerts_of(s, "CALIDAD_NO_CONFORME")
     q.register(U("asist.produccion"), "LOTE_PRODUCIDO", {"cantidad": 90, "linea": "TRUER"}, "PT-903", "LQ-LOTE-1")

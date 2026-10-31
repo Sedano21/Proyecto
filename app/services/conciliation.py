@@ -65,7 +65,7 @@ class Collector:
 def can_resolve(user, d):
     if not has_perm(user, "conciliacion.resolver"):
         return False
-    if has_perm(user, "vista.total") or user.role_code in ("SISTEMAS", "GERENCIA_GENERAL"):
+    if has_perm(user, "vista.total") or user.role_code in ("SISTEMAS", "GERENCIA_GENERAL", "GERENTE_GENERAL_ADJUNTO"):
         return True
     r = db().get(Role, user.role_code)
     area = r.area if r else ""

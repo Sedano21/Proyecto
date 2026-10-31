@@ -16,6 +16,7 @@ DEMO_PASSWORD = "Demo2026!"
 DEMO_USERS = [
     # username, nombre, rol. Una cuenta por persona según los organigramas, con el nombre del puesto (sin nombres reales).
     ("gerente.general", "Gerencia General", "GERENCIA_GENERAL"),
+    ("gerente.adjunto", "Gerente General Adjunto", "GERENTE_GENERAL_ADJUNTO"),
     ("gerente.operaciones", "Gerencia de Operaciones", "GERENCIA_OPERACIONES"),
     ("sistemas", "Administrador de Sistemas", "SISTEMAS"),
     ("gerente.comercial", "Gerente Comercial", "GERENTE_COMERCIAL"),
@@ -272,7 +273,7 @@ def create_user(username, nombre, role, password=DEMO_PASSWORD, email=None):
              password_hash=generate_password_hash(password, **_hash_opts()))
     s.add(u)
     s.flush()
-    if role == "GERENCIA_GENERAL":
+    if role in ("GERENCIA_GENERAL", "GERENTE_GENERAL_ADJUNTO"):
         for t in C.GG_DIRECT_DEFAULT:
             s.add(GGAlertPreference(user_id=u.id, type_code=t, recibir_directo=True))
     return u

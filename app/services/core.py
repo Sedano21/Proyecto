@@ -73,6 +73,10 @@ def contingency():
     return c if c.get("activa") else {}
 
 
+# V14: el Gerente General Adjunto tiene el mismo poder que Gerencia General
+GERENCIA_GENERAL_ROLES = ("GERENCIA_GENERAL", "GERENTE_GENERAL_ADJUNTO")
+
+
 def audit(user, accion, entidad, entidad_id="", detalle=None):
     detalle = dict(detalle or {})
     if contingency():

@@ -120,6 +120,21 @@ def save_site(user, c, datos, site=None):
             setattr(site, k, (datos.get(k) or "").strip())
     if "activo" in datos:
         site.activo = str(datos["activo"]) in ("1", "on", "true")
+    if hasattr(datos, "getlist") and "c_nombre" in datos:  # V14: varios contactos, teléfonos y correos por lugar
+        import re
+        contactos = []
+        for n, t, m in zip(datos.getlist("c_nombre"), datos.getlist("c_telefono"), datos.getlist("c_correo")):
+            n, t, m = n.strip(), t.strip(), m.strip()
+            if not (n or t or m):
+                continue
+            correos = [x.strip() for x in re.split(r"[;,\s]+", m) if x.strip()]
+            for x in correos:
+                if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", x):
+                    raise BusinessError(f"Correo inválido: «{x}».")
+            contactos.append({"nombre": n, "telefono": t, "correo": ", ".join(correos)})
+        site.contactos = contactos
+        site.contacto = contactos[0]["nombre"] if contactos else ""
+        site.telefono = contactos[0]["telefono"] if contactos else ""
     if not site.nombre or not site.direccion or not site.distrito or not site.provincia:
         raise BusinessError("Nombre, dirección, distrito y provincia del lugar de entrega son obligatorios.")
     db().flush()

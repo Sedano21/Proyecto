@@ -208,7 +208,7 @@ def dashboard():
     tareas = alert_svc.by_priority(g.user, tareas)
     from ..services.shifts import pending_carryover
     com = None
-    if g.user.role_code in ("COORD_VENTAS", "JEFE_VENTAS", "GERENTE_COMERCIAL", "GERENCIA_GENERAL"):
+    if g.user.role_code in ("COORD_VENTAS", "JEFE_VENTAS", "GERENTE_COMERCIAL", "GERENCIA_GENERAL", "GERENTE_GENERAL_ADJUNTO"):
         from ..services.commercial_mgmt import home_summary
         com = home_summary(g.user)  # V7: metas por vendedor/canal/total (S/ y kg) y pedidos del mes en la portada
     return render_template("dashboard.html", k=k, prod=prod, hp=hoy_prod, mis_alertas=mis, tareas=tareas, desde=desde or "", hasta=hasta or "",
@@ -385,7 +385,7 @@ def alert_config():
 @bp.route("/alertas/preferencias", methods=["GET", "POST"])
 @login_required
 def gg_prefs():
-    if g.user.role_code != "GERENCIA_GENERAL":
+    if g.user.role_code not in ("GERENCIA_GENERAL", "GERENTE_GENERAL_ADJUNTO"):
         abort(403)
     tipos = list(db().execute(select(AlertType).order_by(AlertType.area, AlertType.nombre)).scalars())
     if request.method == "POST":
@@ -422,7 +422,7 @@ def help():
     """Manual de usuario por rol: el del propio rol; Sistemas y Gerencia General pueden consultar el de cualquier rol."""
     from .. import manual
     rol = request.args.get("rol") or g.user.role_code
-    if rol != g.user.role_code and g.user.role_code not in ("SISTEMAS", "GERENCIA_GENERAL"):
+    if rol != g.user.role_code and g.user.role_code not in ("SISTEMAS", "GERENCIA_GENERAL", "GERENTE_GENERAL_ADJUNTO"):
         rol = g.user.role_code
     r = db().get(Role, rol) or abort(404)
     return render_template("help.html", m=manual.for_role(r), rol=r,

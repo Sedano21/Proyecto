@@ -37,9 +37,23 @@ def home():
     muestras = list(db().execute(select(PurchaseRequest).where(PurchaseRequest.estado == "MUESTRA_EN_CALIDAD")).scalars())
     lotes = list(db().execute(select(StockLot).where(StockLot.cantidad > 0).order_by(StockLot.product_code, StockLot.lote)).scalars())
     fum = qsvc.fumigation_plan()
+    # V14: líneas en proceso de producción con su avance, merma y desviaciones (observaciones abiertas, alertas del parte)
+    from ..models import LineObservation
+    from ..services import parte as ptsvc
+    from ..services import prod_home
+    en_proceso = []
+    for f in prod_home.line_status()[0]:
+        r = f.get("parte")
+        if r is None or f["estado"] in ("SIN PROGRAMA",):
+            continue
+        lv = ptsvc.live(r)
+        obs = db().execute(select(LineObservation).where(LineObservation.linea == f["linea"],
+                                                         LineObservation.fase != "CERRADA")).scalars().all()
+        en_proceso.append({"f": f, "r": r, "live": lv, "obs": len(obs)})
+    from ..catalogs import HIGIENE_PERSONAL
     nombres = {k: v[1] + (" (retirado)" if k in qsvc.FORMATOS_RETIRADOS else "") for k, v in qsvc.FORMATOS.items()} \
-        | {k: v[1] for k, v in CHECKLIST_CALIDAD.items()}
-    return render_template("cal_home.html", pend=pend, recs=recs, formatos={k: v for k, v in qsvc.FORMATOS.items()
+        | {k: v[1] for k, v in CHECKLIST_CALIDAD.items()} | {"HIGIENE_PERSONAL": HIGIENE_PERSONAL[1]}
+    return render_template("cal_home.html", en_proceso=en_proceso, pend=pend, recs=recs, formatos={k: v for k, v in qsvc.FORMATOS.items()
                                                                           if k not in qsvc.FORMATOS_RETIRADOS | qsvc.FORMATOS_PRODUCCION},
                            formato=formato, sel=sel, desde=desde, hasta=hasta, dia=f_date("dia"), nombres=nombres,
                            checklists=CHECKLIST_CALIDAD, muestras=muestras,
@@ -114,10 +128,17 @@ def new_record(formato):
     lots = list(db().execute(select(StockLot).where(StockLot.cantidad > 0).order_by(StockLot.product_code)).scalars())
     from ..models import SanitationZone
     from ..services.quality_mgmt import external_warehouses
+    pre = {}  # V14: datos que el sistema ya conoce (p. ej. fechas de la fumigación puestas al bloquear el lote)
+    lid = request.args.get("lot_id")
+    lot_sel = db().get(StockLot, int(lid)) if lid and lid.isdigit() else None
+    if formato == "FUMIGACION" and lot_sel is not None and lot_sel.fumigacion:
+        fu = lot_sel.fumigacion
+        pre = {"inicio_fecha": fu.get("inicio", ""), "fin_fecha": fu.get("liberacion", ""), "zona": fu.get("zona", "")}
     zonas = [z.nombre for z in db().execute(select(SanitationZone).where(SanitationZone.activo.is_(True))
                                             .order_by(SanitationZone.nombre)).scalars()]
     return render_template("cal_form.html", formato=formato, fdef=qsvc.FORMATOS[formato], lots=lots, pcc1=PCC1_HUMEDAD,
-                           zonas=zonas, externos=external_warehouses(),
+                           zonas=zonas, externos=external_warehouses(), pre=pre, ref_tipo=request.args.get("referencia_tipo", ""),
+                           ref_id=request.args.get("referencia_id", ""), prod_ini=request.args.get("product_code", ""),
                            spec=SPEC_CALIDAD_SUPERIOR, pesos=CRITERIOS_PESO, peso_pend=CRITERIO_PESO_PENDIENTE,
                            lot_id=request.args.get("lot_id", ""))
 
@@ -126,6 +147,8 @@ def new_record(formato):
 @perm_required("calidad.ver", "distribucion.seguridad")
 def record_detail(rid):
     r = db().get(QualityRecord, rid) or abort(404)
+    if r.formato == "HIGIENE_PERSONAL":  # V14: PHS-003, grilla por persona
+        return redirect(url_for("cal.records_report", id=r.id))
     if r.formato in qsvc.FORMATOS:
         fdef = qsvc.FORMATOS[r.formato]
     elif r.formato in CHECKLIST_CALIDAD:
@@ -191,7 +214,7 @@ def _firma_path():
 def firma():
     """Imagen de la firma del certificado: se guarda en el servidor (fuera del repositorio) y la carga Sistemas."""
     if request.method == "POST":
-        if "config.editar" not in g.perms:
+        if "config.editar" not in g.perms and g.user.role_code != "JEFE_CALIDAD":  # V14: la carga la Jefa de Calidad
             abort(403)
         f = request.files.get("archivo")
         if not f or not f.filename.lower().endswith(".png"):

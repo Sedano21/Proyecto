@@ -295,7 +295,10 @@ def test_verificaciones_periodicas(s, U, new_order, today):
 # --------------------------- permisos ---------------------------------------
 def test_matriz_permisos_reglas_documentadas(s):
     def roles_con(perm):
-        return {rp.role_code for rp in s.query(RolePermission).filter_by(perm_code=perm)}
+        r = {rp.role_code for rp in s.query(RolePermission).filter_by(perm_code=perm)}
+        # V14: el Gerente General Adjunto tiene el mismo poder que Gerencia General
+        assert ("GERENCIA_GENERAL" in r) == ("GERENTE_GENERAL_ADJUNTO" in r), perm
+        return r - {"GERENTE_GENERAL_ADJUNTO"}
     # Q4: Gerencia General aprueba; Sistemas tiene acceso pero no aprueba
     assert roles_con("ov.cancelar") == {"COORD_VENTAS", "JEFE_VENTAS", "GERENCIA_GENERAL"}
     # Q13: Jefe o Coordinador de Logística; Q14: Jefe de Logística aprueba compras; Q16: Líder Operativo autoriza salida

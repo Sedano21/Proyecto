@@ -38,11 +38,22 @@ def requests():
         if r.fecha_programada and r.line_code:
             prog.setdefault((r.line_code, r.fecha_programada), []).append(r)
     carga = {(l.code, d): psvc.line_load_kg(l.code, d) for l in lines for d in dias}
+    # V14: capacidad por línea o por grupo compartido (RAUMAK 1 y 2), ajustada a la jornada de cada día
+    grupos = {l.code: psvc.capacity_group(l.code) for l in lines}
+    cap = {}
+    for l in lines:
+        g = grupos[l.code]
+        base = float(g["kg_dia"]) if g else (l.capacidad_kg_dia or 0)
+        for d in dias:
+            cap[(l.code, d)] = base * psvc.day_factor(d) if base else None
+            if g and len(g["lineas"]) > 1:  # carga del grupo compartido
+                carga[(l.code, "grupo", d)] = sum(carga.get((lc, d), 0) or psvc.line_load_kg(lc, d) for lc in g["lineas"])
     prods = [p for p, _ in psvc.bom_products()]
     from ..services.stock import ORDEN_ESTADOS_CERRADOS
     ovs = list(db().execute(select(SalesOrder).where(SalesOrder.estado.notin_(ORDEN_ESTADOS_CERRADOS))
                             .order_by(SalesOrder.fecha_compromiso)).scalars())
-    return render_template("prod_list.html", rows=rows, lines=lines, dias=dias, prog=prog, carga=carga, prods=prods, ovs=ovs)
+    return render_template("prod_list.html", rows=rows, lines=lines, dias=dias, prog=prog, carga=carga, prods=prods, ovs=ovs,
+                           grupos=grupos, cap=cap)
 
 
 @bp.route("/solicitud/<int:rid>", methods=["GET", "POST"])
@@ -206,7 +217,8 @@ def plan():
         select(ProductionRequest).where(ProductionRequest.estado.in_(psvc.OPEN_REQ)).order_by(ProductionRequest.id)).scalars()]
     faltan = [(r, m) for r, m in faltan if m]
     estados = {e.id: psvc.plan_status(e) for e in entradas}
-    return render_template("prod_plan.html", d=d, graf=graf, products=products, lineas=PRODUCTION_LINES, hoy=date.today(),
+    capa = psvc.capacity_vs_plan(d["desde"], d["hasta"])  # mismo periodo que el resto de la pantalla
+    return render_template("prod_plan.html", capa=capa, d=d, graf=graf, products=products, lineas=PRODUCTION_LINES, hoy=date.today(),
                            entradas=entradas, req=req, faltan=faltan, estados=estados,
                            nombre_periodo={"DIA": "diario", "SEMANA": "semanal", "MES": "mensual"}[d["periodo"]])
 

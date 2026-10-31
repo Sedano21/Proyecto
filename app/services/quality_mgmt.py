@@ -36,7 +36,7 @@ def _d(v):
 
 
 # ------------------------------------------------------------------ hallazgos con tareas
-def add_finding(user, obj, descripcion, area, plazo=None, foto=""):
+def add_finding(user, obj, descripcion, area, plazo=None, foto="", fotos=None):
     """Hallazgo de una inspección o visita: se asigna como tarea al área para su levantamiento."""
     _g(user)
     if not (descripcion or "").strip():
@@ -50,14 +50,15 @@ def add_finding(user, obj, descripcion, area, plazo=None, foto=""):
                     type(obj).__name__, obj.id, prioridad="ALTA", extra_roles=AREAS_TAREA[area],
                     dedup_key=f"HALLAZGO:{type(obj).__name__}:{obj.id}:{n}", creado_por=user)
     obj.hallazgos = list(obj.hallazgos or []) + [{"n": n, "descripcion": descripcion.strip(), "area": area,
-                                                  "plazo": _d(plazo).isoformat() if plazo else "", "foto": foto or "",
+                                                  "plazo": _d(plazo).isoformat() if plazo else "", "foto": foto or (fotos or [""])[0],
+                                                  "fotos": [x for x in ([foto] if foto else []) + list(fotos or []) if x],
                                                   "alert_id": a.id if a is not None else None, "estado": "ABIERTO",
                                                   "ts": now().isoformat(timespec="minutes")}]
     _log(obj, user, "HALLAZGO", n=n, area=area)
     return obj
 
 
-def close_finding(user, obj, n, evidencia="", foto=""):
+def close_finding(user, obj, n, evidencia="", foto="", fotos=None):
     if not (has_perm(user, "calidad.gestion") or has_perm(user, "alertas.gestionar")):
         raise BusinessError("Sin permiso.")
     hs = [dict(h) for h in obj.hallazgos or []]
@@ -66,7 +67,8 @@ def close_finding(user, obj, n, evidencia="", foto=""):
         raise BusinessError("Hallazgo no encontrado o ya levantado.")
     if not (evidencia or "").strip():
         raise BusinessError("Describa cómo se levantó el hallazgo.")
-    h.update({"estado": "LEVANTADO", "evidencia": evidencia.strip(), "foto_cierre": foto or "", "cerrado_por": user.nombre,
+    h.update({"estado": "LEVANTADO", "evidencia": evidencia.strip(), "foto_cierre": foto or (fotos or [""])[0],
+              "fotos_cierre": [x for x in ([foto] if foto else []) + list(fotos or []) if x], "cerrado_por": user.nombre,
               "cerrado_ts": now().isoformat(timespec="minutes")})
     obj.hallazgos = hs
     alerts.close_by_system(f"HALLAZGO:{type(obj).__name__}:{obj.id}:{h['n']}", "Hallazgo levantado")
@@ -110,15 +112,39 @@ def start_inspection(user, i, hora_inicio=""):
     return i
 
 
+# V14: calificación de inspecciones internas y externas por puntaje (%)
+CALIFICACIONES = [(70, "DESAPROBADO"), (86, "REGULAR"), (96, "BUENO"), (101, "MUY_BUENO")]
+
+
+def calificacion(puntaje):
+    """≤ 69 desaprobado · 70–85 regular · 86–95 bueno · 96–100 muy bueno (un puntaje con decimales entre dos rangos
+    toma el rango inferior, p. ej. 85,5 es regular)."""
+    if puntaje is None:
+        return None
+    p = float(puntaje)
+    for tope, nombre in CALIFICACIONES:
+        if p < tope:
+            return nombre
+    return "MUY_BUENO"
+
+
 def close_inspection(user, i, resultado, puntaje=None, n_hallazgos=None, fotos_resultado=None, fotos_hallazgos=None):
-    """Fase 3: aprobado o desaprobado, puntaje, número de hallazgos y fotos."""
+    """Fase 3: puntaje (que da la calificación), número de hallazgos y fotos. Sin puntaje, aprobado o desaprobado."""
     _g(user)
     if i.fase != "EN_PROCESO":
         raise BusinessError("Primero inicie la inspección.")
-    if resultado not in ("APROBADO", "DESAPROBADO"):
-        raise BusinessError("Indique si fue aprobada o desaprobada.")
     try:
-        i.puntaje = float(puntaje) if puntaje not in (None, "") else None
+        pt = float(puntaje) if puntaje not in (None, "") else None
+    except ValueError:
+        raise BusinessError("Puntaje inválido.")
+    if pt is not None and not 0 <= pt <= 100:
+        raise BusinessError("El puntaje va de 0 a 100 %.")
+    if pt is not None:
+        resultado = calificacion(pt)
+    elif resultado not in ("APROBADO", "DESAPROBADO"):
+        raise BusinessError("Indique el puntaje (o si fue aprobada o desaprobada).")
+    try:
+        i.puntaje = pt
         i.n_hallazgos = int(n_hallazgos) if n_hallazgos not in (None, "") else len(i.hallazgos or [])
     except ValueError:
         raise BusinessError("Puntaje o número de hallazgos inválido.")
@@ -127,7 +153,7 @@ def close_inspection(user, i, resultado, puntaje=None, n_hallazgos=None, fotos_r
     i.fotos_hallazgos = list(i.fotos_hallazgos or []) + list(fotos_hallazgos or [])
     _log(i, user, "CERRADA", resultado=resultado, puntaje=i.puntaje)
     if i.tipo == "EXTERNA":
-        alerts.emit("INSPECCION", f"Inspección {i.empresa}: {resultado.lower()}" + (f" ({i.puntaje:g} puntos)" if i.puntaje is not None else ""),
+        alerts.emit("INSPECCION", f"Inspección {i.empresa}: {resultado.replace('_', ' ').lower()}" + (f" ({i.puntaje:g} %)" if i.puntaje is not None else ""),
                     f"{i.n_hallazgos or 0} hallazgo(s). Cliente: {i.cliente}.", "Inspection", i.id,
                     prioridad="ALTA" if resultado == "DESAPROBADO" else "MEDIA", dedup_key=f"INSP:{i.id}:R", creado_por=user)
     audit(user, "INSPECCION_CERRADA", "Inspection", i.id, {"resultado": resultado, "puntaje": i.puntaje})
@@ -371,3 +397,129 @@ def import_consolidated(user, path):
     db().flush()
     audit(user, "CALIDAD_CONSOLIDADO_CARGADO", "QualityRecord", "", {"registros": n, "omitidas": omitidas})
     return {"cargados": n, "omitidos": omitidas, "errores": errores}
+
+
+# ------------------------------------------------------------------ V14: higiene del personal PHS-003
+_AREA_DE = {"Producción": "P", "Logística": "L", "Almacén": "L", "Distribución": "L", "Mantenimiento": "M",
+            "Saneamiento": "S", "Selección": "SM"}
+
+
+def personnel_default():
+    """Personal para el control del día: los colaboradores activos registrados en el sistema (sin documento)."""
+    from ..models import Worker
+    out = []
+    for w in db().execute(select(Worker).where(Worker.activo.is_(True)).order_by(Worker.area, Worker.nombre)).scalars():
+        area = "SM" if "SEL" in (w.linea or "").upper() or "SEL" in (w.sublinea or "").upper() else _AREA_DE.get(w.area, "P")
+        out.append({"nombre": w.nombre, "area": area})
+    return out
+
+
+def register_personal_hygiene(user, fecha, filas, observaciones=""):
+    """PHS-003: por cada persona, C (conforme) o X (no conforme) en HP, ES, U/T, UÑ y H; si hay una X, la observación o
+    acción correctiva es obligatoria."""
+    from ..catalogs import HIGIENE_AREAS, HIGIENE_CRITERIOS, HIGIENE_PERSONAL
+    if not has_perm(user, "calidad.registrar"):
+        raise BusinessError("Registra Calidad.")
+    areas = {k for k, _ in HIGIENE_AREAS}
+    personas, nc = [], []
+    for f in filas:
+        nombre = " ".join(str(f.get("nombre") or "").split())
+        if not nombre:
+            continue
+        marcas = {}
+        for k, lbl in HIGIENE_CRITERIOS:
+            v = str(f.get(k) or "").upper()
+            if v not in ("C", "X"):
+                raise BusinessError(f"{nombre}: marque ✓ o X en «{lbl}».")
+            marcas[k] = v
+        obs = (f.get("obs") or "").strip()
+        malos = [lbl for k, lbl in HIGIENE_CRITERIOS if marcas[k] == "X"]
+        if malos and not obs:
+            raise BusinessError(f"{nombre}: indique la observación o acción correctiva ({', '.join(malos)}).")
+        area = (f.get("area") or "").upper()
+        personas.append({"nombre": nombre, "area": area if area in areas else "", "marcas": marcas, "obs": obs})
+        if malos:
+            nc.append(f"{nombre}: {', '.join(malos)}")
+    if not personas:
+        raise BusinessError("Registre al menos una persona.")
+    r = QualityRecord(formato="HIGIENE_PERSONAL", codigo_formato=HIGIENE_PERSONAL[0], fecha=_d(fecha) or date.today(),
+                      datos={"personas": personas}, resultado="NO_CONFORME" if nc else "CONFORME",
+                      observaciones=(observaciones or "").strip() or "; ".join(nc), user_id=user.id)
+    db().add(r)
+    db().flush()
+    if nc:
+        alerts.emit("CALIDAD_NO_CONFORME", f"{HIGIENE_PERSONAL[1]}: {len(nc)} persona(s) no conforme(s)", "; ".join(nc[:6]),
+                    "QualityRecord", r.id, creado_por=user)
+    audit(user, "CALIDAD_REGISTRO", "QualityRecord", r.id, {"formato": "HIGIENE_PERSONAL", "personas": len(personas), "nc": len(nc)})
+    return r
+
+
+# ------------------------------------------------------------------ V14: reportes por fecha o rango (PDF o Excel)
+def report_records(formatos=None, desde=None, hasta=None, ids=None):
+    q = select(QualityRecord)
+    if ids:
+        q = q.where(QualityRecord.id.in_([int(i) for i in ids]))
+    else:
+        hasta = hasta or date.today()
+        desde = desde or hasta
+        q = q.where(QualityRecord.fecha >= desde, QualityRecord.fecha <= hasta)
+        if formatos:
+            q = q.where(QualityRecord.formato.in_(list(formatos)))
+    return list(db().execute(q.order_by(QualityRecord.formato, QualityRecord.fecha, QualityRecord.id)).scalars())
+
+
+def record_name(formato):
+    from ..catalogs import CHECKLIST_CALIDAD, HIGIENE_PERSONAL
+    from .quality import FORMATOS
+    if formato == "HIGIENE_PERSONAL":
+        return HIGIENE_PERSONAL
+    if formato in CHECKLIST_CALIDAD:
+        return CHECKLIST_CALIDAD[formato][:2]
+    if formato in FORMATOS:
+        return FORMATOS[formato][:2]
+    return (formato, formato)
+
+
+def report_excel(recs):
+    """Un libro: una hoja por formato con una fila por registro (en el PHS-003, una fila por persona)."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill
+    from ..catalogs import HIGIENE_CRITERIOS
+    from .quality import FORMATOS
+    wb = Workbook()
+    wb.remove(wb.active)
+    por = defaultdict(list)
+    for r in recs:
+        por[r.formato].append(r)
+    for f, rs in por.items():
+        cod, nom = record_name(f)
+        ws = wb.create_sheet(f[:31])
+        ws.append([f"{nom} ({cod})"])
+        if f == "HIGIENE_PERSONAL":
+            ws.append(["Fecha", "N.°", "Nombre del personal", "Área"] + [lbl for _, lbl in HIGIENE_CRITERIOS] + ["Observación", "Registró"])
+            for r in rs:
+                for i, p in enumerate((r.datos or {}).get("personas", []), start=1):
+                    ws.append([r.fecha, i, p["nombre"], p.get("area", "")] + [("✓" if p["marcas"].get(k) == "C" else "X")
+                                                                             for k, _ in HIGIENE_CRITERIOS]
+                              + [p.get("obs", ""), r.user.nombre if r.user else ""])
+        else:
+            campos = [(c, l) for c, l, _ in FORMATOS[f][2]] if f in FORMATOS else []
+            puntos = list(dict.fromkeys(p for r in rs for p in (r.datos or {}).get("marcas", {})))
+            ws.append(["N.°", "Fecha", "Producto", "Lote", "Resultado", "Observaciones", "Registró"] + [l for _, l in campos] + puntos)
+            for r in rs:
+                d = r.datos or {}
+                ws.append([r.id, r.fecha, r.product_code or "", r.lote or "", r.resultado or "", r.observaciones or "",
+                           r.user.nombre if r.user else ""]
+                          + [str(d.get(c, "")) if isinstance(d.get(c), (list, dict)) else d.get(c, "") for c, _ in campos]
+                          + [("C" if (d.get("marcas") or {}).get(p) == "C" else "N/C" if (d.get("marcas") or {}).get(p) else "")
+                             for p in puntos])
+        for c in ws[2]:
+            c.font = Font(bold=True, color="FFFFFF")
+            c.fill = PatternFill("solid", fgColor="007A3D")
+        ws["A1"].font = Font(bold=True, size=12)
+        ws.freeze_panes = "A3"
+    if not wb.worksheets:
+        wb.create_sheet("Sin registros").append(["No hay registros con ese filtro."])
+    out = io.BytesIO()
+    wb.save(out)
+    return out.getvalue()

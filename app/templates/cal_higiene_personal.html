@@ -1,0 +1,16 @@
+{% extends "base.html" %}{% from "_m.html" import b, csrf, ic %}
+{% block content %}<div class="page-head"><div><h1>{{ nombre }}</h1><p class="sub">{{ codigo }} · registro diario · ✓ conforme / X no conforme · HP: higiene personal · ES: estado de salud · U/T: uso de uniforme / tapaboca · UÑ: uñas · H: heridas</p></div>
+<a class="btn sec" href="{{ url_for('cal.records_report', formato='HIGIENE_PERSONAL') }}">Reporte</a></div>
+<form method="post" class="card">{{ csrf() }}<div class="row"><div><label class="req">Fecha</label><input type="date" name="fecha" value="{{ hoy.isoformat() }}" required></div></div>
+<p class="small muted">La lista sale del personal activo registrado en el sistema; agregue o quite personas con «+» o ×. Todas las casillas empiezan en ✓: cambie a X solo lo no conforme e indique la observación o acción correctiva. Áreas: {% for k, t in areas %}{{ k }} {{ t }}{{ ', ' if not loop.last }}{% endfor %}.</p>
+<div class="tw"><table class="small"><thead><tr><th>N.°</th><th>Nombre del personal</th><th>Área</th>{% for k, t in criterios %}<th title="{{ t }}">{{ {'UT': 'U/T', 'UN': 'UÑ'}.get(k, k) }}</th>{% endfor %}<th>Observación / acción correctiva</th><th></th></tr></thead><tbody id="pers">
+{% for p in personas %}{% set i = loop.index0 %}<tr class="dynrow"><td>{{ loop.index }}</td><td><input name="nombre" value="{{ p.nombre }}" aria-label="Nombre" style="min-width:180px"></td>
+<td><select name="area" aria-label="Área"><option value="">—</option>{% for k, t in areas %}<option value="{{ k }}" {{ 'selected' if p.area == k }}>{{ k }}</option>{% endfor %}</select></td>
+{% for k, t in criterios %}<td><select name="m_{{ k }}_{{ i }}" data-mk="{{ k }}" aria-label="{{ t }}"><option value="C">✓</option><option value="X">X</option></select></td>{% endfor %}
+<td><input name="obs" aria-label="Observación" style="min-width:160px"></td><td><button type="button" class="ibtn" data-delrow aria-label="Quitar persona">×</button></td></tr>{% endfor %}</tbody></table></div>
+<p><button type="button" class="sec small" data-addrow="#pers">{{ ic('plus') }} Agregar persona</button></p>
+<label>Observaciones generales</label><input name="observaciones" style="width:100%"><p><button>Guardar registro del día</button></p></form>
+<script>(function(){var tb=document.getElementById('pers');function renum(){[].forEach.call(tb.querySelectorAll('tr.dynrow'),function(tr,i){tr.cells[0].textContent=i+1;[].forEach.call(tr.querySelectorAll('[data-mk]'),function(s){s.name='m_'+s.getAttribute('data-mk')+'_'+i;if(!s.value)s.value='C';});});}
+tb.addEventListener('change',renum);document.addEventListener('click',function(e){if(e.target.closest('[data-addrow="#pers"],[data-delrow]'))setTimeout(renum,0);});
+document.querySelector('form.card').addEventListener('submit',renum);})();</script>
+{% endblock %}

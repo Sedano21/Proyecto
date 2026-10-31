@@ -34,7 +34,7 @@ def _check_perm(user):
 def managed_areas(user):
     """V7: cada responsable gestiona los turnos de su propia área (Logística incluye Almacén y Distribución);
     Gerencias y Sistemas, todas. None = todas."""
-    if user.role_code in ("GERENCIA_GENERAL", "GERENCIA_OPERACIONES", "SISTEMAS"):
+    if user.role_code in ("GERENCIA_GENERAL", "GERENTE_GENERAL_ADJUNTO", "GERENCIA_OPERACIONES", "SISTEMAS"):
         return None
     area = user.role.area if user.role else ""
     extra = (param("turnos_areas_a_cargo", {}) or {}).get(area, [])

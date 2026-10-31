@@ -230,6 +230,8 @@ class CustomerSite(Base):
     horario_recepcion: Mapped[str] = mapped_column(String(60), default="")
     contacto: Mapped[str] = mapped_column(String(120), default="")
     telefono: Mapped[str] = mapped_column(String(60), default="")
+    # V14: uno o varios contactos por lugar de entrega, cada uno con teléfono y correo: [{nombre, telefono, correo}]
+    contactos: Mapped[list] = mapped_column(JSON, default=list)
     activo: Mapped[bool] = mapped_column(Boolean, default=True)
     customer = relationship("Customer", back_populates="sites")
 
@@ -2169,7 +2171,7 @@ class Inspection(Base):
     fase: Mapped[str] = mapped_column(String(15), default="PROGRAMADA")  # PROGRAMADA / EN_PROCESO / CERRADA
     n_hallazgos: Mapped[int | None] = mapped_column(Integer, nullable=True)
     puntaje: Mapped[float | None] = mapped_column(Float, nullable=True)
-    resultado: Mapped[str] = mapped_column(String(15), default="")  # APROBADO / DESAPROBADO
+    resultado: Mapped[str] = mapped_column(String(15), default="")  # DESAPROBADO / REGULAR / BUENO / MUY_BUENO (o APROBADO sin puntaje)
     fotos_resultado: Mapped[list] = mapped_column(JSON, default=list)
     fotos_hallazgos: Mapped[list] = mapped_column(JSON, default=list)
     hallazgos: Mapped[list] = mapped_column(JSON, default=list)  # [{n, descripcion, area, alert_id, estado}]

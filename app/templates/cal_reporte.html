@@ -1,0 +1,16 @@
+{% extends "base.html" %}{% from "_m.html" import b %}{% from "_cal.html" import galeria %}
+{% block content %}
+{% if not print_mode %}<div class="noprint page-head"><div><h1>Reporte de registros de Calidad</h1><p class="sub">{{ recs|length }} registro(s){% if not solo %} · {{ desde|d if desde else 'hoy' }}{{ ' – ' ~ (hasta|d) if hasta and hasta != desde }}{% endif %}</p></div></div>
+<form method="get" class="card noprint"><div class="row"><div><label>Día</label><input type="date" name="dia"></div><div><label>o desde</label><input type="date" name="desde" value="{{ desde.isoformat() if desde }}"></div><div><label>hasta</label><input type="date" name="hasta" value="{{ hasta.isoformat() if hasta }}"></div>
+{% for f in request.args.getlist('formato') %}<input type="hidden" name="formato" value="{{ f }}">{% endfor %}{% for i in request.args.getlist('id') %}<input type="hidden" name="id" value="{{ i }}">{% endfor %}
+<div><button class="sec" name="salida" value="html">Ver</button> <button name="salida" value="pdf">Descargar PDF</button> <button class="sec" name="salida" value="xlsx">Descargar Excel</button></div></div></form>{% endif %}
+{% for r in recs %}{% set nm = nombre_de(r.formato) %}<section class="card"><h3>{{ nm[1] }} <span class="small muted">{{ nm[0] }}</span></h3>
+<p class="small">Registro #{{ r.id }} · fecha {{ r.fecha|d }} · {{ r.product_code or '' }} {{ r.lote }} · resultado <b>{{ (r.resultado or '-')|replace('_', ' ') }}</b> · registró {{ r.user.nombre if r.user }}</p>
+{% if r.formato == 'HIGIENE_PERSONAL' %}<table class="small"><thead><tr><th>N.°</th><th>Nombre</th><th>Área</th><th>HP</th><th>ES</th><th>U/T</th><th>UÑ</th><th>H</th><th>Observación</th></tr></thead><tbody>
+{% for p in r.datos.personas %}<tr><td>{{ loop.index }}</td><td>{{ p.nombre }}</td><td>{{ p.area }}</td>{% for k in ['HP','ES','UT','UN','H'] %}<td>{{ '✓' if p.marcas[k] == 'C' else 'X' }}</td>{% endfor %}<td>{{ p.obs }}</td></tr>{% endfor %}</tbody></table>
+{% elif r.datos.marcas %}<table class="small"><thead><tr><th>Punto de verificación</th><th>C / N/C</th><th>Observación / acción correctiva</th></tr></thead><tbody>
+{% for p, m in r.datos.marcas.items() %}<tr><td>{{ p }}</td><td>{{ 'C' if m == 'C' else 'N/C' }}</td><td>{{ (r.datos.observaciones or {}).get(p, '') }}</td></tr>{% endfor %}</tbody></table>
+{% else %}<table class="small">{% for k, v in r.datos.items() if not k.startswith('_') and v not in [none, ''] %}<tr><td>{{ k|replace('_', ' ')|capitalize }}</td><td>{{ '✓' if v is sameas true else ('X' if v is sameas false else v) }}</td></tr>{% endfor %}</table>{% endif %}
+{% if r.observaciones %}<p class="small"><b>Observaciones:</b> {{ r.observaciones }}</p>{% endif %}{{ galeria(r.adjuntos) }}</section>
+{% else %}<p class="muted">No hay registros con ese filtro.</p>{% endfor %}
+{% endblock %}

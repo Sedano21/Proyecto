@@ -1091,3 +1091,40 @@ def edit_bom_line(user, line, cantidad=None, componente=None, motivo=""):
                     f"Motivo: {motivo.strip()}", "BOMVersion", v.id, creado_por=user)
     audit(user, "BOM_EDITADA", "BOMLine", line.id, {"antes": antes, "motivo": motivo})
     return line
+
+
+def capacity_vs_plan(desde, hasta):
+    """V14: por grupo de capacidad (tabla de capacidades por línea), en el periodo: capacidad real (kg/día × jornadas
+    operativas), programada (solicitudes programadas y plan con línea, en kg) y ejecutada (kg de los partes de
+    producción cerrados o en curso), con su utilización."""
+    from ..models import ProductionPlan, ProductionReport
+    dias = [desde + timedelta(days=i) for i in range((hasta - desde).days + 1)]
+    jornadas = sum(day_factor(d) for d in dias)
+    out = []
+    for g in param("capacidad_lineas", []) or []:
+        lineas = list(g.get("lineas") or [])
+        cap = float(g.get("kg_dia") or 0) * jornadas
+        prog = sum(r.cantidad * ((r.product.peso_kg if r.product else 0) or 0) for r in db().execute(
+            select(ProductionRequest).where(ProductionRequest.line_code.in_(lineas), ProductionRequest.fecha_programada >= desde,
+                                            ProductionRequest.fecha_programada <= hasta,
+                                            ProductionRequest.estado.in_(("PROGRAMADA", "EN_PROCESO", "COMPLETADA")))).scalars())
+        plan = 0.0
+        for p in db().execute(select(ProductionPlan).where(ProductionPlan.line_code.in_(lineas), ProductionPlan.fecha >= desde,
+                                                           ProductionPlan.fecha <= hasta)).scalars():
+            prod = db().get(Product, p.product_code)
+            plan += (p.cantidad or 0) * ((prod.peso_kg if prod else 0) or 0)
+        ejec = 0.0
+        for r in db().execute(select(ProductionReport).where(ProductionReport.linea.in_(lineas), ProductionReport.fecha >= desde,
+                                                             ProductionReport.fecha <= hasta,
+                                                             ProductionReport.estado.notin_(("PROGRAMADO", "ANULADO")))).scalars():
+            if r.tipo == "ENVASADO" and r.unidades and r.presentacion_kg:
+                ejec += r.unidades * r.presentacion_kg
+            else:
+                ejec += (r.granel_kg or 0) + (r.mp_kg or 0) or (r.peso_entrada_kg or 0)
+        programada = max(prog, plan)
+        pct = (lambda x: round(100 * x / cap, 1) if cap else None)
+        out.append({"grupo": g.get("grupo"), "proceso": {"SELECCION": "Selección", "ENVASADO": "Envasado"}.get(g.get("proceso"), (g.get("proceso") or "").title()), "lineas": lineas, "kg_dia": g.get("kg_dia"),
+                    "capacidad": round(cap, 1), "programada": round(programada, 1), "ejecutada": round(ejec, 1),
+                    "pct_programada": pct(programada), "pct_ejecutada": pct(ejec),
+                    "cumplimiento": round(100 * ejec / programada, 1) if programada else None})
+    return {"desde": desde, "hasta": hasta, "jornadas": jornadas, "filas": out}

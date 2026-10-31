@@ -103,10 +103,12 @@ def test_certificado_con_membrete_y_firma_solo_aprobado(app, s, U):
     assert "logo_cosecha_andina.png" in html and "marca_agua_cosecha_andina.png" in html
     assert "Av. Aviación Nº1560" in html and "Jefe de Aseguramiento de Calidad" in html
     assert "La firma se imprime solo cuando el certificado está aprobado" in html
-    # la firma la carga Sistemas (no Calidad) y no se publica sin sesión
-    tok = csrf(c, "/calidad/certificados")
-    r = c.post("/calidad/firma", data={"_csrf": tok, "archivo": (io.BytesIO(b"\x89PNG"), "f.png")},
-               content_type="multipart/form-data")
+    # V14: la firma la carga la Jefatura de Calidad (o Sistemas); otro perfil de Calidad no, y no se publica sin sesión
+    c3 = app.test_client()
+    login(c3, "asist.calidad")
+    tok = csrf(c3, "/calidad/certificados")
+    r = c3.post("/calidad/firma", data={"_csrf": tok, "archivo": (io.BytesIO(b"\x89PNG"), "f.png")},
+                content_type="multipart/form-data")
     assert r.status_code == 403
 
 

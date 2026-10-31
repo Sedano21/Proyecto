@@ -735,7 +735,7 @@ def decide_partial(order, user, aprobar, comentario="", fecha_saldo=None):
     if order.decision_parcial == "APROBADA":
         raise BusinessError("El despacho parcial ya fue aprobado.")
     pendientes = partial_pending_roles(order)
-    if user.role_code == "GERENCIA_GENERAL":
+    if user.role_code in ("GERENCIA_GENERAL", "GERENTE_GENERAL_ADJUNTO"):
         en_nombre = pendientes if str(param("parcial_modo", "CUALQUIERA")).upper() == "TODOS" else pendientes[:1]
     elif user.role_code in pendientes:
         en_nombre = [user.role_code]

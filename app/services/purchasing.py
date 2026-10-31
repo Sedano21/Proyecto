@@ -260,7 +260,7 @@ def choose_quote(r, user, idx):
 def request_go_approval(r, user):
     _require_compras(user)
     if not needs_go_approval(r):
-        raise BusinessError("La compra no requiere aprobación de Gerencia de Operaciones.")
+        raise BusinessError("La compra no requiere aprobación de Gerencia General.")
     if r.estado != "EN_COTIZACION":
         raise BusinessError("Primero registre las cotizaciones (y la muestra aprobada por Calidad si aplica).")
     minimo = int(param("cotizaciones_minimas_compra", 1) or 1)
@@ -278,7 +278,7 @@ def request_go_approval(r, user):
 
 def approve_go(r, user, aprobar, comentario=""):
     if not has_perm(user, "compras.aprobar_mayor_volumen"):
-        raise BusinessError("Aprueba Gerencia de Operaciones.")
+        raise BusinessError("Aprueba el Gerente General Adjunto (o Gerencia General).")
     if r.estado != "PENDIENTE_APROBACION":
         raise BusinessError("La compra no está pendiente de aprobación.")
     if aprobar:
@@ -297,7 +297,7 @@ def generate_order(r, user, numero_oc, fecha_prevista, warehouse_code):
     if r.requiere_muestra and r.resultado_muestra != "APROBADA":
         raise BusinessError("La muestra debe estar aprobada por Calidad.")
     if needs_go_approval(r):
-        raise BusinessError("La ejecución de la compra requiere la aprobación de Gerencia de Operaciones "
+        raise BusinessError("La ejecución de la compra requiere la aprobación del Gerente General Adjunto "
                             "(pídala con las cotizaciones registradas).")
     if not numero_oc.strip() or not fecha_prevista:
         raise BusinessError("Indique número de orden y fecha prevista de recepción.")
@@ -353,7 +353,7 @@ def receive(r, user, cantidad, lote, fecha_venc=None, diferencias=""):
 
 def authorize_under_observation(r, user, observaciones):
     if not has_perm(user, "compras.autorizar_bajo_observacion"):
-        raise BusinessError("Solo Gerencia de Operaciones autoriza recibir bajo observaciones (IF §10.8).")
+        raise BusinessError("Autoriza recibir bajo observaciones el Gerente General Adjunto (o Gerencia General).")
     if r.estado != "RECIBIDA_CON_DIFERENCIAS":
         raise BusinessError("Solo aplica a recepciones con diferencias.")
     if not observaciones.strip():

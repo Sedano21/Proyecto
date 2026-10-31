@@ -319,8 +319,8 @@ def move_points(almacen=""):
     return list(dict.fromkeys(list(cfg.get(almacen or "", [])) + list(cfg.get("*", []))))
 
 
-TIPOS_CARGA = {"PALLET_PT": "Pallet de PT", "MERMA": "Merma", "REMANENTE": "Remanente de MP", "MUESTRA": "Muestra",
-               "PALLET": "Pallet (vacío)"}
+TIPOS_CARGA = {"PALLET_PT": "Pallet de PT", "GRANEL": "Granel", "MATERIA_PRIMA": "Materia prima", "MERMA": "Merma",
+               "REMANENTE": "Remanente de MP", "MUESTRA": "Muestra", "PALLET": "Pallet (vacío)"}  # V14: granel y MP
 
 
 def move_cargo(datos):
@@ -361,6 +361,15 @@ def move_cargo(datos):
     elif tipo == "MERMA":
         c["kg"] = num("kg", "el peso en kg")
         det = f"Merma {c['kg']:g} kg"
+    elif tipo in ("GRANEL", "MATERIA_PRIMA"):  # V14: kg (o sacos) y el artículo
+        c["kg"] = num("kg", "el peso en kg")
+        tipos = ("GR",) if tipo == "GRANEL" else ("MP",)
+        p = prod("mp", tipos, "granel" if tipo == "GRANEL" else "materia prima")
+        c["mp"] = p.code
+        if str(datos.get("sacos") or "").strip():
+            c["sacos"] = num("sacos", "la cantidad de sacos", True)
+        det = (f"{TIPOS_CARGA[tipo]} {p.code} {p.descripcion}: {c['kg']:g} kg"
+               + (f" ({c['sacos']} sacos)" if c.get("sacos") else ""))
     elif tipo == "REMANENTE":
         c["kg"] = num("kg", "el peso en kg")
         p = prod("mp", ("MP", "GR"), "materia prima")

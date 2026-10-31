@@ -156,11 +156,11 @@ FORMATOS.update({
 for _k, (_c, _n, _campos) in list(FORMATOS.items()):
     FORMATOS[_k] = (_c, _n, [(k, l, "time" if (k == "hora" or k.endswith("_hora")) and t == "text" else t) for k, l, t in _campos])
 FORMATOS["FUMIGACION"][2].insert(0, ("zona", "Zona (lugar de la fumigación)", "zona"))
-FORMATOS_RETIRADOS = {"PROCESO"}
+FORMATOS_RETIRADOS = {"PROCESO", "PREVIO_PRODUCCION"}  # V14: higiene del personal (PHS-003) y de equipos por separado
 FORMATOS_PRODUCCION = {"LOTE_PRODUCIDO"}
 # formatos por etapa del proceso (pantalla de Calidad)
 ETAPAS_PRODUCCION = {
-    "Antes de producir": ["PREVIO_PRODUCCION", "RECEPCION_MP", "RECEPCION_IMPORTADO", "MUESTREO", "DISENO_BOBINA"],
+    "Antes de producir": ["RECEPCION_MP", "RECEPCION_IMPORTADO", "MUESTREO", "DISENO_BOBINA"],
     "Durante la producción": ["CONTROL_GRANOS", "CONTROL_PESOS"],
     "Después de producir": ["POST_PRODUCCION", "ANALISIS_LOTE", "INSPECCION_CARGA", "NO_CONFORME"],
 }
@@ -351,6 +351,14 @@ def register(user, formato, datos, product_code=None, lote="", lot_id=None, resu
         _apply_fumigation(rec, user)
     if formato == "ANALISIS_LOTE" and lote:
         refresh_draft_certificates(lote, user)
+    if formato == "MUESTREO" and referencia_tipo == "COMPRA" and referencia_id and resultado:
+        # V14: la ficha de muestreo (CP-FOR-CAL-10) de la compra nacional aprueba o rechaza su muestra
+        from ..models import PurchaseRequest
+        from .purchasing import evaluate_sample
+        pr = db().get(PurchaseRequest, int(referencia_id))
+        if pr is not None and pr.estado == "MUESTRA_EN_CALIDAD" and has_perm(user, "calidad.evaluar_muestra"):
+            evaluate_sample(pr, user, resultado in ("APROBADO", "CONFORME"),
+                            f"Ficha de muestreo #{rec.id}. {observaciones or ''}".strip())
     audit(user, "CALIDAD_REGISTRO", "QualityRecord", rec.id, {"formato": formato, "resultado": rec.resultado})
     return rec
 
@@ -510,10 +518,19 @@ def certificate_data(lot, order=None, tipo=None):
     td = CERT_TIPOS[tipo]
     liq = s.execute(select(Liquidation).where(Liquidation.product_code == lot.product_code, Liquidation.lote == lot.lote)
                     .order_by(Liquidation.id.desc())).scalars().first()
-    recs = list(s.execute(select(QualityRecord).where(QualityRecord.lote == lot.lote,
+    # V14: el precertificado toma todo lo que el sistema sabe del lote: registros por lote o por id de lote, y los del
+    # proceso de producción que lo generó (lote de MP de los partes con este lote de PT)
+    from ..models import ProductionReport
+    lotes = {lot.lote}
+    for pr in s.execute(select(ProductionReport).where(ProductionReport.lote_pt == lot.lote)).scalars():
+        if pr.lote:
+            lotes.add(pr.lote)
+    recs = list(s.execute(select(QualityRecord).where((QualityRecord.lote.in_(lotes)) | (QualityRecord.lot_id == lot.id),
                                                       QualityRecord.formato.in_(["ANALISIS_LOTE", "MUESTREO", "CONTROL_GRANOS",
                                                                                  "RECEPCION_MP", "RECEPCION_IMPORTADO"]))
                           .order_by(QualityRecord.id.desc())).scalars())
+    # el registro del propio lote primero; si no hay, el del proceso
+    recs.sort(key=lambda r: (r.lote != lot.lote and r.lot_id != lot.id, -r.id))
     analisis = next((r for r in recs if r.formato == "ANALISIS_LOTE"), None)
     rec = recs[0] if recs else None
     pend = "(pendiente: dato de Calidad)"

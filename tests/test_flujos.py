@@ -405,14 +405,14 @@ def test_compra_nacional_flujo(s, U):
     buy.request_go_approval(r, U("compras"))
     with pytest.raises(BusinessError):
         buy.approve_go(r, U("compras"), True)
-    buy.approve_go(r, U("gerente.operaciones"), True)
+    buy.approve_go(r, U("gerente.adjunto"), True)
     buy.generate_order(r, U("compras"), "OC-1", date.today() + timedelta(days=10), "EXT-002")
     s.commit()
     assert alerts_of(s, "COMPRA_RECEPCION_PROGRAMAR")[0].roles == ["COORD_ALMACEN_MP", "JEFE_CALIDAD", "SUPERV_CALIDAD"]  # Q17: almacén 1524; V13: Calidad recibe compras e importaciones
     buy.change_date(r, U("compras"), date.today() + timedelta(days=15), "Proveedor reprograma")
     s.commit()
     a = alerts_of(s, "COMPRA_FECHA_CAMBIO")[0]
-    assert set(a.roles) == {"COORD_ALMACEN_MP", "GERENCIA_OPERACIONES"}
+    assert set(a.roles) == {"COORD_ALMACEN_MP", "GERENTE_GENERAL_ADJUNTO"}  # V14: sin Gerencia de Operaciones
     with pytest.raises(BusinessError):  # Q17: el coordinador 1560 no recibe en 1524
         buy.receive(r, U("coord.almacen"), 480, "E901N")
     buy.receive(r, U("coord.almacen.mp"), 480, "E901N")
@@ -421,7 +421,7 @@ def test_compra_nacional_flujo(s, U):
     assert lot(s, "EN-901", "E901N").estado == "PENDIENTE_REVISION"
     with pytest.raises(BusinessError):
         buy.authorize_under_observation(r, U("coord.almacen.mp"), "urgencia")
-    buy.authorize_under_observation(r, U("gerente.operaciones"), "Urgencia de producción")
+    buy.authorize_under_observation(r, U("gerente.adjunto"), "Urgencia de producción")
     assert r.estado == "RECIBIDA_BAJO_OBSERVACION"
 
 
@@ -473,7 +473,7 @@ def test_importacion_fases_y_cambio_fecha(s, U, today):
     imp.change_arrival(sh, U("importaciones"), today + timedelta(days=5), "Retraso naviera")
     s.commit()
     a = alerts_of(s, "IMPORT_MODIFICACION")[0]
-    assert {"GERENCIA_OPERACIONES", "COORD_ALMACEN_MP", "JEFE_LOGISTICA"} <= set(a.roles) and "COORD_ALMACEN" not in a.roles
+    assert {"GERENTE_GENERAL_ADJUNTO", "COORD_ALMACEN_MP", "JEFE_LOGISTICA"} <= set(a.roles) and "GERENCIA_OPERACIONES" not in a.roles and "COORD_ALMACEN" not in a.roles
     n = imp.check_phases(today)
     s.commit()
     vencidas = alerts_of(s, "IMPORT_FASE_VENCIDA")

@@ -505,3 +505,32 @@ a.prod-card{color:inherit;text-decoration:none;transition:transform .12s ease,bo
 .reco-item.ALTA{border-color:var(--err);background:var(--errbg)}.reco-item.ALTA b{color:var(--err)}
 .reco-item.MEDIA{border-color:#d08a00;background:var(--warnbg)}.reco-item.MEDIA b{color:var(--warn)}
 @media print{.story-fig{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+
+/* V14: indicadores en una fila (penalidades de la ficha del cliente) y tarjetas de lugares de entrega */
+.card-head .kpis-fila,.kpis-fila{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;width:100%;margin:6px 0 10px}
+.kpis-fila .kpi{padding:8px 10px}
+@media (max-width:520px){.card-head .kpis-fila,.kpis-fila{grid-template-columns:repeat(2,minmax(0,1fr))}}
+details.site{border:1px solid var(--line);border-radius:var(--r-sm);padding:6px 10px;margin:6px 0}
+details.site>summary{cursor:pointer}
+
+/* V14: selector de hora práctico (lista + flechas + Ahora), carga de fotos/archivos y miniaturas */
+.hm-src{display:none!important}
+.hm{display:inline-flex;align-items:center;gap:4px;flex-wrap:wrap}
+.hm select{min-height:40px;padding:4px 6px;width:auto;font-variant-numeric:tabular-nums;font-size:15px}
+.hm .hm-b,.hm .hm-now{min-height:40px;min-width:40px;padding:4px 8px;background:#fff;color:var(--cp-verde-800);border:1px solid var(--line-2);font-size:16px}
+.hm .hm-now{font-size:13px}
+.fu{display:flex;flex-direction:column;gap:6px;align-items:flex-start}
+.fu-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.fu-in{position:absolute!important;width:1px!important;height:1px!important;opacity:0;pointer-events:none}
+.fu-prev{height:56px;width:56px;object-fit:cover;border-radius:6px;border:1px solid var(--line)}
+a.ev-thumb{display:inline-flex;flex-direction:column;align-items:center;gap:2px;margin:2px 6px 2px 0;font-size:11px;vertical-align:top}
+a.ev-thumb img{height:110px;max-width:160px;object-fit:cover;border-radius:6px;border:1px solid var(--line)}
+@media print{a.ev-thumb img{height:160px;max-width:240px}}
+/* V14: notificaciones en recuadro rojo con letras blancas */
+.toast{background:#c62828;border-color:#a61f1f;border-left-color:#7f1515;color:#fff}
+.toast b,.toast a,.toast small,.toast .tclose{color:#fff}
+.toast a{text-decoration:underline}
+.flash.error{background:#c62828;color:#fff;border-color:#a61f1f}
+/* V14: calificación de inspecciones */
+.b.MUY_BUENO,.b.BUENO{background:var(--okbg);color:var(--ok)}.b.REGULAR{background:#fff6dd;color:#7a5a00}
+.fu [hidden],.hm [hidden]{display:none!important}

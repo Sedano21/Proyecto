@@ -51,7 +51,7 @@ def _kg(p, q):
 
 
 def roles_presolicitud():
-    return set(param("demanda_presolicitud_roles", ["COMPRAS", "GERENCIA_OPERACIONES", "GERENCIA_GENERAL"]) or [])
+    return set(param("demanda_presolicitud_roles", ["COMPRAS", "GERENCIA_OPERACIONES", "GERENCIA_GENERAL", "GERENTE_GENERAL_ADJUNTO"]) or [])
 
 
 def can_see(user, vista):
@@ -61,9 +61,9 @@ def can_see(user, vista):
     if vista == "compras":
         return user.role_code in roles_presolicitud()
     if vista == "llegadas":
-        return bool(areas & {"Almacén", "Logística"}) or user.role_code in ("GERENCIA_OPERACIONES", "GERENCIA_GENERAL")
+        return bool(areas & {"Almacén", "Logística"}) or user.role_code in ("GERENCIA_OPERACIONES", "GERENCIA_GENERAL", "GERENTE_GENERAL_ADJUNTO")
     if vista == "produccion":
-        return "Producción" in areas or user.role_code in ("GERENCIA_OPERACIONES", "GERENCIA_GENERAL")
+        return "Producción" in areas or user.role_code in ("GERENCIA_OPERACIONES", "GERENCIA_GENERAL", "GERENTE_GENERAL_ADJUNTO")
     return False
 
 

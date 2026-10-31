@@ -28,7 +28,7 @@ ESTADOS = ["PENDIENTE", "EN_EJECUCION", "INCIDENCIA", "COMPLETADA", "DESAPROBADA
 CERRADOS = ("COMPLETADA", "DESAPROBADA", "RECONOCIDA")
 ESTADO_TXT = {"PENDIENTE": "Pendiente", "EN_EJECUCION": "En ejecución", "INCIDENCIA": "Incidencia",
               "COMPLETADA": "Completada", "DESAPROBADA": "Desistida / desaprobada", "RECONOCIDA": "Reconocida"}
-VEN_TODO = ("GERENCIA_GENERAL", "GERENCIA_OPERACIONES", "SISTEMAS")
+VEN_TODO = ("GERENCIA_GENERAL", "GERENTE_GENERAL_ADJUNTO", "GERENCIA_OPERACIONES", "SISTEMAS")
 PRIORIDAD_ORDEN = {"ALTA": 0, "MEDIA": 1, "BAJA": 2}
 
 
@@ -138,7 +138,7 @@ def _queue_emails(alert, t, roles, usuarios):
             destinatarios[u.id] = u
     # Gerencia General recibe directamente solo los tipos configurados (IF §14)
     for u in list(destinatarios.values()):
-        if u.role_code == "GERENCIA_GENERAL":
+        if u.role_code in ("GERENCIA_GENERAL", "GERENTE_GENERAL_ADJUNTO"):
             pref = s.execute(select(GGAlertPreference).where(GGAlertPreference.user_id == u.id,
                                                              GGAlertPreference.type_code == t.code)).scalars().first()
             if not (pref and pref.recibir_directo):
