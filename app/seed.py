@@ -115,7 +115,7 @@ def _apply_param_changes():
     s = db()
     n = 0
     for key, anterior, nuevo, fuente in getattr(C, "PARAMS_CAMBIO", []):
-        marca = f"{key}:{fuente}"[:80]
+        marca = f"{key}:{fuente}"[:60]  # audit_log.entidad_id es VARCHAR(60)
         if s.execute(select(AuditLog).where(AuditLog.accion == "PARAMETRO_CAMBIO_CATALOGO",
                                             AuditLog.entidad_id == marca)).first():
             continue
@@ -216,7 +216,7 @@ def _retire_permissions():
         if p is not None and p.tipo != tipo:
             p.tipo = tipo
     for role, perm, fuente in C.PERMISOS_RETIRADOS:
-        clave = f"{role}:{perm}"
+        clave = f"{role}:{perm}"[:60]
         if s.execute(select(AuditLog).where(AuditLog.accion == "PERMISO_RETIRADO_CATALOGO",
                                             AuditLog.entidad_id == clave)).first():
             continue

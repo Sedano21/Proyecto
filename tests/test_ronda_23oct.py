@@ -152,7 +152,7 @@ def test_facturas_excel_nota_de_credito_pagos_y_vencidas(s, U, cust, tmp_path):
     from app.services import finance as fin
     p = tmp_path / "fact.xlsx"
     _excel(p, [["Número", "Tipo", "RUC", "Fecha", "Vencimiento", "Monto"],
-               ["F001-1", "Factura", "20000000001", "01/10/2026", "15/10/2026", 1000],
+               ["F001-1", "Factura", "20000000001", date.today() - timedelta(days=24), date.today() - timedelta(days=10), 1000],
                ["F001-2", "Factura", "20000000001", date.today(), date.today() + timedelta(days=30), 500],
                ["NC01-1", "Nota de crédito", "20000000001", date.today(), None, 100],
                ["F001-3", "Factura", "99999999999", date.today(), None, 10]])

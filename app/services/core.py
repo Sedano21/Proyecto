@@ -77,8 +77,8 @@ def audit(user, accion, entidad, entidad_id="", detalle=None):
     detalle = dict(detalle or {})
     if contingency():
         detalle["registrado_en_contingencia"] = True  # todo lo registrado mientras está activo queda marcado
-    db().add(AuditLog(user_id=user.id if user else None, accion=accion, entidad=entidad,
-                      entidad_id=str(entidad_id), detalle=_jsonable(detalle)))
+    db().add(AuditLog(user_id=user.id if user else None, accion=str(accion)[:80], entidad=str(entidad)[:60],
+                      entidad_id=str(entidad_id)[:60], detalle=_jsonable(detalle)))  # largo de las columnas
 
 
 # ------------------------------- permisos ---------------------------------

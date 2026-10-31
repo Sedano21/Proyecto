@@ -732,7 +732,7 @@ class QualityRecord(Base):
     __tablename__ = "quality_records"
     id: Mapped[int] = mapped_column(primary_key=True)
     formato: Mapped[str] = mapped_column(String(30), index=True)
-    codigo_formato: Mapped[str] = mapped_column(String(30), default="")
+    codigo_formato: Mapped[str] = mapped_column(String(80), default="")
     fecha: Mapped[date] = mapped_column(Date, default=date.today)
     product_code: Mapped[str | None] = mapped_column(String(30), nullable=True)
     lote: Mapped[str] = mapped_column(String(60), default="")
