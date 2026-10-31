@@ -36,7 +36,7 @@ install -m 644 "$DIR/deploy/operaciones.service" /etc/systemd/system/operaciones
 systemctl daemon-reload
 systemctl restart operaciones
 for i in $(seq 1 20); do
-  if curl -fsS -o /dev/null http://127.0.0.1:8000/login; then echo "OK $(date '+%F %T') en ${NUEVO:0:7}"; exit 0; fi
+  if curl -fs -o /dev/null http://127.0.0.1:8000/login; then echo "OK $(date '+%F %T') en ${NUEVO:0:7}"; exit 0; fi
   sleep 3
 done
 echo "!! La aplicación no respondió tras actualizar: se vuelve a ${ANTES:0:7} (la base queda como está; respaldo en /var/backups/operaciones)"

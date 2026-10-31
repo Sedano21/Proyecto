@@ -8,6 +8,8 @@
     python -m app.cli verificar       # ejecuta verificaciones periódicas (alertas automáticas, correo)
     python -m app.cli esquema         # compara la base con el modelo del código (tablas/columnas que faltan o sobran)
     python -m app.cli crear-usuario <usuario> <rol> <nombre> <email>
+    python -m app.cli usuarios        # lista los usuarios (usuario, nombre, perfil, correo, activo)
+    python -m app.cli clave <usuario> # asigna una contraseña nueva (la pide en pantalla; se cambia en el primer ingreso)
     python -m app.cli muestras <carpeta>   # genera los Excel ficticios de ejemplo
     python -m app.cli depurar [--aplicar]  # fotos de entrega más antiguas que la retención configurada (sin --aplicar: solo lista)
 """
@@ -122,6 +124,38 @@ def main(argv):
             u = create_user(argv[1], argv[3], argv[2], pwd, argv[4])
             u.debe_cambiar_clave = True  # la cambia en su primer ingreso
             print("Usuario creado")
+        elif cmd == "usuarios":
+            from sqlalchemy import select
+            from .models import User
+            print(f"{'USUARIO':<24}{'PERFIL':<24}{'ACTIVO':<8}{'NOMBRE':<32}CORREO")
+            for u in s.execute(select(User).order_by(User.username)).scalars():
+                print(f"{u.username:<24}{u.role_code:<24}{'sí' if u.activo else 'no':<8}{(u.nombre or '')[:30]:<32}{u.email or ''}")
+        elif cmd == "clave":
+            if len(argv) < 2:
+                print("Uso: clave <usuario>")
+                return 2
+            from sqlalchemy import select
+            from werkzeug.security import generate_password_hash
+            from .models import User
+            from .seed import _hash_opts
+            from .services.core import audit, param
+            u = s.execute(select(User).where(User.username == argv[1])).scalars().first()
+            if u is None:
+                print("Usuario no encontrado. Vea la lista con: python -m app.cli usuarios")
+                return 2
+            pwd = getpass.getpass("Contraseña nueva: ")
+            minimo = int(param("clave_longitud_minima", 8) or 8)
+            if len(pwd) < minimo:
+                print(f"La contraseña debe tener al menos {minimo} caracteres.")
+                return 2
+            if pwd != getpass.getpass("Repita la contraseña: "):
+                print("Las contraseñas no coinciden.")
+                return 2
+            u.password_hash = generate_password_hash(pwd, **_hash_opts())
+            u.debe_cambiar_clave = True  # el usuario la cambia en su siguiente ingreso
+            u.activo = True
+            audit(None, "CLAVE_ASIGNADA_CONSOLA", "User", u.id, {"usuario": u.username})
+            print(f"Contraseña asignada a {u.username}; la cambiará en su siguiente ingreso.")
         elif cmd == "muestras":
             from .demo_data import write_all
             print(write_all(argv[1] if len(argv) > 1 else "sample_data"))
