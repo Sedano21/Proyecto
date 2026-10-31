@@ -149,6 +149,16 @@ def access_gate(user):
     return None
 
 
+def _sap_estado():
+    """V15: estado de la conexión con SAP para el aviso superior (solo si está caída)."""
+    try:
+        from ..services.sap_sl import connection_state
+        e = connection_state()
+        return e if e.get("ok") is False else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def install(app):
     @app.before_request
     def _load_user():
@@ -184,7 +194,7 @@ def install(app):
                 abiertas = 0
         return {"csrf_token": csrf_token, "user": u, "perms": g.get("perms", set()), "can": lambda p: p in g.get("perms", set()),
                 "ve": lambda p: p in g.get("perms", set()) or "vista.total" in g.get("perms", set()),
-                "logo_url": _logo_url(), "vi": _vi,
+                "logo_url": _logo_url(), "vi": _vi, "sap_estado": _sap_estado,
                 "fmt_date": fmt_date, "fmt_num": fmt_num, "stock_info": stock_freshness() if u else None,
                 "alertas_abiertas": abiertas, "today": date.today(), "demo_mode": app.config.get("DEMO_MODE"),
                 "contingencia": _contingencia() if u else {}}

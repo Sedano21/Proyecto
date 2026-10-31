@@ -2268,3 +2268,12 @@ for _c, _n, _a, _g, _p, _r, *_rest in ALERT_TYPES:
         ALERTAS_ROLES_CAMBIO.append((_c, _quita, _agrega))
     _ajuste.append((_c, _n, _a, _g, _p, _nr, *_rest))
 ALERT_TYPES[:] = _ajuste
+
+# ---------------------------------------------------------------------------------------------------------------------
+# V15 (31-oct-2026): integración con SAP tolerante a cortes del túnel
+V15 = "Indicaciones del 31-oct-2026 (V15): conexión con SAP"
+ALERT_TYPES += [
+    ("SAP_SIN_CONEXION", "SAP sin conexión (túnel o red)", "Sistemas", "Integración SAP", "ALTA",
+     ["SISTEMAS", "JEFE_VENTAS", "COORD_VENTAS", GGA], "DEFINIDO", V15,
+     "La sincronización no llega a SAP: lo registrado queda en cola y se envía solo al volver la conexión.", True),
+]

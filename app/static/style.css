@@ -534,3 +534,7 @@ a.ev-thumb img{height:110px;max-width:160px;object-fit:cover;border-radius:6px;b
 /* V14: calificación de inspecciones */
 .b.MUY_BUENO,.b.BUENO{background:var(--okbg);color:var(--ok)}.b.REGULAR{background:#fff6dd;color:#7a5a00}
 .fu [hidden],.hm [hidden]{display:none!important}
+/* V15: en el ingreso, el mensaje de error va arriba del formulario (no al costado), en cualquier pantalla */
+.public{flex-direction:column;gap:10px}
+.public>.flash{width:100%;max-width:420px;margin:0}
+@media (max-width:480px){.public{padding:12px;justify-content:flex-start}.login .card{padding:20px 16px 16px!important}}

@@ -16,7 +16,7 @@ python -m app.cli demo
 python run.py                                          # http://127.0.0.1:5000  · contraseña demo: Demo2026!
 ```
 
-Pruebas: `pip install -r requirements-dev.txt && python -m pytest tests -v` (398 pruebas; verificadas también en PostgreSQL 16 con TEST_DATABASE_URL).
+Pruebas: `pip install -r requirements-dev.txt && python -m pytest tests -v` (405 pruebas; verificadas también en PostgreSQL 16 con TEST_DATABASE_URL).
 
 ## Documentación entregada (`docs/`)
 
@@ -28,6 +28,7 @@ Pruebas: `pip install -r requirements-dev.txt && python -m pytest tests -v` (398
 | [27_RONDA_V12_PRODUCCION_DISTRIBUCION](docs/27_RONDA_V12_PRODUCCION_DISTRIBUCION.md) | Producción: inicio con la operación del día, merma y remanente de MP por línea y persona, recomendaciones, PDF vertical, movimientos por tipo de carga, proyección con preprogramación. Distribución: checklist vehicular, pre-guía y guía en SAP, corte de rutas, transporte tercero, presupuesto, flujo de incidencias, flota |
 | [28_RONDA_V13_CALIDAD](docs/28_RONDA_V13_CALIDAD.md) | Calidad: lote observado con motivo y alertas, solo Calidad libera, solicitudes de revisión, fumigación con liberación, fechas de producción por lote, bandeja (devoluciones, reempaques), observaciones en línea, validación de merma y reproceso, formatos (hora, zona, verificación por puntos, consolidado Excel), certificado, inspecciones, visitas a almacenes externos, quejas y NC |
 | [29_RONDA_V14](docs/29_RONDA_V14.md) | Hora práctica, fotos con galería/cámara y «+», miniaturas; higiene del personal PHS-003 y de equipos PHS-001/002; reportes PDF/Excel por fecha o rango; muestreo de compras; precertificado y firma; calificación de inspecciones; capacidad real vs programada vs ejecutada; movimientos de granel y MP; Gerente General Adjunto; contactos por lugar de entrega |
+| [30_CONEXION_SAP_Y_PASO_A_PRODUCCION](docs/30_CONEXION_SAP_Y_PASO_A_PRODUCCION.md) | Cola de envíos a SAP sin duplicados ni sobrescritura, estado y alerta de conexión, túnel estable, diagnóstico, inventario sincerado y lista para pasar a la base real |
 | [23_OBSERVACIONES_V7](docs/23_OBSERVACIONES_V7.md) | Observaciones del módulo V7: regularización, penalidades, informe de gestión comercial, catálogo, cotizaciones SAP, metas, proyección, turnos, movimientos, carga chofer→auxiliar, GEOSATELITAL |
 | [01_INVENTARIO_FUENTES](docs/01_INVENTARIO_FUENTES.md) | Los 30 archivos analizados, qué contiene cada uno y cómo se usó |
 | [02_ESPECIFICACION_CONSOLIDADA](docs/02_ESPECIFICACION_CONSOLIDADA.md) | Alcance consolidado, contradicciones, vacíos, dependencias, decisiones técnicas y **preguntas Q1–Q17** (Q1, Q3, Q4 resueltas) |

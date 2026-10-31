@@ -119,7 +119,8 @@
     {% if ve('config.ver') or ve('auditoria.ver') or ve('usuarios.administrar') or ve('alertas.configurar') or can('canales.gestionar') %}<div class="grp" data-grupo="Administración"><h4><span class="lbl">Administración</span></h4>
       {% if ve('config.ver') %}{{ nl(url_for('main.config'), 'settings', 'Configuración') }}{% endif %}
       {% if can('canales.gestionar') %}{{ nl(url_for('main.channels'), 'tag', 'Canales y grupos') }}{% endif %}
-      {% if ve('config.editar') %}{{ nl(url_for('alm.uploads', area='Configuración'), 'database', 'Cargas de configuración') }}{% endif %}
+      {% if ve('config.editar') %}{{ nl(url_for('alm.uploads', area='Configuración'), 'database', 'Cargas de configuración') }}
+      {{ nl(url_for('alm.sap_sync'), 'refresh', 'Integración SAP (estado y cola)') }}{% endif %}
       {% if ve('usuarios.administrar') %}{{ nl(url_for('main.users'), 'user', 'Usuarios') }}
       {{ nl(url_for('main.permissions'), 'key', 'Permisos por rol') }}{% endif %}
       {% if ve('alertas.configurar') %}{{ nl(url_for('main.alert_config'), 'bell', 'Configurar alertas') }}
@@ -156,6 +157,7 @@
     </header>
     <main class="content" id="contenido" tabindex="-1">
       {% if contingencia %}<div class="flash warn noprint" role="status">{{ ic('alert') }}<span><b>Registro en contingencia activo</b> desde {{ (contingencia.desde or '')[:16]|replace('T', ' ') }} ({{ contingencia.motivo }}): todo lo que registre queda marcado como «registrado en contingencia».</span></div>{% endif %}
+      {% set _sap = sap_estado() if user and (can('ov.crear') or can('ov.modificar') or can('config.editar') or can('guias.estado')) else none %}{% if _sap %}<div class="flash error noprint" role="alert">SAP sin conexión desde {{ (_sap.desde or '')|replace('T', ' ') }}: lo que registre (OV, guías) queda guardado en cola y se envía solo cuando vuelva la conexión.</div>{% endif %}
       {% if demo_mode %}<div class="demo-strip noprint">{{ ic('info') }} Entorno de demostración con datos ficticios. No conectado a SAP ni a sistemas productivos.</div>{% endif %}
       {% with msgs = get_flashed_messages(with_categories=true) %}{% for c, m in msgs %}<div class="flash {{ c }}" role="{{ 'alert' if c == 'error' else 'status' }}">{{ ic('x' if c == 'error' else ('check' if c == 'ok' else 'info')) }}<span>{{ m }}</span></div>{% endfor %}{% endwith %}
       <a class="back-link noprint" href="#" data-back hidden>{{ ic('chevron') }}<span>Volver</span></a>

@@ -67,7 +67,7 @@ def test_ov_del_modulo_se_crea_actualiza_y_cancela_en_sap(s, U, cust):
     sl = FakeSL()
     assert sap_sl.pending_action(o) == "CREAR"
     assert sap_sl.push_order(o, U("coord.ventas"), sl) == "CREAR"
-    m, path, body, _ = sl.llamadas[-1]
+    m, path, body, _ = next(x for x in sl.llamadas if x[:2] == ("POST", "Orders"))
     assert (m, path) == ("POST", "Orders") and body["CardCode"] == "C20000000001" and body["NumAtCard"] == "OC-55"
     assert body["DocumentLines"][0]["ItemCode"] == "PT-905" and body["DocumentLines"][0]["DiscountPercent"] == 10
     assert o.sap_docnum == "900077" and o.sap_docentry == 77 and sap_sl.pending_action(o) is None
@@ -75,11 +75,11 @@ def test_ov_del_modulo_se_crea_actualiza_y_cancela_en_sap(s, U, cust):
     assert osvc.order_by_number("900077") is o  # la carga desde SAP la reconoce: no se duplica
     osvc.modify_order(o, U("coord.ventas"), {"lines": [{"product_code": "PT-905", "cantidad": 8, "precio_unitario": 10}]})
     assert sap_sl.push_order(o, None, sl) == "ACTUALIZAR"
-    m, path, body, headers = sl.llamadas[-1]
+    m, path, body, headers = next(x for x in sl.llamadas if x[0] == "PATCH")
     assert (m, path) == ("PATCH", "Orders(77)") and body["DocumentLines"][0]["Quantity"] == 8
     assert headers["B1S-ReplaceCollectionsOnPatch"] == "true"
     osvc.cancel_order(o, U("coord.ventas"), "Cliente desistió")
-    assert sap_sl.push_order(o, None, sl) == "CANCELAR" and sl.llamadas[-1][:2] == ("POST", "Orders(77)/Cancel")
+    assert sap_sl.push_order(o, None, sl) == "CANCELAR" and ("POST", "Orders(77)/Cancel") in [x[:2] for x in sl.llamadas]
     assert sap_sl.pending_action(o) is None
 
 

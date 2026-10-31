@@ -124,6 +124,7 @@
   document.addEventListener('submit', function (e) {
     var f = e.target;
     if (e.defaultPrevented || (f.getAttribute('method') || '').toLowerCase() !== 'post' || f.hasAttribute('data-noguardar')) return;
+    if (f.querySelector('input[type="password"]')) return;  // V15: el ingreso no se guarda ni se marca
     var forms = $all('form').filter(function (x) { return x.action === f.action; });
     sset(CLAVE, JSON.stringify({ action: f.action, idx: forms.indexOf(f), datos: serializar(f), t: Date.now() }));
   });
@@ -294,10 +295,15 @@
         if (accionables.length) sonó = sonar(nivel);
         toast('<b>' + (nuevas.length === 1 ? 'Nueva alerta' : nuevas.length + ' alertas nuevas') + (accionables.length ? '' : ' (información)') + '</b>' + nuevas.slice(0, 3).map(function (a) {
           return '<a href="' + a.url + '">' + esc(a.titulo) + '</a>'; }).join('') + (!accionables.length || sonó || silenciado() ? '' : '<small>Toque la pantalla para activar el sonido.</small>'), imp);
+        // V15: si la ventana está minimizada o en otra pestaña, aviso del sistema operativo
+        if (window.cpNotificar && (imp || accionables.length)) window.cpNotificar(
+          nuevas.length === 1 ? nuevas[0].titulo : nuevas.length + ' alertas nuevas', nuevas.slice(0, 3).map(function (a) { return a.titulo; }).join(' · '),
+          nuevas[0].url, imp);
       }
       var ult = parseInt(lget('cp-alert-ring') || '0', 10);
       if (d.criticas > 0 && ahora - ult >= repetir) {
         if (!sonó) sonó = sonar(true);
+        if (window.cpNotificar && (!nuevas.length || !ultimo)) window.cpNotificar(d.criticas + ' alerta(s) importante(s) sin resolver', 'Abra el sistema para atenderlas.', url.replace('/estado.json', '?prioridad=ALTA'), true);
         if (!nuevas.length || !ultimo) toast('<b>' + d.criticas + ' alerta(s) importante(s) sin resolver</b><a href="' + url.replace('/estado.json', '?prioridad=ALTA') + '">Ver alertas</a>' +
           (sonó || silenciado() ? '' : '<small>Toque la pantalla para activar el sonido.</small>'), true);
         lset('cp-alert-ring', String(ahora));

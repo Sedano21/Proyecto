@@ -9,6 +9,9 @@
     python -m app.cli esquema         # compara la base con el modelo del código (tablas/columnas que faltan o sobran)
     python -m app.cli crear-usuario <usuario> <rol> <nombre> <email>
     python -m app.cli usuarios        # lista los usuarios (usuario, nombre, perfil, correo, activo)
+    python -m app.cli cargas          # últimas cargas (tipo, estado, filas con error) y quién las confirma
+    python -m app.cli carga <n>       # errores y advertencias de la carga n.° n
+    python -m app.cli sap-diagnostico # lectura de SAP, maestros, almacenes, cola de OV y estado de la conexión
     python -m app.cli clave <usuario> # asigna una contraseña nueva (la pide en pantalla; se cambia en el primer ingreso)
     python -m app.cli muestras <carpeta>   # genera los Excel ficticios de ejemplo
     python -m app.cli depurar [--aplicar]  # fotos de entrega más antiguas que la retención configurada (sin --aplicar: solo lista)
@@ -156,6 +159,37 @@ def main(argv):
             u.activo = True
             audit(None, "CLAVE_ASIGNADA_CONSOLA", "User", u.id, {"usuario": u.username})
             print(f"Contraseña asignada a {u.username}; la cambiará en su siguiente ingreso.")
+        elif cmd == "cargas":
+            from sqlalchemy import select
+            from .models import UploadBatch
+            from .services.uploads import SPECS
+            print(f"{'N.°':<6}{'TIPO':<14}{'ESTADO':<22}{'FILAS':>6}{'ERRORES':>9}  CONFIRMA (permiso)  ARCHIVO")
+            for b in s.execute(select(UploadBatch).order_by(UploadBatch.id.desc()).limit(20)).scalars():
+                filas = [r for r in b.rows if not r.excluida]
+                err = sum(1 for r in filas if r.errores)
+                print(f"{b.id:<6}{b.tipo:<14}{b.estado:<22}{len(filas):>6}{err:>9}  {SPECS.get(b.tipo, {}).get('confirm_perm', '-'):<19} {b.archivo}")
+        elif cmd == "carga":
+            from .models import UploadBatch
+            b = s.get(UploadBatch, int(argv[1])) if len(argv) > 1 and argv[1].isdigit() else None
+            if b is None:
+                print("Uso: carga <n>  (vea los números con: python -m app.cli cargas)")
+                return 2
+            print(f"Carga #{b.id} {b.tipo} · {b.estado} · {len(b.rows)} filas")
+            vistos = {}
+            for r in b.rows:
+                for e in r.errores or []:
+                    vistos[e] = vistos.get(e, 0) + 1
+            for e, n in sorted(vistos.items(), key=lambda x: -x[1])[:15]:
+                print(f"  {n:>5} fila(s): {e}")
+            ej = next((r for r in b.rows if r.errores), None)
+            if ej is not None:
+                print("Ejemplo de fila con error:", {k: v for k, v in (ej.datos or {}).items() if v not in (None, "")})
+            if not vistos:
+                print("Sin errores.")
+        elif cmd == "sap-diagnostico":
+            from .services import sap_sl
+            for linea in sap_sl.diagnostics():
+                print(linea)
         elif cmd == "muestras":
             from .demo_data import write_all
             print(write_all(argv[1] if len(argv) > 1 else "sample_data"))

@@ -127,6 +127,32 @@
     if (e.target.classList && e.target.classList.contains('fu-in')) refresh(e.target.closest('.fu-row'));
   });
 
+  /* ---------------------------------------------------------------- 2b. V15: aviso del sistema operativo
+     Si llega una alerta importante y la ventana está minimizada o en otra pestaña: notificación del sistema (Windows,
+     Mac, Android) y el título de la pestaña parpadea. El permiso se pide una sola vez, con el primer clic. */
+  var parpadeo = null, tituloBase = document.title;
+  function pedirPermiso() {
+    try { if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission(); } catch (e) {}
+  }
+  document.addEventListener('click', pedirPermiso, { once: true });
+  window.cpNotificar = function (titulo, cuerpo, url, importante) {
+    if (!document.hidden) return;
+    try {
+      if ('Notification' in window && Notification.permission === 'granted') {
+        var n = new Notification(titulo, { body: cuerpo || '', tag: 'cp-alerta', renotify: true, requireInteraction: !!importante,
+                                           icon: '/static/img/logo_corporacion_productiva.png' });
+        n.onclick = function () { window.focus(); if (url) location.href = url; n.close(); };
+      }
+    } catch (e) {}
+    if (!parpadeo) {
+      var on = false;
+      parpadeo = setInterval(function () { on = !on; document.title = on ? '⚠ ' + titulo : tituloBase; }, 1000);
+    }
+  };
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden && parpadeo) { clearInterval(parpadeo); parpadeo = null; document.title = tituloBase; }
+  });
+
   /* ---------------------------------------------------------------- 3. miniaturas de fotos guardadas */
   function thumbs(root) {
     $all('a[href*="/evidencias/"]', root).forEach(function (a) {

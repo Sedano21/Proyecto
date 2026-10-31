@@ -393,7 +393,9 @@ def order_action(oid, accion):
         # V10 (28-oct-2026): borrador fuera de corte y envío a SAP
         "registrar": (lambda: osvc.complete_draft(o, u), "OV registrada y evaluada."),
         "sap": (lambda: __import__("app.services.sap_sl", fromlist=["x"]).push_order_now(o, u),
-                lambda r: f"OV enviada a SAP ({o.sap_docnum or r})."),
+                lambda r: f"OV enviada a SAP ({o.sap_docnum or r})." if r else "No se envió: revise el aviso de la OV."),
+        "sap_forzar": (lambda: __import__("app.services.sap_sl", fromlist=["x"]).push_order_now(o, u, forzar=True),
+                       lambda r: f"OV enviada a SAP ({o.sap_docnum or r})." if r else "No se envió: revise el aviso de la OV."),
         # ronda 23-oct-2026
         "oc": (lambda: osvc.attach_oc(o, u, _doc("oc"), f.get("oc_numero", "")),
                lambda r: "Orden de compra adjunta." + (" La OV quedó registrada y evaluada." if o.estado != "BORRADOR" else "")),

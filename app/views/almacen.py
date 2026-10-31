@@ -422,5 +422,42 @@ def sap_sync():
     ult = {t: db().execute(select(UploadBatch).where(UploadBatch.archivo.like(f"SAP_SL_{t}_%"))
                            .order_by(UploadBatch.id.desc())).scalars().first() for t, _ in tipos}
     cfg = sap_sl.config()
+    from ..models import SalesOrder
+    ovs = list(db().execute(select(SalesOrder).where(SalesOrder.origen == "MODULO", SalesOrder.estado != "BORRADOR")
+                            .order_by(SalesOrder.id.desc()).limit(500)).scalars())
     return render_template("sap_sync.html", tipos=tipos, ult=ult, configurado=sap_sl.configured(),
-                           url=cfg["url"], empresa=cfg["company"])
+                           url=cfg["url"], empresa=cfg["company"], estado=sap_sl.connection_state(),
+                           cola=[o for o in ovs if sap_sl.pending_action(o)],
+                           conflictos=[o for o in ovs if (o.sap_envio or {}).get("conflicto")])
+
+
+@bp.route("/conteos/<int:cid>/excel")
+@perm_required("stock.conteo", "stock.ver")
+def count_excel(cid):
+    """V15: diferencias del conteo físico para que SAP registre el ajuste (recuento de inventario)."""
+    import io
+    from flask import send_file
+    from openpyxl import Workbook
+    from openpyxl.styles import Font
+    c = db().get(PhysicalCount, cid) or abort(404)
+    wb = Workbook()
+    ws = wb.active
+    ws.title = f"Conteo {c.id}"
+    ws.append([f"Conteo físico #{c.id} · almacén {c.warehouse_code} · {c.fecha:%d/%m/%Y} · {c.estado}"])
+    ws.append(["Almacén", "Código", "Descripción", "Lote", "Cantidad SAP", "Conteo físico", "Recuento", "Diferencia",
+               "Ajuste en SAP", "Comentario"])
+    for c2 in ws[2]:
+        c2.font = Font(bold=True)
+    for ln in sorted(c.lines, key=lambda x: (x.product_code, x.lote)):
+        fis = ln.fisico if ln.fisico is not None else None
+        dif = round((fis or 0) - (ln.sap or 0), 4) if fis is not None else None
+        p = db().get(Product, ln.product_code)
+        ws.append([c.warehouse_code, ln.product_code, p.descripcion if p else "", ln.lote, ln.sap, fis, ln.recuento, dif,
+                   ("Entrada" if dif and dif > 0 else "Salida" if dif and dif < 0 else "") if dif is not None else "sin contar",
+                   ln.comentario])
+    ws.freeze_panes = "A3"
+    out = io.BytesIO()
+    wb.save(out)
+    out.seek(0)
+    return send_file(out, as_attachment=True, download_name=f"conteo_{c.id}_{c.warehouse_code}.xlsx",
+                     mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")

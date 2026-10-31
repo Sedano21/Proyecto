@@ -172,3 +172,125 @@ def test_interfaz_hora_fotos_y_notificaciones(app):
         assert t in js, t
     css = app.test_client().get("/static/style.css").get_data(as_text=True)
     assert ".toast{background:#c62828" in css
+
+
+# ------------------------------------------------------------------ V15: conexión con SAP tolerante a cortes
+class _SL:
+    """Service Layer simulado: existente (OV ya creada en un envío cortado), estampa de SAP y caída de conexión."""
+    def __init__(self, existente=None, stamp=None, caido=False):
+        self.cfg = {"company": "ZZZ_CORPRODUC_TEST260826"}
+        self.llamadas, self.existente, self.stamp, self.caido = [], existente, stamp or {}, caido
+
+    def _req(self, method, path, body=None, headers=None):
+        from app.services.sap_sl import SapConnectionError
+        self.llamadas.append((method, path))
+        if self.caido:
+            raise SapConnectionError("No se pudo conectar con SAP: Connection refused")
+        if method == "GET" and path.startswith("Orders?"):
+            return {"value": [self.existente] if self.existente else []}
+        if method == "GET" and "$select=UpdateDate" in path:
+            return dict({"UpdateDate": "2026-10-31T00:00:00Z", "UpdateTime": "10:00:00", "DocumentStatus": "bost_Open",
+                         "Cancelled": "tNO"}, **self.stamp)
+        if method == "POST" and path == "Orders":
+            return {"DocEntry": 90, "DocNum": 5090}
+        return {}
+
+
+def _ov_sap(s, U, cust):
+    from app.services import orders as osvc
+    c = cust()
+    c.codigo_sap = "C20000000001"
+    o = osvc.create_order(U("coord.ventas"), "SAP-V15", c.id, date.today() + timedelta(days=4),
+                          [{"product_code": "PT-905", "cantidad": 5, "precio_unitario": 999}], oc_archivo="oc.pdf",
+                          oc_numero="OC-9", evaluar=False)
+    s.flush()
+    if o.retenida_precio or o.estado == "BORRADOR":
+        pytest.skip("la demo retuvo la OV")
+    return o
+
+
+def test_sap_no_duplica_una_ov_ya_creada(s, U, cust):
+    from app.services import sap_sl
+    o = _ov_sap(s, U, cust)
+    sl = _SL(existente={"DocEntry": 55, "DocNum": 5055})
+    assert sap_sl.push_order(o, None, sl) == "CREAR"
+    assert ("POST", "Orders") not in sl.llamadas and o.sap_docnum == "5055"
+
+
+def test_sap_sin_conexion_deja_la_ov_en_cola(s, U, cust):
+    from app.services import sap_sl
+    o = _ov_sap(s, U, cust)
+    with pytest.raises(sap_sl.SapConnectionError):
+        sap_sl.push_order(o, None, _SL(caido=True))
+    assert o.sap_envio["estado"] == "EN_COLA" and not alerts_of(s, "SAP_OV_ERROR", o.id)
+    assert sap_sl.pending_action(o) == "CREAR"
+    assert sap_sl.push_order(o, None, _SL()) == "CREAR" and o.sap_docnum == "5090"
+
+
+def test_sap_cambiado_en_sap_no_se_sobrescribe(s, U, cust):
+    from app.services import orders as osvc
+    from app.services import sap_sl
+    o = _ov_sap(s, U, cust)
+    sap_sl.push_order(o, None, _SL())
+    osvc.modify_order(o, U("coord.ventas"), {"lines": [{"product_code": "PT-905", "cantidad": 8, "precio_unitario": 999}]})
+    sl = _SL(stamp={"UpdateTime": "11:30:00"})  # alguien la editó en SAP
+    assert sap_sl.push_order(o, None, sl) is None
+    assert o.sap_envio["conflicto"] and not any(m == "PATCH" for m, _ in sl.llamadas)
+    assert sap_sl.pending_action(o) is None and alerts_of(s, "SAP_OV_ERROR", o.id)
+    sl2 = _SL(stamp={"UpdateTime": "11:30:00"})
+    assert sap_sl.push_order(o, None, sl2, forzar=True) == "ACTUALIZAR" and any(m == "PATCH" for m, _ in sl2.llamadas)
+    assert not o.sap_envio.get("conflicto")
+    sl3 = _SL(stamp={"DocumentStatus": "bost_Close"})
+    osvc.modify_order(o, U("coord.ventas"), {"lines": [{"product_code": "PT-905", "cantidad": 9, "precio_unitario": 999}]})
+    assert sap_sl.push_order(o, None, sl3) is None and "cerrada" in o.sap_envio["conflicto"]
+
+
+def test_estado_de_conexion_sap_alerta_y_aviso(app, s, U):
+    from app.services import sap_sl
+    sap_sl._set_state(False, "No se pudo conectar con SAP: Connection refused")
+    s.commit()
+    assert sap_sl.connection_state()["ok"] is False and alerts_of(s, "SAP_SIN_CONEXION")
+    html = _get(app, "coord.ventas", "/").get_data(as_text=True)
+    assert "SAP sin conexión desde" in html
+    sap_sl._set_state(True)
+    s.commit()
+    assert "SAP sin conexión desde" not in _get(app, "coord.ventas", "/").get_data(as_text=True)
+
+
+def test_ruc_de_clientes_sap_y_diagnostico(app, s, monkeypatch):
+    from app.services import sap_sl
+    assert sap_sl._ruc_de({"FederalTaxID": "", "CardCode": "C20123456789"}) == "20123456789"
+    assert sap_sl._ruc_de({"FederalTaxID": "RUC 20-1234567-89", "CardCode": "X"}) == "20123456789"
+
+    class SL(_SL):
+        def login(self):
+            return {"Version": "1000160", "SessionTimeout": 30}
+
+        def logout(self):
+            pass
+
+        def get_all(self, path, params=None):
+            return [{"WarehouseCode": "ALM-001"}] if path == "Warehouses" else [{"CardCode": "C1", "FederalTaxID": ""}]
+
+        def _req(self, method, path, body=None, headers=None):
+            return 7 if "$count" in path else {}
+    monkeypatch.setattr(sap_sl, "ServiceLayer", SL)
+    out = "\n".join(sap_sl.diagnostics())
+    assert "Ingreso a SAP: OK (versión 1000160" in out and "Clientes: 7" in out
+    assert "NO existen en SAP" in out and "Clientes sin RUC en SAP (FederalTaxID vacío): 1" in out
+
+
+def test_excel_de_conteo(app, s, U):
+    from app.services import inventory as isvc
+    c = isvc.open_count(U("coord.almacen"), "ALM-001")
+    s.commit()
+    cli = app.test_client()
+    login(cli, "coord.almacen")
+    assert cli.get(f"/almacen/conteos/{c.id}/excel").data[:2] == b"PK"
+
+
+def test_aviso_del_sistema_y_login_responsivo(app):
+    js = app.test_client().get("/static/v14.js").get_data(as_text=True)
+    assert "cpNotificar" in js and "Notification.requestPermission" in js
+    css = app.test_client().get("/static/style.css").get_data(as_text=True)
+    assert ".public{flex-direction:column" in css

@@ -1,5 +1,5 @@
 {% extends "base.html" %}{% from "_m.html" import b, csrf %}
-{% block content %}<h1>Conteo #{{ c.id }} · {{ c.warehouse_code }} {{ b(c.estado) }}</h1>
+{% block content %}<h1>Conteo #{{ c.id }} · {{ c.warehouse_code }} {{ b(c.estado) }}</h1><p><a class="btn sec small" href="{{ url_for('alm.count_excel', cid=c.id) }}">Diferencias en Excel (para el ajuste en SAP)</a></p>
 <p class="small muted">Si la diferencia con SAP supera la tolerancia (1 % o 5 kg, configurables), se pide un <b>recuento</b> antes de cerrar; el recuento reemplaza al primer conteo.</p>
 <form method="post">{{ csrf() }}
 <div class="tbl"><table><tr><th>Artículo</th><th>Lote</th><th class="r">SAP</th><th>Peso unitario</th><th>Conteo</th><th>Recuento</th><th class="r">Físico</th><th class="r">Faltante</th><th class="r">Sobrante</th><th>Comentario</th></tr>

@@ -58,6 +58,10 @@ def configured():
     return bool(c["url"] and c["company"] and c["user"] and c["password"])
 
 
+class SapConnectionError(BusinessError):
+    """SAP no responde (túnel o red caídos): lo pendiente queda en cola y se reintenta; no es un rechazo de SAP."""
+
+
 class ServiceLayer:
     """Cliente mínimo del Service Layer (OData). opener: para pruebas, función (request, timeout) → respuesta."""
 
@@ -98,7 +102,7 @@ class ServiceLayer:
                 msg = str(e)
             raise BusinessError(f"SAP respondió {e.code}: {msg}")
         except (urllib.error.URLError, OSError) as e:
-            raise BusinessError(f"No se pudo conectar con SAP: {e}")
+            raise SapConnectionError(f"No se pudo conectar con SAP: {e}")
         return json.loads(raw.decode() or "{}") if raw else {}
 
     def login(self):
@@ -194,12 +198,23 @@ def rows_ov(sl):
     return filas
 
 
+def _ruc_de(bp):
+    """RUC/DNI del socio de negocio: FederalTaxID (LicTradNum); si viene vacío o con otros caracteres, los dígitos del
+    propio FederalTaxID o del código del cliente (en Perú es usual «C» + RUC, p. ej. C20123456789)."""
+    import re
+    for v in (bp.get("FederalTaxID"), bp.get("CardCode")):
+        dig = re.sub(r"\D", "", str(v or ""))
+        if len(dig) in (8, 11):
+            return dig
+    return str(bp.get("FederalTaxID") or "").strip()
+
+
 def rows_clientes(sl):
     out = []
     for bp in sl.get_all("BusinessPartners", {"$filter": "CardType eq 'cCustomer'",
                                               "$select": "CardCode,CardName,FederalTaxID,Address,City,County,Phone1,"
                                                          "EmailAddress,ContactPerson"}):
-        out.append({"RUC": bp.get("FederalTaxID") or "", "Nombre de cliente": bp.get("CardName"), "Código de cliente": bp.get("CardCode"),
+        out.append({"RUC": _ruc_de(bp), "Nombre de cliente": bp.get("CardName"), "Código de cliente": bp.get("CardCode"),
                     "Dirección": bp.get("Address") or "", "Distrito": bp.get("County") or "", "Provincia": bp.get("City") or "",
                     "Teléfono": bp.get("Phone1") or "", "Correo electrónico": bp.get("EmailAddress") or "",
                     "Persona de contacto": bp.get("ContactPerson") or ""})
@@ -308,6 +323,42 @@ def test_connection(sl=None):
     return {"version": r.get("Version", ""), "timeout_min": r.get("SessionTimeout")}
 
 
+# ------------------------------------------------------------------ V15: estado de la conexión con SAP
+def connection_state():
+    """{ok, desde, error, ts}: lo actualiza la sincronización automática."""
+    return param("sap_estado_conexion", {}) or {}
+
+
+def _set_state(ok, error="", ahora=None):
+    from ..db import db
+    from ..models import Param
+    from . import alerts
+    ahora = ahora or datetime.now()
+    prev = connection_state()
+    estado = {"ok": ok, "ts": ahora.isoformat(timespec="minutes"), "error": (error or "")[:240],
+              "desde": prev.get("desde") if (prev.get("ok") is False and not ok) else ahora.isoformat(timespec="minutes")}
+    p = db().get(Param, "sap_estado_conexion")
+    if p is None:
+        p = Param(key="sap_estado_conexion", valor={"v": estado}, tipo="dict", grupo="Integración SAP",
+                  descripcion="Estado de la conexión con SAP (lo actualiza la sincronización automática).", estado="DEFINIDO",
+                  fuente="V15")
+        db().add(p)
+    else:
+        p.valor = {"v": estado}
+    from sqlalchemy import func, select
+    from ..models import SalesOrder
+    if not ok and prev.get("ok") is not False:
+        cola = db().execute(select(func.count(SalesOrder.id)).where(SalesOrder.origen == "MODULO",
+                                                                     SalesOrder.sap_docentry.is_(None))).scalar() or 0
+        alerts.emit("SAP_SIN_CONEXION", "SAP sin conexión: lo registrado queda en cola",
+                    f"{error}. Las OV y guías se guardan en el módulo y se envían solas al volver la conexión "
+                    f"(OV sin número de SAP: {cola}). Revise el túnel a SAP.", "Param", "sap_estado_conexion",
+                    prioridad="ALTA", dedup_key="SAP_SIN_CONEXION")
+    elif ok and prev.get("ok") is False:
+        alerts.close_by_system("SAP_SIN_CONEXION", f"Conexión con SAP restablecida ({ahora:%d/%m %H:%M})")
+    return estado
+
+
 def scheduled_sync(ahora=None):
     """Sincronización automática (SAP_SYNC_MIN) de los tipos de `sap_sync_tipos` con el perfil de SAP_SYNC_USER."""
     from flask import current_app
@@ -323,9 +374,21 @@ def scheduled_sync(ahora=None):
         ini, fin = [x.strip() for x in horario.split("-", 1)]
         if not (ini <= f"{ahora:%H:%M}" <= fin):
             return 0
+    try:  # V15: primero se comprueba la conexión (túnel); si no hay, todo queda en cola y no se generan más alertas
+        test_connection()
+        _set_state(True, ahora=ahora)
+    except SapConnectionError as e:
+        _set_state(False, str(e), ahora)
+        return 0
+    except BusinessError as e:  # SAP respondió pero rechazó el ingreso (usuario, clave o base)
+        _set_state(False, str(e), ahora)
+        return 0
     try:  # V10: primero se envían a SAP las OV del módulo (y, V12, las guías validadas); luego se trae lo que cambió en SAP
         push_pending_orders(ahora)
         push_pending_guides()
+    except SapConnectionError as e:
+        _set_state(False, str(e), ahora)
+        return 0
     except BusinessError as e:
         from . import alerts
         alerts.emit("CARGA_SAP_DESACTUALIZADA", "No se pudo enviar las OV a SAP", str(e), "UploadBatch", "",
@@ -342,6 +405,9 @@ def scheduled_sync(ahora=None):
         try:
             if sync(tipo, u, current_app.config["UPLOAD_DIR"], solo_si_cambia=True) is not None:
                 n += 1
+        except SapConnectionError as e:
+            _set_state(False, str(e), ahora)
+            break
         except BusinessError as e:
             from . import alerts
             alerts.emit("CARGA_SAP_DESACTUALIZADA", f"Sincronización con SAP fallida: {TIPOS_SAP.get(tipo, tipo)}", str(e),
@@ -491,6 +557,8 @@ def pending_action(o):
     if o.origen != "MODULO" or o.estado in OV_NO_SE_ENVIAN or o.retenida_precio:
         return None
     env = o.sap_envio or {}
+    if env.get("conflicto"):  # V15: cambió en SAP; no se pisa hasta que alguien decida
+        return None
     if o.estado == "CANCELADA":
         return "CANCELAR" if o.sap_docentry and not env.get("cancelada") else None
     if not o.sap_docentry:
@@ -500,9 +568,56 @@ def pending_action(o):
     return None
 
 
-def push_order(o, user=None, sl=None):
+def _find_existing(sl, o):
+    """OV ya creada en SAP por un envío anterior (se marca en Comentarios con «OV <número> del módulo»)."""
+    marca = f"OV {o.numero} del módulo".replace("'", "''")
+    try:
+        r = sl._req("GET", "Orders?" + urllib.parse.urlencode(
+            {"$filter": f"startswith(Comments,'{marca}') and CardCode eq '{(o.customer.codigo_sap or '').replace(chr(39), '')}'",
+             "$select": "DocEntry,DocNum"}, safe="$,'() "))
+    except SapConnectionError:
+        raise
+    except BusinessError:  # el filtro no está disponible en esta versión: se crea normalmente
+        return None
+    vals = r.get("value") or []
+    return vals[0] if vals else None
+
+
+def _sap_stamp(sl, docentry):
+    """Marca de la última modificación de la OV en SAP (para detectar cambios hechos en SAP)."""
+    if not docentry:
+        return None
+    try:
+        r = sl._req("GET", f"Orders({docentry})?$select=UpdateDate,UpdateTime,DocumentStatus,Cancelled")
+    except SapConnectionError:
+        raise
+    except BusinessError:
+        return None
+    return {k: r.get(k) for k in ("UpdateDate", "UpdateTime", "DocumentStatus", "Cancelled")}
+
+
+def _sap_conflict(sl, o, env):
+    actual = _sap_stamp(sl, o.sap_docentry)
+    if not actual:
+        return None
+    if actual.get("Cancelled") == "tYES":
+        return "La OV fue cancelada en SAP."
+    if actual.get("DocumentStatus") == "bost_Close":
+        return "La OV ya está cerrada en SAP (entregada o facturada)."
+    previo = env.get("sap_stamp")
+    if previo and (previo.get("UpdateDate"), previo.get("UpdateTime")) != (actual.get("UpdateDate"), actual.get("UpdateTime")):
+        return f"La OV fue modificada en SAP ({actual.get('UpdateDate', '')[:10]} {actual.get('UpdateTime') or ''})."
+    return None
+
+
+def push_order(o, user=None, sl=None, forzar=False):
     """Crea, actualiza o cancela en SAP la OV del módulo. Devuelve la acción realizada (o None si no había nada)."""
     from . import alerts
+    if forzar and (o.sap_envio or {}).get("conflicto"):  # decisión humana: se envía lo del módulo pese al cambio en SAP
+        env0 = dict(o.sap_envio)
+        env0.pop("conflicto", None)
+        env0["estado"] = "PENDIENTE"
+        o.sap_envio = env0
     accion = pending_action(o)
     if accion is None:
         return None
@@ -524,17 +639,41 @@ def push_order(o, user=None, sl=None):
             sl.login()
         try:
             if accion == "CREAR":
-                r = sl._req("POST", "Orders", body)
+                # V15: si un envío anterior llegó a SAP pero se cortó la respuesta (túnel caído), la OV ya existe:
+                # se enlaza en lugar de crear un duplicado
+                previo = _find_existing(sl, o)
+                if previo:
+                    r = previo
+                else:
+                    r = sl._req("POST", "Orders", body)
                 o.sap_docentry = int(r.get("DocEntry")) if r.get("DocEntry") is not None else None
                 o.sap_docnum = str(r.get("DocNum") or "")
-            elif accion == "ACTUALIZAR":
-                sl._req("PATCH", f"Orders({o.sap_docentry})", body, headers={"B1S-ReplaceCollectionsOnPatch": "true"})
             else:
-                sl._req("POST", f"Orders({o.sap_docentry})/Cancel")
-                env["cancelada"] = True
+                # V15: si en SAP la OV cambió (otra persona la editó, se cerró o se canceló) desde nuestro último
+                # envío, no se sobrescribe: queda en conflicto para que Comercial o Sistemas decida
+                motivo = None if forzar else _sap_conflict(sl, o, env)
+                if motivo:
+                    env.update({"conflicto": motivo, "estado": "CONFLICTO", "ts": datetime.now().isoformat(timespec="seconds")})
+                    o.sap_envio = env
+                    alerts.emit("SAP_OV_ERROR", f"OV {o.numero}: cambió en SAP; no se sobrescribió", motivo + " Revise la OV y "
+                                "decida en su ficha («Enviar a SAP de todos modos» o ajustar el módulo).", "SalesOrder", o.id,
+                                prioridad="ALTA", extra_users=[o.creado_por] if o.creado_por else None,
+                                dedup_key=f"SAP_OV_CONF:{o.id}")
+                    return None
+                if accion == "ACTUALIZAR":
+                    sl._req("PATCH", f"Orders({o.sap_docentry})", body, headers={"B1S-ReplaceCollectionsOnPatch": "true"})
+                else:
+                    sl._req("POST", f"Orders({o.sap_docentry})/Cancel")
+                    env["cancelada"] = True
+            env["sap_stamp"] = _sap_stamp(sl, o.sap_docentry)
+            env.pop("conflicto", None)
         finally:
             if own:
                 sl.logout()
+    except SapConnectionError as e:  # V15: sin conexión, la OV queda en cola sin alerta por OV (hay una alerta general)
+        env.update({"estado": "EN_COLA", "error": str(e)[:300]})
+        o.sap_envio = env
+        raise
     except BusinessError as e:
         env.update({"estado": "ERROR", "error": str(e)[:300], "intentos": int(env.get("intentos") or 0) + 1})
         o.sap_envio = env
@@ -543,8 +682,11 @@ def push_order(o, user=None, sl=None):
                     prioridad="ALTA", extra_users=[o.creado_por] if o.creado_por else None,
                     dedup_key=f"SAP_OV_ERR:{o.id}")
         raise
+    if env.get("estado") == "CONFLICTO" and env.get("conflicto"):
+        return None
     env.update({"estado": "CANCELADA" if accion == "CANCELAR" else "ENVIADA", "error": "", "intentos": 0,
                 "hash": _hash(body)})
+    alerts.close_by_system(f"SAP_OV_CONF:{o.id}", "Resuelto")
     o.sap_envio = env
     alerts.close_by_system(f"SAP_OV_ERR:{o.id}", f"OV registrada en SAP ({o.sap_docnum})")
     audit(user, f"SAP_OV_{accion}", "SalesOrder", o.numero, {"sap_docnum": o.sap_docnum, "docentry": o.sap_docentry})
@@ -582,6 +724,8 @@ def push_pending_orders(ahora=None, sl=None):
             try:
                 if push_order(o, None, sl):
                     n += 1
+            except SapConnectionError:
+                break  # SAP no responde: el resto queda en cola para el próximo intento
             except BusinessError:
                 continue
     finally:
@@ -590,11 +734,18 @@ def push_pending_orders(ahora=None, sl=None):
     return n
 
 
-def push_order_now(o, user):
+def push_order_now(o, user, forzar=False):
     """Envío manual (o reintento) de una OV a SAP desde su ficha."""
     from .core import has_perm
     if not (has_perm(user, "ov.modificar") or has_perm(user, "usuarios.administrar")):
         raise BusinessError("Envían la OV a SAP el Coordinador o el Jefe Comercial, o Sistemas.")
+    if forzar and (o.sap_envio or {}).get("conflicto"):  # V15: decisión humana ante un cambio hecho en SAP
+        env = dict(o.sap_envio)
+        env.pop("conflicto", None)
+        env["estado"] = "PENDIENTE"
+        o.sap_envio = env
+        audit(user, "SAP_OV_CONFLICTO_FORZADO", "SalesOrder", o.numero, {})
+        return push_order(o, user, forzar=True)
     if pending_action(o) is None:
         raise BusinessError("La OV no tiene nada pendiente de enviar a SAP." if o.sap_docnum or o.estado == "CANCELADA" else
                             "Esta OV no se envía a SAP en su estado actual (borrador, bloqueada, retenida por precio, "
@@ -674,3 +825,66 @@ def push_pending_guides(sl=None):
             if try_push(o, None, sl).get("estado") == "ENVIADA":
                 n += 1
     return n
+
+
+# ------------------------------------------------------------------ V15: diagnóstico antes de pasar a la base real
+def diagnostics():
+    """Líneas de texto para revisar la integración: configuración, ingreso, lectura de maestros y documentos,
+    almacenes habilitados que no existen en SAP, permiso de escritura y la cola de OV del módulo."""
+    from sqlalchemy import select
+    from ..db import db
+    from ..models import SalesOrder, Warehouse
+    out = []
+    cfg = config()
+    out.append(f"Service Layer: {cfg['url'] or '(sin configurar)'} · base: {cfg['company'] or '-'} · usuario: {cfg['user'] or '-'}")
+    motivo = write_enabled(cfg)
+    out.append("Escritura de OV en SAP: " + ("PERMITIDA en esta base" if not motivo else f"NO ({motivo})"))
+    est = connection_state()
+    if est:
+        out.append(f"Último estado de la conexión: {'OK' if est.get('ok') else 'CAÍDA desde ' + str(est.get('desde'))} ({est.get('ts')})")
+    try:
+        sl = ServiceLayer()
+        r = sl.login()
+    except BusinessError as e:
+        out.append(f"INGRESO A SAP: FALLA → {e}")
+        return out
+    out.append(f"Ingreso a SAP: OK (versión {r.get('Version', '-')}, sesión de {r.get('SessionTimeout', '-')} min)")
+    try:
+        for nombre, ruta in (("Clientes", "BusinessPartners/$count?$filter=CardType%20eq%20'cCustomer'"),
+                             ("Artículos válidos", "Items/$count?$filter=Valid%20eq%20'tYES'"),
+                             ("OV abiertas", "Orders/$count?$filter=DocumentStatus%20eq%20'bost_Open'"),
+                             ("Entregas (guías) del mes", f"DeliveryNotes/$count?$filter=DocDate%20ge%20'{date.today().replace(day=1).isoformat()}'")):
+            try:
+                out.append(f"  {nombre}: {sl._req('GET', ruta)}")
+            except BusinessError as e:
+                out.append(f"  {nombre}: no se pudo leer → {e}")
+        try:
+            sap_whs = {w.get("WarehouseCode") for w in sl.get_all("Warehouses", {"$select": "WarehouseCode"})}
+            hab = [w.code for w in db().execute(select(Warehouse).where(Warehouse.habilitado.is_(True))).scalars()]
+            faltan = [c for c in hab if c not in sap_whs]
+            out.append(f"  Almacenes en SAP: {len(sap_whs)} · habilitados en el módulo: {len(hab)}"
+                       + (f" · NO existen en SAP: {', '.join(faltan)}" if faltan else " · todos existen en SAP"))
+        except BusinessError as e:
+            out.append(f"  Almacenes: no se pudo leer → {e}")
+        try:
+            sin = [c for c in (bp.get("FederalTaxID") for bp in sl.get_all("BusinessPartners", {
+                "$filter": "CardType eq 'cCustomer'", "$select": "CardCode,FederalTaxID"}))
+                   if not (str(c or "").strip())]
+            out.append(f"  Clientes sin RUC en SAP (FederalTaxID vacío): {len(sin)} (el módulo usa los dígitos del código si son 8 u 11)")
+        except BusinessError as e:
+            out.append(f"  RUC de clientes: no se pudo leer → {e}")
+    finally:
+        try:
+            sl.logout()
+        except BusinessError:
+            pass
+    ovs = list(db().execute(select(SalesOrder).where(SalesOrder.origen == "MODULO")).scalars())
+    cola = [o for o in ovs if pending_action(o)]
+    conf = [o for o in ovs if (o.sap_envio or {}).get("conflicto")]
+    err = [o for o in ovs if (o.sap_envio or {}).get("estado") == "ERROR"]
+    out.append(f"OV del módulo: {len(ovs)} · en cola para SAP: {len(cola)} · con error: {len(err)} · en conflicto: {len(conf)}")
+    for o in err[:5]:
+        out.append(f"  OV {o.numero}: {(o.sap_envio or {}).get('error', '')}")
+    for o in conf[:5]:
+        out.append(f"  OV {o.numero}: {(o.sap_envio or {}).get('conflicto', '')}")
+    return out
