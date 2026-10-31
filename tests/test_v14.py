@@ -294,3 +294,68 @@ def test_aviso_del_sistema_y_login_responsivo(app):
     assert "cpNotificar" in js and "Notification.requestPermission" in js
     css = app.test_client().get("/static/style.css").get_data(as_text=True)
     assert ".public{flex-direction:column" in css
+
+
+def test_excluir_de_una_vez_las_filas_con_error_y_maestro_en_el_menu(app, s, U, tmp_path):
+    import os
+
+    import openpyxl
+    from app.services import uploads as up
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "STOCK_LOTE"
+    # columnas tal como las devuelve la consulta guardada del Service Layer
+    ws.append(["ItemCode", "ItemName", "DistNumber", "WhsCode", "Quantity", "ExpDate", "MnfDate", "InDate"])
+    venc = (date.today() + timedelta(days=200)).isoformat() + "T00:00:00Z"
+    ws.append(["PT-001", "Producto demo", "LX1", "ALM-001", 10, venc, None, None])
+    ws.append(["PT-001", "Producto demo", "LX2", "ALM-001", "abc", venc, None, None])
+    ws.append(["PT-001", "Producto demo", "LX3", "ALM-001", -3, venc, None, None])
+    p = os.path.join(tmp_path, "sl.xlsx")
+    wb.save(p)
+    b = up.create_batch(U("coord.almacen"), "STOCK", p, "sl.xlsx")
+    s.commit()
+    assert b.estado == "VALIDADO_CON_ERRORES"
+    with pytest.raises(BusinessError, match="motivo"):
+        up.exclude_errors(b, U("coord.almacen"), " ")
+    assert up.exclude_errors(b, U("coord.almacen"), "Datos de SAP por corregir") == 2
+    s.commit()
+    assert b.estado == "LISTO"
+    up.confirm(b, U("coord.almacen"))
+    s.commit()
+    assert b.estado == "CONFIRMADO"
+    with pytest.raises(BusinessError, match="cerrada"):
+        up.exclude_errors(b, U("coord.almacen"), "x")
+    assert "Artículos (maestro)" in _get(app, "sistemas", "/").get_data(as_text=True)
+
+
+def test_consulta_guardada_de_stock_en_sap(app, s, monkeypatch):
+    from app.services import sap_sl
+    from app.services.core import param
+    creadas = []
+
+    class SL(_SL):
+        def login(self):
+            return {}
+
+        def logout(self):
+            pass
+
+        def _req(self, method, path, body=None, headers=None):
+            if method == "GET":
+                raise BusinessError("SAP respondió 404: no existe")
+            creadas.append(body)
+            return {}
+
+        def sql_query(self, code):
+            return [{"ItemCode": "PT-001", "Quantity": 5}]
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+    monkeypatch.setattr(sap_sl, "ServiceLayer", SL)
+    r = sap_sl.create_stock_query()
+    assert r["creada"] and r["filas"] == 1 and creadas[0]["SqlCode"] == sap_sl.STOCK_SQL_CODE
+    assert "OBTQ" in creadas[0]["SqlText"]
+    assert param("sap_consultas")["STOCK"] == sap_sl.STOCK_SQL_CODE

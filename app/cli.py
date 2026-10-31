@@ -12,6 +12,7 @@
     python -m app.cli cargas          # últimas cargas (tipo, estado, filas con error) y quién las confirma
     python -m app.cli carga <n>       # errores y advertencias de la carga n.° n
     python -m app.cli sap-diagnostico # lectura de SAP, maestros, almacenes, cola de OV y estado de la conexión
+    python -m app.cli sap-consulta-stock  # crea en SAP la consulta guardada del stock por lote (solo la consulta)
     python -m app.cli clave <usuario> # asigna una contraseña nueva (la pide en pantalla; se cambia en el primer ingreso)
     python -m app.cli muestras <carpeta>   # genera los Excel ficticios de ejemplo
     python -m app.cli depurar [--aplicar]  # fotos de entrega más antiguas que la retención configurada (sin --aplicar: solo lista)
@@ -186,6 +187,14 @@ def main(argv):
                 print("Ejemplo de fila con error:", {k: v for k, v in (ej.datos or {}).items() if v not in (None, "")})
             if not vistos:
                 print("Sin errores.")
+        elif cmd == "sap-consulta-stock":
+            from .services import sap_sl
+            r = sap_sl.create_stock_query()
+            s.commit()
+            print(f"Consulta {sap_sl.STOCK_SQL_CODE} {'creada' if r['creada'] else 'ya existía'}; filas de stock leídas: {r['filas']}")
+            if r["ejemplo"]:
+                print("Ejemplo:", r["ejemplo"])
+            print("Ahora: python -m app.cli sap-traer STOCK <usuario de Almacén> y confirmar la carga en Almacén → Cargas de archivos.")
         elif cmd == "sap-diagnostico":
             from .services import sap_sl
             for linea in sap_sl.diagnostics():

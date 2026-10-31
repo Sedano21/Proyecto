@@ -40,9 +40,10 @@ SPECS = {
     "STOCK": {
         "area": "Almacén", "nombre": "Stock por lote (SAP)", "perm": "stock.cargar", "confirm_perm": "stock.autorizar_carga",
         "hojas": ["STOCK_LOTE"],
-        "cols": {"articulo": ["Número de artículo"], "descripcion": ["Descripción del artículo"], "lote": ["Lote"],
-                 "almacen": ["Almacén"], "cantidad": ["Cantidad"], "fecha_venc": ["Fecha de vencimiento"],
-                 "fecha_fab": ["Fecha de fabricación"], "fecha_admision": ["Fecha de admisión"]},
+        "cols": {"articulo": ["Número de artículo", "ItemCode"], "descripcion": ["Descripción del artículo", "ItemName"],
+                 "lote": ["Lote", "DistNumber"], "almacen": ["Almacén", "WhsCode"], "cantidad": ["Cantidad", "Quantity"],
+                 "fecha_venc": ["Fecha de vencimiento", "ExpDate"], "fecha_fab": ["Fecha de fabricación", "MnfDate"],
+                 "fecha_admision": ["Fecha de admisión", "InDate"]},
         "req": ["articulo", "lote", "almacen", "cantidad"],
     },
     "BOM": {
@@ -791,6 +792,21 @@ def exclude_row(b, row, user, motivo, excluir=True):
     validate_batch(b)
     audit(user, "CARGA_FILA_EXCLUIDA" if excluir else "CARGA_FILA_INCLUIDA", "UploadBatch", b.id,
           {"fila": row.fila, "motivo": motivo})
+
+
+def exclude_errors(b, user, motivo):
+    """V15: excluye de una vez todas las filas con error (p. ej. RUC inválidos o cuentas internas de SAP), con motivo."""
+    if b.estado in ("CONFIRMADO", "DESCARTADO"):
+        raise BusinessError("La carga ya fue cerrada.")
+    if not (motivo or "").strip():
+        raise BusinessError("Indique el motivo de exclusión.")
+    validate_batch(b)
+    filas = [r for r in b.rows if not r.excluida and r.errores]
+    for r in filas:
+        r.excluida, r.motivo_exclusion = True, motivo.strip()
+    validate_batch(b)
+    audit(user, "CARGA_FILAS_CON_ERROR_EXCLUIDAS", "UploadBatch", b.id, {"filas": [r.fila for r in filas], "motivo": motivo})
+    return len(filas)
 
 
 def discard(b, user):

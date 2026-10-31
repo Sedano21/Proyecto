@@ -888,3 +888,32 @@ def diagnostics():
     for o in conf[:5]:
         out.append(f"  OV {o.numero}: {(o.sap_envio or {}).get('conflicto', '')}")
     return out
+
+
+# ------------------------------------------------------------------ V15: consulta guardada para el stock por lote
+STOCK_SQL_CODE = "CPOPS_STOCK_LOTE"
+STOCK_SQL = ('SELECT T0."ItemCode", T2."ItemName", T1."DistNumber", T0."WhsCode", T0."Quantity", T1."ExpDate", '
+             'T1."MnfDate", T1."InDate" FROM OBTQ T0 INNER JOIN OBTN T1 ON T1."ItemCode" = T0."ItemCode" AND '
+             'T1."SysNumber" = T0."SysNumber" INNER JOIN OITM T2 ON T2."ItemCode" = T0."ItemCode" WHERE T0."Quantity" > 0')
+
+
+def create_stock_query(user=None):
+    """Crea (o reutiliza) en el Service Layer la consulta guardada del stock por lote y almacén y la registra en
+    «sap_consultas». Solo guarda la consulta en SAP; no modifica datos del negocio."""
+    from .core import set_param
+    with ServiceLayer() as sl:
+        try:
+            sl._req("GET", f"SQLQueries('{STOCK_SQL_CODE}')")
+            existe = True
+        except SapConnectionError:
+            raise
+        except BusinessError:
+            existe = False
+        if not existe:
+            sl._req("POST", "SQLQueries", {"SqlCode": STOCK_SQL_CODE, "SqlName": "Stock por lote (módulo de operaciones)",
+                                           "SqlText": STOCK_SQL})
+        filas = sl.sql_query(STOCK_SQL_CODE)
+    cfg = dict(param("sap_consultas", {}) or {})
+    cfg["STOCK"] = STOCK_SQL_CODE
+    set_param("sap_consultas", cfg, user)
+    return {"creada": not existe, "filas": len(filas), "ejemplo": filas[0] if filas else None}

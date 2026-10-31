@@ -140,6 +140,9 @@ def upload_action(bid, accion):
                    url_for("alm.upload_detail", bid=bid))
     if accion == "descartar":
         return act(lambda: usvc.discard(b, g.user), "Carga descartada.", url_for("alm.uploads"))
+    if accion == "excluir_errores":
+        return act(lambda: usvc.exclude_errors(b, g.user, request.form.get("motivo", "")),
+                   lambda n: f"{n} fila(s) con error excluidas. Ya puede autorizar la carga.", url_for("alm.upload_detail", bid=bid))
     abort(404)
 
 

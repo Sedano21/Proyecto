@@ -51,6 +51,11 @@ El diagnóstico revisa:
 - Quién confirma cada carga:
   - **Clientes**: Comercial (permiso `ov.importar`: Coordinador o Jefe de Ventas). Menú Comercial → Cargas de archivos.
   - **Artículos**: Sistemas o Configuración. Menú Administración → Cargas de configuración.
+- **Filas con error que vienen de SAP** (por ejemplo cuentas internas como «FONDO FIJO», RUC con ceros o puntos, o el mismo RUC con dos nombres): en el detalle de la carga, botón **«Excluir filas con error»** con su motivo. Quedan registradas en la auditoría y la carga pasa a «Listo» para autorizar. Corrija esos clientes en SAP y vuelva a traerlos.
+- **Dónde se ven los artículos cargados**: Administración → **Artículos (maestro)**. La carga de artículos crea el maestro (código, descripción, unidad), **no** el stock.
+- **Stock**: es una carga aparte (tipo «Stock», Almacén → Cargas de archivos). Dos formas:
+  - exportar desde SAP el stock por lote a Excel y subirlo;
+  - o crear en SAP la consulta guardada del stock por lote, una sola vez: `python -m app.cli sap-consulta-stock`. Luego `python -m app.cli sap-traer STOCK <usuario de Almacén>` y confirmar la carga. Si el Service Layer no permite leer las tablas de lotes (OBTQ, OBTN), queda la exportación a Excel.
 - RUC de los clientes de SAP: si `FederalTaxID` viene vacío o con otros caracteres, el módulo usa los dígitos del propio campo o del código del cliente (8 u 11 dígitos, por ejemplo `C20123456789`).
 
 ## 4. Inventario descuadrado en SAP: cómo sincerarlo

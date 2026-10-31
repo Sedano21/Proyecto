@@ -14,6 +14,7 @@
 {% if bt.tipo == 'LIQUIDACION' %}<label>Origen</label><select name="origen"><option>SAP</option><option>EXCEL</option></select>{% endif %}
 {% if bt.estado=='VALIDADO_CON_ERRORES' %}<div class="note">Hay filas con error: corríjalas o exclúyalas para poder autorizar.</div>{% endif %}
 <button {{ 'disabled' if bt.estado=='VALIDADO_CON_ERRORES' }}>Autorizar e incorporar</button></form>
+{% if bt.estado=='VALIDADO_CON_ERRORES' %}<form method="post" action="{{ url_for('alm.upload_action', bid=bt.id, accion='excluir_errores') }}" class="card row" data-confirm="¿Excluir todas las filas con error? No se incorporan; el resto sí.">{{ csrf() }}<div class="grow"><label>Excluir de una vez todas las filas con error (no se cargan; quedan en el detalle con su motivo)</label><input name="motivo" required value="Datos inválidos en SAP: se corrigen en SAP y se vuelven a traer"></div><div><button class="sec">Excluir filas con error</button></div></form>{% endif %}
 <form method="post" action="{{ url_for('alm.upload_action', bid=bt.id, accion='descartar') }}">{{ csrf() }}<button class="sec">Descartar carga</button></form>{% endif %}
 <h2>Filas {% if filtro=='problemas' %}con errores/advertencias/cambios <a class="small" href="?filtro=todas">(ver todas)</a>{% else %}<a class="small" href="?filtro=problemas">(solo problemas)</a>{% endif %}</h2>
 <div class="tbl"><table class="small"><tr><th>Fila</th><th>Datos (editables)</th><th>Errores / advertencias</th><th>Acción</th></tr>

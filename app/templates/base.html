@@ -121,6 +121,7 @@
       {% if can('canales.gestionar') %}{{ nl(url_for('main.channels'), 'tag', 'Canales y grupos') }}{% endif %}
       {% if ve('config.editar') %}{{ nl(url_for('alm.uploads', area='Configuración'), 'database', 'Cargas de configuración') }}
       {{ nl(url_for('alm.sap_sync'), 'refresh', 'Integración SAP (estado y cola)') }}{% endif %}
+      {% if ve('config.ver') %}{{ nl(url_for('main.products'), 'box', 'Artículos (maestro)') }}{% endif %}
       {% if ve('usuarios.administrar') %}{{ nl(url_for('main.users'), 'user', 'Usuarios') }}
       {{ nl(url_for('main.permissions'), 'key', 'Permisos por rol') }}{% endif %}
       {% if ve('alertas.configurar') %}{{ nl(url_for('main.alert_config'), 'bell', 'Configurar alertas') }}

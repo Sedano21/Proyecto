@@ -16,7 +16,7 @@ python -m app.cli demo
 python run.py                                          # http://127.0.0.1:5000  · contraseña demo: Demo2026!
 ```
 
-Pruebas: `pip install -r requirements-dev.txt && python -m pytest tests -v` (405 pruebas; verificadas también en PostgreSQL 16 con TEST_DATABASE_URL).
+Pruebas: `pip install -r requirements-dev.txt && python -m pytest tests -v` (407 pruebas; verificadas también en PostgreSQL 16 con TEST_DATABASE_URL).
 
 ## Documentación entregada (`docs/`)
 
