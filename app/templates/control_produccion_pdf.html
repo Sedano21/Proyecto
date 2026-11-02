@@ -1,0 +1,8 @@
+<h2>Control de producción · reporte {{ {'DIA': 'diario', 'SEMANA': 'semanal', 'MES': 'mensual'}[d.periodo] }}</h2>
+<p>Del {{ d.desde.strftime('%d/%m/%Y') }} al {{ d.hasta.strftime('%d/%m/%Y') }}</p>
+<table border="1" width="100%"><tr><th>Producción real</th><th>Plan</th><th>Cumplimiento</th><th>Horas efectivas</th><th>Productividad</th></tr>
+<tr><td align="center"><b>{{ '{:,.0f}'.format(d.total_real) }} kg</b></td><td align="center">{{ '{:,.0f}'.format(d.total_plan) }} kg</td><td align="center"><b>{{ d.cumplimiento if d.cumplimiento is not none else '-' }} %</b></td><td align="center">{{ d.horas }} h</td><td align="center">{{ '{:,.0f}'.format(d.productividad) }} kg/h</td></tr></table>
+<h3>Desempeño por línea</h3>
+<table border="1" width="100%"><tr><th>Proceso</th><th>Línea</th><th>Cap. teórica (kg)</th><th>Plan (kg)</th><th>Real (kg)</th><th>% Cumpl.</th><th>Horas</th><th>kg/h</th></tr>
+{% for f in d.filas %}<tr><td>{{ f.proceso }}</td><td>{{ f.grupo }}</td><td align="right">{{ '{:,.0f}'.format(f.capacidad) }}</td><td align="right">{{ '{:,.0f}'.format(f.plan or f.capacidad) }}</td><td align="right">{{ '{:,.1f}'.format(f.real) }}</td><td align="right">{{ f.cumplimiento if f.cumplimiento is not none else '-' }}</td><td align="right">{{ f.horas }}</td><td align="right">{{ f.kg_h }}</td></tr>{% endfor %}</table>
+{% for titulo, lst in [('Hallazgos', d.hallazgos), ('Situación operativa', d.situacion), ('Acciones', d.acciones)] %}{% if lst %}<h3>{{ titulo }}</h3><ul>{% for x in lst %}<li>{{ x }}</li>{% endfor %}</ul>{% endif %}{% endfor %}

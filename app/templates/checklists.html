@@ -1,0 +1,13 @@
+{% extends "base.html" %}{% from "_m.html" import b, empty %}{% from "_vehiculo.html" import dibujo %}
+{% block content %}<h1>Checklists vehiculares</h1>
+<p class="small muted">Los registran los choferes al salir y al volver; Seguridad los valida. Aquí los revisan Distribución, el Jefe de Logística y la Jefatura de Operaciones.</p>
+<form method="get" class="card row"><div><label>Desde</label><input type="date" name="desde" value="{{ desde.isoformat() }}"></div>
+<div><label>Estado</label><select name="estado"><option value="">(todos)</option>{% for e in ['REGISTRADO','VALIDADO','OBSERVADO'] %}<option {{ 'selected' if f.estado == e }}>{{ e }}</option>{% endfor %}</select></div><div><button class="sec">Ver</button></div></form>
+{% for c in lista %}{% set malos = c.items.items()|selectattr(1, 'equalto', 'M')|list %}
+<div class="card {{ 'alerta' if c.nn_fallidos }}"><div class="card-head"><h3>{{ c.vehicle.placa if c.vehicle else '' }} · {{ c.momento|capitalize }} · {{ c.registrado_ts.strftime('%d/%m %H:%M') }}{% if c.route_id %} · <a href="{{ url_for('dist.checklist', rid=c.route_id) }}">ruta #{{ c.route_id }}</a>{% endif %}</h3>{{ b(c.estado) }}</div>
+<p class="small">Km {{ c.km|n }}{% if c.km_seguridad is not none %} · Seguridad {{ c.km_seguridad|n }}{% endif %}{% if c.driver %} · {{ c.driver.nombre }}{% endif %}</p>
+{% if c.nn_fallidos %}<p class="err small"><b>NN en mal estado:</b> {{ c.nn_fallidos|join(', ') }}</p>{% endif %}
+{% if malos %}<p class="small"><b>En mal estado:</b> {% for k, v in malos %}{{ items.get(k, k) }}{{ ', ' if not loop.last }}{% endfor %}</p>{% endif %}
+{% if c.marcas %}{{ dibujo(c.marcas, False, 'veh-l' ~ c.id) }}{% endif %}{% if c.observaciones %}<p class="small">{{ c.observaciones }}</p>{% endif %}</div>
+{% else %}{{ empty('Sin checklists en el periodo.', 'check') }}{% endfor %}
+{% endblock %}

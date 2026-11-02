@@ -1,0 +1,44 @@
+{% extends "base.html" %}{% from "_m.html" import b, csrf, ic %}{% from "_guia.html" import guia_doc %}
+{% block content %}{% set emitida = pg.estado == 'VALIDADA' %}{% set sap = pg.sap or {} %}
+{% if not print_mode %}<div class="page-head"><div><h1>{{ 'Guía' if emitida else 'Pre-guía' }} · OV {{ o.numero }}</h1>
+<p class="sub">{{ o.customer.nombre }} · despacho {{ o.fecha_compromiso|d }} · {{ b(pg.estado) }}</p></div>
+<div><a class="btn sec" href="{{ url_for('dist.preguia_detail', oid=o.id, imprimir=1) }}" target="_blank" rel="noopener">Imprimir {{ 'guía' if emitida else 'pre-guía' }}</a> <a class="btn sec" href="{{ url_for('dist.preguias') }}">Pre-guías</a> <a class="btn sec" href="{{ url_for('com.order_detail', oid=o.id) }}">Abrir OV</a></div></div>
+
+<div class="kpis kpis-ts">
+<div class="kpi"><span>Generada</span><b>{{ (pg.generada_ts or '—')|replace('T', ' ') }}</b><small>al terminar el picking</small></div>
+<div class="kpi {{ 'warn' if not pg.revision_inicio_ts }}"><span>Inicio de revisión</span><b>{{ (pg.revision_inicio_ts or 'sin iniciar')|replace('T', ' ') }}</b><small>{{ pg.revision_inicio_por or '' }}{% if dur.espera is not none %} · espera {{ dur.espera }} min{% endif %}</small></div>
+<div class="kpi"><span>Última revisión</span><b>{{ (pg.revisado_ts or '—')|replace('T', ' ') }}</b><small>{{ pg.revisado_por or '' }}</small></div>
+<div class="kpi {{ 'ok' if emitida }}"><span>Fin (emitida)</span><b>{{ (pg.validado_ts or '—')|replace('T', ' ') if emitida else '—' }}</b><small>{{ pg.validado_por if emitida }}{% if dur.revision is not none and emitida %} · revisión {{ dur.revision }} min{% endif %}</small></div>
+<div class="kpi {{ 'alert' if sap.error or sap.ajuste_pendiente else ('ok' if sap.docnum else '') }}"><span>SAP</span><b>{{ ('N.° ' ~ sap.docnum) if sap.docnum else ('pendiente' if emitida else '—') }}</b><small>{% if sap.error %}{{ sap.error }}{% elif sap.ajuste_pendiente %}cantidades cambiadas: ajustar la entrega en SAP{% elif sap.fecha_pendiente %}cambio de fecha pendiente{% endif %}</small></div>
+</div>
+{% if pg.diferencias %}<div class="note warn small"><b>Diferencias con la OV:</b> {{ pg.diferencias|join('; ') }}</div>{% endif %}
+{% if pg.observacion %}<div class="note small"><b>Observación:</b> {{ pg.observacion }}</div>{% endif %}
+
+{% if editable %}<form method="post" class="card">{{ csrf() }}
+<div class="card-head"><h3>Revisión (todos los campos se pueden corregir antes de aprobar)</h3></div>
+<div class="row"><div><label>Fecha de la guía</label><input type="date" name="fecha_guia" value="{{ pg.fecha_guia }}"></div>
+<div class="grow"><label>Punto de llegada</label><input name="llegada" value="{{ pg.llegada or ((o.direccion or '') ~ (' ' ~ o.distrito if o.distrito else '') ~ (' ' ~ o.provincia if o.provincia else '')) }}"></div>
+<div><label>Motivo de traslado</label><input name="motivo" value="{{ pg.motivo or 'Venta' }}" list="dl-motivo"><datalist id="dl-motivo"><option>Venta</option><option>Traslado entre establecimientos</option><option>Devolución</option><option>Consignación</option></datalist></div></div>
+<div class="tw"><table class="small"><thead><tr><th>Producto</th><th>Presentación</th><th class="r">Pedido</th><th class="r">Cantidad a guiar</th><th>Lotes (cantidad · FP · FV)</th></tr></thead><tbody>
+{% for x in pg['items'] %}{% set i = loop.index0 %}<tr><td>{{ x.codigo }} <span class="muted">{{ x.descripcion[:50] }}</span></td>
+<td><input name="pres_{{ i }}" value="{{ x.presentacion or '' }}" size="14" aria-label="Presentación de {{ x.codigo }}"></td><td class="r">{{ x.pedido|n }}</td>
+<td class="r"><input type="number" step="any" min="0" name="cant_{{ i }}" value="{{ x.preparado }}" style="width:100px{{ ';border-color:#b42318' if x.preparado != x.pedido }}" aria-label="Cantidad de {{ x.codigo }}"></td>
+<td>{% for l in x.lotes %}{% set j = loop.index0 %}<div class="small">{{ l.lote }} <input type="number" step="any" min="0" name="lote_{{ i }}_{{ j }}" value="{{ l.cantidad }}" style="width:80px" aria-label="Cantidad del lote {{ l.lote }}"> · FP {{ l.fp or '—' }} · FV {{ l.fv or '—' }}</div>{% else %}<span class="muted">sin lotes</span>{% endfor %}</td></tr>{% endfor %}</tbody></table></div>
+<div class="row"><div class="grow"><label>Observaciones de la guía (se imprimen)</label><input name="observaciones_guia" value="{{ pg.observaciones_guia or '' }}"></div></div>
+<div class="row"><div class="grow"><label>Observación de la revisión{{ ' (obligatoria: hay diferencias con la OV, o para observar)' if pg.diferencias else ' (obligatoria para observar)' }}</label><input name="observacion" value=""></div></div>
+<p><button class="sec" name="accion" value="guardar">Guardar revisión</button> <button name="accion" value="aprobar">Aprobar y emitir la guía</button> <button class="sec" name="accion" value="observar">Observar</button></p>
+<p class="small muted">Al aprobar, la guía se registra en SAP (entrega basada en la OV, con los lotes) si la escritura en SAP está habilitada; si no, queda pendiente y se reintenta sola. La alerta de la pre-guía se cierra en el mismo momento.</p></form>{% endif %}
+
+{% if lapiz %}<div class="card" id="lapiz"><div class="card-head"><h3>Cambios después de emitida</h3><small>solo fecha, cantidades o presentación · con motivo y rastro</small></div>
+<table class="small"><thead><tr><th>Campo</th><th>Actual</th><th></th></tr></thead><tbody>
+<tr><td>Fecha de la guía</td><td>{{ pg.fecha_guia }}</td><td><details><summary title="Cambiar">✎</summary><form method="post" class="row">{{ csrf() }}<input type="hidden" name="accion" value="lapiz"><input type="hidden" name="campo" value="fecha"><input type="date" name="valor" required aria-label="Nueva fecha"><input name="motivo" required placeholder="motivo" aria-label="Motivo"><button class="small">Guardar</button></form></details></td></tr>
+{% for x in pg['items'] %}{% set i = loop.index0 %}<tr><td>Cantidad · {{ x.codigo }}</td><td>{{ x.preparado|n }}</td><td><details><summary title="Cambiar">✎</summary><form method="post" class="row">{{ csrf() }}<input type="hidden" name="accion" value="lapiz"><input type="hidden" name="campo" value="cantidad"><input type="hidden" name="idx" value="{{ i }}"><input type="number" step="any" min="0" name="valor" required aria-label="Nueva cantidad"><input name="motivo" required placeholder="motivo" aria-label="Motivo"><button class="small">Guardar</button></form></details></td></tr>
+<tr><td>Presentación · {{ x.codigo }}</td><td>{{ x.presentacion or '—' }}</td><td><details><summary title="Cambiar">✎</summary><form method="post" class="row">{{ csrf() }}<input type="hidden" name="accion" value="lapiz"><input type="hidden" name="campo" value="presentacion"><input type="hidden" name="idx" value="{{ i }}"><input name="valor" required aria-label="Nueva presentación"><input name="motivo" required placeholder="motivo" aria-label="Motivo"><button class="small">Guardar</button></form></details></td></tr>{% endfor %}
+</tbody></table></div>{% endif %}
+
+{% if pg.cambios %}<div class="card"><div class="card-head"><h3>Rastro de cambios</h3></div><table class="small"><thead><tr><th>Fecha y hora</th><th>Quién</th><th>Campo</th><th>Producto</th><th>De</th><th>A</th><th>Motivo</th><th>Origen</th></tr></thead><tbody>
+{% for c in pg.cambios|reverse %}<tr><td>{{ (c.ts or '')|replace('T', ' ') }}</td><td>{{ c.user }}</td><td>{{ c.campo }}</td><td>{{ c.producto or '' }}</td><td>{{ c.de }}</td><td>{{ c.a }}</td><td>{{ c.motivo }}</td><td>{{ c.origen }}</td></tr>{% endfor %}</tbody></table></div>{% endif %}
+<div class="section-title">Documento</div>{% else %}<p class="noprint"><a class="btn sec" href="javascript:window.print()">Imprimir / guardar PDF</a></p>{% endif %}
+{% set _ = doc_g.update({'llegada': pg.llegada, 'observaciones': pg.observaciones_guia}) %}
+{{ guia_doc(doc_g, doc_r, 'guia' if emitida else 'preguia', ruc, peso_de) }}
+{% endblock %}

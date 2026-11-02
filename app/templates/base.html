@@ -102,6 +102,7 @@
       {% if ve('guias.estado') %}{{ nl(url_for('dist.guides'), 'file', 'Guías de remisión') }}{% endif %}
       {% if ve('distribucion.conformidad') %}{{ nl(url_for('dist.my_deliveries'), 'check', 'Mis entregas') }}{% endif %}
       {{ nl(url_for('dist.routes'), 'route', 'Programación y rutas') }}
+      {% if ve('checklist.ver') %}{{ nl(url_for('dist.checklists'), 'check', 'Checklists vehiculares') }}{% endif %}
       {{ nl(url_for('dist.incidents'), 'alert', 'Incidencias') }}
       {% if ve('distribucion.rastreo') %}{{ nl(url_for('dist.tracking'), 'route', 'Rastreo GEOSATELITAL') }}{% endif %}
       {% if ve('distribucion.documentos') %}{{ nl(url_for('alm.uploads', area='Distribución'), 'upload', 'Cargas de SAP (despachos)') }}{% endif %}
@@ -111,6 +112,7 @@
       {% if ve('terceros.ver') %}{{ nl(url_for('dist.terceros'), 'truck', 'Transporte tercero') }}{% endif %}
       {% if ve('presupuesto.ver') %}{{ nl(url_for('dist.presupuesto'), 'chart', 'Presupuesto') }}{% endif %}
     </div>{% endif %}
+    {% if not ve('distribucion.ver') and ve('checklist.ver') %}<div class="grp" data-grupo="Flota"><h4><span class="lbl">Flota</span></h4>{{ nl(url_for('dist.checklists'), 'check', 'Checklists vehiculares') }}</div>{% endif %}
     {% if not ve('distribucion.ver') and (ve('terceros.ver') or ve('presupuesto.ver')) %}<div class="grp" data-grupo="Distribución"><h4><span class="lbl">Distribución</span></h4>
       {% if ve('terceros.ver') %}{{ nl(url_for('dist.terceros'), 'truck', 'Transporte tercero') }}{% endif %}
       {% if ve('presupuesto.ver') %}{{ nl(url_for('dist.presupuesto'), 'chart', 'Presupuesto') }}{% endif %}</div>{% endif %}
@@ -241,5 +243,6 @@
 <script src="{{ url_for('static', filename='app.js') }}?v=1.0.0-mb"></script>
 <script src="{{ url_for('static', filename='ux.js') }}?v=1.1.0"></script>
 <script src="{{ url_for('static', filename='v14.js') }}?v=1.0"></script>
+<script src="{{ url_for('static', filename='v18.js') }}?v=1.0"></script>
 </body>
 </html>

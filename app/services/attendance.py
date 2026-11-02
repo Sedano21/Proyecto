@@ -73,13 +73,18 @@ def save_worker(user, datos, w=None):
     doc = (datos.get("documento") or "").strip()
     if doc and (not doc.isalnum() or len(doc) > 15):
         raise BusinessError("Documento inválido.")
+    puesto = (datos.get("puesto") or "").strip()  # V18: puesto de la lista o «Otro» escrito
+    if puesto == "__OTRO__":
+        puesto = (datos.get("puesto_otro") or "").strip()
+        if not puesto:
+            raise BusinessError("Escriba el puesto («Otro»).")
     if w is None:
         w = Worker(nombre=nombre)
         db().add(w)
     w.nombre, w.documento = nombre, doc
     w.area = area_of(user) or "Producción"
     w.linea = (datos.get("linea") or "").strip()
-    w.sublinea = (datos.get("sublinea") or "").strip()
+    w.sublinea = (puesto or datos.get("sublinea") or "").strip()[:40]
     w.externo = str(datos.get("externo", "")) in ("1", "on", "true")
     w.activo = str(datos.get("activo", "1")) in ("1", "on", "true")
     db().flush()
@@ -87,8 +92,9 @@ def save_worker(user, datos, w=None):
     return w
 
 
-def register_day(user, fecha, marcas, observaciones=None):
-    """marcas: {worker_id: estado}. Reemplaza el estado del día de cada colaborador."""
+def register_day(user, fecha, marcas, observaciones=None, lineas=None):
+    """marcas: {worker_id: estado}. Reemplaza el estado del día de cada colaborador. lineas (V18): {worker_id: línea}
+    en la que trabajó ese día, si se reorganizó el equipo."""
     _require(user)
     if isinstance(fecha, str):
         fecha = date.fromisoformat(fecha)
@@ -110,6 +116,8 @@ def register_day(user, fecha, marcas, observaciones=None):
             db().add(a)
         a.estado = estado
         a.observacion = ((observaciones or {}).get(str(wid)) or "").strip()[:250]
+        nueva = ((lineas or {}).get(str(wid)) or "").strip()[:20]
+        a.linea = "" if nueva == (w.linea or "") else nueva
         a.user_id = user.id
         n += 1
     audit(user, "ASISTENCIA_REGISTRADA", "Attendance", fecha.isoformat(), {"registros": n})
@@ -136,3 +144,58 @@ def summary(desde=None, hasta=None, linea="", area="Producción", areas=False):
     total = Counter(a.estado for a in rows if not linea or a.worker.linea == linea)
     return {"desde": desde, "hasta": hasta, "por_persona": sorted(por.items(), key=lambda x: x[0].nombre), "total": total,
             "estados": states()}
+
+
+def positions(user):
+    """V18: puestos para la lista del colaborador: los perfiles de las áreas del usuario (o los configurados en
+    «puestos_por_area»), más «Otro» que se escribe."""
+    from sqlalchemy import select as _sel
+    from ..models import Role
+    areas = visible_areas(user)
+    cfg = param("puestos_por_area", {}) or {}
+    out = []
+    for a in sorted(areas or cfg.keys() or []):
+        out += list(cfg.get(a) or [])
+    roles = db().execute(_sel(Role).order_by(Role.nombre)).scalars()
+    out += [r.nombre for r in roles if areas is None or r.area in areas]
+    return list(dict.fromkeys(x for x in out if x))
+
+
+def import_workers(user, path):
+    """V18: alta de colaboradores desde Excel (Nombre, Documento, Puesto o Línea, Externo). Devuelve (nuevos, actualizados)."""
+    _require(user)
+    from openpyxl import load_workbook
+    ws = load_workbook(path, read_only=True, data_only=True).active
+    filas = list(ws.iter_rows(values_only=True))
+    if not filas:
+        raise BusinessError("El archivo está vacío.")
+    cab = [str(c or "").strip().lower() for c in filas[0]]
+
+    def col(*nombres):
+        return next((i for i, c in enumerate(cab) if c in nombres), None)
+    i_nom, i_doc = col("nombre", "colaborador", "apellidos y nombres"), col("documento", "dni", "doc")
+    i_pue, i_lin, i_ext = col("puesto", "cargo"), col("línea", "linea"), col("externo")
+    if i_nom is None:
+        raise BusinessError("Falta la columna «Nombre».")
+    nuevos = act = 0
+    for f in filas[1:]:
+        nombre = str(f[i_nom] or "").strip().upper() if i_nom < len(f) else ""
+        if not nombre:
+            continue
+        doc = str(f[i_doc] or "").strip() if i_doc is not None and i_doc < len(f) else ""
+        if doc.endswith(".0"):
+            doc = doc[:-2]
+        w = None
+        if doc:
+            w = db().execute(select(Worker).where(Worker.documento == doc)).scalars().first()
+        w = w or db().execute(select(Worker).where(Worker.nombre == nombre, Worker.area == (area_of(user) or "Producción"))).scalars().first()
+        datos = {"nombre": nombre, "documento": doc,
+                 "puesto": str(f[i_pue] or "").strip() if i_pue is not None and i_pue < len(f) else "",
+                 "linea": str(f[i_lin] or "").strip() if i_lin is not None and i_lin < len(f) else "",
+                 "externo": "1" if (i_ext is not None and i_ext < len(f) and str(f[i_ext] or "").strip().lower() in ("si", "sí", "1", "x", "true")) else ""}
+        if w is None:
+            nuevos += 1
+        else:
+            act += 1
+        save_worker(user, datos, w)
+    return nuevos, act

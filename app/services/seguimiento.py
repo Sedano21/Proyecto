@@ -335,3 +335,46 @@ def resolve_balance(saldo, user, cerrar_ids, fecha=None, motivo=""):
     audit(user, "OV_SALDO_RESUELTO", "SalesOrder", saldo.numero, {"cerradas": sorted(cerrar), "fecha": fecha,
                                                                    "motivo": motivo})
     return saldo
+
+
+# ------------------------------------------------------------------ V18: despachos por cliente y fecha en el Inicio
+def dispatch_board(user, dias=7):
+    """Agrupado por cliente y fecha de despacho (de ayer a «dias» adelante) con el pronóstico de cumplimiento, las
+    modificaciones y los problemas, para gestionar a tiempo. Gerencias, Logística, Operaciones y Comercial ven todo;
+    el ejecutivo comercial, solo sus clientes y OV."""
+    from ..models import AuditLog, Incident
+    hoy = date.today()
+    vend = user.id if user.role_code == "EJECUTIVO_VENTAS" else None
+    out = []
+    for g in groups(hoy - timedelta(days=1), hoy + timedelta(days=dias), vendedor_id=vend):
+        ovs = [o for o in g["ovs"] if o.estado not in ("CANCELADA", "CERRADA")]
+        if not ovs:
+            continue
+        nums = [o.numero for o in ovs]
+        mods = db().execute(select(func_count()).select_from(AuditLog).where(
+            AuditLog.entidad == "SalesOrder", AuditLog.entidad_id.in_(nums),
+            AuditLog.accion.in_(("OV_MODIFICADA", "OV_MODIF_SOLICITADA", "OV_CAMBIO_FECHA_SOLICITADO", "OV_RENEGOCIADA", "OV_FECHA_RENEGOCIADA",
+                                 "OV_PRODUCTO_CAMBIADO")))).scalar() or 0
+        incs = db().execute(select(func_count()).select_from(Incident).where(
+            Incident.order_id.in_([o.id for o in ovs]))).scalar() or 0
+        problemas = [f"OV {o.numero}: {delay(o)}" for o in ovs if delay(o)]
+        problemas += [f"OV {o.numero}: faltante de stock" for o in ovs
+                      if o.estado_stock in ("INCOMPLETA", "SIN_STOCK") and o.estado not in CERRADAS and not delay(o)]
+        listas = sum(1 for o in ovs if o.estado in ("PREPARADA", "PROGRAMADA", "EN_RUTA") or o.estado in CERRADAS)
+        if all(o.estado in CERRADAS for o in ovs):
+            pron = ("CUMPLIDO", "Despachado")
+        elif problemas:
+            pron = ("RIESGO", "En riesgo")
+        elif listas == len(ovs) or g["fecha"] > hoy:
+            pron = ("A_TIEMPO", "A tiempo")
+        else:
+            pron = ("VIGILAR", "Vigilar")
+        out.append(dict(g, ovs=ovs, modificaciones=mods, incidencias=incs, problemas=problemas, pronostico=pron,
+                        listas=listas))
+    orden = {"RIESGO": 0, "VIGILAR": 1, "A_TIEMPO": 2, "CUMPLIDO": 3}
+    return sorted(out, key=lambda g: (g["fecha"] < hoy, orden[g["pronostico"][0]], g["fecha"]))
+
+
+def func_count():
+    from sqlalchemy import func
+    return func.count()

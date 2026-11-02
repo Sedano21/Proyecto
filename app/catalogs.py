@@ -2455,3 +2455,34 @@ PARAMS += [
      "«Almacén de Corporación Productiva».", "PENDIENTE", V17),
 ]
 DEMO_USERS_V17 = [("jefe.operaciones", "Jefatura de Operaciones", JOP)]
+
+# ---------------------------------------------------------------------------------------------------------------------
+# V18 (02-nov-2026): observaciones (diseño, asistencia, choferes, checklist, despachos en el inicio, picking, producción,
+# liquidación de proceso y pre-guía)
+V18 = "Observaciones del 02-nov-2026, segunda parte (V18)"
+_V18_PERMS = [
+    ("checklist.ver", "Ver los checklists vehiculares de todas las rutas", "Distribución", "consulta",
+     ["COORD_DISTRIBUCION", "ASIST_DISTRIBUCION", "JEFE_LOGISTICA", JOP, "SEGURIDAD", "GERENCIA_GENERAL", GGA]),
+]
+for _code, _n, _m, _t, _roles in _V18_PERMS:
+    PERMISSIONS.append((_code, _n, _m, _t))
+    for _r in _roles:
+        ROLE_PERMISSIONS.setdefault(_r, []).append((_code, "DEFINIDO", V18))
+# el Jefe de Logística (y la Jefatura de Operaciones) maneja todos los almacenes
+_EXC_ANTES = next(v for k, v, *_ in PARAMS if k == "alcance_almacen_excepto")
+_V18_CAMBIOS = [("alcance_almacen_excepto", _EXC_ANTES, {**_EXC_ANTES, "JEFE_LOGISTICA": [], JOP: []},
+                 f"{V18}: el Jefe de Logística maneja todos los almacenes")]
+PARAMS_CAMBIO += _V18_CAMBIOS
+_NUEVOS = {k: n for k, _a, n, _f in _V18_CAMBIOS}
+PARAMS = [(k, _NUEVOS.get(k, v), *rest) for k, v, *rest in PARAMS]
+PARAMS += [
+    ("puestos_por_area", {}, "dict", "Turnos",
+     "Puestos adicionales por área para la lista de Asistencia ({área: [puestos]}); además se listan los perfiles del área "
+     "y siempre se puede escribir «Otro».", "PROPUESTO", V18),
+]
+ALERT_TYPES += [
+    ("PRODUCCION_PLAZO_RIESGO", "Producción no confirma el plazo: entrega a menos de un día del despacho", "Producción",
+     "Solicitudes a producción", "ALTA", ["JEFE_LOGISTICA", JOP, "COORD_VENTAS", "JEFE_VENTAS"], "PROPUESTO", V18,
+     "Al validar una solicitud con el plazo NO confirmado, Producción indica la fecha de entrega; debe ser al menos un día "
+     "antes del despacho. Si es posterior, se alerta a Logística, Operaciones y Comercial, y al ejecutivo de la OV.", True),
+]

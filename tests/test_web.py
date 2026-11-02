@@ -161,7 +161,11 @@ def test_pantallas_ruta_y_folio_en_cada_etapa(app):
             for path in (f"/distribucion/ruta/{r.id}", f"/distribucion/ruta/{r.id}/folio", f"/distribucion/ruta/{r.id}/folio?tipo=preguia",
                          f"/ov/preparacion/{o.id}"):
                 resp = cl.get(path)
-                assert resp.status_code in (200, 403), (user, path, resp.status_code)
+                # V18: con una sola tarea de picking, /ov/preparacion lleva a la pantalla única del picking
+                ok = (200, 403, 302) if path.startswith("/ov/preparacion") else (200, 403)
+                assert resp.status_code in ok, (user, path, resp.status_code)
+                if resp.status_code == 302:
+                    assert "/almacen/picking/" in resp.headers["Location"]
 
 
 def test_detalle_de_todas_las_alertas_incluidas_las_sin_documento(app):

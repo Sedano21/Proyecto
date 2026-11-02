@@ -135,6 +135,18 @@ def oee_dashboard():
 def control():
     periodo = request.args.get("periodo", "DIA")
     d = ptsvc.control_report(periodo, f_date("fecha") or date.today())
+    salida = request.args.get("salida", "")
+    if salida in ("xlsx", "pdf"):  # V18: lo exportan los asistentes, el Jefe de Producción y la Jefatura de Operaciones
+        import io
+        from flask import send_file
+        nombre = f"control_produccion_{d['periodo'].lower()}_{d['fecha']:%Y%m%d}"
+        if salida == "xlsx":
+            return send_file(io.BytesIO(ptsvc.control_excel(d)), as_attachment=True, download_name=f"{nombre}.xlsx",
+                             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        from ..services.pdfreport import html_to_pdf
+        html = render_template("control_produccion_pdf.html", d=d)
+        return send_file(io.BytesIO(html_to_pdf(html, f"Control de producción {d['fecha'].year}")), as_attachment=True,
+                         download_name=f"{nombre}.pdf", mimetype="application/pdf")
     from ..services import charts
     verde = ["#0e7a3d", "#7ab829"]
     nombres = [f["grupo"] for f in d["filas"]]
@@ -159,16 +171,28 @@ def attendance():
         if f.get("accion") == "colaborador":
             w = db().get(Worker, int(f["id"])) if f.get("id") else None
             return act(lambda: asvc.save_worker(g.user, f, w), "Colaborador guardado.", back)
+        if f.get("accion") == "importar":  # V18: alta de colaboradores desde Excel
+            from flask import current_app
+            from ..services.finance import save_document
+            def _imp():
+                ruta = save_document(request.files.get("archivo"), current_app.config["UPLOAD_DIR"], "colaboradores")
+                if not ruta:
+                    raise BusinessError("Adjunte el Excel de colaboradores.")
+                import os
+                return asvc.import_workers(g.user, os.path.join(current_app.config["UPLOAD_DIR"], ruta))
+            return act(_imp, lambda r: f"Colaboradores cargados: {r[0]} nuevos, {r[1]} actualizados.", back)
         marcas = {k[7:]: v for k, v in f.items() if k.startswith("estado_")}
         obs = {k[4:]: v for k, v in f.items() if k.startswith("obs_")}
-        return act(lambda: asvc.register_day(g.user, fecha, marcas, obs), lambda n: f"Asistencia registrada ({n}).", back)
+        lineas = {k[6:]: v for k, v in f.items() if k.startswith("linea_")}
+        return act(lambda: asvc.register_day(g.user, fecha, marcas, obs, lineas), lambda n: f"Asistencia registrada ({n}).", back)
     from ..catalogs import PRODUCTION_LINES
     # V17: Almacén y Logística ven solo su propio personal (no el de Producción); Jefatura de Operaciones, todo
     visibles = asvc.visible_areas(g.user)
     area = asvc.area_of(g.user) or ("todas las áreas" if visibles is None else ", ".join(sorted(visibles)) or "su área")
     return render_template("attendance.html", fecha=fecha, workers=asvc.workers_of(g.user, ver=True),
                            dia=asvc.day(fecha), estados=asvc.states(), puede=asvc.can_register(g.user), area=area,
-                           resumen=asvc.summary(fecha - timedelta(days=29), fecha, areas=visibles), lineas=PRODUCTION_LINES)
+                           resumen=asvc.summary(fecha - timedelta(days=29), fecha, areas=visibles), lineas=PRODUCTION_LINES,
+                           puestos=asvc.positions(g.user))
 
 
 @bp.route("/productividad")

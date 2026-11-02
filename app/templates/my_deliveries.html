@@ -6,4 +6,12 @@
 <div class="meta"><span>OV {{ s.order.numero }}</span><span>{{ s.order.direccion }} · {{ s.order.distrito }}</span>{% if s.order.hora_cita %}<span>cita {{ s.order.hora_cita }}</span>{% endif %}</div>
 {% if r.estado == 'EN_RUTA' %}{% if s.estado == 'EN_CAMINO' %}<form method="post">{{ csrf() }}<input type="hidden" name="stop_id" value="{{ s.id }}"><button class="btn sec small" name="accion" value="llegada">{{ ic('flag') }} Llegué</button></form>{% endif %}
 {% if s.estado in ['EN_CAMINO','LLEGADA'] %}{{ ent.conformidad(s, url_for('dist.my_deliveries')) }}{% endif %}{% endif %}
-{{ ent.evidencia(s) }}</article>{% endfor %}</div>{% else %}{{ empty('No tiene rutas confirmadas ni en curso.', 'truck') }}{% endfor %}{% endblock %}
+{{ ent.evidencia(s) }}</article>{% endfor %}</div>{% else %}{{ empty('No tiene rutas confirmadas ni en curso.', 'truck') }}{% endfor %}<details class="card"><summary><b>Reportar una avería del vehículo</b></summary>
+<form method="post" enctype="multipart/form-data" class="row">{{ csrf() }}<input type="hidden" name="accion" value="averia">
+<div><label class="req">Vehículo</label><select name="vehicle_id" required>{% for v in vehiculos %}<option value="{{ v.id }}">{{ v.placa }}{{ ' · ' ~ v.marca if v.marca }}</option>{% endfor %}</select></div>
+<div><label>Gravedad</label><select name="severidad"><option value="MEDIA">Media</option><option value="ALTA">Alta (no puede circular)</option><option value="BAJA">Baja</option></select></div>
+<div><label>Km</label><input name="km" inputmode="numeric" size="8"></div>
+<div class="grow"><label class="req">Qué pasó</label><input name="descripcion" required placeholder="p. ej. ruido en frenos, llanta baja"></div>
+<div><label>Foto</label><input type="file" name="foto" accept="image/*"></div><div><button>Reportar avería</button></div></form>
+<p class="small muted">Llega como alerta a Distribución y Mantenimiento; una avería «alta» deja el vehículo fuera de servicio hasta cerrarla.</p></details>
+{% endblock %}

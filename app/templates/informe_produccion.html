@@ -6,10 +6,10 @@
 {% if d.merma_pct is not none %} La merma fue <b>{{ d.merma_pct }} %</b> ({{ d.merma_kg|n }} kg) y quedaron {{ d.remanente_kg|n }} kg de remanente de MP.{% endif %}</p>
 <div class="story-hero">
 <div class="story-fig"><b>{{ d.kg|n }} kg</b><span>Producido (liquidado)</span><small>{{ d.unidades|n }} unidades · {{ d.liquidaciones }} liquidaciones</small></div>
-<div class="story-fig"><b>{{ d.plan.tasa if d.plan.tasa is not none else '—' }}{{ ' %' if d.plan.tasa is not none }}</b><span>Cumplimiento del plan diario</span><small>Σ mín(real, plan) / Σ plan · referencia 90 %</small></div>
-<div class="story-fig"><b>{{ d.merma_pct if d.merma_pct is not none else '—' }}{{ ' %' if d.merma_pct is not none }}</b><span>Merma</span><small>{{ d.merma|selectattr('fuera')|list|length }} liquidaciones fuera de lo proyectado</small></div>
-<div class="story-fig"><b>{{ cap.paradas|length }}</b><span>Paradas de línea</span><small>{{ cap.paradas_min }} min · {{ cap.demoradas|length }} solicitudes atendidas tarde</small></div>
-<div class="story-fig"><b>{{ d.programados|length }}</b><span>Partes programados pendientes</span><small>sin completar en el periodo</small></div></div>
+<div class="story-fig {{ '' if d.plan.tasa is none else ('ok' if d.plan.tasa >= 90 else ('warn' if d.plan.tasa >= 75 else 'alert')) }}"><b>{{ d.plan.tasa if d.plan.tasa is not none else '—' }}{{ ' %' if d.plan.tasa is not none }}</b><span>Cumplimiento del plan diario</span><small>Σ mín(real, plan) / Σ plan · referencia 90 %</small></div>
+<div class="story-fig {{ 'warn' if d.merma|selectattr('fuera')|list|length else '' }}"><b>{{ d.merma_pct if d.merma_pct is not none else '—' }}{{ ' %' if d.merma_pct is not none }}</b><span>Merma</span><small>{{ d.merma|selectattr('fuera')|list|length }} liquidaciones fuera de lo proyectado</small></div>
+<div class="story-fig {{ 'alert' if cap.paradas|length else '' }}"><b>{{ cap.paradas|length }}</b><span>Paradas de línea</span><small>{{ cap.paradas_min }} min · {{ cap.demoradas|length }} solicitudes atendidas tarde</small></div>
+<div class="story-fig {{ 'warn' if d.programados|length else '' }}"><b>{{ d.programados|length }}</b><span>Partes programados pendientes</span><small>sin completar en el periodo</small></div></div>
 {{ requiere_atencion(d.recomendaciones + cap.recomendaciones) }}
 <div class="card"><h3>1. Capacidad de producción vs producido (kg procesados)</h3>
 <form class="row noprint" method="get"><input type="hidden" name="desde" value="{{ d.desde.isoformat() }}"><input type="hidden" name="hasta" value="{{ d.hasta.isoformat() }}">

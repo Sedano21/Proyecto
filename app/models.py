@@ -1764,6 +1764,8 @@ class Attendance(Base):
     fecha: Mapped[date] = mapped_column(Date, index=True)
     estado: Mapped[str] = mapped_column(String(20))  # lista configurable: asistencia_estados
     observacion: Mapped[str] = mapped_column(String(250), default="")
+    # V18: línea en la que trabajó ese día (se reorganiza el equipo por faltas o prioridades); vacío = la habitual
+    linea: Mapped[str] = mapped_column(String(20), default="", server_default="")
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     ts: Mapped[datetime] = mapped_column(DateTime, default=now)
     worker = relationship("Worker")
@@ -2000,6 +2002,8 @@ class VehicleChecklist(Base):
     observaciones: Mapped[str] = mapped_column(Text, default="")
     km: Mapped[float | None] = mapped_column(Float, nullable=True)  # declarado por el chofer
     nn_fallidos: Mapped[list] = mapped_column(JSON, default=list)
+    # V18: puntos marcados por el chofer sobre la imagen del vehículo [{x, y, nota}] (coordenadas del dibujo)
+    marcas: Mapped[list] = mapped_column(JSON, default=list, server_default="[]")
     estado: Mapped[str] = mapped_column(String(15), default="REGISTRADO")  # REGISTRADO / VALIDADO / OBSERVADO
     registrado_por: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     registrado_ts: Mapped[datetime] = mapped_column(DateTime, default=now)

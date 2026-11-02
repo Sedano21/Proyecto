@@ -56,7 +56,29 @@ def pending_part2(route):
     return out
 
 
-def register(user, route, momento, valores, km=None, observaciones=""):
+def parse_marks(raw):
+    """V18: marcas del dibujo del vehículo (JSON [{x, y, nota}]); cada marca necesita su nota."""
+    import json
+    if not raw:
+        return []
+    try:
+        data = json.loads(raw) if isinstance(raw, str) else list(raw)
+    except ValueError:
+        raise BusinessError("Las marcas del vehículo no son válidas.")
+    out = []
+    for m in data[:30]:
+        try:
+            x, y = float(m.get("x")), float(m.get("y"))
+        except (TypeError, ValueError, AttributeError):
+            continue
+        nota = str(m.get("nota") or "").strip()[:160]
+        if not nota:
+            raise BusinessError("Describa cada punto marcado en el dibujo del vehículo (qué defecto u observación hay).")
+        out.append({"x": round(x, 1), "y": round(y, 1), "nota": nota})
+    return out
+
+
+def register(user, route, momento, valores, km=None, observaciones="", marcas=None):
     momento = (momento or "").upper()
     if momento not in ("SALIDA", "RETORNO"):
         raise BusinessError("Indique si es el checklist de salida o de retorno.")
@@ -89,10 +111,13 @@ def register(user, route, momento, valores, km=None, observaciones=""):
     nn = [item for code, zona, item, es_nn in items() if es_nn and vals[code] == "M"]
     c = VehicleChecklist(vehicle_id=route.vehicle_id, route_id=route.id, momento=momento, fecha=date.today(),
                          driver_id=route.driver_id, items=vals, observaciones=(observaciones or "").strip(), km=km,
-                         nn_fallidos=nn, registrado_por=user.id)
+                         nn_fallidos=nn, registrado_por=user.id, marcas=parse_marks(marcas))
     db().add(c)
     db().flush()
     malos = [item for code, zona, item, _ in items() if vals[code] == "M"]
+    if c.marcas:  # V18: las marcas del dibujo cuentan como observaciones
+        c.observaciones = (c.observaciones + "\n" if c.observaciones else "") + "; ".join(
+            f"Punto {i + 1}: {m['nota']}" for i, m in enumerate(c.marcas))
     if malos or c.observaciones:
         alerts.emit("CHECKLIST_OBSERVADO", f"Checklist de {momento.lower()} con observaciones: {route.vehicle.placa}",
                     ("Puntos NN en mal estado (no puede salir): " + ", ".join(nn) + ". " if nn else "")

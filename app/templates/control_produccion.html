@@ -2,11 +2,12 @@
 {% block content %}
 <div class="cp-head"><div><h1>CONTROL DE PRODUCCIÓN {{ d.fecha.year }}</h1><div class="sub">Reporte {{ {'DIA': 'diario', 'SEMANA': 'semanal', 'MES': 'mensual'}[d.periodo] }}</div></div>
 <form method="get" class="row"><input type="hidden" name="periodo" value="{{ d.periodo }}"><div><label>Fecha</label><input type="date" name="fecha" value="{{ d.fecha.isoformat() }}" onchange="this.form.submit()"></div></form>
+<p class="noprint"><a class="btn sec small" href="?periodo={{ d.periodo }}&fecha={{ d.fecha.isoformat() }}&salida=xlsx">Exportar Excel</a> <a class="btn sec small" href="?periodo={{ d.periodo }}&fecha={{ d.fecha.isoformat() }}&salida=pdf">Exportar PDF</a></p>
 <nav class="cp-tabs">{% for k, v in [('DIA','Diario'),('SEMANA','Semanal'),('MES','Mensual')] %}<a class="{{ 'on' if d.periodo == k }}" href="?periodo={{ k }}&fecha={{ d.fecha.isoformat() }}">{{ v }}</a>{% endfor %}</nav></div>
 {% if d.desde != d.hasta %}<p class="small muted">Del {{ d.desde|d }} al {{ d.hasta|d }}.</p>{% endif %}
 <div class="cp-kpis"><div class="cp-kpi"><span>Producción total real</span><b>{{ '{:,.2f}'.format(d.total_real) }} kg</b><small>({{ '{:,.2f}'.format(d.total_real / 1000) }} TN)</small></div>
 <div class="cp-kpi"><span>Plan {{ {'DIA': 'diario', 'SEMANA': 'semanal', 'MES': 'mensual'}[d.periodo] }}</span><b>{{ '{:,.0f}'.format(d.total_plan) }} kg</b><small>({{ '{:,.2f}'.format(d.total_plan / 1000) }} TN)</small></div>
-<div class="cp-kpi"><span>Cumplimiento general</span><b>{{ d.cumplimiento if d.cumplimiento is not none else '-' }}%</b><small>vs. plan</small></div>
+<div class="cp-kpi {{ '' if d.cumplimiento is none else ('ok' if d.cumplimiento >= 90 else ('warn' if d.cumplimiento >= 75 else 'alert')) }}"><span>Cumplimiento general</span><b>{{ d.cumplimiento if d.cumplimiento is not none else '-' }}%</b><small>vs. plan</small></div>
 <div class="cp-kpi"><span>Horas efectivas</span><b>{{ d.horas }} hr</b><small>registradas en los partes</small></div>
 <div class="cp-kpi"><span>Productividad promedio</span><b>{{ '{:,.0f}'.format(d.productividad) }} kg/hr</b><small>promedio planta</small></div></div>
 <div class="cp-main"><div class="card" style="padding:0;overflow:hidden"><h3 style="margin:0;padding:10px 14px;background:var(--cp-verde-700);color:#fff">DESEMPEÑO POR LÍNEA</h3><div class="tw" style="margin:0"><table class="cp-tabla small"><tr><th>Proceso</th><th>Línea</th><th class="r">Cap. teórica (kg)</th><th class="r">Plan (kg)</th><th class="r">Real (kg)</th><th class="r">% Cumpl.</th><th class="r">Horas efectivas</th><th class="r">Prod. / hr (kg/hr)</th></tr>

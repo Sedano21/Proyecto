@@ -7,6 +7,7 @@ from sqlalchemy import select
 from ..db import db
 from ..models import BOMLine, BOMVersion, Liquidation, Product, ProductionLine, ProductionRequest, SalesOrder, Warehouse
 from ..services import production as psvc
+from ..services.core import BusinessError
 from .common import act, f_bool, f_date, f_float, perm_required
 
 bp = Blueprint("prod", __name__, url_prefix="/produccion")
@@ -76,7 +77,8 @@ def request_detail(rid):
                         "Lista de materiales observada (se alertó).", "produccion.ver"),
             "enviar": (lambda: psvc.send_request(r, u), "Solicitud enviada a Producción.", "produccion.solicitud"),
             "validar": (lambda: psvc.validate_request(r, u, True, f_bool("lista_ok"), f_bool("disponibilidad_ok"), f_bool("capacidad_ok"),
-                                                      f_bool("plazo_ok"), request.form.get("comentario", "")), "Solicitud validada.", "produccion.validar"),
+                                                      f_bool("plazo_ok"), request.form.get("comentario", ""), f_date("fecha_entrega")),
+                        "Solicitud validada.", "produccion.validar"),
             "rechazar": (lambda: psvc.validate_request(r, u, False, f_bool("lista_ok"), f_bool("disponibilidad_ok"), f_bool("capacidad_ok"),
                                                        f_bool("plazo_ok"), request.form.get("comentario", "")), "Solicitud rechazada.", "produccion.validar"),
             "programar": (lambda: psvc.schedule(r, u, request.form.get("line_code"), f_date("fecha_programada", True)),
@@ -188,8 +190,16 @@ def plan():
     from ..models import ProductionPlan
     if request.method == "POST" and request.form.get("accion") == "preprogramar":
         per = request.form.get("periodo") or "SEMANA"
-        return act(lambda: psvc.preschedule_plan(g.user, per), lambda n: f"Planeamiento preprogramado: {len(n)} entrada(s) nuevas.",
-                   url_for("prod.plan", periodo=per))
+        holder = {}
+
+        def _pre():
+            holder["n"] = psvc.preschedule_plan(g.user, per)
+            return holder["n"]
+        resp = act(_pre, lambda n: (f"Planeamiento preprogramado: {len(n)} entrada(s) nuevas (abajo, con su línea sugerida)."
+                                    if n else "No hay requerimientos por planificar: todo ya está en el plan."), url_for("prod.plan", periodo=per))
+        if holder.get("n"):  # V18: se muestran las fechas futuras recién programadas
+            return redirect(url_for("prod.plan", periodo=per, hasta=max(p.fecha for p in holder["n"]).isoformat()))
+        return resp
     if request.method == "POST" and request.form.get("accion") == "validar_cambio":
         pl = db().get(ProductionPlan, int(request.form.get("plan_id") or 0)) or abort(404)
         per = pl.periodo
@@ -203,19 +213,32 @@ def plan():
                                else "Programación modificada."), url_for("prod.plan", periodo=pl.periodo))
     if request.method == "POST":
         f = request.form
-        # la periodicidad es la del selector superior de la pantalla (no se repite en el formulario)
-        return act(lambda: psvc.add_plan(g.user, f.get("periodo"), f_date("fecha", True), f.get("product_code", "").strip().upper().split(" ")[0],
-                                         f_float("cantidad", True), f.get("line_code") or None, f.get("comentario", "")),
-                   "Plan registrado.", url_for("prod.plan", periodo=f.get("periodo", "DIA")))
+        # V18: varios productos a la vez (filas «+»); la periodicidad es la del selector superior de la pantalla
+        from datetime import date as _d
+
+        def _num(v):
+            try:
+                return float(str(v).replace(",", ".")) if str(v or "").strip() else None
+            except ValueError:
+                raise BusinessError(f"Cantidad inválida: {v}")
+        filas = [{"fecha": _d.fromisoformat(fe) if fe else None, "product_code": pc, "cantidad": _num(q), "line_code": ln,
+                  "comentario": co}
+                 for fe, pc, q, ln, co in zip(f.getlist("fecha"), f.getlist("product_code"), f.getlist("cantidad"),
+                                              f.getlist("line_code"), f.getlist("comentario"))]
+        return act(lambda: psvc.add_plans(g.user, f.get("periodo"), filas), lambda r: f"Plan registrado: {len(r)} producto(s).",
+                   url_for("prod.plan", periodo=f.get("periodo", "DIA"), hasta=max([x["fecha"] for x in filas if x["fecha"]] or [None]) or ""))
     periodo = request.args.get("periodo", "DIA")
     d = psvc.plan_vs_real(periodo, f_date("desde"), f_date("hasta"))
     from ..services import charts
     graf = charts.line([("Plan", [(f"{k:%d/%m}", v["plan"]) for k, v in d["serie"]]),
                         ("Real (liquidado)", [(f"{k:%d/%m}", v["real"]) for k, v in d["serie"]])], "und", title="Plan vs real")
     products = list(db().execute(select(Product).where(Product.tipo.in_(["PT", "GR", "MP", "C3"])).order_by(Product.code)).scalars())
+    # V18: el programa incluye lo ya planificado a futuro (no solo hasta hoy)
+    from datetime import timedelta as _td
+    hasta_prog = max(d["hasta"], date.today() + _td(days={"DIA": 14, "SEMANA": 42, "MES": 93}.get(d["periodo"], 42)))
     entradas = list(db().execute(select(ProductionPlan).where(ProductionPlan.periodo == d["periodo"],
                                                               ProductionPlan.fecha >= psvc._inicio(d["periodo"], d["desde"]),
-                                                              ProductionPlan.fecha <= d["hasta"])
+                                                              ProductionPlan.fecha <= hasta_prog)
                                  .order_by(ProductionPlan.fecha.desc(), ProductionPlan.id.desc())).scalars())
     req = psvc.requirements(d["periodo"] if d["periodo"] != "DIA" else "DIA")
     faltan = [(r, psvc.missing_materials_tracking(r)) for r in db().execute(
@@ -263,7 +286,9 @@ def reports():
                                                                    ProductionReport.estado == "PROGRAMADO")
                                     .order_by(ProductionReport.fecha, ProductionReport.id)).scalars())
     products = list(db().execute(select(Product).where(Product.tipo.in_(["PT", "GR", "MP", "C3"])).order_by(Product.code)).scalars())
-    return render_template("prod_reports.html", rows=rows, lineas=[x for x in PRODUCTION_LINES if x[0] in visibles], hoy=date.today(),
+    from ..models import ProductGTIN
+    gtins = list(db().execute(select(ProductGTIN).order_by(ProductGTIN.product_code)).scalars())  # V18: EAN en lista o escrito
+    return render_template("prod_reports.html", rows=rows, lineas=[x for x in PRODUCTION_LINES if x[0] in visibles], hoy=date.today(), gtins=gtins,
                            products=products, programados=programados, turnos=param("turnos_produccion", []) or [],
                            estados=ptsvc.ESTADOS_PARTE, no_editables=ptsvc.NO_EDITABLES, f=a, desde=desde,
                            formato_hora=(param("formato_hora", "24H") or "24H").upper(), fmt_hora=ptsvc.fmt_hora,

@@ -184,18 +184,37 @@ def record(t, user, line_id, cantidad, lote, fecha_produccion=None, fecha_venc=N
     return avance
 
 
-def lot_options(t, line):
-    """Lotes del mismo producto y almacén que pueden reemplazar al reservado (utilizables para la OV y con saldo libre)."""
+def lot_options(t, line, todos=False):
+    """Lotes del mismo producto y almacén que pueden reemplazar al reservado (utilizables para la OV y con saldo libre).
+    todos=True (V18): todos los lotes del producto con stock en el almacén, con su condición, para verlos en la lista
+    (los que no se pueden usar aparecen con el motivo)."""
     from .stock import free_qty, lot_usable, lots_of
+    from ..models import StockLot
     actuales = {r.lot_id for r in line.reservations if r.estado == "ACTIVA"}
     out = []
-    for lot in lots_of(line.product_code, [t.warehouse_code]):
+    lotes = lots_of(line.product_code, [t.warehouse_code])
+    if todos:
+        ids = {x.id for x in lotes}
+        lotes += [x for x in db().execute(select(StockLot).where(StockLot.product_code == line.product_code,
+                                                                 StockLot.warehouse_code == t.warehouse_code,
+                                                                 StockLot.cantidad > 0)).scalars() if x.id not in ids]
+    for lot in lotes:
         if lot.id in actuales:
             continue
-        ok, _ = lot_usable(lot, t.order.fecha_compromiso, t.order.customer)
-        if ok and free_qty(lot) > 1e-9:
+        ok, motivo = lot_usable(lot, t.order.fecha_compromiso, t.order.customer)
+        libre = free_qty(lot)
+        if todos:
+            if not ok:
+                pass
+            elif libre <= 1e-9:
+                motivo = "sin saldo libre (reservado a otras OV)"
+            out.append({"lot": lot, "ok": ok and libre > 1e-9, "motivo": "" if ok and libre > 1e-9 else (motivo or ""),
+                        "libre": libre})
+        elif ok and libre > 1e-9:
             out.append(lot)
-    return sorted(out, key=lambda l: (l.fecha_venc or date.max, l.id))
+    clave = (lambda x: (not x["ok"], x["lot"].fecha_venc or date.max, x["lot"].id)) if todos else \
+        (lambda l: (l.fecha_venc or date.max, l.id))
+    return sorted(out, key=clave)
 
 
 def change_lot(t, user, reservation_id, nuevo_lot_id, cantidad, motivo, observacion):
@@ -299,14 +318,25 @@ def format_rows(tasks):
         for l in o.lines:
             if not l.activa:
                 continue
-            mios = [r for r in recs if r.line_id == l.id] or [None]
-            for r in mios:
+            mios = [r for r in recs if r.line_id == l.id]
+            if mios:
+                for r in mios:
+                    out.append({"fecha": t.fecha, "ov": o.numero, "codigo": l.product_code, "cliente": o.customer.nombre,
+                                "descripcion": l.product.descripcion if l.product else "", "solicitado": l.cantidad,
+                                "bultos": r.bultos, "despachado": r.cantidad, "lote": r.lote,
+                                "fecha_produccion": r.fecha_produccion, "fecha_venc": r.fecha_venc,
+                                "comentario": r.comentario or o.lugar_entrega or o.distrito})
+                continue
+            # V18: sin registro aún, el formato sale con el lote reservado y sus fechas (el auxiliar completa
+            # despachado y bultos)
+            res = [r for r in l.reservations if r.estado == "ACTIVA" and r.lot and r.lot.warehouse_code == t.warehouse_code]
+            for r in res or [None]:
+                lot = r.lot if r else None
                 out.append({"fecha": t.fecha, "ov": o.numero, "codigo": l.product_code, "cliente": o.customer.nombre,
-                            "descripcion": l.product.descripcion if l.product else "", "solicitado": l.cantidad,
-                            "bultos": (r.bultos if r and r.bultos is not None else bultos_de(l.product, l.cantidad)),
-                            "despachado": r.cantidad if r else None, "lote": r.lote if r else "",
-                            "fecha_produccion": r.fecha_produccion if r else None, "fecha_venc": r.fecha_venc if r else None,
-                            "comentario": (r.comentario if r and r.comentario else o.lugar_entrega or o.distrito)})
+                            "descripcion": l.product.descripcion if l.product else "",
+                            "solicitado": r.cantidad if r else l.cantidad, "bultos": None, "despachado": None,
+                            "lote": lot.lote if lot else "", "fecha_produccion": lot.fecha_fab if lot else None,
+                            "fecha_venc": lot.fecha_venc if lot else None, "comentario": o.lugar_entrega or o.distrito})
     return out
 
 

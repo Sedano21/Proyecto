@@ -935,3 +935,72 @@ def control_report(periodo="DIA", fecha=None):
             "productividad": round(tot_real / tot_h) if tot_h else 0, "asistencia": dict(asis), "presentes": presentes,
             "asistencia_pct": round(100 * presentes / total_asis) if total_asis else None, "hallazgos": hallazgos,
             "situacion": situacion or ["Sin paradas registradas en el periodo."], "acciones": acciones}
+
+
+# ------------------------------------------------------------------ V18: exportación del control de producción
+def control_excel(d):
+    """Control de producción en Excel, con el mismo contenido de la pantalla (indicadores, desempeño por línea,
+    hallazgos, situación y acciones)."""
+    import io
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    VERDE, GRIS, ROJO, AMBAR = "0E7A3D", "F3F4F6", "C62828", "B45309"
+    fino = Side(style="thin", color="D1D5DB")
+    caja = Border(left=fino, right=fino, top=fino, bottom=fino)
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Control de producción"
+    ws.sheet_view.showGridLines = False
+    nombre = {"DIA": "diario", "SEMANA": "semanal", "MES": "mensual"}[d["periodo"]]
+    ws["A1"] = f"CONTROL DE PRODUCCIÓN {d['fecha'].year} · reporte {nombre}"
+    ws["A1"].font = Font(bold=True, size=14, color=VERDE)
+    ws["A2"] = f"Del {d['desde']:%d/%m/%Y} al {d['hasta']:%d/%m/%Y}"
+    ws["A2"].font = Font(size=10, color="6B7280")
+    kpis = [("Producción real (kg)", d["total_real"]), ("Plan (kg)", d["total_plan"]),
+            ("Cumplimiento (%)", d["cumplimiento"]), ("Horas efectivas", d["horas"]), ("Productividad (kg/h)", d["productividad"]),
+            ("Asistencia (%)", d.get("asistencia_pct"))]
+    for i, (k, v) in enumerate(kpis):
+        c = ws.cell(row=4, column=1 + i, value=k)
+        c.font, c.fill, c.border = Font(bold=True, size=9, color="374151"), PatternFill("solid", fgColor=GRIS), caja
+        c.alignment = Alignment(wrap_text=True, vertical="center")
+        v_ = ws.cell(row=5, column=1 + i, value=v)
+        color = "111827"
+        if k.startswith("Cumplimiento") and v is not None:
+            color = VERDE if v >= 90 else (AMBAR if v >= 75 else ROJO)
+        v_.font, v_.border = Font(bold=True, size=13, color=color), caja
+        v_.number_format = "#,##0.0"
+    cab = ["Proceso", "Línea", "Cap. teórica (kg)", "Plan (kg)", "Real (kg)", "% Cumpl.", "Horas efectivas", "kg/h"]
+    for j, h in enumerate(cab, 1):
+        c = ws.cell(row=7, column=j, value=h)
+        c.font, c.fill, c.border = Font(bold=True, color="FFFFFF", size=9), PatternFill("solid", fgColor=VERDE), caja
+        c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    r = 8
+    for f in d["filas"]:
+        vals = [f["proceso"], f["grupo"], f["capacidad"], f["plan"] or f["capacidad"], f["real"], f["cumplimiento"], f["horas"], f["kg_h"]]
+        for j, v in enumerate(vals, 1):
+            c = ws.cell(row=r, column=j, value=v)
+            c.border = caja
+            if j >= 3:
+                c.number_format = "#,##0.0"
+            if j == 6 and v is not None:
+                c.font = Font(bold=True, color=VERDE if v >= 90 else (AMBAR if v >= 75 else ROJO))
+        r += 1
+    for j, v in enumerate(["TOTAL", "", None, d["total_plan"], d["total_real"], d["cumplimiento"], d["horas"], d["productividad"]], 1):
+        c = ws.cell(row=r, column=j, value=v)
+        c.font, c.fill, c.border = Font(bold=True), PatternFill("solid", fgColor=GRIS), caja
+        if j >= 3:
+            c.number_format = "#,##0.0"
+    r += 2
+    for titulo, lst in (("Hallazgos", d.get("hallazgos") or []), ("Situación operativa", d.get("situacion") or []),
+                        ("Acciones", d.get("acciones") or [])):
+        ws.cell(row=r, column=1, value=titulo).font = Font(bold=True, color=VERDE)
+        r += 1
+        for x in lst:
+            ws.cell(row=r, column=1, value=f"• {x}")
+            r += 1
+        r += 1
+    for col, w in zip("ABCDEFGH", (14, 22, 16, 14, 14, 11, 14, 11)):
+        ws.column_dimensions[col].width = w
+    out = io.BytesIO()
+    wb.save(out)
+    return out.getvalue()

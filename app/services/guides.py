@@ -37,8 +37,10 @@ def generate(order, user=None):
         res = [r for r in l.reservations if r.estado in ("ACTIVA", "CONSUMIDA")]
         prep = l.preparado if l.preparado > 0 else sum(r.cantidad for r in res if r.estado == "ACTIVA")
         items.append({"codigo": l.product_code, "descripcion": l.product.descripcion if l.product else "",
+                      "presentacion": (l.product.presentacion if l.product else "") or "",
                       "pedido": l.cantidad, "preparado": prep,
-                      "lotes": [{"lote": r.lot.lote, "cantidad": r.cantidad, "fv": r.lot.fecha_venc.isoformat() if r.lot.fecha_venc else ""}
+                      "lotes": [{"lote": r.lot.lote, "cantidad": r.cantidad, "fv": r.lot.fecha_venc.isoformat() if r.lot.fecha_venc else "",
+                                 "fp": r.lot.fecha_fab.isoformat() if r.lot.fecha_fab else ""}
                                 for r in res]})
         if abs(prep - l.cantidad) > 1e-9:
             dif.append(f"{l.product_code}: pedido {l.cantidad:g}, preparado {prep:g}")
@@ -62,6 +64,8 @@ def validate(user, order, aprobar, observacion="", fecha_guia=None):
         raise BusinessError("La pre-guía tiene diferencias con la OV: indique por qué se valida así.")
     if fecha_guia:
         pg["fecha_guia"] = (fecha_guia if isinstance(fecha_guia, date) else date.fromisoformat(str(fecha_guia)[:10])).isoformat()
+    if not pg.get("revision_inicio_ts"):
+        pg.update({"revision_inicio_ts": now().isoformat(timespec="minutes"), "revision_inicio_por": user.nombre})
     pg.update({"estado": "VALIDADA" if aprobar else "OBSERVADA", "validado_por": user.nombre,
                "validado_ts": now().isoformat(timespec="minutes"), "observacion": (observacion or "").strip()})
     if aprobar:
@@ -208,3 +212,167 @@ def check_route_planning(ahora=None):
                 f"Pasó la hora de corte ({corte}): " + ", ".join(o.numero for o in sin[:10]) + ". Planifique las rutas del "
                 f"{manana:%d/%m/%Y}.", "Route", "", prioridad="ALTA", dedup_key=f"RUTAS_MANANA:{manana:%Y%m%d}")
     return 1
+
+
+# ------------------------------------------------------------------ V18: revisión de la pre-guía como el precertificado
+EDITABLES_EMITIDA = ("fecha", "cantidad", "presentacion")
+
+
+def _ts():
+    return now().isoformat(timespec="minutes")
+
+
+def start_review(user, order):
+    """Marca el inicio de la revisión (la primera vez que la abre el Coordinador o el Asistente de Distribución)."""
+    pg = dict(order.preguia or {})
+    if not pg or pg.get("estado") not in ("POR_VALIDAR", "OBSERVADA") or pg.get("revision_inicio_ts"):
+        return pg
+    if not has_perm(user, "distribucion.guia_modificar"):
+        return pg
+    pg.update({"revision_inicio_ts": _ts(), "revision_inicio_por": user.nombre})
+    order.preguia = pg
+    return pg
+
+
+def _num(v, campo):
+    try:
+        x = float(str(v).replace(",", ".").strip())
+    except (TypeError, ValueError):
+        raise BusinessError(f"Cantidad inválida en {campo}.")
+    if x < 0:
+        raise BusinessError(f"La cantidad de {campo} no puede ser negativa.")
+    return x
+
+
+def _diferencias(items):
+    return [f"{x['codigo']}: pedido {x['pedido']:g}, preparado {x['preparado']:g}" for x in items
+            if abs((x.get("preparado") or 0) - (x.get("pedido") or 0)) > 1e-9]
+
+
+def review(user, order, form):
+    """Guarda lo revisado de la pre-guía (todos los campos editables, como el precertificado): fecha, punto de llegada,
+    motivo, observaciones y, por producto, cantidad, presentación y cantidades por lote."""
+    _guarda(user)
+    pg = dict(order.preguia or {})
+    if pg.get("estado") not in ("POR_VALIDAR", "OBSERVADA"):
+        raise BusinessError("La pre-guía ya fue emitida: use el lápiz para cambiar la fecha, las cantidades o la presentación.")
+    start_review(user, order)
+    pg = dict(order.preguia or {})
+    if form.get("fecha_guia"):
+        try:
+            pg["fecha_guia"] = date.fromisoformat(str(form.get("fecha_guia"))[:10]).isoformat()
+        except ValueError:
+            raise BusinessError("Fecha de la guía inválida.")
+    for k in ("llegada", "motivo", "observaciones_guia"):
+        if k in form:
+            pg[k] = (form.get(k) or "").strip()[:300]
+    items = []
+    for i, x in enumerate(pg.get("items") or []):
+        x = dict(x)
+        if f"cant_{i}" in form and str(form.get(f"cant_{i}")).strip() != "":
+            x["preparado"] = _num(form.get(f"cant_{i}"), x["codigo"])
+        if f"pres_{i}" in form:
+            x["presentacion"] = (form.get(f"pres_{i}") or "").strip()[:60]
+        lotes = []
+        for j, lt in enumerate(x.get("lotes") or []):
+            lt = dict(lt)
+            if f"lote_{i}_{j}" in form and str(form.get(f"lote_{i}_{j}")).strip() != "":
+                lt["cantidad"] = _num(form.get(f"lote_{i}_{j}"), f"{x['codigo']} lote {lt.get('lote')}")
+            lotes.append(lt)
+        if lotes and abs(sum(l["cantidad"] for l in lotes) - x["preparado"]) > 1e-6:
+            raise BusinessError(f"{x['codigo']}: la suma de los lotes ({sum(l['cantidad'] for l in lotes):g}) no coincide "
+                                f"con la cantidad ({x['preparado']:g}).")
+        x["lotes"] = lotes
+        items.append(x)
+    pg["items"] = items
+    pg["diferencias"] = _diferencias(items)
+    pg["revisado_ts"], pg["revisado_por"] = _ts(), user.nombre
+    order.preguia = pg
+    audit(user, "PREGUIA_REVISADA", "SalesOrder", order.numero, {"fecha_guia": pg.get("fecha_guia")})
+    return pg
+
+
+def edit_emitted(user, order, campo, motivo, idx=None, valor=None):
+    """Guía ya emitida: solo se cambian la fecha, las cantidades o la presentación (lápiz), con motivo y rastro de quién
+    y qué cambió (para el indicador de cambios del Jefe de Logística y el Jefe de Operaciones)."""
+    _guarda(user)
+    pg = dict(order.preguia or {})
+    if pg.get("estado") != "VALIDADA":
+        raise BusinessError("La guía aún no está emitida: edítela en la revisión de la pre-guía.")
+    if campo not in EDITABLES_EMITIDA:
+        raise BusinessError("Después de emitida solo se cambian la fecha, las cantidades o la presentación.")
+    if not (motivo or "").strip():
+        raise BusinessError("Indique el motivo del cambio.")
+    if campo == "fecha":
+        return change_date(user, order, valor, motivo)
+    items = [dict(x) for x in pg.get("items") or []]
+    if idx is None or not (0 <= int(idx) < len(items)):
+        raise BusinessError("Producto no encontrado en la guía.")
+    x = items[int(idx)]
+    if campo == "cantidad":
+        nuevo = _num(valor, x["codigo"])
+        antes = x.get("preparado")
+        if abs((antes or 0) - nuevo) < 1e-9:
+            raise BusinessError("Es la misma cantidad.")
+        x["preparado"] = nuevo
+        if len(x.get("lotes") or []) == 1:
+            x["lotes"] = [dict(x["lotes"][0], cantidad=nuevo)]
+    else:
+        nuevo = (valor or "").strip()[:60]
+        antes = x.get("presentacion", "")
+        if nuevo == antes:
+            raise BusinessError("Es la misma presentación.")
+        x["presentacion"] = nuevo
+    items[int(idx)] = x
+    pg["items"] = items
+    cambio = {"campo": campo, "producto": x["codigo"], "de": antes, "a": nuevo, "motivo": motivo.strip(), "user": user.nombre,
+              "origen": "MODULO", "ts": _ts()}
+    pg["cambios"] = list(pg.get("cambios") or []) + [cambio]
+    sap = dict(pg.get("sap") or {})
+    if sap.get("docentry") and campo == "cantidad":
+        # SAP no permite cambiar las cantidades de una entrega ya registrada: queda marcado para ajustarla en SAP
+        sap["ajuste_pendiente"] = True
+    pg["sap"] = sap
+    order.preguia = pg
+    st = _stop(order)
+    if st is not None:
+        st.guia_cambios = list(st.guia_cambios or []) + [cambio]
+    audit(user, "GUIA_MODIFICADA", "SalesOrder", order.numero, cambio)
+    return pg
+
+
+def change_rate(desde=None, hasta=None):
+    """Indicador del Jefe de Logística y el Jefe de Operaciones: guías emitidas, guías con cambios después de la emisión
+    (tasa), cambios por campo y por persona."""
+    hasta = hasta or date.today()
+    desde = desde or hasta - timedelta(days=29)
+    emitidas, con_cambio, por_campo, por_user = 0, 0, {}, {}
+    for o in db().execute(select(SalesOrder).where(SalesOrder.fecha_compromiso >= desde - timedelta(days=30))).scalars():
+        pg = o.preguia or {}
+        if pg.get("estado") != "VALIDADA":
+            continue
+        ts = (pg.get("validado_ts") or "")[:10]
+        if not ts or not (desde.isoformat() <= ts <= hasta.isoformat()):
+            continue
+        emitidas += 1
+        cambios = [c for c in pg.get("cambios") or [] if c.get("origen") == "MODULO" and (c.get("ts") or "") >= (pg.get("validado_ts") or "")]
+        if cambios:
+            con_cambio += 1
+        for c in cambios:
+            por_campo[c.get("campo")] = por_campo.get(c.get("campo"), 0) + 1
+            por_user[c.get("user")] = por_user.get(c.get("user"), 0) + 1
+    return {"desde": desde, "hasta": hasta, "emitidas": emitidas, "con_cambio": con_cambio,
+            "tasa": round(100 * con_cambio / emitidas, 1) if emitidas else None, "por_campo": por_campo,
+            "por_user": sorted(por_user.items(), key=lambda x: -x[1])}
+
+
+def durations(pg):
+    """Minutos de la pre-guía: generada → inicio de revisión → emitida."""
+    def dt(k):
+        try:
+            return datetime.fromisoformat(pg[k]) if pg.get(k) else None
+        except ValueError:
+            return None
+    g, i, f = dt("generada_ts"), dt("revision_inicio_ts"), dt("validado_ts")
+    m = lambda a, b: int((b - a).total_seconds() // 60) if a and b else None
+    return {"espera": m(g, i), "revision": m(i, f), "total": m(g, f)}

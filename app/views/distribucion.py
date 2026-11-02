@@ -207,6 +207,15 @@ def _conformidad(stop, u):
 def my_deliveries():
     """Vista simple del chofer: sus paradas en tarjetas, «Llegué» y la conformidad digital (sin reportes manuales)."""
     back = url_for("dist.my_deliveries")
+    if request.method == "POST" and request.form.get("accion") == "averia":  # V18: el chofer reporta una avería
+        from flask import current_app
+        from ..services import maintenance as msvc
+        from ..services.distribution import save_upload
+        v = db().get(Vehicle, int(request.form.get("vehicle_id") or 0)) or abort(404)
+        return act(lambda: msvc.report_breakdown(g.user, v, request.form.get("descripcion", ""), request.form.get("severidad"),
+                                                 request.form.get("km"), save_upload(request.files.get("foto"),
+                                                                                     current_app.config["UPLOAD_DIR"], f"averia_{v.id}")),
+                   "Avería reportada: Distribución y Mantenimiento ya fueron alertados.", back)
     if request.method == "POST":
         stop = db().get(RouteStop, int(request.form.get("stop_id") or 0)) or abort(404)
         drv = stop.route.driver
@@ -215,7 +224,10 @@ def my_deliveries():
         if request.form.get("accion") == "llegada":
             return act(lambda: dsvc.register_arrival(stop, g.user), "Llegada registrada.", back)
         return act(lambda: _conformidad(stop, g.user), "Conformidad registrada.", back)
-    return render_template("my_deliveries.html", rutas=dsvc.driver_stops(g.user))
+    rutas = dsvc.driver_stops(g.user)
+    mios = {r.vehicle for r, *_ in rutas if getattr(r, "vehicle", None)} if rutas and isinstance(rutas[0], tuple) else set()
+    vehiculos = sorted(mios, key=lambda v: v.placa) or list(db().execute(select(Vehicle).order_by(Vehicle.placa)).scalars())
+    return render_template("my_deliveries.html", rutas=rutas, vehiculos=vehiculos)
 
 
 @bp.route("/rastreo", methods=["GET", "POST"])

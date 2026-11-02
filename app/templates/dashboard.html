@@ -23,6 +23,18 @@
 {% else %}{{ empty('Sin alertas abiertas.', 'bell') }}{% endif %}</section>
 </div>
 
+{% if despachos is not none %}{# V18: despachos por cliente y fecha #}
+<div class="section-title">Despachos por cliente y fecha {{ '(mis clientes)' if user.role_code == 'EJECUTIVO_VENTAS' }} <a class="small" href="{{ url_for('seg.groups') }}">Ver todos los expedientes</a></div>
+{% set riesgo = despachos|selectattr('pronostico.0', 'equalto', 'RIESGO')|list %}
+<div class="kpis"><a class="kpi {{ 'alert' if riesgo else 'ok' }}" href="#desp-tabla"><span>En riesgo</span><b>{{ riesgo|length }}</b><small>despachos con atraso, detención o faltante</small></a>
+<a class="kpi {{ 'warn' if despachos|selectattr('pronostico.0', 'equalto', 'VIGILAR')|list else '' }}" href="#desp-tabla"><span>Por vigilar</span><b>{{ despachos|selectattr('pronostico.0', 'equalto', 'VIGILAR')|list|length }}</b><small>salen hoy sin todo preparado</small></a>
+<a class="kpi" href="#desp-tabla"><span>A tiempo</span><b>{{ despachos|selectattr('pronostico.0', 'equalto', 'A_TIEMPO')|list|length }}</b><small>próximos 7 días</small></a>
+<a class="kpi {{ 'warn' if despachos|sum(attribute='modificaciones') else '' }}" href="#desp-tabla"><span>Modificaciones</span><b>{{ despachos|sum(attribute='modificaciones') }}</b><small>cambios en las OV de estos despachos</small></a></div>
+<div class="tw" id="desp-tabla"><table class="small"><tr><th>Despacho</th><th>Cliente</th><th class="r">OV</th><th class="r">Listas</th><th class="r">Avance</th><th>Pronóstico</th><th class="r">Cambios</th><th class="r">Incid.</th><th>Qué gestionar</th></tr>
+{% for gx in despachos[:25] %}<tr><td>{{ gx.fecha|d }}</td><td><a href="{{ url_for('seg.group', cid=gx.cliente.id, fecha=gx.fecha.isoformat()) }}">{{ gx.cliente.nombre }}</a></td><td class="r">{{ gx.ovs|length }}</td><td class="r">{{ gx.listas }}</td><td class="r">{{ gx.avance }} %</td>
+<td><span class="b {{ {'RIESGO': 'ALTA', 'VIGILAR': 'MEDIA', 'A_TIEMPO': 'ok', 'CUMPLIDO': 'ok'}[gx.pronostico[0]] }}">{{ gx.pronostico[1] }}</span></td><td class="r">{{ gx.modificaciones or '—' }}</td><td class="r">{{ gx.incidencias or '—' }}</td>
+<td>{% for p in gx.problemas[:3] %}{{ p }}{{ '; ' if not loop.last }}{% else %}<span class="muted">—</span>{% endfor %}{% if gx.problemas|length > 3 %} (+{{ gx.problemas|length - 3 }}){% endif %}</td></tr>
+{% else %}<tr><td colspan="9" class="muted">Sin despachos en los próximos días.</td></tr>{% endfor %}</table></div>{% endif %}
 {% if mis_ov is not none %}{# V17: el ejecutivo comercial ve cómo van sus pedidos #}
 <div class="section-title">Mis pedidos <a class="small" href="{{ url_for('seg.groups') }}">Ver por cliente y despacho</a></div>
 {% set atr = mis_ov|selectattr('retraso')|list %}{% if atr %}<section class="recos">{% for x in atr[:6] %}<div class="reco-big ALTA"><b>Retraso</b><span><a style="color:inherit" href="{{ url_for('com.order_detail', oid=x.o.id) }}">OV {{ x.o.numero }}</a> · {{ x.o.customer.nombre }}: {{ x.retraso }} ({{ x.area }})</span></div>{% endfor %}</section>{% endif %}

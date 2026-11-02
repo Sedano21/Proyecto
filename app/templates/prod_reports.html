@@ -13,7 +13,7 @@
 <label class="req">Línea</label><select name="linea" required>{% for c, n, _ in lineas %}<option value="{{ c }}">{{ n }}</option>{% endfor %}</select>
 <label class="req">Producto</label><input name="product_code" required list="pp2" autocomplete="off" placeholder="código o nombre"><datalist id="pp2">{% for p in products %}<option value="{{ p.code }} · {{ p.descripcion }}{{ ' · ' ~ p.presentacion if p.presentacion }}"></option>{% endfor %}</datalist>
 <div class="row"><div><label>Turno</label><select name="turno">{% for x in turnos %}<option>{{ x }}</option>{% endfor %}</select></div><div><label>OF</label><input name="of" size="10"></div><div><label>Máquina</label><input name="maquina" size="12" placeholder="= línea"></div></div>
-<div class="row"><div><label>EAN escaneado</label><input name="ean" inputmode="numeric" size="16"></div><div><label>Presentación (kg)</label><input type="number" step="any" min="0" name="presentacion_kg" style="width:90px"></div><div><label>Und. por paquete</label><input type="number" step="1" min="1" name="und_paquete" style="width:80px"></div></div>
+<div class="row"><div><label>EAN escaneado</label><input name="ean" inputmode="numeric" size="16" list="eans" autocomplete="off" placeholder="escanee, escriba o elija"></div><div><label>Presentación (kg)</label><input type="number" step="any" min="0" name="presentacion_kg" style="width:90px"></div><div><label>Und. por paquete</label><input type="number" step="1" min="1" name="und_paquete" style="width:80px"></div></div>
 <div class="live-check" aria-live="polite"></div>
 <div class="wz-nav"><span></span><button class="btn" data-next>Siguiente</button></div></section>
 <section class="wz-step" hidden>
@@ -40,7 +40,7 @@
 
 <dialog class="modal" id="dlg-iniciar" aria-labelledby="dlg-iniciar-t"><form method="post" action="{{ url_for('prod.part_new') }}">{{ csrf() }}<input type="hidden" name="parte_id"><input type="hidden" name="accion" value="registrar">
 <div class="dlg-head"><h3 id="dlg-iniciar-t">Iniciar · <span data-show="titulo"></span></h3><button class="ibtn" data-close aria-label="Cerrar">{{ ic('x') }}</button></div>
-<div class="dlg-body"><div class="row"><div><label>EAN escaneado</label><input name="ean" inputmode="numeric" size="16"></div><div><label>Lote MP</label><input name="lote" size="12"></div></div></div>
+<div class="dlg-body"><div class="row"><div><label>EAN escaneado</label><input name="ean" inputmode="numeric" size="16" list="eans" autocomplete="off" placeholder="escanee, escriba o elija"></div><div><label>Lote MP</label><input name="lote" size="12"></div></div></div>
 <div class="dlg-foot"><button class="btn sec" data-close>Cancelar</button><button class="btn">Iniciar ahora</button></div></form></dialog>
 {% endif %}
 
@@ -65,4 +65,5 @@
 <div class="meta"><span>Rend. <b>{{ r.rendimiento_pct if r.rendimiento_pct is not none else '—' }} %</b></span><span>Desm. <b>{{ r.desmedro_pct if r.desmedro_pct is not none else '—' }} %</b></span>{% if ind.oee is defined %}<span>OEE <b>{{ ind.oee }} %</b></span>{% endif %}{% if r.ratio_kg_hora %}<span>{{ r.ratio_kg_hora|n }} kg/h</span>{% endif %}</div></article>{% endfor %}</div>
 {% else %}{{ empty('Sin partes en el periodo y filtros elegidos.') }}{% endif %}
 <p class="small"><a href="{{ url_for('prod.control') }}">Control de producción</a> · <a href="{{ url_for('prod.oee_dashboard') }}">Tablero OEE</a> · <a href="{{ url_for('prod.productivity') }}">Productividad por persona</a> · <a href="{{ url_for('prod.attendance') }}">Asistencia</a> · <a href="{{ url_for('rep.show', nombre='produccion') }}">Informe de producción</a></p>
+<datalist id="eans">{% for x in gtins %}<option value="{{ x.gtin }}">{{ x.product_code }} · {{ x.descripcion or x.marca }}</option>{% endfor %}</datalist>
 {% endblock %}

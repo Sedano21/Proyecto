@@ -554,3 +554,54 @@ a.ev-thumb img{height:110px;max-width:160px;object-fit:cover;border-radius:6px;b
 a.kpi{display:block;color:inherit;text-decoration:none;cursor:pointer;transition:box-shadow .15s,transform .15s}
 a.kpi:hover,a.kpi:focus-visible{box-shadow:0 0 0 2px var(--cp-verde,#0f7a55) inset;transform:translateY(-1px)}
 a.kpi[href="#"]{cursor:default}a.kpi[href="#"]:hover{box-shadow:none;transform:none}
+
+/* ---------- V18 (02-nov-2026): indicadores limpios y profesionales ----------
+   Tarjetas blancas, cifra grande y oscura, etiqueta en mayúscula pequeña y un acento de color por categoría (no todas
+   del mismo color). Lo que requiere atención resalta: ámbar (vigilar) o rojo (crítico), con la cifra en ese color. */
+:root{--acc-1:#0f7a55;--acc-2:#1e5aa8;--acc-3:#0e7c86;--acc-4:#6b4fa3;--acc-5:#8a6d1d;--acc-6:#475569;
+  --st-ok:#0f7a55;--st-warn:#b45309;--st-alert:#c62828}
+.kpis>.kpi,.kpis>a.kpi{--acc:var(--acc-6);background:#fff;border:1px solid #e3e8ef;border-radius:10px;
+  box-shadow:0 1px 2px rgba(16,24,40,.05);padding:14px 16px 12px 18px;position:relative;overflow:hidden}
+.kpis>.kpi::before,.kpis>a.kpi::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--acc)}
+.kpis>.kpi:nth-child(6n+1),.kpis>a.kpi:nth-child(6n+1){--acc:var(--acc-1)}
+.kpis>.kpi:nth-child(6n+2),.kpis>a.kpi:nth-child(6n+2){--acc:var(--acc-2)}
+.kpis>.kpi:nth-child(6n+3),.kpis>a.kpi:nth-child(6n+3){--acc:var(--acc-3)}
+.kpis>.kpi:nth-child(6n+4),.kpis>a.kpi:nth-child(6n+4){--acc:var(--acc-4)}
+.kpis>.kpi:nth-child(6n+5),.kpis>a.kpi:nth-child(6n+5){--acc:var(--acc-5)}
+.kpis>.kpi:nth-child(6n+6),.kpis>a.kpi:nth-child(6n+6){--acc:var(--acc-6)}
+.kpis>.kpi span,.kpis>a.kpi span{order:-1;font-size:11.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:#5b6573;margin:0 0 6px}
+.kpis>.kpi,.kpis>a.kpi{display:flex;flex-direction:column}
+.kpis>.kpi b,.kpis>a.kpi b{font-size:26px;font-weight:700;color:#111827;letter-spacing:-.015em}
+.kpis>.kpi small,.kpis>a.kpi small{color:#6b7280;margin-top:4px}
+.kpis>.kpi.ok,.kpis>a.kpi.ok{--acc:var(--st-ok)}.kpis>.kpi.ok b,.kpis>a.kpi.ok b{color:var(--st-ok)}
+.kpis>.kpi.warn,.kpis>a.kpi.warn{--acc:var(--st-warn);background:#fffbf3;border-color:#f3dfb8}.kpis>.kpi.warn b,.kpis>a.kpi.warn b{color:var(--st-warn)}
+.kpis>.kpi.alert,.kpis>a.kpi.alert,.kpis>.kpi.err,.kpis>a.kpi.err{--acc:var(--st-alert);background:#fff6f6;border-color:#f3c9c9}
+.kpis>.kpi.alert b,.kpis>a.kpi.alert b,.kpis>.kpi.err b,.kpis>a.kpi.err b{color:var(--st-alert)}
+.kpis>.kpi,.kpis>a.kpi{box-shadow:0 1px 2px rgba(16,24,40,.05)}  /* sin el borde interno anterior */
+.kpis>a.kpi:hover,.kpis>a.kpi:focus-visible{border-color:#9fb3c8;box-shadow:0 4px 12px rgba(16,24,40,.08);transform:translateY(-1px)}
+.kpis>a.kpi[href="#"]:hover{border-color:#e3e8ef;box-shadow:0 1px 2px rgba(16,24,40,.05);transform:none}
+/* informes «resumen»: mismas reglas (antes todo en verde) */
+.story-hero{gap:12px;box-shadow:none;border-radius:0;overflow:visible}
+.story-fig,.story-fig:nth-child(2n){--acc:var(--acc-6);background:#fff;color:#111827;border:1px solid #e3e8ef;border-radius:10px;
+  box-shadow:0 1px 2px rgba(16,24,40,.05);position:relative;overflow:hidden;padding:16px 18px 14px 20px;display:flex;flex-direction:column}
+.story-fig::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--acc)}
+.story-fig:nth-child(6n+1){--acc:var(--acc-1)}.story-fig:nth-child(6n+2){--acc:var(--acc-2)}.story-fig:nth-child(6n+3){--acc:var(--acc-3)}
+.story-fig:nth-child(6n+4){--acc:var(--acc-4)}.story-fig:nth-child(6n+5){--acc:var(--acc-5)}.story-fig:nth-child(6n+6){--acc:var(--acc-6)}
+.story-fig span{order:-1;font-size:11.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:#5b6573;opacity:1;margin:0 0 6px}
+.story-fig b{color:#111827;font-size:28px}
+.story-fig small{color:#6b7280;opacity:1}
+.story-fig.ok{--acc:var(--st-ok)}.story-fig.ok b{color:var(--st-ok)}
+.story-fig.warn{--acc:var(--st-warn);background:#fffbf3;border-color:#f3dfb8}.story-fig.warn b{color:var(--st-warn)}
+.story-fig.alert{--acc:var(--st-alert);background:#fff6f6;border-color:#f3c9c9}.story-fig.alert b{color:var(--st-alert)}
+@media print{.kpis>.kpi,.kpis>a.kpi,.story-fig{box-shadow:none;-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+/* V18: dibujo del vehículo */
+.veh-wrap{max-width:720px}.veh-svg{width:100%;height:auto;background:#fff;border:1px solid #e3e8ef;border-radius:10px}
+.veh-wrap[data-editable="1"] .veh-svg{cursor:crosshair}.veh-notas{margin:8px 0 0 18px;padding:0}.veh-notas li{margin:4px 0}.veh-notas input{width:min(100%,420px)}
+/* V18: control de producción con el mismo lenguaje visual (acento por categoría y estado) */
+.cp-kpi{position:relative;overflow:hidden;padding-left:18px;background:#fff;border-color:#e3e8ef;border-radius:10px}
+.cp-kpi::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--acc,var(--acc-6))}
+.cp-kpi:nth-child(5n+1){--acc:var(--acc-1)}.cp-kpi:nth-child(5n+2){--acc:var(--acc-2)}.cp-kpi:nth-child(5n+3){--acc:var(--acc-3)}.cp-kpi:nth-child(5n+4){--acc:var(--acc-4)}.cp-kpi:nth-child(5n+5){--acc:var(--acc-5)}
+.cp-kpi span{font-size:11.5px;letter-spacing:.04em;color:#5b6573}.cp-kpi b{font-size:26px;color:#111827}
+.cp-kpi.ok{--acc:var(--st-ok)}.cp-kpi.ok b{color:var(--st-ok)}.cp-kpi.warn{--acc:var(--st-warn);background:#fffbf3}.cp-kpi.warn b{color:var(--st-warn)}
+.cp-kpi.alert{--acc:var(--st-alert);background:#fff6f6}.cp-kpi.alert b{color:var(--st-alert)}
+.kpis.kpis-ts>.kpi b{font-size:18px;line-height:1.3;white-space:nowrap}

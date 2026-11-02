@@ -76,7 +76,14 @@
 <div class="sec"><table><tr><td class="c ce">COSTO DE DESMEDRO</td></tr></table>
 <table style="margin-top:6px"><tr><th>GASTOS</th><th>TOTAL (KG)</th><th>COSTO (KG)</th><th>SUBTOTAL</th></tr>
 <tr><td>INGRESO</td><td class="ce">{{ '{:,.2f}'.format(c.costos.desmedro_kg) }}</td><td class="r">S/ {% if editable %}<input type="number" step="any" name="costo_kg_desmedro" value="{{ k.costo_kg_desmedro if k.costo_kg_desmedro is not none }}" aria-label="Costo por kg de desmedro" style="width:70px">{% else %}{{ '%.2f'|format(k.costo_kg_desmedro or 0) }}{% endif %}</td><td class="r">S/ {{ '{:,.2f}'.format(c.costos.desmedro_costo) }}</td></tr>
-<tr class="nb"><td colspan="2"></td><td style="border:1px solid #9a9a9a"><b>TOTAL</b></td><td class="r" style="border:1px solid #9a9a9a"><b>S/ {{ '{:,.2f}'.format(c.costos.desmedro_costo) }}</b></td></tr></table></div>{% endif %}
+<tr class="nb"><td colspan="2"></td><td style="border:1px solid #9a9a9a"><b>TOTAL</b></td><td class="r" style="border:1px solid #9a9a9a"><b>S/ {{ '{:,.2f}'.format(c.costos.desmedro_costo) }}</b></td></tr></table></div>
+<div class="sec"><table><tr><td class="c ce">CONTROL DE MERMA</td></tr></table>
+<table style="margin-top:6px"><tr><th>% MERMA ESPERADA</th><th>MERMA ESPERADA (KG)</th><th>TOTAL PROCESADO (KG)</th><th>SACOS DE 50 KG</th><th>DIFERENCIA (KG)</th></tr>
+<tr><td class="ce">{% if editable %}<input type="number" step="any" name="merma_esperada_pct" value="{{ k.merma_esperada_pct if k.merma_esperada_pct is not none }}" placeholder="{{ c.costos.merma_esperada_pct if c.costos.merma_esperada_pct is not none }}" aria-label="Porcentaje de merma esperada" style="width:70px"> %{% else %}{{ '%.2f %%'|format(c.costos.merma_esperada_pct) if c.costos.merma_esperada_pct is not none else '—' }}{% endif %}</td>
+<td class="ce">{{ '{:,.2f}'.format(c.costos.merma_esperada_kg) if c.costos.merma_esperada_kg is not none else '—' }}</td><td class="ce">{{ '{:,.2f}'.format(c.costos.total_procesado) }}</td><td class="ce">{{ '{:,.2f}'.format(c.costos.sacos_50) }}</td>
+<td class="ce" {% if c.costos.diferencia|abs > 0.01 %}style="color:#b42318;font-weight:700"{% endif %}>{{ '{:,.2f}'.format(c.costos.diferencia) }}</td></tr></table>
+<p class="small muted noprint">Merma esperada = ingreso × % esperado (por defecto, el del producto) · total procesado = ingreso − desmedro · sacos = total procesado ÷ 50 · diferencia = total procesado − salida procesada; si la merma real supera la esperada, se resalta.</p>
+{% if c.costos.merma_esperada_kg is not none and c.costos.desmedro_kg > c.costos.merma_esperada_kg %}<p class="flash err">El desmedro real ({{ '{:,.2f}'.format(c.costos.desmedro_kg) }} kg) supera la merma esperada ({{ '{:,.2f}'.format(c.costos.merma_esperada_kg) }} kg).</p>{% endif %}</div>{% endif %}
 
 <div class="sec" style="display:grid;grid-template-columns:1.8fr 1fr;gap:10px">
 <div><table><tr><td class="v ce">REFERENCIAS GRÁFICAS DEL LOTE RECEPCIONADO</td></tr></table>

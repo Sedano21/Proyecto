@@ -257,11 +257,15 @@ def dashboard():
            "PROD_CAPACIDAD": _u("prod.plan", "produccion.ver"), "PROD_PARADAS": _u("prod.control", "produccion.ver"),
            "PROD_OEE": _u("prod.oee_dashboard", "produccion.ver")}
     mis_ov = seg.seller_orders(g.user) if g.user.role_code == "EJECUTIVO_VENTAS" else None
+    # V18: despachos agrupados por cliente y fecha (pronóstico de cumplimiento, modificaciones y problemas)
+    despachos = seg.dispatch_board(g.user) if g.user.role_code in (
+        "JEFE_LOGISTICA", "JEFE_OPERACIONES", "GERENCIA_GENERAL", "GERENTE_GENERAL_ADJUNTO", "GERENTE_COMERCIAL",
+        "COORD_VENTAS", "JEFE_VENTAS", "COORD_LOGISTICA", "EJECUTIVO_VENTAS") else None
     nivel = seg.service_month() if ("indicadores.servicio" in p and g.user.role_code in (
         "COORD_LOGISTICA", "JEFE_LOGISTICA", "JEFE_OPERACIONES", "GERENCIA_GENERAL", "GERENTE_GENERAL_ADJUNTO")) else None
     return render_template("dashboard.html", k=k, prod=prod, hp=hoy_prod, mis_alertas=mis, tareas=tareas, desde=desde or "", hasta=hasta or "",
                            estado_txt=alert_svc.ESTADO_TXT, arrastre=pending_carryover(g.user), com=com, det=det,
-                           mis_ov=mis_ov, nivel=nivel)
+                           mis_ov=mis_ov, nivel=nivel, despachos=despachos)
 
 
 @bp.route("/verificaciones", methods=["POST"])

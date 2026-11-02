@@ -3,7 +3,7 @@ transporte tercero y presupuesto del área. Se registran en el blueprint de Dist
 import os
 from datetime import date
 
-from flask import abort, current_app, g, render_template, request, url_for
+from flask import abort, current_app, flash, g, redirect, render_template, request, url_for
 from sqlalchemy import select
 
 from ..db import db
@@ -25,8 +25,21 @@ def _up(campo, prefijo):
 
 
 # ------------------------------------------------------------------ checklist vehicular
+@bp.route("/checklists")
+@perm_required("checklist.ver", "distribucion.checklist_validar")
+def checklists():
+    """V18: todos los checklists vehiculares (Distribución, Jefe de Logística, Jefatura de Operaciones)."""
+    from datetime import date as _d, timedelta as _td
+    desde = f_date("desde") or (_d.today() - _td(days=7))
+    q = select(VehicleChecklist).where(VehicleChecklist.fecha >= desde).order_by(VehicleChecklist.id.desc())
+    if request.args.get("estado"):
+        q = q.where(VehicleChecklist.estado == request.args["estado"])
+    return render_template("checklists.html", lista=list(db().execute(q.limit(300)).scalars()), desde=desde,
+                           items=dict((c, i) for c, _, i, _ in vc.items()), f=request.args)
+
+
 @bp.route("/ruta/<int:rid>/checklist", methods=["GET", "POST"])
-@perm_required("distribucion.ver", "distribucion.checklist", "distribucion.checklist_validar")
+@perm_required("distribucion.ver", "distribucion.checklist", "distribucion.checklist_validar", "checklist.ver")
 def checklist(rid):
     r = db().get(Route, rid) or abort(404)
     back = url_for("dist.checklist", rid=rid)
@@ -37,7 +50,8 @@ def checklist(rid):
             return act(lambda: vc.validate(g.user, c, f.get("aprobar") == "1", f.get("km"), f.get("nota", "")),
                        "Checklist revisado por Seguridad; kilometraje registrado.", back)
         valores = {k[2:]: v for k, v in f.items() if k.startswith("i_")}
-        return act(lambda: vc.register(g.user, r, f.get("momento"), valores, f.get("km"), f.get("observaciones", "")),
+        return act(lambda: vc.register(g.user, r, f.get("momento"), valores, f.get("km"), f.get("observaciones", ""),
+                                       f.get("marcas", "")),
                    lambda c: "Checklist registrado." + (" Puntos NO NEGOCIABLES en mal estado: el vehículo no puede salir."
                                                         if c.nn_fallidos else ""), back)
     lista = list(db().execute(select(VehicleChecklist).where(VehicleChecklist.route_id == rid)
@@ -96,7 +110,79 @@ def preguias():
     pend = gsvc.pending_validation()
     recientes = [o for o in db().execute(select(SalesOrder).order_by(SalesOrder.id.desc()).limit(300)).scalars()
                  if (o.preguia or {}).get("estado") == "VALIDADA"][:40]
-    return render_template("preguias.html", pend=pend, recientes=recientes, corte=param("hora_corte_rutas", "15:00"))
+    # V18: indicador de cambios en guías emitidas (Jefe de Logística, Jefe de Operaciones y gerencias)
+    indicador = gsvc.change_rate(f_date("desde"), f_date("hasta")) if g.user.role_code in INDICADOR_GUIAS_ROLES or \
+        has_perm(g.user, "vista.total") else None
+    return render_template("preguias.html", pend=pend, recientes=recientes, corte=param("hora_corte_rutas", "15:00"),
+                           indicador=indicador, dur=gsvc.durations)
+
+
+INDICADOR_GUIAS_ROLES = ("JEFE_LOGISTICA", "JEFE_OPERACIONES", "GERENTE_GENERAL", "GERENTE_GENERAL_ADJUNTO",
+                         "COORD_DISTRIBUCION")
+
+
+@bp.route("/preguia/<int:oid>", methods=["GET", "POST"])
+@perm_required("distribucion.ver", "distribucion.guia_modificar")
+def preguia_detail(oid):
+    """V18: revisión de la pre-guía como el precertificado de Calidad: todos los campos a la vista y editables; al
+    aprobar se emite la guía (SAP) y queda imprimible. Emitida, solo se cambian fecha, cantidades o presentación con el
+    lápiz, con motivo y rastro. Se llega igual desde la alerta o desde Pre-guías: lo aprobado en un lugar se ve en todos."""
+    o = db().get(SalesOrder, oid) or abort(404)
+    if not o.preguia:
+        abort(404)
+    back = url_for("dist.preguia_detail", oid=oid)
+    if request.method == "POST":
+        f = request.form
+        acc = f.get("accion", "guardar")
+        if acc == "lapiz":
+            return act(lambda: gsvc.edit_emitted(g.user, o, f.get("campo", ""), f.get("motivo", ""), f.get("idx", type=int),
+                                                 f.get("valor")), "Cambio guardado con su rastro.", back)
+        if acc in ("aprobar", "observar"):  # como el precertificado: lo revisado se guarda aunque la aprobación falle
+            try:
+                gsvc.review(g.user, o, f)
+                db().commit()
+            except BusinessError as e:
+                db().rollback()
+                flash(str(e), "error")
+                return redirect(back)
+        if acc == "observar":
+            return act(lambda: gsvc.validate(g.user, o, False, f.get("observacion", "")), "Pre-guía observada.", back)
+        if acc == "aprobar":
+            return act(lambda: gsvc.validate(g.user, o, True, f.get("observacion", "")), lambda pg: "Pre-guía aprobada: guía emitida" + (f" (SAP N.° {pg['sap'].get('docnum')})."
+                                                                              if (pg.get("sap") or {}).get("docnum") else
+                                                                              "; se registrará en SAP cuando la conexión esté disponible."), back)
+        return act(lambda: gsvc.review(g.user, o, f), "Revisión guardada.", back)
+    if "distribucion.guia_modificar" in g.perms and request.args.get("imprimir") != "1":
+        gsvc.start_review(g.user, o)
+        db().commit()
+    pg = o.preguia
+    st = gsvc._stop(o)
+    r = st.route if st is not None else None
+    fecha = date.fromisoformat(pg["fecha_guia"]) if pg.get("fecha_guia") else date.today()
+    items = [dict(x, cantidad=x.get("preparado"),
+                  lotes=[dict(l, fp=_d(l.get("fp")), fv=_d(l.get("fv"))) for l in x.get("lotes") or []]) for x in pg.get("items") or []]
+    doc_g = {"stop": st or {"guia_numero": (pg.get("sap") or {}).get("docnum") or ""}, "order": o, "items": items,
+             "almacen": "", "motivo": pg.get("motivo") or "Venta"}
+    doc_r = {"fecha": fecha, "vehicle": r.vehicle if r else None, "driver": r.driver if r else None}
+
+    def peso_de(it):
+        from ..models import Product
+        p = db().get(Product, it["codigo"])
+        if p is None or it.get("cantidad") is None:
+            return None
+        return it["cantidad"] if (p.um or "").upper().startswith("K") else (it["cantidad"] * p.peso_kg if p.peso_kg else None)
+    editable = pg.get("estado") in ("POR_VALIDAR", "OBSERVADA") and "distribucion.guia_modificar" in g.perms
+    return render_template("preguia_detail.html", o=o, pg=pg, editable=editable, dur=gsvc.durations(pg), doc_g=doc_g,
+                           doc_r=doc_r, peso_de=peso_de, ruc=param("empresa_ruc", ""),
+                           print_mode=request.args.get("imprimir") == "1",
+                           lapiz="distribucion.guia_modificar" in g.perms and pg.get("estado") == "VALIDADA")
+
+
+def _d(v):
+    try:
+        return date.fromisoformat(v) if v else None
+    except (TypeError, ValueError):
+        return None
 
 
 # ------------------------------------------------------------------ transporte tercero

@@ -359,11 +359,14 @@ def picking_task(tid):
                                          [p for p, r in zip(f.getlist("persona"), f.getlist("reporta")) if r == "1"]),
             "iniciar": lambda: pk.start(t, g.user, save_upload(request.files.get("foto"), up, f"picking{t.id}_ini")),
             # obs. demo v0.7: el auxiliar solo llena «Despachado und»; lote, fechas y bultos salen del stock reservado
-            "registrar": lambda: pk.record(t, g.user, f.get("line_id"), f_float("cantidad", True), f.get("lote", "")),
+            "registrar": lambda: pk.record(t, g.user, f.get("line_id"), f_float("cantidad", True), f.get("lote", ""),
+                                           bultos=f_float("bultos")),  # V18: los bultos los completa quien hace el picking
             "cambiar_lote": lambda: pk.change_lot(t, g.user, f.get("reservation_id"), f.get("lot_id"), f_float("cantidad"),
                                                   f.get("motivo", ""), f.get("observacion", "")),
             "listo": lambda: pk.finish(t, g.user, save_upload(request.files.get("foto"), up, f"picking{t.id}_fin"),
                                        f.get("observacion", "")),
+            # V18: la validación de la planificación también desde esta misma pantalla
+            "validar_plan": lambda: __import__("app.services.orders", fromlist=["x"]).validate_picking_plan(t.order, g.user),
         }.get(acc) or abort(400)
         destino = url_for("alm.picking_task", tid=tid) + ("#formato" if acc in ("iniciar", "registrar", "cambiar_lote") else "")
         msg = {"iniciar": "Picking iniciado: complete el formato de control de despacho.", "cambiar_lote": "Lote cambiado: formato y stock actualizados.",
@@ -378,7 +381,7 @@ def picking_task(tid):
     carga = Counter(i for x in plan for i in (x.asignados or []))
     return render_template("picking_task.html", t=t, o=t.order, usuarios=pk.users_by_id(), personal=pk.staff(t.warehouse_code),
                            recs=recs, line_reserved=line_reserved, plan=plan, carga=carga, motivos=pk.MOTIVOS_CAMBIO_LOTE,
-                           opciones_lote=lambda l: pk.lot_options(t, l), free=free_qty)
+                           opciones_lote=lambda l: pk.lot_options(t, l, todos=True), free=free_qty)
 
 
 @bp.route("/picking/formato")

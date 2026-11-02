@@ -204,17 +204,34 @@ def send_request(req, user):
     audit(user, "PRODUCCION_SOLICITUD_ENVIADA", "ProductionRequest", req.id)
 
 
-def validate_request(req, user, aprobar, lista_ok, disponibilidad_ok, capacidad_ok, plazo_ok, comentario=""):
+def validate_request(req, user, aprobar, lista_ok, disponibilidad_ok, capacidad_ok, plazo_ok, comentario="", fecha_entrega=None):
     """Obs. demo v0.7: se puede aprobar la producción aunque no alcancen los materiales; en ese caso el sistema genera
-    las presolicitudes de compra de lo que falta, alerta el quiebre de stock y el plazo de reposición."""
+    las presolicitudes de compra de lo que falta, alerta el quiebre de stock y el plazo de reposición.
+    V18: si Producción no confirma el plazo, indica la fecha en que entregaría; debe ser como mínimo un día antes del
+    despacho; si es más tarde, se valida igual y se alerta a Comercial y Logística."""
     if req.estado != "ENVIADA":
         raise BusinessError("Solo se validan solicitudes enviadas.")
-    if aprobar and not (lista_ok and capacidad_ok and plazo_ok):
-        raise BusinessError("Para validar deben confirmarse lista de insumos, capacidad y plazo (IF §8.2).")
+    if aprobar and not (lista_ok and capacidad_ok):
+        raise BusinessError("Para validar deben confirmarse la lista de insumos y la capacidad (IF §8.2).")
+    if aprobar and not plazo_ok and fecha_entrega is None:
+        raise BusinessError("No confirmó el plazo: indique la fecha en que Producción entregaría.")
+    tarde = None
+    if aprobar and not plazo_ok:
+        despacho = req.order.fecha_compromiso if req.order else req.fecha_requerida
+        if despacho is not None and fecha_entrega > despacho - timedelta(days=1):
+            tarde = despacho
     if not aprobar and not comentario.strip():
         raise BusinessError("Indique el motivo del rechazo.")
     req.validacion = {"lista_ok": lista_ok, "disponibilidad_ok": disponibilidad_ok, "capacidad_ok": capacidad_ok,
-                      "plazo_ok": plazo_ok, "comentario": comentario, "ts": now().isoformat(), "user": user.nombre}
+                      "plazo_ok": plazo_ok, "comentario": comentario, "ts": now().isoformat(), "user": user.nombre,
+                      "fecha_entrega": fecha_entrega.isoformat() if fecha_entrega and not plazo_ok else None}
+    if tarde is not None:
+        alerts.emit("PRODUCCION_PLAZO_RIESGO", f"Producción entregaría {req.product_code} el {fecha_entrega:%d/%m}: despacho "
+                    f"{tarde:%d/%m}" + (f" (OV {req.order.numero})" if req.order else ""),
+                    f"La fecha propuesta por Producción no deja al menos un día antes del despacho. {comentario}".strip(),
+                    "ProductionRequest", req.id, prioridad="ALTA",
+                    extra_users=[req.order.vendedor_id] if req.order and req.order.vendedor_id else None,
+                    dedup_key=f"PROD_PLAZO:{req.id}", creado_por=user)
     req.validado_por = user.id
     req.estado = "VALIDADA" if aprobar else "RECHAZADA"
     compras = purchase_missing_materials(req, user) if aprobar else []
@@ -351,6 +368,19 @@ def start(req, user):
     req.estado = "EN_PROCESO"
     req.inicio_ts = now()
     audit(user, "PRODUCCION_INICIO", "ProductionRequest", req.id)
+    # V18: lo iniciado desde el planeamiento se ve en el monitoreo en tiempo real (parte en curso de la línea)
+    from ..models import ProductionReport
+    of = f"PS-{req.id}"
+    if req.line_code and db().execute(select(ProductionReport.id).where(ProductionReport.of == of)).first() is None:
+        p = db().get(Product, req.product_code)
+        db().add(ProductionReport(linea=req.line_code, tipo="ENVASADO" if p is not None and p.tipo == "PT" else "SELECCION",
+                                  fecha=date.today(), of=of, hora_inicio=now().strftime("%H:%M"),
+                                  cliente=(req.order.customer.nombre if req.order and req.order.customer else
+                                           (req.customer.nombre if req.customer else ""))[:120],
+                                  product_code=req.product_code, peso_entrada_kg=0, estado="EN PROCESO",
+                                  observacion=f"Iniciado desde el planeamiento (solicitud de producción #{req.id}).",
+                                  user_id=user.id if user else None))
+        db().flush()
 
 
 def finish(req, user):
@@ -970,6 +1000,35 @@ def requirements(periodo="SEMANA", desde=None, hasta=None):
     return {"periodo": periodo, "desde": desde, "hasta": hasta, "filas": filas}
 
 
+def suggested_line(product_code):
+    """V18: línea sugerida para el producto: la de su última solicitud programada o su último parte de producción."""
+    r = db().execute(select(ProductionRequest.line_code).where(ProductionRequest.product_code == product_code,
+                                                               ProductionRequest.line_code.is_not(None))
+                     .order_by(ProductionRequest.id.desc())).scalars().first()
+    if r:
+        return r
+    from ..models import ProductionLine, ProductionReport
+    lin = db().execute(select(ProductionReport.linea).where(ProductionReport.product_code == product_code)
+                       .order_by(ProductionReport.id.desc())).scalars().first()
+    return lin if lin and db().get(ProductionLine, lin) is not None else None
+
+
+def add_plans(user, periodo, filas):
+    """V18: registra varios productos a la vez; cada fila con fecha, producto, cantidad, línea y comentario."""
+    creadas = []
+    for i, f in enumerate(filas, 1):
+        if not (f.get("product_code") or "").strip() and not f.get("cantidad"):
+            continue
+        try:
+            creadas.append(add_plan(user, periodo, f.get("fecha"), (f.get("product_code") or "").strip().upper().split(" ")[0],
+                                    f.get("cantidad"), f.get("line_code") or None, f.get("comentario") or ""))
+        except BusinessError as e:
+            raise BusinessError(f"Fila {i}: {e}")
+    if not creadas:
+        raise BusinessError("Complete al menos una fila (producto y cantidad).")
+    return creadas
+
+
 def preschedule_plan(user, periodo="SEMANA", desde=None, hasta=None):
     """El sistema preprograma el planeamiento con los requerimientos consolidados (lo que falta planificar); el Jefe de
     Producción lo revisa y edita. Devuelve las entradas creadas."""
@@ -984,7 +1043,7 @@ def preschedule_plan(user, periodo="SEMANA", desde=None, hasta=None):
             continue
         pl = ProductionPlan(periodo=d["periodo"], fecha=a["inicio"], product_code=a["producto"], cantidad=round(a["por_planificar"], 4),
                             comentario="Preprogramado por el sistema: " + "; ".join(a["fuentes"][:6]), origen="SISTEMA",
-                            user_id=user.id if user else None)
+                            user_id=user.id if user else None, line_code=suggested_line(a["producto"]))
         db().add(pl)
         nuevas.append(pl)
     db().flush()

@@ -8,7 +8,7 @@ from flask import abort, current_app, g, render_template, request, send_file, ur
 from sqlalchemy import select
 
 from ..db import db
-from ..models import ProcessLiquidation, ProductionLine, ProductionReport
+from ..models import ProcessLiquidation, Product, ProductionLine, ProductionReport, StockLot
 from ..services import process_liq as pl
 from ..services.distribution import save_upload
 from .common import act, perm_required
@@ -22,6 +22,10 @@ VER = ("produccion.liquidacion_proceso", "vista.total")
 def process_liqs():
     a = request.args
     if request.method == "POST":
+        if request.form.get("accion") == "manual":  # V18: nueva liquidación con todas las casillas, sin partes
+            return act(lambda: pl.create_manual(g.user, request.form),
+                       lambda l: f"Liquidación N° {l.numero:05d} creada; complete los procesos.", url_for("prod.process_liqs"),
+                       redirect_fn=lambda l: url_for("prod.process_liq", lid=l.id))
         return act(lambda: pl.create(g.user, request.form.getlist("report_id"), request.form.get("variante", "PR")),
                    lambda l: f"Liquidación N° {l.numero:05d} creada con los partes elegidos.", url_for("prod.process_liqs"),
                    redirect_fn=lambda l: url_for("prod.process_liq", lid=l.id))
@@ -32,12 +36,23 @@ def process_liqs():
         q = q.where(ProcessLiquidation.product_code == a["sku"].strip().upper())
     if a.get("lote"):
         q = q.where(ProcessLiquidation.lote == a["lote"].strip())
-    rows = list(db().execute(q.limit(300)).scalars())
+    if a.get("numero", "").strip().isdigit():
+        q = q.where(ProcessLiquidation.numero == int(a["numero"]))
+    if a.get("desde"):
+        q = q.where(ProcessLiquidation.fecha >= a["desde"])
+    if a.get("hasta"):
+        q = q.where(ProcessLiquidation.fecha <= a["hasta"])
+    filtros = {k: a.get(f"h_{k}", "") for k in pl.COLUMNAS_LISTA if k != "Lote"}
+    rows = [l for l in db().execute(q.limit(500)).scalars() if pl.matches(l, filtros)][:300]
     partes = pl.reports_for(a.get("linea", ""), (a.get("sku") or "").strip().upper(), (a.get("lote") or "").strip(), 100)
     usados = {i for x in db().execute(select(ProcessLiquidation.report_ids)).scalars() for i in (x or [])}
     lineas = [x.code for x in db().execute(select(ProductionLine).order_by(ProductionLine.code)).scalars()]
+    productos = list(db().execute(select(Product.code, Product.descripcion).order_by(Product.code)).all())
+    lotes = sorted({x for x in db().execute(select(StockLot.lote).where(StockLot.lote != "").distinct()).scalars() if x})[:800]
     return render_template("liq_proceso_lista.html", rows=rows, partes=partes, usados=usados, lineas=lineas, a=a,
-                           calc=pl.calc)
+                           calc=pl.calc, header=pl.header, columnas=pl.COLUMNAS_LISTA, productos=productos, lotes=lotes,
+                           servicio_pr=pl.SERVICIO_PR, servicio_pf=pl.SERVICIO_PF, producto_campos=pl.PRODUCTO,
+                           hoy=date.today())
 
 
 @bp.route("/liquidacion-proceso/<int:lid>", methods=["GET", "POST"])

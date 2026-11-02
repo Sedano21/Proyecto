@@ -485,6 +485,11 @@ def picking(oid):
         return act(lambda: osvc.register_picking(o, g.user, request.form.get("line_id"), f_float("cantidad", True),
                                                  request.form.get("lote", "").strip()),
                    lambda p: f"Picking registrado. Avance {p}%.", back)
+    # V18: el picking (iniciar con foto, registrar cantidad y lote, terminar con foto) se hace en una sola pantalla
+    from ..models import PickingTask
+    tareas = list(db().execute(select(PickingTask).where(PickingTask.order_id == o.id)).scalars())
+    if len(tareas) == 1 and request.args.get("ver") != "plan":
+        return redirect(url_for("alm.picking_task", tid=tareas[0].id))
     from ..services.stock import free_qty, lot_usable, lots_of, principal_warehouses
     candidatos = {}
     for l in o.lines:

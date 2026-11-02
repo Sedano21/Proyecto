@@ -127,6 +127,72 @@ def create(user, report_ids, variante="PR"):
     return liq
 
 
+def create_manual(user, datos):
+    """V18: liquidación nueva sin partes, con todas las casillas del encabezado (datos del servicio y del producto).
+    datos: MultiDict o dict con variante, product_code, lote, linea, fecha y s_<etiqueta> / p_<etiqueta>."""
+    _req(user)
+    variante = (datos.get("variante") or "PR").strip()
+    if variante not in ("PR", "PF"):
+        raise BusinessError("Variante no válida.")
+    code = (datos.get("product_code") or "").strip().upper()
+    if not code:
+        raise BusinessError("Indique el SKU (de la lista o escrito).")
+    lote = (datos.get("lote") or "").strip()[:60]
+    fecha = datos.get("fecha") or date.today()
+    if isinstance(fecha, str):
+        try:
+            fecha = date.fromisoformat(fecha)
+        except ValueError:
+            raise BusinessError("Fecha inválida.")
+    from ..models import Product
+    p = db().get(Product, code)
+    labels = SERVICIO_PR if variante == "PR" else SERVICIO_PF
+    def val(k):
+        v = (datos.get(k) or "").strip()
+        try:  # fechas del formulario (AAAA-MM-DD) al formato del documento (DD/MM/AAAA)
+            return _f(date.fromisoformat(v)) if len(v) == 10 and v[4] == "-" else v
+        except ValueError:
+            return v
+    servicio = [{"etiqueta": e, "valor": val(f"s_{e}")} for e in labels]
+    auto = {"Descripción": p.descripcion if p else "", "Marca": (p.marca if p else "") or "", "Lote": lote,
+            "Calidad": (p.calidad if p else "") or ""}
+    producto = [{"etiqueta": e, "valor": val(f"p_{e}") or str(auto.get(e, ""))} for e in PRODUCTO]
+    linea = (datos.get("linea") or "").strip()[:80]
+    if variante == "PR":
+        procesos = [{"titulo": f"1ER PROCESO : {linea}", "horas": None, "operarios": None, "report_id": None,
+                     "filas": [_fila("INGRESO", "GRANEL"), _fila("SALIDA - MP", "MP")] + [_fila("SALIDA - DESMEDRO", c) for c in DESMEDRO_FILAS]}]
+    else:
+        procesos = [{"titulo": "", "horas": None, "operarios": None,
+                     "filas": [_fila("INGRESO", "GRANEL"), _fila("SALIDA", "PROCESADO"), _fila("SALIDA", "DESMEDRO")]}]
+    numero = (db().execute(select(func.max(ProcessLiquidation.numero))).scalar() or 0) + 1
+    liq = ProcessLiquidation(numero=numero, variante=variante, product_code=code, lote=lote, linea=linea, fecha=fecha,
+                             servicio=servicio, producto=producto, procesos=procesos, costos={}, report_ids=[], user_id=user.id,
+                             historial=[{"evento": "CREADA (manual)", "user": user.nombre, "ts": now().isoformat(timespec="minutes")}])
+    db().add(liq)
+    db().flush()
+    audit(user, "LIQ_PROCESO_CREADA", "ProcessLiquidation", liq.id, {"manual": True, "variante": variante})
+    return liq
+
+
+def header(liq):
+    """V18: encabezado del documento (datos del servicio y del producto) como dict etiqueta → valor, para la lista."""
+    out = {x["etiqueta"]: x["valor"] for x in (liq.servicio or [])}
+    out.update({x["etiqueta"]: x["valor"] for x in (liq.producto or [])})
+    return out
+
+
+COLUMNAS_LISTA = ["Proceso", "Descripción", "Lote", "Proveedor", "Procedencia", "Calidad", "FP", "FV", "Fecha de recepción"]
+
+
+def matches(liq, filtros):
+    """Filtro por cualquier casilla del encabezado (texto contenido, sin distinguir mayúsculas)."""
+    h = header(liq)
+    for k, v in filtros.items():
+        if v and v.strip().lower() not in str(h.get(k, "") or "").lower():
+            return False
+    return True
+
+
 def _campos(etqs, vals):
     out = []
     for e, v in zip(etqs, vals):
@@ -169,7 +235,7 @@ def update(user, liq, form):
     liq.procesos = procesos
     if liq.variante == "PF":
         liq.costos = {k: _num(form.get(k)) for k in ("mo_seleccion", "mo_reproceso", "costo_hora", "cif_reproceso",
-                                                      "costo_unidad", "costo_kg_desmedro")}
+                                                      "costo_unidad", "costo_kg_desmedro", "merma_esperada_pct")}
     liq.observaciones = (form.get("observaciones") or "").strip()
     quitar = set(g("quitar_foto"))
     liq.fotos = [f for f in liq.fotos or [] if f not in quitar]
@@ -236,6 +302,17 @@ def calc(liq):
         out["costos"] = {"horas": horas, "mo": round(mo, 2), "unidades": round(unidades, 2), "cif": round(cif, 2),
                          "total": round(mo + cif, 2), "unitario": round((mo + cif) / unidades, 4) if unidades else None,
                          "desmedro_kg": des, "desmedro_costo": round(des * (c.get("costo_kg_desmedro") or 0), 2)}
+        # V18: cálculos al costado del formato PF (hoja PF del modelo): merma esperada = ingreso × % esperado; total
+        # procesado = ingreso − desmedro; sacos = total procesado ÷ 50; diferencia = total procesado − salida procesada.
+        f = p0["filas"]
+        procesado = f[1]["total"] if len(f) > 1 else 0
+        tot_proc = round(p0["ingreso"] - des, 2)
+        pct = c.get("merma_esperada_pct")
+        if pct is None and liq.product is not None:  # por defecto, la merma esperada del producto
+            pct = liq.product.merma_pct
+        out["costos"].update({"merma_esperada_kg": round(p0["ingreso"] * pct / 100, 2) if pct is not None else None,
+                              "merma_esperada_pct": pct, "total_procesado": tot_proc, "sacos_50": round(tot_proc / 50, 2),
+                              "diferencia": round(tot_proc - procesado, 2)})
     return out
 
 
@@ -369,6 +446,21 @@ def export_excel(liq, static_dir, upload_dir):
         put(f"G{fila}", k.get("costo_kg_desmedro"), fmt='"S/" #,##0.00'); put(f"H{fila}", f"=G{fila}*F{fila}", fmt='"S/" #,##0.00')
         put(f"G{fila + 1}", "TOTAL", bold=True); put(f"H{fila + 1}", f"=H{fila}", bold=True, fmt='"S/" #,##0.00')
         fila += 4
+        # V18: control de merma (cálculos al costado del formato PF)
+        cc = c["costos"]
+        ws.merge_cells(f"B{fila}:I{fila}")
+        put(f"B{fila}", "CONTROL DE MERMA", bold=True, fill=CELESTE, align="center")
+        fila += 1
+        for j, t in enumerate(["% MERMA ESPERADA", "MERMA ESPERADA (KG)", "TOTAL PROCESADO (KG)", "SACOS DE 50 KG", "DIFERENCIA (KG)"]):
+            put(f"{'BCDEF'[j]}{fila}", t, bold=True, fill=OSCURO, color="FFFFFF", align="center")
+        fila += 1
+        pct = cc.get("merma_esperada_pct")
+        put(f"B{fila}", pct / 100 if pct is not None else None, fmt="0.00%", align="center")
+        put(f"C{fila}", cc.get("merma_esperada_kg"), fmt="#,##0.00", align="center")
+        put(f"D{fila}", cc["total_procesado"], fmt="#,##0.00", align="center")
+        put(f"E{fila}", f"=D{fila}/50", fmt="#,##0.00", align="center")
+        put(f"F{fila}", cc["diferencia"], fmt="#,##0.00", align="center")
+        fila += 3
     # referencias gráficas y observaciones
     ws.merge_cells(f"B{fila}:F{fila}")
     put(f"B{fila}", "REFERENCIAS GRÁFICAS DEL LOTE RECEPCIONADO", bold=True, fill=VERDE, color="FFFFFF", align="center")

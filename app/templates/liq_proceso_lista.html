@@ -1,12 +1,32 @@
 {% extends "base.html" %}{% from "_m.html" import b, csrf, ic, empty %}
 {% block content %}<div class="page-head"><div><h1>Liquidación de proceso (CP-OPE-004)</h1><p class="sub">Por línea producida, SKU o lote · se prellena con los partes de los asistentes de producción</p></div></div>
-<form method="get" class="row card"><div><label>Línea</label><select name="linea"><option value="">(todas)</option>{% for l in lineas %}<option {{ 'selected' if a.linea == l }}>{{ l }}</option>{% endfor %}</select></div>
-<div><label>SKU</label><input name="sku" value="{{ a.sku or '' }}" size="12"></div><div><label>Lote</label><input name="lote" value="{{ a.lote or '' }}" size="12"></div><div><button class="sec">Filtrar</button> <a class="small" href="{{ url_for('prod.process_liqs') }}">limpiar</a></div></form>
+<datalist id="dl-sku">{% for c, d in productos %}<option value="{{ c }}">{{ d }}</option>{% endfor %}</datalist>
+<datalist id="dl-lote">{% for l in lotes %}<option value="{{ l }}">{% endfor %}</datalist>
+<form method="get" class="card"><div class="row">
+<div><label>N°</label><input name="numero" value="{{ a.numero or '' }}" size="6" inputmode="numeric"></div>
+<div><label>Línea</label><select name="linea"><option value="">(todas)</option>{% for l in lineas %}<option {{ 'selected' if a.linea == l }}>{{ l }}</option>{% endfor %}</select></div>
+<div><label>SKU</label><input name="sku" list="dl-sku" value="{{ a.sku or '' }}" size="12" placeholder="lista o escrito"></div>
+<div><label>Lote</label><input name="lote" list="dl-lote" value="{{ a.lote or '' }}" size="12" placeholder="lista o escrito"></div>
+<div><label>Desde</label><input type="date" name="desde" value="{{ a.desde or '' }}"></div><div><label>Hasta</label><input type="date" name="hasta" value="{{ a.hasta or '' }}"></div></div>
+<div class="row">{% for k in columnas if k != 'Lote' %}<div><label>{{ k }}</label><input name="h_{{ k }}" value="{{ a.get('h_' ~ k, '') }}" size="11"></div>{% endfor %}
+<div><button class="sec">Filtrar</button> <a class="small" href="{{ url_for('prod.process_liqs') }}">limpiar</a></div></div></form>
 <div class="section-title">Liquidaciones</div>
-<div class="card">{% if rows %}<div class="tw"><table class="small"><thead><tr><th>N°</th><th>Fecha</th><th>Línea</th><th>SKU</th><th>Lote</th><th>Variante</th><th class="r">Ingreso kg</th><th class="r">Desmedro</th><th>Fotos</th><th>Estado</th><th></th></tr></thead><tbody>
-{% for l in rows %}{% set c = calc(l) %}{% set p0 = c.procesos[0] if c.procesos else none %}<tr><td><a href="{{ url_for('prod.process_liq', lid=l.id) }}">{{ '%05d'|format(l.numero) }}</a></td><td>{{ l.fecha|d }}</td><td>{{ l.linea }}</td><td>{{ l.product_code }} <span class="muted">{{ l.product.descripcion if l.product }}</span></td><td>{{ l.lote or '—' }}</td><td>{{ 'Varios procesos' if l.variante == 'PR' else 'Con costos' }}</td>
+<div class="card">{% if rows %}<div class="tw"><table class="small"><thead><tr><th>N°</th><th>Fecha</th><th>Línea</th><th>SKU</th>{% for k in columnas %}<th>{{ k }}</th>{% endfor %}<th class="r">Ingreso kg</th><th class="r">Desmedro</th><th>Fotos</th><th>Estado</th><th></th></tr></thead><tbody>
+{% for l in rows %}{% set c = calc(l) %}{% set h = header(l) %}{% set p0 = c.procesos[0] if c.procesos else none %}<tr><td><a href="{{ url_for('prod.process_liq', lid=l.id) }}">{{ '%05d'|format(l.numero) }}</a></td><td>{{ l.fecha|d }}</td><td>{{ l.linea }}</td><td>{{ l.product_code }}</td>
+{% for k in columnas %}<td>{{ (l.lote or '—') if k == 'Lote' else (h.get(k) or '—') }}</td>{% endfor %}
 <td class="r">{{ (p0.ingreso|n) if p0 else '—' }}</td><td class="r">{{ ('%.2f %%'|format(p0.desmedro_pct)) if p0 and p0.desmedro_pct is not none else '—' }}</td><td>{{ l.fotos|length }}</td><td>{{ b(l.estado) }}</td><td><a href="{{ url_for('prod.process_liq_excel', lid=l.id) }}">Excel</a></td></tr>{% endfor %}</tbody></table></div>
 {% else %}{{ empty('Sin liquidaciones con ese filtro.') }}{% endif %}</div>
+{% if can('produccion.liquidacion_proceso') %}<details class="card"><summary><b>Nueva liquidación (registro manual con todas las casillas)</b></summary>
+<form method="post">{{ csrf() }}<input type="hidden" name="accion" value="manual">
+<p class="small muted">Para un proceso sin parte registrado. Luego se completan las tablas de procesos, se agregan o quitan filas y campos, y se suben las fotos.</p>
+<div class="row"><div><label>Variante</label><select name="variante" id="lq-var"><option value="PR">Varios procesos</option><option value="PF">Un proceso con costos MO + CIF</option></select></div>
+<div><label>SKU *</label><input name="product_code" list="dl-sku" required placeholder="lista o escrito"></div><div><label>Lote</label><input name="lote" list="dl-lote" placeholder="lista o escrito"></div>
+<div><label>Línea</label><input name="linea" list="dl-lineas"><datalist id="dl-lineas">{% for l in lineas %}<option value="{{ l }}">{% endfor %}</datalist></div><div><label>Fecha</label><input type="date" name="fecha" value="{{ hoy.isoformat() }}"></div></div>
+<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr))"><div><div class="section-title">Datos del servicio</div>{% for e in servicio_pr %}<div class="lq-s" data-var="{{ 'PR' if e not in servicio_pf else '' }}"><label>{{ e }}</label><input name="s_{{ e }}" {{ 'type=date' if 'Fecha' in e }}></div>{% endfor %}
+{% for e in servicio_pf if e not in servicio_pr %}<div class="lq-s" data-var="PF" hidden><label>{{ e }}</label><input name="s_{{ e }}" type="date"></div>{% endfor %}</div>
+<div><div class="section-title">Datos del producto</div><p class="small muted">Descripción, marca y calidad se toman del SKU si se dejan vacías.</p>{% for e in producto_campos if e != 'Lote' %}<div><label>{{ e }}</label><input name="p_{{ e }}" {{ 'type=date' if e in ('FP', 'FV') }}></div>{% endfor %}</div></div>
+<p><button>Crear liquidación</button></p></form></details>
+<script>(function(){var v=document.getElementById('lq-var');if(!v)return;function f(){document.querySelectorAll('.lq-s').forEach(function(d){var k=d.dataset.var;d.hidden=!!k&&k!==v.value;d.querySelector('input').disabled=d.hidden;});}v.addEventListener('change',f);f();})();</script>{% endif %}
 {% if can('produccion.liquidacion_proceso') %}<div class="section-title">Nueva liquidación desde los partes de producción</div>
 <form method="post" class="card">{{ csrf() }}<p class="small muted">Elija uno o varios partes del mismo SKU (por ejemplo, los procesos del mismo lote en distintas líneas). Cada parte se vuelve un proceso del formato con su ingreso, salida, desmedro, remanente, horas y operarios; luego se completa y ajusta.</p>
 {% if partes %}<div class="tw" style="max-height:360px"><table class="small"><thead><tr><th></th><th>Parte</th><th>Fecha</th><th>Línea</th><th>SKU</th><th>Lote</th><th class="r">Ingreso kg</th><th class="r">Salida kg</th><th class="r">Desmedro kg</th><th>Estado</th></tr></thead><tbody>
