@@ -7,7 +7,7 @@
 <form method="post" enctype="multipart/form-data" class="card row">{{ csrf() }}<div class="grow"><label class="req">Archivos de SAP (lista de pedidos y/o detalles)</label><input type="file" name="archivos" accept=".xlsx,.xlsm" multiple required></div><div><button>{{ ic('upload') }} Cargar</button></div></form>
 
 <div class="card"><h3>OV abiertas esperando su detalle ({{ pendientes|length }})</h3>
-{% if pendientes %}<div class="tw"><table class="list small"><thead><tr><th># SAP</th><th>Cliente</th><th>Entrega</th><th>Vendedor</th><th class="r">Peso</th><th>Destino</th><th>Detalle</th></tr></thead>
+{% if pendientes %}<div class="tw"><table class="list small"><thead><tr><th># SAP</th><th>Cliente</th><th>Entrega</th><th>Ejecutivo comercial</th><th class="r">Peso</th><th>Destino</th><th>Detalle</th></tr></thead>
 {% for h in pendientes %}<tr><td class="mono">{{ h.numero }}</td><td>{{ h.cliente }}<br><span class="muted">{{ h.card_code }}</span></td><td>{{ h.fecha_venc|d }}{% if h.fecha_venc and h.fecha_venc < today %} <span class="b ALTA">vencida</span>{% endif %}</td><td>{{ h.vendedor }}</td><td class="r">{{ h.peso_total|n if h.peso_total is not none }}</td><td>{{ h.destino[:60] }}<br><span class="muted">{{ h.comentario[:60] }}</span></td>
 <td><form method="post" enctype="multipart/form-data" class="row">{{ csrf() }}<input type="hidden" name="numero" value="{{ h.numero }}"><input type="file" name="archivos" accept=".xlsx,.xlsm" required aria-label="Detalle de la OV {{ h.numero }}"><button class="small">Subir</button></form></td></tr>{% endfor %}</table></div>
 {% else %}{{ empty('No hay OV abiertas esperando su detalle.', 'check') }}{% endif %}</div>

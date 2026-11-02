@@ -37,7 +37,7 @@
 {% if o.aviso_atraso %}<div class="note warn"><b>Logística avisó que no llegará a tiempo</b> ({{ o.aviso_atraso.user }}, {{ o.aviso_atraso.ts|replace('T',' ') }}): {{ o.aviso_atraso.motivo }}{% if o.aviso_atraso.nueva_fecha %} · fecha estimada {{ o.aviso_atraso.nueva_fecha }}{% endif %}</div>{% endif %}
 {% if can('ov.reportar_atraso') and gestionable and not o.aviso_atraso %}<dialog class="modal" id="dlg-atraso"><form method="post" action="{{ url_for('sup.order_delay', oid=o.id) }}">{{ csrf() }}
 <div class="dlg-head"><h3>Avisar a Comercial: la OV no llegará a tiempo</h3><button class="ibtn" data-close aria-label="Cerrar">{{ ic('x') }}</button></div>
-<div class="dlg-body"><p class="small muted">Se registra el día de creación de la OV o el siguiente. Comercial y el vendedor reciben una alerta para coordinar con el cliente.</p>
+<div class="dlg-body"><p class="small muted">Se registra el día de creación de la OV o el siguiente. Comercial y el ejecutivo comercial reciben una alerta para coordinar con el cliente.</p>
 <label class="req">Motivo</label><input name="motivo" required style="width:100%"><label>Fecha estimada (opcional)</label><input type="date" name="nueva_fecha"></div>
 <div class="dlg-foot"><button class="btn sec" data-close>Cancelar</button><button class="btn">Enviar aviso</button></div></form></dialog>{% endif %}
 {% set pasos = ['REGISTRADA','EVALUADA','EN_PREPARACION','PREPARADA','PROGRAMADA','EN_RUTA','ENTREGADA'] %}
@@ -62,7 +62,7 @@
 <tr><td>Condición del cliente</td><td>{% if o.customer.vida_util_min_dias %}Vida útil mínima {{ o.customer.vida_util_min_dias }} días. {% endif %}{% set cc = cond_cliente(o.customer) %}{% if cc %}<b>{{ cc }}</b>{% elif not o.customer.vida_util_min_dias %}Sin condiciones registradas{% endif %}</td></tr>
 {% if penal %}<tr><td>Penalidad estimada</td><td>{% for x in penal %}<div class="small">{{ x.texto|capitalize }}: {% if x.monto is not none %}<b class="{{ 'err' if x.riesgo }}">S/ {{ '{:,.2f}'.format(x.monto) }}</b>{% else %}<span class="muted">monto no definido</span>{% endif %}{% if x.riesgo %} <span class="b ALTA">en riesgo</span>{% endif %} <span class="muted">— {{ x.base }}</span></div>{% endfor %}</td></tr>{% endif %}
 <tr><td>Emisión / comprometida</td><td>{{ o.fecha_emision|d }} / <b>{{ o.fecha_compromiso|d }}</b> · corte {{ o.corte or '-' }}</td></tr>
-<tr><td>Vendedor</td><td>{{ o.vendedor_nombre or '-' }}</td></tr>
+<tr><td>Ejecutivo comercial</td><td>{{ o.vendedor_nombre or '-' }}</td></tr>
 <tr><td>Canal de precios</td><td>{{ o.canal_precio or 'según ficha del cliente' }}</td></tr>
 <tr><td>Monto / volumen</td><td>S/ {{ monto|n }} · {{ peso|n }} kg {% if sin_peso %}<span class="small muted">(sin peso: {{ sin_peso|join(', ') }})</span>{% endif %}</td></tr>
 <tr><td>Versión / origen</td><td>v{{ o.version }} · {{ o.origen }}</td></tr>

@@ -129,9 +129,9 @@ def test_faltante_cobertura_alertas_y_alternativas(s, U, new_order):
     assert o.cobertura_unidades == pytest.approx(round(100 * 410 / 460, 2))
     assert o.cobertura_lineas == 50.0
     a = alerts_of(s, "OV_FALTANTE", o.id)[0]
-    assert {"COORD_ALMACEN", "JEFE_LOGISTICA", "GERENCIA_OPERACIONES"} <= set(a.roles)
+    assert {"COORD_ALMACEN", "JEFE_LOGISTICA", "GERENTE_GENERAL_ADJUNTO"} <= set(a.roles)
     d = alerts_of(s, "OV_DECISION_PARCIAL", o.id)[0]
-    assert {"JEFE_LOGISTICA", "GERENCIA_OPERACIONES", "JEFE_VENTAS", "COORD_VENTAS"} <= set(d.roles)
+    assert {"JEFE_LOGISTICA", "GERENTE_GENERAL_ADJUNTO", "JEFE_VENTAS", "COORD_VENTAS"} <= set(d.roles)
     alts = alternatives_for_order(o)
     assert len(alts) == 1
     otros = alts[0]["otros_almacenes"]
@@ -156,7 +156,7 @@ def test_despacho_parcial_aprobacion_y_saldo(s, U, new_order, today):
     assert o.decision_parcial == "APROBADA" and list(o.parcial_aprobaciones) == ["JEFE_LOGISTICA"]
     assert alerts_of(s, "OV_PARCIAL_APROBADO", o.id)
     with pytest.raises(BusinessError):  # ya aprobado
-        osvc.decide_partial(o, U("gerente.operaciones"), True)
+        osvc.decide_partial(o, U("gerente.adjunto"), True)
     assert rutas and rutas[0].stops[0].order_id == o.id and rutas[0].stops[0].peso_kg == pytest.approx(400 * 0.5)
     # despacho del parcial -> OV de saldo con la fecha reprogramada
     dispatch(s, U, o, today)
@@ -175,17 +175,18 @@ def test_gerencia_general_aprueba_en_nombre_y_rechazo(s, U, new_order, today):
     assert o.decision_parcial == "APROBADA" and all(v["rol_usuario"] == "GERENCIA_GENERAL" for v in o.parcial_aprobaciones.values())
     o2 = new_order([("PT-901", 450)])
     with pytest.raises(BusinessError):
-        osvc.decide_partial(o2, U("gerente.operaciones"), False, "")
+        osvc.decide_partial(o2, U("gerente.adjunto"), False, "")
     # configurable: con parcial_modo = TODOS se exige la aprobación de ambos roles
     set_param("parcial_modo", "TODOS", U("sistemas"))
     for x in (o, o2):
         osvc.cancel_order(x, U("coord.ventas"), "libera stock para la prueba")
     o3 = new_order([("PT-901", 450)])
-    osvc.decide_partial(o3, U("gerente.operaciones"), True, "ok", today + timedelta(days=5))
-    assert o3.decision_parcial == "PENDIENTE" and osvc.partial_pending_roles(o3) == ["JEFE_LOGISTICA"]
-    osvc.decide_partial(o3, U("jefe.logistica"), True, "ok")
+    # V16: la Gerencia de Operaciones ya no existe; sus aprobaciones las hace el Gerente General Adjunto
+    osvc.decide_partial(o3, U("jefe.logistica"), True, "ok", today + timedelta(days=5))
+    assert o3.decision_parcial == "PENDIENTE" and osvc.partial_pending_roles(o3) == ["GERENTE_GENERAL_ADJUNTO"]
+    osvc.decide_partial(o3, U("gerente.adjunto"), True, "ok")
     assert o3.decision_parcial == "APROBADA"
-    osvc.decide_partial(o2, U("gerente.operaciones"), False, "Cliente no acepta parcial")
+    osvc.decide_partial(o2, U("gerente.adjunto"), False, "Cliente no acepta parcial")
     assert o2.decision_parcial == "RECHAZADA"
 
 
@@ -212,7 +213,7 @@ def test_cambio_ov_conserva_reservas_y_alerta(s, U, new_order):
     assert res0.estado == "ACTIVA" and line_reserved(o.lines[0]) == 150
     assert o.version == 2 and o.estado_stock == "COMPLETA"
     a = alerts_of(s, "OV_CAMBIO", o.id)
-    assert a and {"JEFE_LOGISTICA", "COORD_ALMACEN", "GERENCIA_OPERACIONES"} <= set(a[0].roles)
+    assert a and {"JEFE_LOGISTICA", "COORD_ALMACEN", "GERENTE_GENERAL_ADJUNTO"} <= set(a[0].roles)
     osvc.modify_order(o, U("coord.ventas"), {"lines": [{"product_code": "PT-905", "cantidad": 40}]})
     s.commit()
     assert line_reserved(o.lines[0]) == 40
@@ -435,7 +436,7 @@ def test_rechazo_por_calidad_alerta_gerencia_general(s, U, new_order, today):
     dist.register_incident(U("asist.distribucion"), "RECHAZO_CALIDAD", "Cliente rechaza por grano partido", stop=stop)
     s.commit()
     a = alerts_of(s, "INC_RECHAZO_CALIDAD")[0]
-    assert {"GERENCIA_GENERAL", "GERENCIA_OPERACIONES", "JEFE_LOGISTICA", "COORD_ALMACEN", "JEFE_VENTAS"} <= set(a.roles)
+    assert {"GERENCIA_GENERAL", "GERENTE_GENERAL_ADJUNTO", "JEFE_LOGISTICA", "COORD_ALMACEN", "JEFE_VENTAS"} <= set(a.roles)
     assert o.estado == "RECHAZADA" and stop.estado == "RECHAZADO"
     ret = s.query(StockLot).filter_by(product_code="PT-905", estado="PENDIENTE_REVISION").one()
     assert ret.cantidad == 40
@@ -451,7 +452,7 @@ def test_devolucion_y_entrega_parcial(s, U, new_order, today):
     dist.register_incident(U("asist.distribucion"), "DEVOLUCION", "Devuelve todo", stop=stop)
     s.commit()
     a = alerts_of(s, "INC_GENERAL")[0]
-    assert "GERENCIA_GENERAL" not in a.roles and "GERENCIA_OPERACIONES" in a.roles
+    assert "GERENCIA_GENERAL" not in a.roles and "GERENTE_GENERAL_ADJUNTO" in a.roles
     assert o.estado == "DEVUELTA"
     o2 = new_order([("PT-905", 20)])
     stop2 = dispatch(s, U, o2, today)

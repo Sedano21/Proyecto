@@ -2277,3 +2277,85 @@ ALERT_TYPES += [
      ["SISTEMAS", "JEFE_VENTAS", "COORD_VENTAS", GGA], "DEFINIDO", V15,
      "La sincronización no llega a SAP: lo registrado queda en cola y se envía solo al volver la conexión.", True),
 ]
+
+# ---------------------------------------------------------------------------------------------------------------------
+# V16 (02-nov-2026): «retira el perfil de gerente de operaciones, todas sus funcionalidades pasan al gerente general
+# adjunto; no existe coordinador de almacén 1560 y 1524, se tiene un supervisor de almacén 1560 y un supervisor de
+# almacén 1524; añade un perfil de jefe de administración y finanzas con el mismo poder y autoridad que coordinador de
+# finanzas, y si coordinador de finanzas no atiende que se le alerte; en vez de vendedor 1…n, ejecutivo comercial 1…n».
+V16 = "Indicaciones del 02-nov-2026 (V16)"
+JAF = "JEFE_ADMIN_FINANZAS"
+# perfiles retirados y a quién pasan sus funciones, usuarios, alertas y parámetros (también en bases existentes)
+ROLES_FUSIONADOS = {"GERENCIA_OPERACIONES": GGA}
+
+
+def _fusiona(v, viejo, nuevo):
+    """Reemplaza un código de perfil por otro en listas, diccionarios (claves y valores) y textos exactos."""
+    if isinstance(v, str):
+        return nuevo if v == viejo else v
+    if isinstance(v, list):
+        out = []
+        for x in v:
+            x = _fusiona(x, viejo, nuevo)
+            if x not in out or not isinstance(x, str):
+                out.append(x)
+        return out
+    if isinstance(v, tuple):
+        return tuple(_fusiona(x, viejo, nuevo) for x in v)
+    if isinstance(v, dict):
+        out = {}
+        for k, x in v.items():
+            k2, x2 = _fusiona(k, viejo, nuevo), _fusiona(x, viejo, nuevo)
+            if k2 in out and isinstance(out[k2], list) and isinstance(x2, list):
+                out[k2] = out[k2] + [y for y in x2 if y not in out[k2]]
+            elif k2 not in out:
+                out[k2] = x2
+        return out
+    return v
+
+
+for _viejo, _nuevo in ROLES_FUSIONADOS.items():
+    ROLES[:] = [r for r in ROLES if r[0] != _viejo]
+    _ya = {p for p, _, _ in ROLE_PERMISSIONS[_nuevo]}
+    ROLE_PERMISSIONS[_nuevo] += [(p, o, f"{V16}: funciones de Gerencia de Operaciones") for p, o, _ in
+                                 ROLE_PERMISSIONS.pop(_viejo, []) if p not in _ya and not _ya.add(p)]
+    ALERT_TYPES[:] = [(c, n, a, g, p, _fusiona(list(r), _viejo, _nuevo), *rest) for c, n, a, g, p, r, *rest in ALERT_TYPES]
+    PARAMS[:] = [(k, _fusiona(v, _viejo, _nuevo), *rest) for k, v, *rest in PARAMS]
+    # jefe del Gerente General Adjunto: la Gerencia General (no él mismo)
+    for _i, (_k, _v, *_rest) in enumerate(PARAMS):
+        if _k == "jefe_por_rol":
+            _v[_nuevo] = [x for x in _v.get(_nuevo, []) if x != _nuevo] or ["GERENCIA_GENERAL"]
+
+# almacenes: dos supervisores (1560 y 1524); el perfil de apoyo «por almacén» conserva su nombre
+ROLES_RENOMBRE.update({"COORD_ALMACEN": "Supervisor de Almacén 1560", "COORD_ALMACEN_MP": "Supervisor de Almacén 1524",
+                       "EJECUTIVO_VENTAS": "Ejecutivo Comercial"})
+ROLES[:] = [(c, ROLES_RENOMBRE.get(c, n), a, f, ("Ejecutivo comercial responsable de la OV." if c == "EJECUTIVO_VENTAS" else o))
+            for c, n, a, f, o in ROLES]
+
+# Jefe de Administración y Finanzas: el mismo poder y autoridad que la Coordinación de Finanzas, y recibe las tareas de
+# Finanzas que la Coordinación no atiende en su plazo (aviso al jefe, «jefe_por_rol»)
+ROLES.append((JAF, "Jefe de Administración y Finanzas", "Finanzas", V16,
+              "Mismo poder y autoridad que la Coordinación de Finanzas; se le alerta si la Coordinación no atiende."))
+ROLE_PERMISSIONS[JAF] = [(p, o, f"{V16}: mismo poder que Coordinación de Finanzas") for p, o, _ in ROLE_PERMISSIONS["COORD_FINANZAS"]]
+for _i, (_k, _v, *_rest) in enumerate(PARAMS):
+    if _k == "jefe_por_rol":
+        _v.setdefault("COORD_FINANZAS", [JAF])
+# parámetros con listas de perfiles que incluyen a la Coordinación de Finanzas: el Jefe tiene la misma autoridad
+for _i, (_k, _v, *_rest) in enumerate(PARAMS):
+    if isinstance(_v, list) and "COORD_FINANZAS" in _v and JAF not in _v:
+        PARAMS[_i] = (_k, _v + [JAF], *_rest)
+PARAMS += [
+    ("roles_equivalentes", {JAF: ["COORD_FINANZAS"]}, "dict", "Seguridad",
+     "Perfiles con el mismo poder y autoridad que otro: ven, aprueban y atienden como ese perfil. Sus tareas no les "
+     "suenan; se les alerta si el perfil original no las atiende en su plazo («jefe_por_rol»).", "DEFINIDO",
+     f"{V16}: Jefe de Administración y Finanzas con el mismo poder que Coordinación de Finanzas"),
+]
+# nombres de las cuentas de ejemplo (solo si conservan el nombre anterior)
+DEMO_RENOMBRE = {
+    "coord.almacen": ("Supervisor de 1524 y 1560", "Supervisor de Almacén 1560"),
+    "coord.almacen.mp": ("Coordinación de Almacén 1524", "Supervisor de Almacén 1524"),
+    "superv.almacen": ("Supervisor de Almacén 1560", "Supervisión de Almacén (por almacén) 1560"),
+    "superv.almacen.mp": ("Supervisor de Almacenes 1524 / Externos", "Supervisión de Almacén (por almacén) 1524 / Externos"),
+    "vendedor1": ("Ejecutivo de Ventas 1", "Ejecutivo Comercial 1"),
+    "vendedor2": ("Ejecutivo de Ventas 2", "Ejecutivo Comercial 2"),
+}

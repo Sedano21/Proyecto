@@ -3,9 +3,9 @@
 - Condiciones: Comercial registra sin límite los tipos de penalidad del cliente (de la lista o uno nuevo) con su monto
   (fijo en S/ o % de la OV); al guardarlas se actualiza solo la tabla de condiciones y penalidades del cliente.
 - Detección: al registrar la entrega, el sistema compara la entrega con las condiciones del cliente (fecha
-  comprometida, entrega parcial y fill rate mínimo) y registra la «penalidad calculada». Alerta al vendedor o ejecutivo,
+  comprometida, entrega parcial y fill rate mínimo) y registra la «penalidad calculada». Alerta al ejecutivo comercial o ejecutivo,
   al Coordinador y al Jefe Comercial para que registren si se PAGÓ (monto pagado) o se DESESTIMÓ (motivo).
-- Indicador de gestión comercial: calculada vs pagada vs desestimada, por vendedor y por cliente.
+- Indicador de gestión comercial: calculada vs pagada vs desestimada, por ejecutivo comercial y por cliente.
 """
 from datetime import date
 
@@ -158,9 +158,9 @@ def register(customer, user, tipo, descripcion, monto_calculado, order=None, fec
 
 def resolve(p, user, estado, monto_pagado=None, comentario=""):
     if not has_perm(user, "clientes.penalidad"):
-        raise BusinessError("Registran el resultado el vendedor o ejecutivo, el Coordinador o el Jefe Comercial.")
+        raise BusinessError("Registran el resultado el ejecutivo comercial o ejecutivo, el Coordinador o el Jefe Comercial.")
     if user.role_code == "EJECUTIVO_VENTAS" and p.vendedor_id and p.vendedor_id != user.id:
-        raise BusinessError("Solo el vendedor responsable, el Coordinador o el Jefe Comercial.")
+        raise BusinessError("Solo el ejecutivo comercial responsable, el Coordinador o el Jefe Comercial.")
     if estado not in ("PAGADA", "DESESTIMADA"):
         raise BusinessError("Elija Pagada o Desestimada.")
     if estado == "PAGADA":
@@ -185,7 +185,7 @@ def resolve(p, user, estado, monto_pagado=None, comentario=""):
 
 
 def indicator(desde=None, hasta=None, customer_id=None):
-    """Indicador de gestión comercial: calculada vs pagada vs desestimada, total y por vendedor."""
+    """Indicador de gestión comercial: calculada vs pagada vs desestimada, total y por ejecutivo comercial."""
     q = select(CustomerPenalty)
     if desde:
         q = q.where(CustomerPenalty.fecha >= desde)
@@ -205,7 +205,7 @@ def indicator(desde=None, hasta=None, customer_id=None):
                 "pct_desestimada": round(des / calc * 100, 1) if calc else 0.0}
     por_vend = {}
     for r in rows:
-        por_vend.setdefault(r.vendedor.nombre if r.vendedor else "(sin vendedor)", []).append(r)
+        por_vend.setdefault(r.vendedor.nombre if r.vendedor else "(sin ejecutivo comercial)", []).append(r)
     return {"total": resumen(rows), "por_vendedor": {k: resumen(v) for k, v in sorted(por_vend.items())}, "rows": rows}
 
 

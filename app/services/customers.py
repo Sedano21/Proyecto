@@ -143,7 +143,7 @@ def save_site(user, c, datos, site=None):
 
 
 def search(q="", grupo="", canal="", vendedor_id=None):
-    """Búsqueda de clientes por nombre o RUC, grupo, canal de precios o vendedor responsable."""
+    """Búsqueda de clientes por nombre o RUC, grupo, canal de precios o ejecutivo comercial responsable."""
     from .prices import channel_of
     rows = list(db().execute(select(Customer).order_by(Customer.nombre)).scalars())
     q = (q or "").strip().upper()

@@ -392,8 +392,8 @@ def test_matriz_de_accesos_por_area(app, s, U):
     assert has_perm(aux, "guias.estado") and not has_perm(aux, "distribucion.ver") and not has_perm(aux, "distribucion.entrega")
     alm = U("aux.almacen")
     assert has_perm(alm, "stock.cambiar_estado") and has_perm(alm, "rotacion.ver") and has_perm(alm, "alertas.gestionar")
-    assert s.get(Role, "COORD_ALMACEN").nombre == "Supervisor de 1524 y 1560"
-    assert U("coord.almacen").nombre == "Supervisor de 1524 y 1560"
+    assert s.get(Role, "COORD_ALMACEN").nombre == "Supervisor de Almacén 1560"  # V16
+    assert U("coord.almacen").nombre == "Supervisor de Almacén 1560"  # V16
     c = app.test_client()
     login(c, "jefe.logistica")
     for url in ("/produccion/partes", "/produccion/control", "/produccion/tablero", "/produccion/monitoreo"):
@@ -416,7 +416,7 @@ def test_bases_existentes_retiran_permisos_y_renombran(s, U):
     s.flush()
     sync_catalogs()
     assert not has_perm(U("jefe.logistica"), "produccion.ver")
-    assert s.get(Role, "COORD_ALMACEN").nombre == "Supervisor de 1524 y 1560"
+    assert s.get(Role, "COORD_ALMACEN").nombre == "Supervisor de Almacén 1560"  # V16
 
 
 def test_asistencia_por_area_del_jefe_de_logistica(app, s, U):

@@ -1,6 +1,6 @@
 {% extends "base.html" %}{% from "_m.html" import b, csrf %}
 {% block content %}<h1>Listas de precios mínimos</h1>
-<p class="muted small">Fuente: listas de precios de Comercial (Q11). Es el <b>precio mínimo de venta</b> por canal: si una OV se registra o carga con un precio en el límite o por debajo, se alerta al vendedor y a Comercial.
+<p class="muted small">Fuente: listas de precios de Comercial (Q11). Es el <b>precio mínimo de venta</b> por canal: si una OV se registra o carga con un precio en el límite o por debajo, se alerta al ejecutivo comercial y a Comercial.
 Solo el Jefe Comercial carga o modifica precios; cada cambio queda versionado. El costo de la empresa no se guarda en el sistema.</p>
 <p>{% if can('precios.editar') %}<a href="{{ url_for('alm.upload_new', tipo='PRECIOS') }}">Cargar lista por canal (Excel)</a> · <a href="{{ url_for('alm.upload_new', tipo='PRECIOS_GRANEL') }}">Cargar lista mayorista granel (Excel)</a>{% endif %}</p>
 <div class="card small"><b>Vigencia</b> · {% for l, nombre in [('GENERAL', 'Lista por canal (presentaciones)'), ('GRANEL', 'Lista mayorista granel (canal ' ~ canal_granel ~ ')')] %}{% set m = metas.get(l) %}

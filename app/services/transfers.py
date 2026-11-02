@@ -133,7 +133,7 @@ def ship(t, user):
 
 def receive(t, user, cantidad_recibida, observacion=""):
     if not has_perm(user, "traslado.recibir"):
-        raise BusinessError("La recepción la confirma el Coordinador de Almacén o su asistente (IF §6.2).")
+        raise BusinessError("La recepción la confirma el Supervisor de Almacén o su asistente (IF §6.2).")
     if t.estado != "EN_TRANSITO":
         raise BusinessError("El traslado no está en tránsito.")
     check_warehouse_scope(user, t.destino_code)

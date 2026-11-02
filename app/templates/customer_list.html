@@ -3,7 +3,7 @@
 <form class="row card" method="get"><div class="grow"><label>Cliente o RUC</label><input name="q" value="{{ f.q }}" type="search"></div>
 <div><label>Grupo</label><select name="grupo"><option value="">(todos)</option>{% for x in grupos %}<option {{ 'selected' if f.grupo==x }}>{{ x }}</option>{% endfor %}</select></div>
 <div><label>Canal</label><select name="canal"><option value="">(todos)</option>{% for x in canales %}<option {{ 'selected' if f.canal==x }}>{{ x }}</option>{% endfor %}</select></div>
-<div><label>Vendedor responsable</label><select name="vendedor_id"><option value="">(todos)</option>{% for u in vendedores %}<option value="{{ u.id }}" {{ 'selected' if f.vendedor_id==u.id|string }}>{{ u.nombre }}</option>{% endfor %}</select></div>
+<div><label>Ejecutivo comercial responsable</label><select name="vendedor_id"><option value="">(todos)</option>{% for u in vendedores %}<option value="{{ u.id }}" {{ 'selected' if f.vendedor_id==u.id|string }}>{{ u.nombre }}</option>{% endfor %}</select></div>
 <div><button class="sec">Buscar</button></div></form>
 <div class="tw"><table class="list"><tr><th>Cliente</th><th>RUC</th><th>Grupo / canal de precios</th><th>Lugares de entrega</th><th>Contacto</th></tr>
 {% for c in rows %}<tr><td><a href="{{ url_for('com.customer_card', cid=c.id) }}"><b>{{ c.nombre }}</b></a></td><td class="mono">{{ c.ruc }}</td><td>{{ c.grupo }} · {{ canal_de(c) or 'sin canal' }}</td><td>{{ c.sites|selectattr('activo')|list|length }}</td><td>{{ c.contacto }} {{ c.telefono }}</td></tr>{% else %}<tr><td colspan="5" class="muted">Sin clientes</td></tr>{% endfor %}</table></div>

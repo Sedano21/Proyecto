@@ -17,20 +17,19 @@ DEMO_USERS = [
     # username, nombre, rol. Una cuenta por persona según los organigramas, con el nombre del puesto (sin nombres reales).
     ("gerente.general", "Gerencia General", "GERENCIA_GENERAL"),
     ("gerente.adjunto", "Gerente General Adjunto", "GERENTE_GENERAL_ADJUNTO"),
-    ("gerente.operaciones", "Gerencia de Operaciones", "GERENCIA_OPERACIONES"),
     ("sistemas", "Administrador de Sistemas", "SISTEMAS"),
     ("gerente.comercial", "Gerente Comercial", "GERENTE_COMERCIAL"),
     ("jefe.ventas", "Jefe Comercial", "JEFE_VENTAS"),
     ("coord.ventas", "Coordinador de Ventas", "COORD_VENTAS"),
     ("asist.ventas", "Asistente de Ventas", "ASIST_VENTAS"),
-    ("vendedor1", "Ejecutivo de Ventas 1", "EJECUTIVO_VENTAS"),
-    ("vendedor2", "Ejecutivo de Ventas 2", "EJECUTIVO_VENTAS"),
+    ("vendedor1", "Ejecutivo Comercial 1", "EJECUTIVO_VENTAS"),
+    ("vendedor2", "Ejecutivo Comercial 2", "EJECUTIVO_VENTAS"),
     # Logística (organigrama del 23-oct-2026)
     ("jefe.logistica", "Jefe de Logística", "JEFE_LOGISTICA"),
     ("coord.logistica", "Coordinador de Logística", "COORD_LOGISTICA"),
-    ("coord.almacen", "Supervisor de 1524 y 1560", "COORD_ALMACEN"),
-    ("coord.almacen.mp", "Coordinación de Almacén 1524", "COORD_ALMACEN_MP"),
-    ("superv.almacen", "Supervisor de Almacén 1560", "SUPERV_ALMACEN"),
+    ("coord.almacen", "Supervisor de Almacén 1560", "COORD_ALMACEN"),
+    ("coord.almacen.mp", "Supervisor de Almacén 1524", "COORD_ALMACEN_MP"),
+    ("superv.almacen", "Supervisión de Almacén (por almacén) 1560", "SUPERV_ALMACEN"),
     ("lider.almacen", "Líder Operativo 1560", "LIDER_ALMACEN"),
     ("aux.almacen", "Auxiliar de Almacén 1", "AUX_ALMACEN"),
     ("aux.almacen2", "Auxiliar de Almacén 2", "AUX_ALMACEN"),
@@ -39,7 +38,7 @@ DEMO_USERS = [
     ("montacarguista", "Montacarguista 1", "MONTACARGUISTA"),
     ("lider.almacen2", "Líder Operativo 1560 turno tarde", "LIDER_ALMACEN"),
     ("montacarguista2", "Montacarguista 2 turno tarde", "MONTACARGUISTA"),
-    ("superv.almacen.mp", "Supervisor de Almacenes 1524 / Externos", "SUPERV_ALMACEN"),
+    ("superv.almacen.mp", "Supervisión de Almacén (por almacén) 1524 / Externos", "SUPERV_ALMACEN"),
     ("aux.almacen.mp", "Auxiliar de Almacén 1524", "AUX_ALMACEN"),
     ("montacarguista.mp", "Montacarguista 1524", "MONTACARGUISTA"),
     ("coord.distribucion", "Coordinador de Distribución", "COORD_DISTRIBUCION"),
@@ -65,6 +64,7 @@ DEMO_USERS = [
     ("seguridad", "Seguridad", "SEGURIDAD"),
     ("facturacion", "Facturación", "FACTURACION"),
     ("coord.finanzas", "Coordinación de Finanzas", "COORD_FINANZAS"),
+    ("jefe.finanzas", "Jefe de Administración y Finanzas", "JEFE_ADMIN_FINANZAS"),
 ]
 
 
@@ -167,6 +167,7 @@ def sync_catalogs():
     n += _apply_alert_role_changes()
     n += _rename_roles()
     n += _rename_demo_users()
+    n += _merge_roles()
     return n
 
 
@@ -179,6 +180,7 @@ def _apply_alert_role_changes():
         clave = f"{code}:-{','.join(quitar)}:+{','.join(agregar)}"[:60]
         if s.execute(select(AuditLog).where(AuditLog.accion == "ALERTA_ROLES_CATALOGO", AuditLog.entidad_id == clave)).first():
             continue
+        agregar = [C.ROLES_FUSIONADOS.get(r, r) for r in agregar]
         t = s.get(AlertType, code)
         if t is not None:
             roles = [r for r in (t.roles or []) if r not in quitar] + [r for r in agregar if r not in (t.roles or [])]
@@ -204,6 +206,63 @@ def _rename_roles():
         if u.nombre in ("Coordinador de Almacenes", "Coordinación de Almacén 1560 (demo)"):
             u.nombre = "Supervisor de 1524 y 1560"
             n += 1
+    for username, (anterior, nuevo) in getattr(C, "DEMO_RENOMBRE", {}).items():
+        for u in s.execute(select(User).where(User.username == username, User.nombre == anterior)).scalars():
+            u.nombre = nuevo
+            n += 1
+    return n
+
+
+def _merge_roles():
+    """V16: perfiles retirados (C.ROLES_FUSIONADOS, p. ej. Gerencia de Operaciones → Gerente General Adjunto). Sus
+    usuarios, permisos, destinatarios de alertas (también las abiertas) y parámetros pasan al perfil nuevo y el perfil
+    viejo se elimina. Además agrega al «jefe_por_rol» guardado los jefes nuevos del catálogo. Queda en la auditoría."""
+    from .models import Alert, AuditLog
+    s = db()
+    n = 0
+    for viejo, nuevo in getattr(C, "ROLES_FUSIONADOS", {}).items():
+        rol = s.get(Role, viejo)
+        if rol is None or s.get(Role, nuevo) is None:
+            continue
+        usuarios = list(s.execute(select(User).where(User.role_code == viejo)).scalars())
+        for u in usuarios:
+            u.role_code = nuevo
+        ya = {rp.perm_code for rp in s.execute(select(RolePermission).where(RolePermission.role_code == nuevo)).scalars()}
+        for rp in list(s.execute(select(RolePermission).where(RolePermission.role_code == viejo)).scalars()):
+            if rp.perm_code not in ya:
+                s.add(RolePermission(role_code=nuevo, perm_code=rp.perm_code, origen=rp.origen,
+                                     fuente=f"{C.V16}: funciones de {rol.nombre}"))
+                ya.add(rp.perm_code)
+            s.delete(rp)
+        for t in s.execute(select(AlertType)).scalars():
+            if viejo in (t.roles or []):
+                t.roles = C._fusiona(list(t.roles), viejo, nuevo)
+        for a in s.execute(select(Alert)).scalars():
+            if viejo in (a.roles or []) or a.asignado_rol == viejo:
+                a.roles = C._fusiona(list(a.roles or []), viejo, nuevo)
+                a.asignado_rol = nuevo if a.asignado_rol == viejo else a.asignado_rol
+        for p in s.execute(select(Param)).scalars():
+            v = (p.valor or {}).get("v")
+            v2 = C._fusiona(v, viejo, nuevo)
+            if p.key == "jefe_por_rol" and isinstance(v2, dict):
+                v2[nuevo] = [x for x in v2.get(nuevo, []) if x != nuevo] or ["GERENCIA_GENERAL"]
+            if v2 != v:
+                p.valor = {"v": v2}
+        s.flush()
+        s.delete(rol)
+        s.add(AuditLog(user_id=None, accion="PERFIL_RETIRADO_CATALOGO", entidad="Role", entidad_id=viejo,
+                       detalle={"pasa_a": nuevo, "usuarios": [u.username for u in usuarios], "fuente": C.V16}))
+        n += 1
+    p = s.get(Param, "jefe_por_rol")
+    catalogo = next((v for k, v, *_ in C.PARAMS if k == "jefe_por_rol"), {})
+    if p is not None and isinstance((p.valor or {}).get("v"), dict):
+        v = dict(p.valor["v"])
+        nuevos = {k: x for k, x in catalogo.items() if k not in v and k in ("COORD_FINANZAS",)}
+        if nuevos:
+            v.update(nuevos)
+            p.valor = {"v": v}
+            n += 1
+    s.flush()
     return n
 
 

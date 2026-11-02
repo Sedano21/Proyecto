@@ -44,7 +44,7 @@ def test_ov_completa_avisa_certifica_y_programa_ruta(s, U, new_order):
     approve_certs(s, U, o)
     s.commit()
     listo = alerts_of(s, "CERTIFICADO_LISTO")[0]
-    assert {"COORD_DISTRIBUCION", "GERENCIA_OPERACIONES", "JEFE_LOGISTICA"} <= set(listo.roles)
+    assert {"COORD_DISTRIBUCION", "GERENTE_GENERAL_ADJUNTO", "JEFE_LOGISTICA"} <= set(listo.roles)
 
 
 def test_modificar_plan_de_picking_cambia_lote(s, U, new_order):
@@ -89,7 +89,7 @@ def test_carga_incongruente_y_documentos_faltantes(s, U, new_order):
     faltan = dsp.review_documents(r, U("seguridad"), impresos=True)
     assert any("guía" in f for f in faltan) and any("factura" in f for f in faltan) and any("certificado" in f for f in faltan)
     a = alerts_of(s, "DOCUMENTOS_FALTANTES")[0]
-    assert {"COORD_DISTRIBUCION", "FACTURACION", "JEFE_CALIDAD", "JEFE_LOGISTICA", "GERENCIA_OPERACIONES"} <= set(a.roles)
+    assert {"COORD_DISTRIBUCION", "FACTURACION", "JEFE_CALIDAD", "JEFE_LOGISTICA", "GERENTE_GENERAL_ADJUNTO"} <= set(a.roles)
     with pytest.raises(BusinessError):  # sin autorización de Seguridad no hay salida
         dist.confirm_departure(r, U("lider.almacen"), {k: True for k, _ in dist.CHECKLIST})
     st = r.stops[0]
@@ -109,7 +109,7 @@ def test_carga_incongruente_y_documentos_faltantes(s, U, new_order):
     assert o.estado == "DESPACHADA"
     assert alerts_of(s, "RUTA_ASIGNADA") and alerts_of(s, "MONTACARGUISTA_DESPACHO")
     dist.register_arrival(st, U("conductor1"))  # ronda UX: lo registra el chofer
-    assert set(alerts_of(s, "DIST_LLEGADA")[0].roles) == {"COORD_DISTRIBUCION", "JEFE_LOGISTICA", "GERENCIA_OPERACIONES"}
+    assert set(alerts_of(s, "DIST_LLEGADA")[0].roles) == {"COORD_DISTRIBUCION", "JEFE_LOGISTICA", "GERENTE_GENERAL_ADJUNTO"}
     dist.register_incident(U("asist.distribucion"), "RECHAZO_CITA", "Llegó fuera de la ventana horaria", stop=st)
     s.commit()
     assert st.estado == "NO_ENTREGADO" and o.estado == "DEVUELTA"

@@ -6,7 +6,7 @@
 <div><label>Base de venta</label><select name="base">{% for k, v in bases.items() %}<option value="{{ k }}" {{ 'selected' if d.base == k }}>{{ v }}</option>{% endfor %}</select></div>
 <div><label>Canal</label><select name="canal"><option value="">(todos)</option>{% for c in canales %}<option {{ 'selected' if f.get('canal') == c }}>{{ c }}</option>{% endfor %}</select></div>
 <div><label>Cliente</label><select name="customer_id"><option value="">(todos)</option>{% for c in clientes %}<option value="{{ c.id }}" {{ 'selected' if f.get('customer_id') == c.id|string }}>{{ c.nombre }}</option>{% endfor %}</select></div>
-<div><label>Vendedor</label><select name="vendedor"><option value="">(todos)</option>{% for v in vendedores %}<option {{ 'selected' if f.get('vendedor') == v.nombre }}>{{ v.nombre }}</option>{% endfor %}</select></div>
+<div><label>Ejecutivo comercial</label><select name="vendedor"><option value="">(todos)</option>{% for v in vendedores %}<option {{ 'selected' if f.get('vendedor') == v.nombre }}>{{ v.nombre }}</option>{% endfor %}</select></div>
 <div><button>Ver</button> <button name="formato" value="xlsx" class="sec">Excel</button></div></form>
 {% if d.sin_costo %}<div class="note small">{{ d.sin_costo }} documento(s) sin costo vigente en alguna línea (o factura sin OV): su costo se toma como 0 y el margen sale sobrestimado. Cargue los costos en Comercial → Costos.</div>{% endif %}
 {% if d.total %}{% set t = d.total %}<div class="kpis"><div class="kpi"><b>S/ {{ t.venta|n }}</b><span>Venta</span></div><div class="kpi"><b>{{ t.pct_mb }} %</b><span>Margen bruto</span><small>S/ {{ t.margen_bruto|n }}</small></div>

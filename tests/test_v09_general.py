@@ -87,7 +87,7 @@ def test_naturaleza_por_perfil_y_derivacion(s, U, new_order):
     o = new_order([("PT-905", 10)], precio=0.01)  # precio bajo: alerta de precio para Comercial
     a = (alerts_of(s, "OV_PRECIO_BAJO_MINIMO", o.id) or alerts_of(s, "OV_PRECIO_BAJO_COSTO", o.id))[0]
     assert alerts.can_act(U("coord.ventas"), a)
-    assert alerts.nature_for(U("gerente.operaciones"), a) == "INFORMATIVA"
+    assert alerts.nature_for(U("gerente.adjunto"), a) == "INFORMATIVA"
     assert not alerts.can_act(U("asist.ventas"), a)
 
 
@@ -100,7 +100,7 @@ def test_estado_de_alertas_para_sonido_y_actualizacion(app):
 
 def test_gerencias_ven_todas_las_pantallas(app):
     c = app.test_client()
-    login(c, "gerente.operaciones")
+    login(c, "gerente.adjunto")
     for url in ("/configuracion", "/almacen/picking", "/informes/comercial", "/auditoria", "/produccion/plan", "/calidad/", "/abastecimiento/compras", "/distribucion/flota"):
         assert c.get(url).status_code == 200, url
 

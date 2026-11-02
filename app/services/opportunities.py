@@ -197,7 +197,7 @@ def listing(user, estado="", vendedor_id=None):
 
 
 def funnel(user, desde=None, hasta=None):
-    """Funnel por etapa, conversión y desempeño por vendedor (acciones, gasto, cotizaciones, ganadas)."""
+    """Funnel por etapa, conversión y desempeño por ejecutivo comercial (acciones, gasto, cotizaciones, ganadas)."""
     rows = listing(user)
     if desde:
         rows = [o for o in rows if o.creado_ts.date() >= desde]

@@ -1,4 +1,4 @@
-"""Programación del picking por persona (observaciones al demo v0.6, Líder Operativo y Coordinador de Almacén).
+"""Programación del picking por persona (observaciones al demo v0.6, Líder Operativo y Supervisor de Almacén).
 
 - Al quedar una OV lista para preparar, el sistema preprograma el picking por almacén (fecha y auxiliar propuesto
   según la carga del día) y avisa al Líder Operativo y al Coordinador del almacén, que ven el detalle (tipo, cantidad,
@@ -98,7 +98,7 @@ def assign(t, user, user_ids, fecha=None, comentario=""):
     """Asigna (o reasigna) el picking a una persona o a un grupo del mismo almacén."""
     from .core import check_warehouse_scope
     if not has_perm(user, "picking.asignar"):
-        raise BusinessError("El picking lo asigna el Líder Operativo o el Coordinador de Almacén.")
+        raise BusinessError("El picking lo asigna el Líder Operativo o el Supervisor de Almacén.")
     if t.estado == "LISTO":
         raise BusinessError("El picking ya está listo para despacho.")
     if user.role_code.startswith("COORD_ALMACEN"):

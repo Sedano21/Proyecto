@@ -97,7 +97,7 @@ def test_q2_otif_por_salida_y_fill_rate(s, U, new_order, today):
     o1 = new_order([("PT-905", 40)])
     dist.confirm_departure(_ready_route(s, U, o1), U("lider.almacen"), CHECK)
     o2 = new_order([("PT-901", 450)])  # salida parcial (400 de 450)
-    osvc.decide_partial(o2, U("gerente.operaciones"), True, "ok", today + timedelta(days=4))
+    osvc.decide_partial(o2, U("gerente.adjunto"), True, "ok", today + timedelta(days=4))
     dist.confirm_departure(_ready_route(s, U, o2), U("lider.almacen"), CHECK)
     from app.models import RouteStop
     st = s.query(RouteStop).filter_by(order_id=o1.id).one()

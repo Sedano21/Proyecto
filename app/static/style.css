@@ -538,3 +538,15 @@ a.ev-thumb img{height:110px;max-width:160px;object-fit:cover;border-radius:6px;b
 .public{flex-direction:column;gap:10px}
 .public>.flash{width:100%;max-width:420px;margin:0}
 @media (max-width:480px){.public{padding:12px;justify-content:flex-start}.login .card{padding:20px 16px 16px!important}}
+/* V16 (02-nov-2026): los avisos «Atención» y «Requiere acción» en rojo con letras blancas para que resalten;
+   el urgente, rojo más intenso con borde que late. «Seguimiento» y «Sugerencia» siguen en verde/azul. */
+.reco-big.MEDIA{background:linear-gradient(135deg,#b71c1c,#d32f2f);color:#fff}
+.reco-big.MEDIA b{background:rgba(255,255,255,.22);color:#fff}
+.reco-big.ALTA{background:linear-gradient(135deg,#7f0000,#c62828);color:#fff;outline:3px solid #ff5252;outline-offset:-3px;animation:latido 1.6s ease-in-out infinite}
+.reco-big.ALTA b{background:#fff;color:#b71c1c}
+.reco-item.ALTA,.reco-item.MEDIA{background:#c62828;border-color:#7f0000;color:#fff}
+.reco-item.ALTA b,.reco-item.MEDIA b{color:#fff}
+.reco-item.ALTA{background:#9b0000}
+@keyframes latido{0%,100%{outline-color:#ff5252}50%{outline-color:#ffcdd2}}
+@media (prefers-reduced-motion:reduce){.reco-big.ALTA{animation:none}}
+@media print{.reco-big.MEDIA,.reco-big.ALTA,.reco-item.ALTA,.reco-item.MEDIA{-webkit-print-color-adjust:exact;print-color-adjust:exact}}

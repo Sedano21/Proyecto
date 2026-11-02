@@ -629,7 +629,7 @@ def modify_order(order, user, changes):
     if not has_perm(user, "ov.modificar"):
         raise BusinessError("Su rol no modifica OV directamente; use 'solicitar modificación' (IF §5).")
     if user.role_code == "EJECUTIVO_VENTAS" and order.vendedor_id != user.id:
-        raise BusinessError("Solo puede modificar las OV de las que es vendedor responsable.")
+        raise BusinessError("Solo puede modificar las OV de las que es ejecutivo comercial responsable.")
     _apply_changes(order, user, changes)
 
 
@@ -668,7 +668,7 @@ def resolve_change(req, user, aprobar, comentario=""):
         raise BusinessError("La solicitud ya fue resuelta.")
     order = req.order
     if not can_authorize_change(user, order):
-        raise BusinessError("Solo autorizan el Coordinador de Ventas, el Jefe de Ventas o el vendedor responsable (IF §5).")
+        raise BusinessError("Solo autorizan el Coordinador de Ventas, el Jefe de Ventas o el ejecutivo comercial responsable (IF §5).")
     if req.solicitado_por == user.id and not can_self_approve(user):
         raise BusinessError("No puede autorizar su propia solicitud.")
     req.estado = "APROBADA" if aprobar else "RECHAZADA"
@@ -713,7 +713,7 @@ def cancel_order(order, user, motivo):
 
 # ------------------------------ decisiones ----------------------------------
 def partial_approvers():
-    return list(param("parcial_aprobadores", ["GERENCIA_OPERACIONES", "JEFE_LOGISTICA"]) or [])
+    return list(param("parcial_aprobadores", ["GERENTE_GENERAL_ADJUNTO", "JEFE_LOGISTICA"]) or [])
 
 
 def partial_pending_roles(order):

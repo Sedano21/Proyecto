@@ -1,7 +1,7 @@
 """Carga de usuarios por Excel (V9, 28-oct-2026): correo corporativo, nombre y perfil (rol) del sistema.
 
 - Columnas: «Correo» (o «Correos»), «Apellidos y nombres» (o «Nombre»), «Rol» (código o nombre del perfil, p. ej.
-  EJECUTIVO_VENTAS o «Ejecutivo de Ventas (vendedor por canal)») y, opcional, «Almacén». El DNI, si viene, no se guarda.
+  EJECUTIVO_VENTAS o «Ejecutivo Comercial») y, opcional, «Almacén». El DNI, si viene, no se guarda.
 - No se adivinan perfiles: si «Rol» está vacío o no existe, la fila no se carga y se informa.
 - El usuario se identifica por su correo: si ya existe se actualizan su nombre y su perfil. El nombre de usuario es la
   parte del correo antes de «@». Ingresan con Microsoft 365 (correo corporativo); la clave local es aleatoria y, si

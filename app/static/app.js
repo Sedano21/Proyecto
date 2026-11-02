@@ -3,7 +3,8 @@
       falta completar.
    2. Validación visible: los campos obligatorios vacíos se resaltan con su mensaje, sin perder lo escrito.
    3. Ventana de confirmación para acciones que la piden (atributo data-confirm en el formulario o el botón).
-   4. Alertas con sonido: las importantes (urgencia ALTA) suenan distinto y se repiten hasta que se resuelvan. */
+   4. Alertas con sonido por urgencia (V16): urgente = sirena estridente que se repite hasta que se resuelva; media = pitidos
+      agudos; baja = dos pitidos cortos. */
 (function () {
   'use strict';
   var body = document.body;
@@ -200,27 +201,55 @@
   ['click', 'keydown', 'touchstart'].forEach(function (ev) { document.addEventListener(ev, function () { audio(); }, { once: true, passive: true }); });
   if (btn) btn.addEventListener('click', function () { lset('cp-sound', silenciado() ? 'on' : 'off'); pintarBoton(); if (!silenciado()) sonar('MEDIA'); });
   pintarBoton();
-  function nota(c, f, t0, dur, tipo, vol) {
-    var o = c.createOscillator(), g = c.createGain();
-    o.type = tipo; o.frequency.value = f;
-    g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(vol, t0 + 0.02);
-    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-    o.connect(g); g.connect(c.destination); o.start(t0); o.stop(t0 + dur + 0.05);
+  /* V16 (02-nov-2026): sonidos por urgencia, estridentes y cambiantes para que el oído no se acostumbre.
+     - ALTA (urgente): sirena aguda de ≈4 s en la zona de 2–4 kHz (la más sensible del oído), onda cuadrada o en diente de
+       sierra, con uno de varios patrones al azar (barrido, pulsos rápidos o dos tonos) y un leve cambio de tono cada vez;
+       se repite hasta que se atienda.
+     - MEDIA: tres pitidos agudos dobles (≈1,5 s), también con patrón y tono variables.
+     - BAJA: dos pitidos cortos.
+     Un compresor permite subir el volumen sin distorsión. */
+  var salida = null;
+  function destino(c) {
+    if (!salida) {
+      try { salida = c.createDynamicsCompressor(); salida.threshold.value = -12; salida.knee.value = 6; salida.ratio.value = 12;
+            salida.attack.value = 0.002; salida.release.value = 0.1; salida.connect(c.destination); }
+      catch (e) { salida = c.destination; }
+    }
+    return salida;
   }
-  /* V7: un sonido distinto por prioridad. ALTA: alarma aguda e insistente; MEDIA: campanilla de tres notas ascendentes;
-     BAJA: un solo toque suave. (true/false se mantienen por compatibilidad: true = ALTA, false = MEDIA.) */
+  function nota(c, f, t0, dur, tipo, vol, f2) {
+    var o = c.createOscillator(), g = c.createGain();
+    o.type = tipo; o.frequency.setValueAtTime(f, t0);
+    if (f2) o.frequency.linearRampToValueAtTime(f2, t0 + dur);
+    g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(vol, t0 + 0.01);
+    g.gain.setValueAtTime(vol, t0 + Math.max(0.012, dur - 0.02)); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    o.connect(g); g.connect(destino(c)); o.start(t0); o.stop(t0 + dur + 0.05);
+  }
+  function azar(n) { return Math.floor(Math.random() * n); }
+  var PATRONES = {
+    ALTA: [
+      function (c, t, k) { for (var i = 0; i < 8; i++) nota(c, 1800 * k, t + i * 0.5, 0.45, 'sawtooth', 0.9, 3600 * k); },          // barrido ascendente
+      function (c, t, k) { for (var i = 0; i < 26; i++) nota(c, (i % 4 === 3 ? 2200 : 3100) * k, t + i * 0.15, 0.09, 'square', 0.8); }, // pulsos rápidos
+      function (c, t, k) { for (var i = 0; i < 16; i++) nota(c, (i % 2 ? 2400 : 3300) * k, t + i * 0.25, 0.22, 'square', 0.85); },    // dos tonos
+      function (c, t, k) { for (var i = 0; i < 5; i++) { nota(c, 3400 * k, t + i * 0.8, 0.35, 'sawtooth', 0.9, 1900 * k);
+                                                         nota(c, 2900 * k, t + i * 0.8 + 0.4, 0.3, 'square', 0.85); } }           // caída y golpe
+    ],
+    MEDIA: [
+      function (c, t, k) { for (var i = 0; i < 3; i++) { nota(c, 2600 * k, t + i * 0.45, 0.12, 'square', 0.7); nota(c, 2600 * k, t + i * 0.45 + 0.17, 0.12, 'square', 0.7); } },
+      function (c, t, k) { for (var i = 0; i < 3; i++) nota(c, 1600 * k, t + i * 0.4, 0.28, 'sawtooth', 0.7, 3000 * k); },
+      function (c, t, k) { [2000, 2600, 3200, 2000, 2600, 3200].forEach(function (f, i) { nota(c, f * k, t + i * 0.2, 0.15, 'square', 0.7); }); }
+    ],
+    BAJA: [
+      function (c, t, k) { nota(c, 1900 * k, t, 0.08, 'square', 0.45); nota(c, 1900 * k, t + 0.14, 0.08, 'square', 0.45); }
+    ]
+  };
   function sonar(nivel) {
     if (silenciado()) return false;
     var c = audio(); if (!c || c.state !== 'running') return false;
-    var t = c.currentTime + 0.05;
     nivel = nivel === true ? 'ALTA' : (nivel === false || !nivel ? 'MEDIA' : nivel);
-    if (nivel === 'ALTA') {  // V8 (G03): urgente = alarma insistente, sirena aguda en diente de sierra (≈3 s)
-      for (var i = 0; i < 6; i++) { nota(c, 1397, t + i * 0.5, 0.22, 'sawtooth', 0.16); nota(c, 932, t + i * 0.5 + 0.24, 0.22, 'sawtooth', 0.16); }
-    } else if (nivel === 'MEDIA') {  // media: campanilla de tres notas, una sola vez
-      nota(c, 659, t, 0.2, 'triangle', 0.22); nota(c, 784, t + 0.18, 0.2, 'triangle', 0.22); nota(c, 1047, t + 0.36, 0.34, 'sine', 0.22);
-    } else {
-      return false;  // baja: sin sonido
-    }
+    var lista = PATRONES[nivel] || PATRONES.MEDIA;
+    var k = 0.92 + Math.random() * 0.16;  // ±8 % de tono en cada aviso
+    lista[azar(lista.length)](c, c.currentTime + 0.05, k);
     return true;
   }
   window.cpSonarAlerta = sonar;

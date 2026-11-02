@@ -27,10 +27,11 @@ ROLES = {
                       "En Inicio revise los indicadores de pedidos, comercial y operación.",
                       "En Informes abra el informe del área, descárguelo en PDF o Excel, o arme su propio informe.",
                       "En Auditoría consulte los movimientos de cualquier usuario.")]},
-    "GERENCIA_OPERACIONES": {
-        "resumen": "Visualiza todas las funciones, informes y movimientos de todas las áreas. Aprueba la ejecución de las compras "
-                   "(con las cotizaciones), el despacho parcial y la recepción bajo observación.",
-        "no_hace": "Autorizar presolicitudes de compra (lo hacen Logística o el Coordinador de Almacén) ni asignar picking.",
+    "GERENTE_GENERAL_ADJUNTO": {
+        "resumen": "Mismo poder que Gerencia General. Además tiene todas las funciones de la antigua Gerencia de Operaciones: "
+                   "aprueba la ejecución de las compras nacionales e importaciones (con las cotizaciones), el despacho parcial, "
+                   "la recepción bajo observación y el transporte tercero.",
+        "no_hace": "Autorizar presolicitudes de compra (lo hacen Logística o el Supervisor de Almacén) ni asignar picking.",
         "tareas": [ALERTA,
                    _t("Aprobar la ejecución de una compra", "Alertas · Compras nacionales → detalle",
                       "Abra la alerta «Aprobar ejecución de la compra».",
@@ -93,7 +94,7 @@ ROLES = {
                    _t("Solicitar una modificación", "Órdenes de venta → lápiz",
                       "Pulse el lápiz de la OV, indique los cambios y el motivo, y envíe la solicitud para su autorización.")]},
     "EJECUTIVO_VENTAS": {
-        "resumen": "Vendedor responsable de su canal: registra y modifica sus OV, renegocia fechas y regulariza OV con fecha pasada.",
+        "resumen": "Ejecutivo comercial responsable de su canal: registra y modifica sus OV, renegocia fechas y regulariza OV con fecha pasada.",
         "tareas": [ALERTA, _t("Seguir sus pedidos", "Órdenes de venta → detalle",
                               "La pestaña «Resumen» muestra el avance; «Expediente» reúne OV, certificado, guía y factura.")]},
     "COORD_ALMACEN": {
@@ -110,7 +111,7 @@ ROLES = {
                       "pasa a Compras. La ejecución la aprueba Gerencia de Operaciones."),
                    _t("Evaluar opciones ante faltante", "OV → Condición y opciones",
                       "El sistema ordena las opciones: 1 producción, 2 reempaque, 3 traslado externo, 4 compra; elija con motivo.")]},
-    "COORD_ALMACEN_MP": {"resumen": "Mismas funciones que la Coordinación de Almacén 1560, sobre el almacén 1524 (materia prima, "
+    "COORD_ALMACEN_MP": {"resumen": "Mismas funciones que la Supervisor de Almacén 1560, sobre el almacén 1524 (materia prima, "
                                     "granel e insumos).", "tareas": [ALERTA]},
     "SUPERV_ALMACEN": {"resumen": "Supervisa el almacén: stock, conteos, reempaques e informes.", "tareas": [ALERTA]},
     "LIDER_ALMACEN": {
@@ -237,8 +238,8 @@ ROLES["COORD_FINANZAS"] = {
                   "Adjunte los PDF: individual (un número) o consolidado (varios números separados por coma).",
                   "O registre una factura o nota de crédito manualmente; la nota de crédito descuenta el saldo de su factura."),
                _t("Confirmar pagos y gestionar vencidas", "Finanzas · Cobranza y condiciones",
-                  "Confirme u observe los comprobantes que subieron los vendedores: al confirmar se descuenta el saldo.",
-                  "Gestione las vencidas por antigüedad (1-15, 16-30, 31-60 y más de 60 días); el vendedor recibe la alerta.",
+                  "Confirme u observe los comprobantes que subieron los ejecutivos comerciales: al confirmar se descuenta el saldo.",
+                  "Gestione las vencidas por antigüedad (1-15, 16-30, 31-60 y más de 60 días); el ejecutivo comercial recibe la alerta.",
                   "Todo queda en el archivo del cliente: deuda, facturas, pagos y documentos.")]}
 _COM_R23 = [_t("Registrar una OV con su orden de compra", "Comercial · Registrar OV",
                "La unidad la fija el código (granel y MP en kilos; envasado en unidades).",
@@ -258,8 +259,8 @@ for _r in ("JEFE_VENTAS", "COORD_VENTAS", "EJECUTIVO_VENTAS"):
 ROLES["JEFE_VENTAS"]["tareas"].append(_t(
     "Configuración comercial", "Comercial · Configuración comercial",
     "Configure por defecto, por canal y por cliente los rebates (comercial, logística, B2B, no devolución) y los gastos.",
-    "Registre el mercaderismo por cliente y mes, los objetivos de venta y las reglas de incentivo por canal y vendedor.",
-    "Revise el margen (Comercial · Margen), los objetivos y los incentivos; apruebe los precios de mercado de los vendedores."))
+    "Registre el mercaderismo por cliente y mes, los objetivos de venta y las reglas de incentivo por canal y ejecutivo comercial.",
+    "Revise el margen (Comercial · Margen), los objetivos y los incentivos; apruebe los precios de mercado de los ejecutivos comerciales."))
 _PROD_R23 = [_t("Parte en línea", "Producción · Partes de producción",
                 "Inicie el parte con línea, producto, EAN escaneado, lote y kg de MP (si el EAN no coincide se alerta).",
                 "Pause con la causa de la lista (y foto si desea) y reanude; el tiempo muerto se suma solo.",
@@ -291,3 +292,9 @@ for _r in ("JEFE_LOGISTICA", "COORD_LOGISTICA", "COORD_ALMACEN", "COORD_ALMACEN_
         "Si no se cumplirá, indique el motivo y una fecha estimada: Comercial recibe la alerta. Sin respuesta en el plazo "
         "se alerta a Operaciones y a Comercial.",
         "Para cambiar la fecha de despacho, envíe la solicitud a Comercial desde la OV.")]
+
+# V16 (02-nov-2026): Jefe de Administración y Finanzas, con el mismo poder y autoridad que la Coordinación de Finanzas
+ROLES["JEFE_ADMIN_FINANZAS"] = dict(ROLES["COORD_FINANZAS"], resumen=(
+    "Mismo poder y autoridad que la Coordinación de Finanzas: puede hacer todo lo que ella hace. Las tareas de Finanzas no "
+    "le suenan; si la Coordinación no las atiende en su plazo, se le alerta para que las atienda o las designe. "
+    + ROLES["COORD_FINANZAS"]["resumen"]))

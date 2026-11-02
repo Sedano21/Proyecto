@@ -13,7 +13,7 @@
 <div><label>Canal / grupo de precios</label><select name="canal_precio" id="canal_precio"><option value="">(según ficha del cliente)</option>{% for x in canales %}<option>{{ x }}</option>{% endfor %}</select><small class="muted" id="canal_cli"></small></div>
 <div><label>N° de orden de compra del cliente</label><input name="oc_numero" placeholder="OC / pedido"></div>
 <div><label{{ ' class=req' if exigir_oc }}>Orden de compra (archivo)</label><input type="file" name="oc_archivo" accept=".pdf,.jpg,.jpeg,.png,.webp,.xlsx,.xls,.docx,.msg,.eml"><small class="muted">PDF, imagen, Excel o correo</small></div>
-<div><label>Vendedor responsable</label><select name="vendedor_id"><option value="">(—)</option>{% for v in vendedores %}<option value="{{ v.id }}" {{ 'selected' if v.id==user.id }}>{{ v.nombre }}</option>{% endfor %}</select></div>
+<div><label>Ejecutivo comercial responsable</label><select name="vendedor_id"><option value="">(—)</option>{% for v in vendedores %}<option value="{{ v.id }}" {{ 'selected' if v.id==user.id }}>{{ v.nombre }}</option>{% endfor %}</select></div>
 </div>
 <fieldset class="card"><legend>Entrega</legend>
 <div class="row">

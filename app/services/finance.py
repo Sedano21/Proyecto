@@ -317,9 +317,9 @@ def set_invoice_state(inv, user, estado, observacion=""):
 
 # ------------------------------------------------------------------ pagos
 def report_payment(user, customer, fecha, monto, archivo, invoice_id=None, medio="", operacion="", observacion=""):
-    """Comercial (vendedor, coordinador o jefe) o Finanzas sube el comprobante; Finanzas lo confirma."""
+    """Comercial (ejecutivo comercial, coordinador o jefe) o Finanzas sube el comprobante; Finanzas lo confirma."""
     if not has_perm(user, "pagos.reportar"):
-        raise BusinessError("Suben comprobantes de pago el vendedor, el coordinador, el jefe comercial o Finanzas.")
+        raise BusinessError("Suben comprobantes de pago el ejecutivo comercial, el coordinador, el jefe comercial o Finanzas.")
     if user.role_code == "EJECUTIVO_VENTAS" and customer.vendedor_id not in (None, user.id):
         raise BusinessError("Solo puede subir comprobantes de los clientes que atiende.")
     if not archivo:
@@ -428,7 +428,7 @@ def _sent(dedup_key):
 
 
 def check_overdue(hoy=None):
-    """Tarea periódica: factura vencida con saldo → alerta a Finanzas y al vendedor (una vez por factura)."""
+    """Tarea periódica: factura vencida con saldo → alerta a Finanzas y al ejecutivo comercial (una vez por factura)."""
     hoy = hoy or date.today()
     n = 0
     for i in db().execute(select(CustomerInvoice).where(CustomerInvoice.tipo == "FACTURA",
@@ -463,7 +463,7 @@ def attach_to_order(order, user, tipo, archivo, nombre="", observacion=""):
 
 def request_credit_note(order, user, motivo, monto=None):
     if not has_perm(user, "nc.solicitar"):
-        raise BusinessError("Solicitan notas de crédito el vendedor, el coordinador o el jefe comercial.")
+        raise BusinessError("Solicitan notas de crédito el ejecutivo comercial, el coordinador o el jefe comercial.")
     if not (motivo or "").strip():
         raise BusinessError("Indique el motivo de la nota de crédito.")
     a = alerts.emit("NOTA_CREDITO_SOLICITADA", f"Nota de crédito para la OV {order.numero} ({order.customer.nombre})",

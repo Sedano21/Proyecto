@@ -2,6 +2,8 @@
 {% block content %}
 <h1>Configuración de alertas</h1>
 <div class="note">La matriz exacta de destinatarios, prioridad y condición de envío está pendiente de validación con las áreas (IF §14). Las filas <b>DEFINIDO</b> provienen de reglas expresas; las <b>PROPUESTO/PENDIENTE</b> deben validarse.</div>
+<section class="card"><h2>Sonidos por urgencia</h2><p class="small muted">Urgente: sirena aguda que se repite hasta que la tarea se atienda. Media: pitidos agudos. Baja: dos pitidos cortos. Cada aviso cambia de patrón y de tono para que no se vuelva costumbre. Solo suenan las tareas dirigidas a la persona.</p>
+<p><button type="button" class="sec" onclick="window.cpSonarAlerta && window.cpSonarAlerta('ALTA')">Probar urgente</button> <button type="button" class="sec" onclick="window.cpSonarAlerta && window.cpSonarAlerta('MEDIA')">Probar media</button> <button type="button" class="sec" onclick="window.cpSonarAlerta && window.cpSonarAlerta('BAJA')">Probar baja</button></p></section>
 <form id="plazos" class="card" method="post">{{ csrf() }}<input type="hidden" name="accion" value="plazos">
 <h2>Plazos de atención de tareas por área</h2>
 <p class="small muted">Si una alerta que es tarea no se completa en su plazo, se avisa al jefe del responsable (organigrama en Configuración, <span class="mono">jefe_por_rol</span>). El área es la del tipo de alerta. Un casillero vacío usa el plazo general. Antes del fin del turno de cada persona (según Turnos del personal) se revisan sus tareas abiertas: si quedan pendientes se avisa a su jefe y al día siguiente la persona las ve primero en Inicio con su tiempo de atención.</p>

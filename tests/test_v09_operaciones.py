@@ -16,7 +16,7 @@ def test_alerta_aprobada_queda_derivada_al_area_destino(s, U):
     r = buy.create_request(U("coord.almacen"), "EN-901", 5)
     s.flush()
     a = alerts_of(s, "COMPRA_APROBACION_LOGISTICA", r.id)[0]
-    assert alerts.can_act(U("coord.logistica"), a) and not alerts.can_act(U("gerente.operaciones"), a)
+    assert alerts.can_act(U("coord.logistica"), a) and not alerts.can_act(U("asist.ventas"), a)
     alert_actions.decide(a, U("coord.logistica"), True, "ok")
     s.flush()
     assert a.derivadas and alerts.display_state(a)[0] == "DERIVADA" and "Compras" in alerts.display_state(a)[1]
@@ -61,9 +61,9 @@ def test_asignacion_persona_o_grupo_y_destinatarios(s, U, new_order):
     o = new_order([("PT-905", 10)])
     t = pk.tasks_of(o)[0]
     a = alerts_of(s, "PICKING_PROGRAMADO", o.id)[0]
-    assert {"JEFE_LOGISTICA", "COORD_LOGISTICA", "GERENCIA_OPERACIONES"} <= set(a.roles)
+    assert {"JEFE_LOGISTICA", "COORD_LOGISTICA", "GERENTE_GENERAL_ADJUNTO"} <= set(a.roles)
     from app.services import alerts
-    assert alerts.nature_for(U("gerente.operaciones"), a) == "INFORMATIVA" and alerts.can_act(U("lider.almacen"), a)
+    assert alerts.can_act(U("lider.almacen"), a)
     ids = [u.id for u in pk.staff(t.warehouse_code)][:4]
     pk.assign(t, U("lider.almacen"), ids)  # grupo sin límite
     assert t.asignados == sorted(ids)

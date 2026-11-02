@@ -133,7 +133,7 @@ def gestion_pptx(d, titulo="Gestión comercial"):
     # desempeño por persona
     if d["personas"]:
         s = prs.slides.add_slide(blank)
-        _title(s, "Desempeño por vendedor", "Venta, meta, nivel de servicio, modificaciones y embudo")
+        _title(s, "Desempeño por ejecutivo comercial", "Venta, meta, nivel de servicio, modificaciones y embudo")
         _table(s, ["Vendedor", "OV", "S/", "kg", "Meta S/ %", "OTIF %", "OV modif. %", "Oport.", "Ganadas", "Penalidad S/"],
                [(p["nombre"], p["ovs"], _n(p["soles"]), _n(p["kg"]),
                  f"{_n((p['meta'] or {}).get('avance_soles'), 1)}" if p["meta"] else "—", _n(p["nivel"]["otif"], 1),

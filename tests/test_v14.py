@@ -56,7 +56,6 @@ def test_compras_las_aprueba_el_gerente_general_adjunto(s, U):
     from app.services.core import has_perm
     assert has_perm(U("gerente.adjunto"), "compras.aprobar_mayor_volumen")
     assert has_perm(U("gerente.adjunto"), "compras.autorizar_bajo_observacion")
-    assert not has_perm(U("gerente.operaciones"), "compras.aprobar_mayor_volumen")
     roles = next(t[5] for t in C.ALERT_TYPES if t[0] == "COMPRA_APROBACION_GERENCIA")
     assert "GERENTE_GENERAL_ADJUNTO" in roles and "GERENCIA_OPERACIONES" not in roles
     gg = {p for p, *_ in C.ROLE_PERMISSIONS["GERENCIA_GENERAL"]}

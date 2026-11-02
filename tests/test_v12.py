@@ -363,7 +363,7 @@ def test_transporte_tercero_flujo_completo(s, U, cust):
     assert t.tarifa == 750 and alerts_of(s, "TERCERO_SOBRE_TARIFA", t.id) and alerts_of(s, "TERCERO_POR_APROBAR", t.id)
     with pytest.raises(BusinessError, match="aprobada"):
         tp.register_invoice(U("asist.distribucion"), t, {"factura_numero": "E001-1"}, "f.pdf")
-    tp.approve(U("gerente.operaciones"), t, True, "ok")
+    tp.approve(U("gerente.adjunto"), t, True, "ok")
     tp.register_invoice(U("asist.distribucion"), t, {"factura_numero": "e001-907", "centro_costo": "DIST-01",
                                                      "tipo_servicio": "Fletes", "subtipo_servicio": "Despacho de venta"}, "f.pdf")
     s.flush()
@@ -451,7 +451,7 @@ def test_pantallas_de_distribucion_por_perfil(app, s, U, cust):
             ("coord.distribucion", "/distribucion/incidencias", "Falta el paso 2"),
             ("coord.distribucion", "/distribucion/preguias", "Pre-guías"),
             ("coord.distribucion", "/distribucion/terceros", "Tarifario"),
-            ("gerente.operaciones", f"/distribucion/terceros/{t.id}", "Aprobación (Gerencia de Operaciones)"),
+            ("gerente.adjunto", f"/distribucion/terceros/{t.id}", "Aprobación (Gerencia de Operaciones)"),
             ("coord.finanzas", "/distribucion/terceros", "Indicadores por proveedor"),
             ("coord.distribucion", "/distribucion/presupuesto", "Presupuesto de Distribución"),
             ("coord.finanzas", "/distribucion/presupuesto", "Presupuesto de Distribución"),

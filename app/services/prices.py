@@ -233,7 +233,7 @@ def check_order_prices(order, user=None):
     lkey = f"PRECIO_LIM:{order.id}"
     if en_limite:
         alerts.emit("OV_PRECIO_LIMITE", f"OV {order.numero}: precio en el límite de la lista (informativo)",
-                    f"Cliente {order.customer.nombre}, vendedor {order.vendedor_nombre or '-'}. " + "; ".join(en_limite)
+                    f"Cliente {order.customer.nombre}, ejecutivo comercial {order.vendedor_nombre or '-'}. " + "; ".join(en_limite)
                     + ". La OV sigue su curso.", "SalesOrder", order.id, prioridad="BAJA", dedup_key=lkey, creado_por=user)
     else:
         alerts.close_by_system(lkey, "Precios sobre el límite")
@@ -250,7 +250,7 @@ def check_order_prices(order, user=None):
                 order.motivo_detencion = "Detenida por precio bajo el mínimo: requiere confirmación comercial."
         if observadas != previas or not aprobada_igual:
             a = alerts.emit("OV_PRECIO_BAJO_MINIMO", f"OV {order.numero}{tipo}: precio por debajo de la lista",
-                            f"Cliente {order.customer.nombre} (canal {channel_of(order.customer) or '-'}), vendedor "
+                            f"Cliente {order.customer.nombre} (canal {channel_of(order.customer) or '-'}), ejecutivo comercial "
                             f"{order.vendedor_nombre or '-'}. " + "; ".join(observadas)
                             + (" La OV queda detenida hasta la confirmación del Coordinador o Jefe Comercial."
                                if order.retenida_precio else ""), "SalesOrder", order.id, dedup_key=key,
@@ -267,7 +267,7 @@ def check_order_prices(order, user=None):
     ckey = f"COSTO:{order.id}"
     if bajo_costo:
         alerts.emit("OV_PRECIO_BAJO_COSTO", f"OV {order.numero}{tipo}: precio por debajo del costo",
-                    f"Cliente {order.customer.nombre}, vendedor {order.vendedor_nombre or '-'}. " + "; ".join(bajo_costo)
+                    f"Cliente {order.customer.nombre}, ejecutivo comercial {order.vendedor_nombre or '-'}. " + "; ".join(bajo_costo)
                     + (" La OV queda detenida hasta la confirmación del Coordinador o Jefe Comercial."
                        if order.retenida_precio else ""), "SalesOrder", order.id, dedup_key=ckey, creado_por=user)
     else:

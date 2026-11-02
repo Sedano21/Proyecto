@@ -226,10 +226,10 @@ def _show(nombre):
         nv = lambda r: r["nivel"]  # noqa: E731
         graf = {
             "vend": charts.columns([n[:14] for n, _ in d["por"]["vendedor"][:10]],
-                                   [("S/", [r["soles"] for _, r in d["por"]["vendedor"][:10]])], "S/", title="Venta por vendedor"),
+                                   [("S/", [r["soles"] for _, r in d["por"]["vendedor"][:10]])], "S/", title="Venta por ejecutivo comercial"),
             "canal": charts.bars([(n, r["soles"]) for n, r in d["por"]["canal"]], "S/", title="Venta por canal"),
             "otif_vend": charts.bars([(n, nv(r)["otif"] or 0) for n, r in d["por"]["vendedor"] if nv(r)["n"]], "%",
-                                     title="OTIF por vendedor", color=2),
+                                     title="OTIF por ejecutivo comercial", color=2),
             "embudo": charts.bars(d["embudo"], "", title="Embudo comercial", color=6),
             "menos": charts.bars([(f"{p.code} {p.descripcion[:16]}", v) for p, v in d["menos_vendidos"]], "S/",
                                  title="Productos con menos venta", color=1),
@@ -254,8 +254,8 @@ def _show(nombre):
         k = kpisvc.compute(desde, hasta)
         d["tiempos"] = {"preparacion_h": k.get("tiempo_preparacion_h"), "despacho_h": k.get("tiempo_despacho_h")}
         graf = {"semanal": charts.line([("Ventas S/", d["serie_semanal"])], "S/", title="Ventas semanales"),
-                "vend_soles": charts.bars([(k, v["soles"]) for k, v in d["vendedores"]], "S/", title="Ventas por vendedor (S/)"),
-                "vend_kg": charts.bars([(k, v["kg"]) for k, v in d["vendedores"]], "kg", title="Ventas por vendedor (kg)", color=2),
+                "vend_soles": charts.bars([(k, v["soles"]) for k, v in d["vendedores"]], "S/", title="Ventas por ejecutivo comercial (S/)"),
+                "vend_kg": charts.bars([(k, v["kg"]) for k, v in d["vendedores"]], "kg", title="Ventas por ejecutivo comercial (kg)", color=2),
                 "top": charts.bars([(f"{k} {n[:18]}", v) for k, n, v, _ in d["top_productos"]], "S/", title="Productos más vendidos"),
                 "pres": charts.bars([(str(k), v) for k, v in d["presentaciones"]], "", title="Presentaciones preferidas", color=6),
                 "margen": charts.bars([(f"{k} {n[:16]}", m) for k, n, m in d["margen_producto"][:15]], "%",

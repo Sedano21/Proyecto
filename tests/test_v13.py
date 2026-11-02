@@ -208,7 +208,7 @@ def test_inspeccion_externa_fases_alertas_y_hallazgos(s, U):
 def test_alerta_inspeccion_llega_a_las_areas(s):
     from app.catalogs import ALERT_TYPES
     roles = next(t[5] for t in ALERT_TYPES if t[0] == "INSPECCION")
-    for r in ("JEFE_PRODUCCION", "COORD_ALMACEN", "JEFE_LOGISTICA", "GERENCIA_OPERACIONES", "GERENTE_COMERCIAL", "COORD_FINANZAS"):
+    for r in ("JEFE_PRODUCCION", "COORD_ALMACEN", "JEFE_LOGISTICA", "GERENTE_GENERAL_ADJUNTO", "GERENTE_COMERCIAL", "COORD_FINANZAS"):
         assert r in roles, r
 
 

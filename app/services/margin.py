@@ -159,7 +159,7 @@ def _vendedor(customer, order):
             u = db().get(User, order.vendedor_id)
             return u.nombre if u else order.vendedor_nombre
         return order.vendedor_nombre
-    return customer.vendedor.nombre if customer.vendedor else "(sin vendedor)"
+    return customer.vendedor.nombre if customer.vendedor else "(sin ejecutivo comercial)"
 
 
 def _cascade(acc, ir_pct):
@@ -240,7 +240,7 @@ def save_target(user, mes, alcance, clave, soles, kg=None, nuevos_clientes=None,
         raise BusinessError("Indique el mes (AAAA-MM).")
     clave = "" if alcance == "GENERAL" else str(clave or "").strip()
     if alcance != "GENERAL" and not clave:
-        raise BusinessError("Elija el canal o el vendedor.")
+        raise BusinessError("Elija el canal o el ejecutivo comercial.")
     t = db().execute(select(SalesTarget).where(SalesTarget.mes == mes, SalesTarget.alcance == alcance,
                                                SalesTarget.clave == clave)).scalars().first()
     if t is None:
@@ -269,7 +269,7 @@ def _month_bounds(mes):
 
 
 def targets_progress(mes=None):
-    """Avance contra objetivo por general, canal y vendedor: facturado y venta real (pedidos) del mes, por semana."""
+    """Avance contra objetivo por general, canal y ejecutivo comercial: facturado y venta real (pedidos) del mes, por semana."""
     mes = mes or f"{date.today():%Y-%m}"
     ini, fin = _month_bounds(mes)
     fact = margin(ini, fin, "CANAL", "FACTURADO")
@@ -358,7 +358,7 @@ def _rule_for(rules, vendedor_id, canal, dia):
 
 
 def incentives(mes=None):
-    """Incentivo por vendedor y canal del mes, según las reglas configuradas (sin reglas no hay incentivo)."""
+    """Incentivo por ejecutivo comercial y canal del mes, según las reglas configuradas (sin reglas no hay incentivo)."""
     mes = mes or f"{date.today():%Y-%m}"
     ini, fin = _month_bounds(mes)
     rules = list(db().execute(select(IncentiveRule).order_by(IncentiveRule.id)).scalars())

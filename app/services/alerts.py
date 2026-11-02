@@ -28,7 +28,7 @@ ESTADOS = ["PENDIENTE", "EN_EJECUCION", "INCIDENCIA", "COMPLETADA", "DESAPROBADA
 CERRADOS = ("COMPLETADA", "DESAPROBADA", "RECONOCIDA")
 ESTADO_TXT = {"PENDIENTE": "Pendiente", "EN_EJECUCION": "En ejecución", "INCIDENCIA": "Incidencia",
               "COMPLETADA": "Completada", "DESAPROBADA": "Desistida / desaprobada", "RECONOCIDA": "Reconocida"}
-VEN_TODO = ("GERENCIA_GENERAL", "GERENTE_GENERAL_ADJUNTO", "GERENCIA_OPERACIONES", "SISTEMAS")
+VEN_TODO = ("GERENCIA_GENERAL", "GERENTE_GENERAL_ADJUNTO", "SISTEMAS")
 PRIORIDAD_ORDEN = {"ALTA": 0, "MEDIA": 1, "BAJA": 2}
 
 
@@ -207,6 +207,16 @@ def visible_types(user):
     area = user_area(user)
     roles = roles_of(user)
     return [t for t in tipos if t.area == area or roles & set(t.roles or [])]
+
+
+def is_direct(user, alert):
+    """La alerta va dirigida al usuario (su rol, su usuario o una designación), no solo visible por un perfil
+    equivalente (V16): solo estas suenan; el jefe equivalente recibe el aviso si la tarea no se atiende en su plazo."""
+    if user is None:
+        return False
+    roles = roles_of(user, equivalentes=False)
+    return (bool(roles & set(alert.roles or [])) or user.id in (alert.usuarios or []) or alert.asignado_a == user.id
+            or (alert.asignado_rol and alert.asignado_rol in roles) or sees_all(user))
 
 
 def is_task(alert):

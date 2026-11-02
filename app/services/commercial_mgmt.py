@@ -1,10 +1,10 @@
 """Informe de gestión comercial (observaciones del módulo V7, 26-oct-2026).
 
-Para el Coordinador, el Jefe y el Gerente Comercial (y Gerencia): avance de metas por vendedor, canal y total en S/ y
+Para el Coordinador, el Jefe y el Gerente Comercial (y Gerencia): avance de metas por ejecutivo comercial, canal y total en S/ y
 kg; OV ingresadas, atendidas, pendientes y facturación; nivel de servicio (On time, In full, OTIF y fill rate) con su
 fórmula; desempeño por persona; embudo comercial; productos y presentaciones con menos venta o sin movimiento; margen
 por canal; estado de pago por cliente; penalidades; y recomendaciones. Filtros múltiples: canales (incluir o excluir),
-granel o envasado, vendedores y clientes.
+granel o envasado, ejecutivos comerciales y clientes.
 
 Fórmulas (base: OV que salieron del almacén en el periodo):
 - On time   = OV que salieron hasta su fecha comprometida / OV que salieron.
@@ -188,7 +188,7 @@ def gestion(desde=None, hasta=None, filtros=None, ver_costos=False, user=None):
     # por vendedor, canal y cliente
     grupos = {"vendedor": defaultdict(list), "canal": defaultdict(list), "cliente": defaultdict(list)}
     for o in ovs:
-        grupos["vendedor"][o.vendedor.nombre if o.vendedor else (o.vendedor_nombre or "(sin vendedor)")].append(o)
+        grupos["vendedor"][o.vendedor.nombre if o.vendedor else (o.vendedor_nombre or "(sin ejecutivo comercial)")].append(o)
         grupos["canal"][order_channel(o) or "(sin canal)"].append(o)
         grupos["cliente"][o.customer.nombre].append(o)
     mods = Counter(m.entidad_id for m in s.execute(select(AuditLog).where(

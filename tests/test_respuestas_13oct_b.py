@@ -21,7 +21,7 @@ def test_roles_y_configuracion(s, U):
     assert s.get(Role, "COORD_PRODUCCION") is None
     assert s.query(User).filter_by(role_code="ASIST_PRODUCCION").count() == 2
     assert has_perm(U("sistemas"), "config.editar")
-    for quien in ("gerente.general", "jefe.ventas", "gerente.operaciones"):
+    for quien in ("gerente.general", "jefe.ventas", "gerente.adjunto"):
         assert not has_perm(U(quien), "config.editar")
     assert has_perm(U("coord.ventas"), "ov.aprobar_precio") and not has_perm(U("gerente.general"), "ov.aprobar_precio")
 

@@ -255,7 +255,7 @@ def alerts_status():
     más recientes visibles. Las importantes suenan distinto y se repiten hasta que se resuelvan (obs. demo v0.7)."""
     from ..services.core import param
     rows = alert_svc.inbox(g.user, solo_abiertas=True)
-    tareas = [a for a in rows if alert_svc.can_act(g.user, a)]
+    tareas = [a for a in rows if alert_svc.can_act(g.user, a) and alert_svc.is_direct(g.user, a)]
     criticas = [a for a in tareas if a.prioridad == "ALTA"]
     recientes = sorted(rows, key=lambda a: -a.id)[:5]
     # versión: último movimiento (creación, designación, avance, cierre, comentario) de una alerta que el usuario ve;
@@ -275,7 +275,7 @@ def alerts_status():
             "actualizar_seg": int(param("alerta_actualizacion_seg", 10) or 10),
             "ultimo_id": max([a.id for a in rows], default=0),
             "recientes": [{"id": a.id, "titulo": a.titulo, "prioridad": a.prioridad,
-                           "tarea": alert_svc.can_act(g.user, a), "url": url_for("main.alert_detail", aid=a.id)}
+                           "tarea": alert_svc.can_act(g.user, a) and alert_svc.is_direct(g.user, a), "url": url_for("main.alert_detail", aid=a.id)}
                           for a in recientes],
             "consulta_seg": int(param("alerta_sonido_consulta_seg", 60) or 60),
             "repetir_seg": int(param("alerta_sonido_repetir_seg", 120) or 120)}

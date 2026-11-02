@@ -140,9 +140,9 @@ def send(r, user):
 
 def approve_logistics(r, user, aprobar, comentario=""):
     """Q14 (12-oct-2026) y obs. demo v0.7: la presolicitud la autoriza el Jefe o el Coordinador de Logística o el
-    Coordinador de Almacén antes de que pase a Compras."""
+    Supervisor de Almacén antes de que pase a Compras."""
     if not has_perm(user, "compras.aprobar_solicitud"):
-        raise BusinessError("La presolicitud de compra la autorizan el Jefe o Coordinador de Logística o el Coordinador de Almacén.")
+        raise BusinessError("La presolicitud de compra la autorizan el Jefe o Coordinador de Logística o el Supervisor de Almacén.")
     if r.estado != "PENDIENTE_LOGISTICA":
         raise BusinessError("La solicitud no está pendiente de aprobación de Logística.")
     if not aprobar and not comentario.strip():

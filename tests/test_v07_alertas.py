@@ -78,6 +78,6 @@ def test_desaprobar_precio_mantiene_la_ov_detenida(s, U, new_order):
 def test_tipos_y_visibilidad_por_area(s, U):
     dist = {t.code for t in al.visible_types(U("coord.distribucion"))}
     assert "MERMA_FUERA_PARAMETRO" not in dist and "OV_CAMBIO" in dist and "RUTA_EXTERNO_VALIDAR" in dist
-    assert len(al.visible_types(U("gerente.operaciones"))) == len(al.visible_types(U("sistemas")))
+    assert len(al.visible_types(U("gerente.adjunto"))) == len(al.visible_types(U("sistemas")))
     fum = {t.code: t for t in al.visible_types(U("jefe.logistica"))}
-    assert "FUMIGACION_PROXIMA" in fum and "GERENCIA_OPERACIONES" in fum["FUMIGACION_PROXIMA"].roles
+    assert "FUMIGACION_PROXIMA" in fum and "GERENTE_GENERAL_ADJUNTO" in fum["FUMIGACION_PROXIMA"].roles

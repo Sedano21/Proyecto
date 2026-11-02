@@ -19,7 +19,7 @@
 <details class="ms"><summary><label>Canales</label><span class="ms-sel">{{ f.canales|join(', ') if f.canales else 'Todos' }}</span></summary><div class="ms-pop">
 <div class="seg small"><label><input type="radio" name="modo_canal" value="incluir" {{ 'checked' if f.modo_canal != 'excluir' }}><span>Incluir</span></label><label><input type="radio" name="modo_canal" value="excluir" {{ 'checked' if f.modo_canal == 'excluir' }}><span>Excluir</span></label></div>
 {% for c in op.canales %}<label class="chk"><input type="checkbox" name="canal" value="{{ c }}" {{ 'checked' if c in f.canales }}> {{ c }}</label>{% endfor %}</div></details>
-{% if user.role_code != 'EJECUTIVO_VENTAS' %}<details class="ms"><summary><label>Vendedores</label><span class="ms-sel">{{ (f.vendedores|length ~ ' elegidos') if f.vendedores else 'Todos' }}</span></summary><div class="ms-pop">
+{% if user.role_code != 'EJECUTIVO_VENTAS' %}<details class="ms"><summary><label>Ejecutivos comerciales</label><span class="ms-sel">{{ (f.vendedores|length ~ ' elegidos') if f.vendedores else 'Todos' }}</span></summary><div class="ms-pop">
 {% for v in op.vendedores %}<label class="chk"><input type="checkbox" name="vendedor" value="{{ v.id }}" {{ 'checked' if v.id|string in f.vendedores }}> {{ v.nombre }}</label>{% endfor %}</div></details>{% endif %}
 <details class="ms"><summary><label>Clientes</label><span class="ms-sel">{{ (f.clientes|length ~ ' elegidos') if f.clientes else 'Todos' }}</span></summary><div class="ms-pop"><input type="search" placeholder="Buscar cliente" data-ms-filter aria-label="Buscar cliente">
 {% for c in op.clientes %}<label class="chk"><input type="checkbox" name="cliente" value="{{ c.id }}" {{ 'checked' if c.id|string in f.clientes }}> {{ c.nombre }}</label>{% endfor %}</div></details>
@@ -46,11 +46,11 @@
 {% if m.atrasada %}<div class="pending-why">Atrasada: faltan S/ {{ m.falta_soles|n }}.</div>{% endif %}</article>{% endfor %}</div>
 {% else %}<div class="card small muted">No hay metas registradas para {{ d.metas.mes }}. Regístrelas en <a href="{{ url_for('com.targets') }}">Objetivos de venta</a>.</div>{% endif %}
 
-<div class="grid g2"><div class="card"><h3>Venta por vendedor</h3>{{ graf.vend }}</div><div class="card"><h3>Venta por canal</h3>{{ graf.canal }}</div></div>
+<div class="grid g2"><div class="card"><h3>Venta por ejecutivo comercial</h3>{{ graf.vend }}</div><div class="card"><h3>Venta por canal</h3>{{ graf.canal }}</div></div>
 
-<div class="card"><h3>Desempeño por persona</h3><div class="tw"><table class="list small"><thead><tr><th>Vendedor</th><th class="r">OV</th><th class="r">S/</th><th class="r">kg</th><th class="r">Ticket</th><th class="r">Meta S/</th><th class="r">OTIF</th><th class="r">Fill rate</th><th class="r">OV modificadas</th><th class="r">Oportunidades</th><th class="r">Ganadas</th><th class="r">Penalidad calc. / pagada</th></tr></thead>
+<div class="card"><h3>Desempeño por persona</h3><div class="tw"><table class="list small"><thead><tr><th>Ejecutivo comercial</th><th class="r">OV</th><th class="r">S/</th><th class="r">kg</th><th class="r">Ticket</th><th class="r">Meta S/</th><th class="r">OTIF</th><th class="r">Fill rate</th><th class="r">OV modificadas</th><th class="r">Oportunidades</th><th class="r">Ganadas</th><th class="r">Penalidad calc. / pagada</th></tr></thead>
 {% for p in d.personas %}<tr><td>{{ p.nombre }}</td><td class="r">{{ p.ovs }}</td><td class="r">{{ p.soles|n }}</td><td class="r">{{ p.kg|n }}</td><td class="r">{{ p.ticket|n }}</td><td class="r {{ 'err' if p.meta and p.meta.atrasada }}">{{ (p.meta.avance_soles ~ ' %') if p.meta and p.meta.avance_soles is not none else '—' }}</td><td class="r">{{ p.nivel.otif if p.nivel.otif is not none else '—' }}</td><td class="r">{{ p.nivel.fill_unidades if p.nivel.fill_unidades is not none else '—' }}</td><td class="r">{{ p.modificadas }} ({{ p.pct_modificadas or 0 }} %)</td><td class="r">{{ p.oportunidades }}</td><td class="r">{{ p.ganadas }}</td><td class="r">{{ p.penalidad_calc|n }} / {{ p.penalidad_pag|n }}</td></tr>{% else %}<tr><td colspan="12" class="muted">Sin OV en el periodo.</td></tr>{% endfor %}</table></div>
-<p class="small muted">OTIF por vendedor:</p>{{ graf.otif_vend }}</div>
+<p class="small muted">OTIF por ejecutivo comercial:</p>{{ graf.otif_vend }}</div>
 
 <div class="grid g2"><div class="card"><h3>Por canal</h3><div class="tw"><table class="list small"><thead><tr><th>Canal</th><th class="r">OV</th><th class="r">S/</th><th class="r">kg</th><th class="r">OTIF</th><th class="r">Fill rate</th></tr></thead>{% for n, r in d.por.canal %}<tr><td>{{ n }}</td><td class="r">{{ r.ovs }}</td><td class="r">{{ r.soles|n }}</td><td class="r">{{ r.kg|n }}</td><td class="r">{{ r.nivel.otif if r.nivel.otif is not none else '—' }}</td><td class="r">{{ r.nivel.fill_unidades if r.nivel.fill_unidades is not none else '—' }}</td></tr>{% endfor %}</table></div></div>
 <div class="card"><h3>Embudo comercial</h3>{{ graf.embudo }}</div></div>
@@ -73,7 +73,7 @@
 <div class="card small"><h3>Indicadores que recomendamos sumar</h3><ul>
 <li><b>Tasa de recompra</b>: clientes que vuelven a comprar dentro de su frecuencia habitual ÷ clientes activos.</li>
 <li><b>Venta por cliente nuevo y SKU nuevo</b> en clientes existentes (penetración del catálogo).</li>
-<li><b>Días de venta pendiente (DSO comercial)</b>: deuda ÷ venta diaria promedio, por vendedor.</li>
+<li><b>Días de venta pendiente (DSO comercial)</b>: deuda ÷ venta diaria promedio, por ejecutivo comercial.</li>
 <li><b>Precio realizado vs precio base</b> por canal (descuento efectivo) y <b>margen de contribución por kg</b>.</li>
 <li><b>Lead time de pedido</b>: emisión de la OV → entrega, y tasa de OV con renegociación de fecha.</li></ul></div>
 <script>document.querySelectorAll('[data-ms-filter]').forEach(function(i){i.addEventListener('input',function(){var q=i.value.toLowerCase();i.parentNode.querySelectorAll('label.chk').forEach(function(l){l.style.display=l.textContent.toLowerCase().indexOf(q)<0?'none':'';});});});</script>

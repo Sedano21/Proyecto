@@ -93,12 +93,19 @@ def user_scope(user):
     return (param("produccion_alcance_usuarios", {}) or {}).get(user.username) or {}
 
 
-def roles_of(user):
-    """Rol del usuario más el perfil adicional configurado («permisos_de»: ve y aprueba como ese rol)."""
+def roles_of(user, equivalentes=True):
+    """Rol del usuario más el perfil adicional configurado («permisos_de»: ve y aprueba como ese rol) y, con
+    equivalentes=True, los perfiles cuyo poder tiene su rol («roles_equivalentes», V16: el Jefe de Administración y
+    Finanzas tiene el mismo poder y autoridad que la Coordinación de Finanzas)."""
     if user is None:
         return set()
     extra = user_scope(user).get("permisos_de")
-    return {user.role_code} | ({extra} if extra else set())
+    out = {user.role_code} | ({extra} if extra else set())
+    if equivalentes:
+        eq = param("roles_equivalentes", {}) or {}
+        for r in list(out):
+            out |= set(eq.get(r) or [])
+    return out
 
 
 def can_self_approve(user):

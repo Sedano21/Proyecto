@@ -263,12 +263,13 @@ def test_reposicion_calculo(s, U, today):
     from app.models import Product
     p = s.get(Product, "EN-901")
     a = buy.analyze_product(p, today)
-    assert a["consumo_diario"] == pytest.approx(1.2) and a["plazo_dias"] == 30
-    assert a["cantidad_sugerida"] == 21  # 1.2 × 30 − 15 disponibles
+    plazo = 40 if buy.lead_time_for(p, today)[1] == "estacional" else 30  # nov–dic: campaña (plazo estacional)
+    assert a["consumo_diario"] == pytest.approx(1.2) and a["plazo_dias"] == plazo
+    assert a["cantidad_sugerida"] == round(1.2 * plazo - 15)  # 1.2 × plazo − 15 disponibles
     lt, modo = buy.lead_time_for(p, date(today.year, 11, 15))
     assert lt.dias_max == 40 and modo == "estacional"
     set_param("margen_reposicion_dias", 5, U("sistemas"))
-    assert buy.analyze_product(p, today)["cantidad_sugerida"] == 27
+    assert buy.analyze_product(p, today)["cantidad_sugerida"] == round(1.2 * (plazo + 5) - 15)
     creadas = buy.run_replenishment(U("coord.almacen"), ["EN-901"], today)
     s.commit()
     assert creadas and creadas[0].estado == "BORRADOR" and alerts_of(s, "REPOSICION_SUGERIDA")
@@ -311,7 +312,7 @@ def test_matriz_permisos_reglas_documentadas(s):
     assert roles_con("calidad.certificado_revisar") == {"JEFE_CALIDAD", "SUPERV_CALIDAD", "GERENCIA_GENERAL"}
     assert roles_con("distribucion.confirmar_salida") == {"LIDER_ALMACEN", "GERENCIA_GENERAL"}
     # Q3: despacho parcial lo aprueba GO o Jefatura de Logística (y GG por acceso completo)
-    assert roles_con("ov.aprobar_parcial") == {"GERENCIA_OPERACIONES", "JEFE_LOGISTICA", "GERENCIA_GENERAL"}
+    assert roles_con("ov.aprobar_parcial") == {"JEFE_LOGISTICA", "GERENCIA_GENERAL"}  # V16: GO → Gerente General Adjunto
     aprob = {p.code for p in s.query(Permission).filter_by(tipo="aprobacion")}
     sist = {rp.perm_code for rp in s.query(RolePermission).filter_by(role_code="SISTEMAS")}
     assert not (aprob & sist) and "config.editar" in sist and "usuarios.administrar" in sist and "ov.ver" in sist

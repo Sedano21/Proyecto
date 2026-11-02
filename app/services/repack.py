@@ -1,5 +1,5 @@
 """Reempaque (IF §9): Almacén solicita -> Calidad evalúa -> notifica a Almacén y Producción -> Producción ejecuta.
-Q12 (12-oct-2026): el sistema puede generar una pre-solicitud; el Coordinador de Almacén la aprueba y la envía a Calidad."""
+Q12 (12-oct-2026): el sistema puede generar una pre-solicitud; el Supervisor de Almacén la aprueba y la envía a Calidad."""
 from ..db import db
 from ..models import Product, RepackRequest, StockLot, now
 from . import alerts
@@ -22,7 +22,7 @@ TIPOS = ("ACTUALIZACION_FECHA", "CAMBIO_PRESENTACION", "CONVERSION_CALIDAD")
 
 def request(user, tipo, lot_id, cantidad, producto_destino=None, cantidad_destino=None, order=None, motivo="",
             presolicitud=False):
-    """presolicitud=True: la genera el sistema (user=None) y queda PRE_SOLICITUD hasta que el Coordinador de Almacén
+    """presolicitud=True: la genera el sistema (user=None) y queda PRE_SOLICITUD hasta que el Supervisor de Almacén
     la apruebe (Q12). Si la crea el propio Coordinador, se envía directamente a Calidad."""
     if not presolicitud and not has_perm(user, "reempaque.solicitar"):
         raise BusinessError("La solicitud de reempaque la inicia Almacén (IF §9.1).")
@@ -57,9 +57,9 @@ def request(user, tipo, lot_id, cantidad, producto_destino=None, cantidad_destin
 
 
 def approve_presolicitud(r, user, aprobar, comentario=""):
-    """Q12: el Coordinador de Almacén aprueba la pre-solicitud y la envía a Calidad (o la desestima)."""
+    """Q12: el Supervisor de Almacén aprueba la pre-solicitud y la envía a Calidad (o la desestima)."""
     if not has_perm(user, "reempaque.solicitar"):
-        raise BusinessError("La pre-solicitud de reempaque la aprueba el Coordinador de Almacén (Q12).")
+        raise BusinessError("La pre-solicitud de reempaque la aprueba el Supervisor de Almacén (Q12).")
     if r.estado != "PRE_SOLICITUD":
         raise BusinessError("La solicitud no es una pre-solicitud pendiente.")
     lot = r.lot

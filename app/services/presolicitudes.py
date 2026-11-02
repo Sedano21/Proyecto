@@ -3,7 +3,7 @@
 Cuando una OV queda con faltante, el sistema genera la pre-solicitud de la primera opción viable en el orden
 configurado (por defecto: producir, reempaque, traslado desde almacén externo, compra). Si la opción solo cubre una
 parte, el saldo pasa a la siguiente. Nada se ejecuta solo: cada pre-solicitud la aprueba la persona responsable
-(Almacén envía la de producción, el Coordinador de Almacén la de reempaque (Q12), el Jefe o Coordinador de Logística
+(Almacén envía la de producción, el Supervisor de Almacén la de reempaque (Q12), el Jefe o Coordinador de Logística
 la de traslado (Q13) y el Jefe de Logística la de compra (Q14)). Lo ya solicitado para la OV se descuenta para no
 duplicar al reevaluar.
 """

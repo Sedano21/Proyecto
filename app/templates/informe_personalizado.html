@@ -28,7 +28,7 @@
 <fieldset><legend>Secciones</legend><div class="row">{% for k, tt in [('indicadores','Indicadores'),('kpis','Totales de la tabla'),('grafico','Gráfico'),('tabla','Tabla'),('recomendaciones','Qué requiere atención')] %}<label class="chk"><input type="checkbox" name="elem" value="{{ k }}" {{ 'checked' if k in elementos }}> {{ tt }}</label>{% endfor %}
 <div><label for="cr_g">Gráfico</label><select id="cr_g" name="tipo_grafico">{% for k, tt in [('barras','Barras (comparar)'),('columnas','Columnas'),('lineas','Líneas (tendencia)')] %}<option value="{{ k }}" {{ 'selected' if request.args.get('tipo_grafico') == k }}>{{ tt }}</option>{% endfor %}</select></div>
 {% if r %}<div><label for="cr_m">Medida del gráfico</label><select id="cr_m" name="medida"><option value="">(automática)</option>{% for c in r.columnas %}<option value="{{ loop.index0 }}" {{ 'selected' if request.args.get('medida') == loop.index0|string }}>{{ c }}</option>{% endfor %}</select></div>{% endif %}</div>
-<p class="small muted">El gráfico compara la primera columna (o el grupo) con una columna numérica. Para ver por línea, cliente o vendedor, agrupe por esa columna.</p></fieldset>
+<p class="small muted">El gráfico compara la primera columna (o el grupo) con una columna numérica. Para ver por línea, cliente o ejecutivo comercial, agrupe por esa columna.</p></fieldset>
 <p><button name="ver" value="1">{{ ic('eye') }}Vista previa</button>{% if r %} <button class="sec" name="formato" value="pdf">{{ ic('download') }}PDF</button> <button class="sec" name="formato" value="xlsx">{{ ic('download') }}Excel</button>{% endif %}</p>
 </form>
 

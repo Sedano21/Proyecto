@@ -17,7 +17,7 @@ AREAS_TAREA = {"Producción": ["JEFE_PRODUCCION", "ASIST_PRODUCCION"], "Almacén
                "Logística": ["JEFE_LOGISTICA", "COORD_LOGISTICA"], "Distribución": ["COORD_DISTRIBUCION", "ASIST_DISTRIBUCION"],
                "Calidad": ["JEFE_CALIDAD", "SUPERV_CALIDAD", "ASIST_CALIDAD"], "Comercial": ["JEFE_VENTAS", "GERENTE_COMERCIAL"],
                "Compras": ["COMPRAS"], "Finanzas": ["COORD_FINANZAS"], "Seguridad": ["SEGURIDAD"],
-               "Operaciones": ["GERENCIA_OPERACIONES"]}
+               "Operaciones": ["GERENTE_GENERAL_ADJUNTO"]}
 
 
 def _g(user):

@@ -251,7 +251,7 @@ def pending():
 
 
 def approve(user, ids, aprobar=True):
-    """El Jefe Comercial aprueba o rechaza los precios de mercado registrados por los vendedores."""
+    """El Jefe Comercial aprueba o rechaza los precios de mercado registrados por los ejecutivos comerciales."""
     if not has_perm(user, "mercado.aprobar"):
         raise BusinessError("Solo el Jefe Comercial aprueba los precios de mercado.")
     n = 0

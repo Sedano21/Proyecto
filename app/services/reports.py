@@ -48,13 +48,13 @@ def order_channel(o):
 
 
 def filter_orders(ovs, canal="", customer_id=None, vendedor=""):
-    """Filtros de los informes comerciales (ronda 23-oct-2026): canal, cliente y vendedor."""
+    """Filtros de los informes comerciales (ronda 23-oct-2026): canal, cliente y ejecutivo comercial."""
     if canal:
         ovs = [o for o in ovs if order_channel(o) == canal]
     if customer_id:
         ovs = [o for o in ovs if o.customer_id == int(customer_id)]
     if vendedor:
-        ovs = [o for o in ovs if (o.vendedor_nombre or "(sin vendedor)") == vendedor or str(o.vendedor_id or "") == str(vendedor)]
+        ovs = [o for o in ovs if (o.vendedor_nombre or "(sin ejecutivo comercial)") == vendedor or str(o.vendedor_id or "") == str(vendedor)]
     return ovs
 
 
@@ -92,7 +92,7 @@ def comercial(desde=None, hasta=None, ver_costos=False, canal="", customer_id=No
         ovs = [o for o in ovs if _lineas(o)]
     for o in ovs:
         monto = _monto(o)
-        v = vend[o.vendedor_nombre or "(sin vendedor)"]
+        v = vend[o.vendedor_nombre or "(sin ejecutivo comercial)"]
         v["soles"] += monto
         v["ovs"] += 1
         sem[semana(o.fecha_emision)] += monto

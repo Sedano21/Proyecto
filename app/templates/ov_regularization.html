@@ -14,7 +14,7 @@
 <div class="grow"><label>Cliente</label><select name="customer_id" required data-search><option value="">Elija el cliente</option>{% for c in customers %}<option value="{{ c.id }}">{{ c.nombre }} · {{ c.ruc }}</option>{% endfor %}</select></div>
 <div><label>Fecha del pedido (anterior a hoy)</label><input type="date" name="fecha_compromiso" max="{{ ayer.isoformat() }}" required></div>
 <div><label>Hora de cita</label><select name="hora_cita"><option value="">—</option>{% for h in horas %}<option>{{ h }}</option>{% endfor %}</select></div>
-<div><label>Vendedor</label><select name="vendedor_id"><option value="">(—)</option>{% for v in vendedores %}<option value="{{ v.id }}" {{ 'selected' if v.id==user.id }}>{{ v.nombre }}</option>{% endfor %}</select></div>
+<div><label>Ejecutivo comercial</label><select name="vendedor_id"><option value="">(—)</option>{% for v in vendedores %}<option value="{{ v.id }}" {{ 'selected' if v.id==user.id }}>{{ v.nombre }}</option>{% endfor %}</select></div>
 </div>
 <label>Motivo de la regularización</label><input name="motivo" required style="width:100%" placeholder="p. ej. pedido atendido por teléfono el día anterior">
 <label>Comentarios</label><textarea name="comentarios"></textarea>
