@@ -47,19 +47,18 @@
 
 {% if can('picking.asignar') and t.estado != 'LISTO' %}
 <form class="card" method="post" id="asignar">{{ csrf() }}<input type="hidden" name="accion" value="asignar"><h3>Asignar o modificar la asignación</h3>
-<fieldset class="row"><legend>Asignar a</legend>
-<label class="chk"><input type="radio" name="modo" value="persona" {{ 'checked' if t.asignados|length <= 1 }}> Una persona</label>
-<label class="chk"><input type="radio" name="modo" value="grupo" {{ 'checked' if t.asignados|length > 1 }}> Un grupo (sin límite de personas)</label></fieldset>
-<div class="row"><div class="grow" data-modo="persona"><label for="as_persona">Persona</label><select id="as_persona" name="persona"><option value="">Elija a quién asigna</option>{% for u in personal %}<option value="{{ u.id }}" {{ 'selected' if t.asignados|length == 1 and u.id == t.asignados[0] }}>{{ u.nombre }} — {{ u.role.nombre }} · {{ carga.get(u.id, 0) }} picking(s) ese día</option>{% endfor %}</select></div>
-<div class="grow" data-modo="grupo"><label>Grupo: marque a todas las personas</label><div class="row">{% for u in personal %}<label class="chk"><input type="checkbox" name="grupo" value="{{ u.id }}" {{ 'checked' if u.id in t.asignados and t.asignados|length > 1 }}> {{ u.nombre }} <span class="muted small">({{ u.role.nombre }} · {{ carga.get(u.id, 0) }})</span></label>{% else %}<p class="muted">No hay personal con el almacén {{ t.warehouse_code }} asignado.</p>{% endfor %}</div></div></div>
+<p class="small muted">Asigne una o más personas de su almacén (auxiliares, líder, montacarguista) con «+ Agregar persona». En un grupo, marque quién reporta el avance en el sistema (uno o varios); si no marca a nadie, cualquiera del grupo puede reportar.</p>
+<div id="as_filas">{% set asig = t.asignados or [none] %}{% for a in asig %}<div class="dynrow row"><div class="grow"><label>Persona</label><select name="persona" aria-label="Persona" {{ 'required' if loop.first }}><option value="">Elija a quién asigna</option>{% for u in personal %}<option value="{{ u.id }}" {{ 'selected' if u.id == a }}>{{ u.nombre }} — {{ u.role.nombre }} · {{ carga.get(u.id, 0) }} picking(s) ese día</option>{% endfor %}</select></div>
+<div><label>¿Reporta en el sistema?</label><select name="reporta" aria-label="Reporta"><option value="1" {{ 'selected' if a in (t.reportantes or []) }}>Sí</option><option value="0" {{ 'selected' if (t.reportantes and a not in t.reportantes) }}>No</option></select></div>
+<div><button type="button" class="ibtn" data-delrow aria-label="Quitar persona">×</button></div></div>{% endfor %}</div>
+<p><button type="button" class="sec small" data-addrow="#as_filas">+ Agregar persona</button></p>
+{% if not personal %}<p class="muted">No hay personal con el almacén {{ t.warehouse_code }} asignado.</p>{% endif %}
 <div class="row"><div><label>Fecha</label><input type="date" name="fecha" value="{{ t.fecha.isoformat() }}"></div><div class="grow"><label>Comentario</label><input name="comentario"></div></div>
 <p><button>Guardar asignación</button></p></form>
 <div class="card"><h3>Preplaneamiento del {{ t.fecha|d }} · {{ t.warehouse_code }}</h3>
 {% if plan %}<div class="tw"><table class="small"><tr><th>OV</th><th>Cliente</th><th class="r">Líneas</th><th>Asignado a</th><th>Estado</th></tr>
 {% for x in plan %}<tr{% if x.id == t.id %} style="background:var(--cp-verde-50)"{% endif %}><td><a href="{{ url_for('alm.picking_task', tid=x.id) }}">{{ x.order.numero }}</a></td><td>{{ x.order.customer.nombre }}</td><td class="r">{{ x.order.lines|selectattr('activa')|list|length }}</td><td>{% for i in x.asignados %}{{ usuarios[i].nombre if i in usuarios }}{{ ', ' if not loop.last }}{% else %}<span class="b ALTA">sin asignar</span>{% endfor %}</td><td>{{ b(x.estado) }}</td></tr>{% endfor %}</table></div>
 {% else %}{{ empty('Sin otros picking ese día.') }}{% endif %}</div>
-<script>(function(){var f=document.getElementById('asignar');function u(){var m=f.querySelector('[name=modo]:checked').value;f.querySelectorAll('[data-modo]').forEach(function(d){d.hidden=d.dataset.modo!==m;});document.getElementById('as_persona').required=m==='persona';}
-f.querySelectorAll('[name=modo]').forEach(function(r){r.addEventListener('change',u);});u();})();</script>
 {% endif %}
 <script>document.querySelectorAll('input[data-bultos]').forEach(function(i){var o=document.getElementById(i.dataset.bultos),u=parseFloat(o.dataset.upb);if(!u)return;function c(){var v=parseFloat(i.value);o.textContent=isNaN(v)?'—':(Math.round(v/u*100)/100);}i.addEventListener('input',c);c();});</script>
 {% endblock %}

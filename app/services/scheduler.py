@@ -68,6 +68,7 @@ def _pasos(user, today):
         ("sap_service_layer", lambda: sap_sl.scheduled_sync()),
         ("fases_importacion", lambda: check_phases(today)),
         ("ov_retrasadas", lambda: _ov_retrasadas(today)),
+        ("avisos_ejecutivo", lambda: __import__("app.services.seguimiento", fromlist=["x"]).check_seller_delays(today)),
         ("paradas_prolongadas", lambda: prod_home.check_long_stops()),  # V12: paradas que superan el tiempo configurado
         ("proyeccion_compras", lambda: demand_plan.check_purchase_deadlines(today)),
         ("lotes_observados", lambda: quality_v13.check_observed(today)),

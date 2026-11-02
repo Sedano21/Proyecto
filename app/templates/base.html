@@ -26,6 +26,7 @@
     </div>
     {% if ve('ov.ver') %}<div class="grp" data-grupo="Comercial"><h4><span class="lbl">Comercial</span></h4>
       {{ nl(url_for('com.orders'), 'cart', 'Órdenes de venta') }}
+      {% if ve('expedientes.ver') %}{{ nl(url_for('seg.groups'), 'layers', 'Expedientes por cliente y despacho') }}{% endif %}
       {% if ve('ov.crear') %}{{ nl(url_for('com.order_new'), 'plus', 'Registrar OV') }}{% endif %}
       {% if ve('ov.regularizar') %}{{ nl(url_for('com.regularization'), 'history', 'Regularización de OV') }}{% endif %}
       {% if ve('ov.importar') %}{{ nl(url_for('com.sap_excel_upload'), 'database', 'OV desde SAP (Excel)') }}{% endif %}
@@ -48,6 +49,9 @@
     </div>{% endif %}
     {% if ve('stock.ver') or ve('traslados.ver') or ve('reempaque.ver') or ve('tareas.ejecutar') or ve('movimiento.solicitar') or ve('movimiento.ejecutar') or ve('demanda.ver') or ve('ingresos.ver') or ve('asistencia.area') %}<div class="grp" data-grupo="Almacén"><h4><span class="lbl">Almacén</span></h4>
       {% if ve('stock.ver') %}{{ nl(url_for('alm.stock'), 'box', 'Stock y reservas') }}{% endif %}
+      {% if ve('expedientes.ver') and not ve('ov.ver') %}{{ nl(url_for('seg.groups'), 'layers', 'Expedientes por cliente y despacho') }}{% endif %}
+      {% if ve('indicadores.servicio') %}{{ nl(url_for('seg.service'), 'gauge', 'Nivel de servicio (OTIF, fill rate)') }}{% endif %}
+      {% if ve('desempeno.equipo') %}{{ nl(url_for('seg.performance'), 'chart', 'Tiempos de respuesta y desempeño') }}{% endif %}
       {% if (ve('preparacion.registrar') or ve('ov.ver')) and user.role.area != 'Producción' %}{{ nl(url_for('com.preparation'), 'clipboard', 'Preparación (picking)') }}{% endif %}{# V12: a Producción no le suma; si lo necesita, lo consulta desde la OV #}
       {% if (ve('picking.asignar') or ve('tareas.ejecutar') or ve('preparacion.registrar')) and user.role.area != 'Producción' %}{{ nl(url_for('alm.picking_schedule'), 'calendar', 'Programación de picking') }}{% endif %}
       {% if ve('traslados.ver') %}{{ nl(url_for('alm.transfers'), 'swap', 'Traslados') }}{% endif %}
@@ -56,7 +60,7 @@
       {% if ve('movimiento.solicitar') or ve('movimiento.ejecutar') or ve('movimiento.ver_todos') %}{{ nl(url_for('sup.moves'), 'swap', 'Movimientos punto a punto') }}{% endif %}
       {% if ve('rotacion.ver') %}{{ nl(url_for('sup.rotation'), 'history', 'Stock sin rotación') }}{% endif %}
       {% if ve('ingresos.ver') %}{{ nl(url_for('alm.entries'), 'download', 'Ingresos a almacén') }}{% endif %}
-      {% if ve('asistencia.area') and not ve('produccion.ver') %}{{ nl(url_for('prod.attendance'), 'users', 'Asistencia de mi personal') }}{% endif %}
+      {% if (ve('asistencia.area') or ve('asistencia.ver_area') or ve('asistencia.todas')) and not ve('produccion.asistencia') %}{{ nl(url_for('prod.attendance'), 'users', 'Asistencia de mi personal' if not ve('asistencia.todas') else 'Asistencia del personal') }}{% endif %}
       {% if ve('demanda.ver') and not ve('demanda.cargar') %}{{ nl(url_for('sup.demand'), 'trend', 'Proyección de demanda') }}{% endif %}
       {% if ve('stock.cargar') %}{{ nl(url_for('alm.uploads', area='Almacén'), 'upload', 'Cargas de archivos') }}{% endif %}
     </div>{% endif %}

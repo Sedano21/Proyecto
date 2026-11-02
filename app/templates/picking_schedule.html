@@ -3,6 +3,7 @@
 <p class="muted small">El sistema preprograma el picking de cada OV lista para preparar y propone el auxiliar con menor carga del día. {% if asigna %}El Líder Operativo y el Coordinador revisan el detalle y asignan a una persona o grupo.{% else %}Aquí ve su programación diaria y semanal.{% endif %}</p>
 <form class="row card" method="get"><div><label>Vista</label><select name="vista"><option value="dia" {{ 'selected' if vista=='dia' }}>Diaria</option><option value="semana" {{ 'selected' if vista=='semana' }}>Semanal</option></select></div>
 <div><label>Fecha</label><input type="date" name="fecha" value="{{ ref.isoformat() }}"></div>
+<div data-semana><label>Desde (semanal)</label><input type="date" name="desde" value="{{ desde.isoformat() }}"></div><div data-semana><label>Hasta</label><input type="date" name="hasta" value="{{ hasta.isoformat() }}"></div>
 {% if asigna %}<div><label>Almacén</label><select name="almacen"><option value="">(todos)</option>{% for w in almacenes if w.uso in ['PT','MP_INSUMOS'] %}<option value="{{ w.code }}" {{ 'selected' if almacen==w.code }}>{{ w.code }} {{ w.nombre }}</option>{% endfor %}</select></div>{% endif %}
 <div><label>Cliente (opcional)</label><select name="cliente" data-search="Buscar cliente…"><option value="">(todos)</option>{% for c in clientes %}<option value="{{ c.id }}" {{ 'selected' if cliente == c.id|string }}>{{ c.nombre }}</option>{% endfor %}</select></div>
 <div><button class="sec">Ver</button></div><div><a class="btn sec" href="{{ url_for('alm.picking_format', fecha=ref.isoformat(), almacen=almacen) }}">Formato de control del día</a></div></form>
@@ -14,4 +15,5 @@
 <div class="small">{% for i in t.asignados %}{{ usuarios[i].nombre if i in usuarios }}{{ ', ' if not loop.last }}{% else %}<span class="b ALTA">sin asignar</span>{% endfor %}</div></article>{% endfor %}</div>{% endfor %}
 {% else %}<div class="empty"><p>No hay picking programado en el periodo.</p></div>{% endif %}
 {% if asigna and personal %}<div class="card"><h3>Personal por almacén</h3>{% for w, lista in personal.items() %}<p><b>{{ w }}</b>: {% for u in lista %}{{ u.nombre }} <span class="muted small">({{ u.role.nombre }})</span>{{ '; ' if not loop.last }}{% else %}<span class="muted">sin personal con este almacén asignado</span>{% endfor %}</p>{% endfor %}</div>{% endif %}
+<script>(function(){var v=document.querySelector('select[name=vista]');if(!v)return;function u(){document.querySelectorAll('[data-semana]').forEach(function(d){d.hidden=v.value!=='semana';d.querySelector('input').disabled=v.value!=='semana';});}v.addEventListener('change',u);u();})();</script>
 {% endblock %}

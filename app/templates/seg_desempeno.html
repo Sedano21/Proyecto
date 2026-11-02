@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block content %}<h1>Tiempos de respuesta y desempeño del equipo</h1>
+<h2>Tiempo de respuesta por tipo de solicitud</h2>
+<form method="get" class="card row"><div><label>Desde</label><input type="date" name="t_desde" value="{{ f.t_desde }}"></div><div><label>Hasta</label><input type="date" name="t_hasta" value="{{ f.t_hasta }}"></div><div><button class="sec">Ver</button></div></form>
+<p class="small muted">Movimientos: desde la solicitud (o la hora programada) hasta la foto de llegada al destino; por área que solicita y tipo de carga (p. ej. Producción pide materia prima para una línea). Traslados: desde la solicitud hasta la recepción en destino. Periodo: {{ tiempos.desde|d }} – {{ tiempos.hasta|d }}.</p>
+<div class="tw"><table><tr><th>Solicitud</th><th>Tipo</th><th class="r">Atendidas</th><th class="r">Promedio</th><th class="r">Máximo</th></tr>
+{% for r in tiempos.resumen %}<tr><td>{{ r.tipo }}</td><td>{{ r.subtipo }}</td><td class="r">{{ r.n }}</td><td class="r">{{ r.prom_min }} min</td><td class="r">{{ r.max_min }} min</td></tr>{% else %}<tr><td colspan="5" class="muted">Sin solicitudes atendidas en el periodo.</td></tr>{% endfor %}</table></div>
+<details><summary>Detalle de cada solicitud</summary><div class="tw"><table class="small"><tr><th>Solicitud</th><th>#</th><th>Tipo</th><th>Recorrido</th><th>Solicitada</th><th>Atendida</th><th class="r">Minutos</th><th>Estado</th></tr>
+{% for r in tiempos.detalle %}<tr><td>{{ r.tipo }}</td><td>{{ r.id }}</td><td>{{ r.subtipo }}</td><td>{{ r.desde }}</td><td>{{ r.solicitado.strftime('%d/%m %H:%M') if r.solicitado }}</td><td>{{ r.atendido.strftime('%d/%m %H:%M') if r.atendido else '—' }}</td><td class="r">{{ r.min if r.min is not none else '—' }}</td><td>{{ r.estado }}</td></tr>{% endfor %}</table></div></details>
+<h2>Desempeño del personal</h2>
+<form method="get" class="card row"><div><label>Desde</label><input type="date" name="desde" value="{{ equipo.desde.isoformat() }}"></div><div><label>Hasta</label><input type="date" name="hasta" value="{{ equipo.hasta.isoformat() }}"></div><div><button class="sec">Ver</button></div></form>
+<div class="tw"><table><tr><th>Persona</th><th>Perfil</th><th class="r">Clientes (picking)</th><th class="r">OV</th><th class="r">Unidades picadas</th><th class="r">kg picados</th><th class="r">Movimientos</th><th class="r">Min. por movimiento</th><th class="r">Tareas atendidas</th></tr>
+{% for x in equipo.filas %}<tr><td>{{ x.user.nombre }}</td><td>{{ x.user.role.nombre if x.user.role }}</td><td class="r">{{ x.clientes }}</td><td class="r">{{ x.ov }}</td><td class="r">{{ x.unidades|n }}</td><td class="r">{{ x.kg|n }}</td><td class="r">{{ x.movimientos }}</td><td class="r">{{ x.mov_prom_min if x.mov_prom_min is not none else '—' }}</td><td class="r">{{ x.tareas }}</td></tr>{% else %}<tr><td colspan="9" class="muted">Sin actividad registrada en el periodo.</td></tr>{% endfor %}</table></div>
+{% endblock %}

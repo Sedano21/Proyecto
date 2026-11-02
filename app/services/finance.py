@@ -17,7 +17,7 @@ CONDICIONES = {"CONTADO": "Contado", "CREDITO": "Crédito"}
 ESTADOS_CONDICION = {"SIN_SOLICITAR": "Sin solicitar", "PENDIENTE": "Pendiente de Finanzas", "APROBADA": "Aprobada",
                      "OBSERVADA": "Observada", "RECHAZADA": "Rechazada"}
 TIPOS_DOC_OV = {"OC": "Orden de compra", "DEVOLUCION": "Constancia de devolución", "NOTA_CREDITO": "Nota de crédito",
-                "OTRO": "Otro documento"}
+                "PAGO": "Pago (comprobante)", "OTRO": "Otro documento"}
 EXT_DOCS = (".pdf", ".jpg", ".jpeg", ".png", ".webp", ".heic", ".xlsx", ".xls", ".docx", ".doc", ".msg", ".eml")
 
 

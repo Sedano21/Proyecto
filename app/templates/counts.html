@@ -8,6 +8,7 @@
 <section class="wz-step"><label class="req">Almacén</label><select name="warehouse_code">{% for w in whs %}<option value="{{ w.code }}">{{ w.code }} {{ w.nombre }}</option>{% endfor %}</select><label>Observación</label><input name="observacion" style="width:100%">
 <div class="wz-nav"><span></span><button class="btn" data-next>Siguiente</button></div></section>
 <section class="wz-step" hidden><p class="small muted">Elija <b>una</b> forma de armar la lista (si no elige ninguna se cuenta todo el almacén).</p>
+<label class="chk"><input type="checkbox" name="por_producto" value="1"> <b>Producto por producto</b>: abrir el conteo vacío e ir agregando cada producto a medida que se cuenta</label>
 <label>Repetir la lista de un conteo anterior</label><select name="base_id"><option value="">—</option>{% for c in rows[:30] %}<option value="{{ c.id }}">#{{ c.id }} · {{ c.fecha|d }} · {{ c.warehouse_code }} · {{ c.lines|length }} líneas</option>{% endfor %}</select>
 <label>o pegar una lista de productos (un código por línea)</label><textarea name="lista" rows="4" style="width:100%" placeholder="PT-901&#10;PT-902"></textarea>
 <label>o prefijo de artículo</label><input name="prefijo" placeholder="EN-">

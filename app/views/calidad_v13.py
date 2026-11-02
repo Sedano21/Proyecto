@@ -253,7 +253,7 @@ def checklist_format(formato):
 
 # ------------------------------------------------------------------ consolidado Excel
 @bp.route("/consolidado", methods=["GET", "POST"])
-@perm_required("calidad.ver")
+@perm_required("calidad.formatos_revisar")  # V17: exclusivo de Calidad
 def consolidated():
     if request.method == "POST":
         f = request.files.get("archivo")
@@ -299,7 +299,7 @@ def equipment_hygiene():
 
 # ------------------------------------------------------------------ V14: reporte de registros (fecha o rango; PDF o Excel)
 @bp.route("/reporte")
-@perm_required("calidad.ver")
+@perm_required("calidad.formatos_revisar")  # V17: exclusivo de Calidad
 def records_report():
     from ..services.pdfreport import html_to_pdf
     a = request.args

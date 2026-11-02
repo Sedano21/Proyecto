@@ -183,8 +183,8 @@ def test_gerencia_general_aprueba_en_nombre_y_rechazo(s, U, new_order, today):
     o3 = new_order([("PT-901", 450)])
     # V16: la Gerencia de Operaciones ya no existe; sus aprobaciones las hace el Gerente General Adjunto
     osvc.decide_partial(o3, U("jefe.logistica"), True, "ok", today + timedelta(days=5))
-    assert o3.decision_parcial == "PENDIENTE" and osvc.partial_pending_roles(o3) == ["GERENTE_GENERAL_ADJUNTO"]
-    osvc.decide_partial(o3, U("gerente.adjunto"), True, "ok")
+    assert o3.decision_parcial == "PENDIENTE" and osvc.partial_pending_roles(o3) == ["JEFE_OPERACIONES"]
+    osvc.decide_partial(o3, U("jefe.operaciones"), True, "ok")  # V17: Jefatura de Logística y de Operaciones
     assert o3.decision_parcial == "APROBADA"
     osvc.decide_partial(o2, U("gerente.adjunto"), False, "Cliente no acepta parcial")
     assert o2.decision_parcial == "RECHAZADA"

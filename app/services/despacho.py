@@ -182,14 +182,21 @@ def set_guide(stop, user, numero, origen, archivo="", motivo=None):
         raise BusinessError("Las guías las registran y modifican el Coordinador y el Asistente de Distribución.")
     if origen not in ("SAP", "SISTEMA"):
         raise BusinessError("Origen de guía no válido.")
-    if origen == "SAP" and not (numero.strip() and archivo):
-        raise BusinessError("Para una guía de SAP registre el número y cargue el archivo.")
+    numero = (numero or "").strip()
+    if origen == "SAP" and not numero:  # V17: el número de la guía de SAP viene de SAP (pre-guía enviada), no se escribe
+        numero = str(((stop.order.preguia or {}).get("sap") or {}).get("docnum") or "")
+        if not numero:
+            raise BusinessError("La guía de SAP aún no tiene número: valide la pre-guía y envíela a SAP (el número lo "
+                                "asigna SAP). Si SAP no está disponible, use la guía de contingencia del sistema.")
+    if origen == "SAP" and not archivo:
+        raise BusinessError("Cargue el archivo de la guía de SAP.")
     if origen == "SISTEMA" and motivo is not None and not motivo.strip():
         raise BusinessError("La guía del sistema es de contingencia: indique el motivo (por ejemplo, SAP no disponible).")
     if origen == "SISTEMA" and motivo:
         stop.observacion = ((stop.observacion or "") + f"\nGuía generada en el sistema (contingencia): {motivo.strip()}").strip()
     if origen == "SISTEMA" and not numero.strip():
-        numero = f"GS-{stop.route_id}-{stop.order.numero}"
+        from .numeracion import next_contingency_guide_number
+        numero = next_contingency_guide_number()
     if stop.guia_numero and stop.guia_numero != numero.strip():
         stop.guia_aprobada = {}  # una guía nueva o corregida vuelve a aprobarse
     stop.guia_numero = numero.strip()

@@ -41,6 +41,8 @@ def register_views(app):
     from . import mantenimiento, suministro
     app.register_blueprint(mantenimiento.bp)
     app.register_blueprint(suministro.bp)
+    from . import seguimiento
+    app.register_blueprint(seguimiento.bp)
 
     @app.errorhandler(403)
     def _403(e):
@@ -230,8 +232,36 @@ def dashboard():
     if g.user.role_code in ("COORD_VENTAS", "JEFE_VENTAS", "GERENTE_COMERCIAL", "GERENCIA_GENERAL", "GERENTE_GENERAL_ADJUNTO"):
         from ..services.commercial_mgmt import home_summary
         com = home_summary(g.user)  # V7: metas por vendedor/canal/total (S/ y kg) y pedidos del mes en la portada
+    # V17: cada indicador abre su detalle; el ejecutivo ve el avance de sus OV; logística, operaciones y gerencias ven el
+    # nivel de servicio del mes (OTIF, fill rate y a tiempo sobre las OV que se despachan en el mes)
+    from ..services import seguimiento as seg
+    p = g.perms
+
+    def _u(endpoint, perm=None, **kw):
+        return url_for(endpoint, **kw) if (perm is None or perm in p) else "#"
+    servicio = "seg.service" if ("indicadores.servicio" in p or "informes.comercial" in p) else None
+    det = {"PED_PENDIENTES": _u("com.orders", "ov.ver"), "PED_COBERTURA": _u("com.orders", "ov.ver"),
+           "VOLUMEN_OV_KG": _u("com.orders", "ov.ver"), "MONTO_OV": _u("com.orders", "ov.ver"),
+           "PRECIO_BAJO_MINIMO": _u("com.orders", "ov.ver"), "PED_ESTADOS": _u("com.orders", "ov.ver"),
+           "PED_DETENIDOS": _u("com.orders", "ov.ver"),
+           "OTIF_SALIDA": url_for(servicio, ver="otif_no") if servicio else "#",
+           "FILL_RATE": url_for(servicio, ver="incompletas") if servicio else "#",
+           "FILL_DETALLE": url_for(servicio) if servicio else "#",
+           "RECHAZOS": _u("dist.incidents", "distribucion.ver"), "INCIDENCIAS": _u("dist.incidents", "distribucion.ver"),
+           "T_PREPARACION": _u("seg.performance", "desempeno.equipo"), "T_DESPACHO": _u("seg.performance", "desempeno.equipo"),
+           "COMPRAS_PENDIENTES": _u("buy.purchases", "compras.ver"), "PRODUCCION_PENDIENTE": _u("prod.requests", "produccion.ver"),
+           "DIF_INVENTARIO": _u("alm.counts", "stock.conteo"), "DIF_RECEPCION_PT": _u("prod.liquidations", "produccion.ver"),
+           "FALTANTES": _u("alm.stock", "stock.ver"), "FACTURACION": _u("fin.board", "finanzas.ver"),
+           "PROD_CUMPLIMIENTO": _u("prod.plan", "produccion.ver"), "PROD_PRODUCIDO": _u("prod.liquidations", "produccion.ver"),
+           "PROD_RENDIMIENTO": _u("prod.reports", "produccion.ver"), "PROD_MERMA_FUERA": _u("prod.reports", "produccion.ver"),
+           "PROD_CAPACIDAD": _u("prod.plan", "produccion.ver"), "PROD_PARADAS": _u("prod.control", "produccion.ver"),
+           "PROD_OEE": _u("prod.oee_dashboard", "produccion.ver")}
+    mis_ov = seg.seller_orders(g.user) if g.user.role_code == "EJECUTIVO_VENTAS" else None
+    nivel = seg.service_month() if ("indicadores.servicio" in p and g.user.role_code in (
+        "COORD_LOGISTICA", "JEFE_LOGISTICA", "JEFE_OPERACIONES", "GERENCIA_GENERAL", "GERENTE_GENERAL_ADJUNTO")) else None
     return render_template("dashboard.html", k=k, prod=prod, hp=hoy_prod, mis_alertas=mis, tareas=tareas, desde=desde or "", hasta=hasta or "",
-                           estado_txt=alert_svc.ESTADO_TXT, arrastre=pending_carryover(g.user), com=com)
+                           estado_txt=alert_svc.ESTADO_TXT, arrastre=pending_carryover(g.user), com=com, det=det,
+                           mis_ov=mis_ov, nivel=nivel)
 
 
 @bp.route("/verificaciones", methods=["POST"])

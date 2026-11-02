@@ -319,6 +319,18 @@ def move_points(almacen=""):
     return list(dict.fromkeys(list(cfg.get(almacen or "", [])) + list(cfg.get("*", []))))
 
 
+def zone_from_form(f, campo):
+    """V17: zona elegida de la lista u «Otra zona» escrita a mano, más la subzona digital opcional."""
+    zona = (f.get(f"{campo}_zona") or "").strip()
+    if zona == "__OTRA__":
+        zona = (f.get(f"{campo}_otra") or "").strip()
+        if not zona:
+            raise BusinessError("Escriba la zona («Otra zona»).")
+    zona = zona or (f.get(campo) or "").strip()  # compatibilidad: campo de texto libre
+    sub = (f.get(f"{campo}_subzona") or "").strip()
+    return f"{zona} · subzona {sub}" if zona and sub else zona
+
+
 TIPOS_CARGA = {"PALLET_PT": "Pallet de PT", "GRANEL": "Granel", "MATERIA_PRIMA": "Materia prima", "MERMA": "Merma",
                "REMANENTE": "Remanente de MP", "MUESTRA": "Muestra", "PALLET": "Pallet (vacío)"}  # V14: granel y MP
 

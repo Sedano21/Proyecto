@@ -22,9 +22,11 @@ def requests():
             o = None
             if request.form.get("ov"):
                 o = db().execute(select(SalesOrder).where(SalesOrder.numero == request.form["ov"].strip())).scalars().first()
-            holder["r"] = psvc.create_request(request.form.get("product_code", "").strip().upper(), f_float("cantidad", True),
+            cod = request.form.get("product_code", "").strip().split(" ")[0].upper()  # «código · nombre · presentación»
+            holder["r"] = psvc.create_request(cod, f_float("cantidad", True),
                                               g.user, o, f_date("fecha_requerida"), origen="OV" if o else "MANUAL",
-                                              observacion=request.form.get("observacion", ""))
+                                              observacion=request.form.get("observacion", ""),
+                                              customer_id=request.form.get("customer_id") or None, validar_ov=True)
         resp = act(_do, "Solicitud preliminar creada.", url_for("prod.requests"))
         if "r" in holder and holder["r"].id:
             return redirect(url_for("prod.request_detail", rid=holder["r"].id))
@@ -48,12 +50,15 @@ def requests():
             cap[(l.code, d)] = base * psvc.day_factor(d) if base else None
             if g and len(g["lineas"]) > 1:  # carga del grupo compartido
                 carga[(l.code, "grupo", d)] = sum(carga.get((lc, d), 0) or psvc.line_load_kg(lc, d) for lc in g["lineas"])
-    prods = [p for p, _ in psvc.bom_products()]
+    from ..models import Customer, Product
+    prods = [db().get(Product, p) or p for p, _ in psvc.bom_products()]  # V17: código, nombre y presentación
+    clientes = list(db().execute(select(Customer).order_by(Customer.nombre)).scalars())
     from ..services.stock import ORDEN_ESTADOS_CERRADOS
     ovs = list(db().execute(select(SalesOrder).where(SalesOrder.estado.notin_(ORDEN_ESTADOS_CERRADOS))
                             .order_by(SalesOrder.fecha_compromiso)).scalars())
     return render_template("prod_list.html", rows=rows, lines=lines, dias=dias, prog=prog, carga=carga, prods=prods, ovs=ovs,
-                           grupos=grupos, cap=cap)
+                           grupos=grupos, cap=cap, clientes=clientes,
+                           ov_prods={o.numero: sorted({l.product_code for l in o.lines if l.activa}) for o in ovs})
 
 
 @bp.route("/solicitud/<int:rid>", methods=["GET", "POST"])

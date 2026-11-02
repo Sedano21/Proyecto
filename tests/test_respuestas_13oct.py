@@ -187,10 +187,12 @@ def test_q5_almacenes_virtuales_los_manejan_coord_1560_y_logistica(s, U):
         change_lot_state(lot, "DANADO" if lot.estado != "DANADO" else "NO_UTILIZABLE", U(quien), "Revisión")
     with pytest.raises(BusinessError):  # V13: un lote bloqueado solo lo libera Calidad
         change_lot_state(lot, "DISPONIBLE", U("coord.almacen"), "Revisión")
-    change_lot_state(pro, "DANADO", U("coord.logistica"), "PRO-* también es virtual")
+    # V17: la Coordinación de Logística maneja todos los almacenes salvo los de Producción (PRO-* y el tránsito ALM-003)
+    with pytest.raises(BusinessError, match="Producción"):
+        change_lot_state(pro, "DANADO", U("coord.logistica"), "PRO-* es de Producción")
+    change_lot_state(pro, "DANADO", U("jefe.logistica"), "PRO-* también es virtual")
     l001 = s.query(StockLot).filter_by(product_code="PT-905", warehouse_code="ALM-001").first()
-    with pytest.raises(BusinessError):  # Logística solo maneja los virtuales
-        change_lot_state(l001, "DANADO", U("coord.logistica"), "x")
+    change_lot_state(l001, "DANADO", U("coord.logistica"), "V17: también maneja el 1560")
 
 
 def test_q6_lote_nuevo_en_carga_posterior_queda_pendiente_de_revision(s, U, tmp_path, today):

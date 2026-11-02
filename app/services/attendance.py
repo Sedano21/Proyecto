@@ -18,11 +18,30 @@ def area_of(user):
     return user_area(user) if has_perm(user, "asistencia.area") else None
 
 
-def workers_of(user, activos=False):
-    area = area_of(user)
-    q = select(Worker).order_by(Worker.linea, Worker.nombre)
+def visible_areas(user):
+    """V17: áreas cuyo personal ve el usuario. None = todas (Jefatura de Operaciones y Gerencias, permiso
+    «asistencia.todas»). Almacén y Logística ven solo su propio personal, no el de Producción
+    (parámetro «asistencia_areas_por_rol»; por defecto, el área del perfil)."""
+    if has_perm(user, "asistencia.todas"):
+        return None
+    from .alerts import user_area
+    out = set()
+    if has_perm(user, "produccion.asistencia") and user_area(user) in ("Producción", ""):
+        out.add("Producción")
+    if has_perm(user, "asistencia.area") or has_perm(user, "asistencia.ver_area"):
+        out |= set((param("asistencia_areas_por_rol", {}) or {}).get(user.role_code) or [user_area(user)])
+    return out
+
+
+def workers_of(user, activos=False, ver=False):
+    """Personal que el usuario registra (ver=False: su área) o que puede ver (ver=True: visible_areas)."""
+    q = select(Worker).order_by(Worker.area, Worker.linea, Worker.nombre)
     if activos:
         q = q.where(Worker.activo.is_(True))
+    if ver:
+        areas = visible_areas(user)
+        return [w for w in db().execute(q).scalars() if areas is None or (w.area or "Producción") in areas]
+    area = area_of(user)
     return [w for w in db().execute(q).scalars() if (w.area or "Producción") == area] if area else []
 
 
@@ -101,11 +120,14 @@ def day(fecha):
     return {a.worker_id: a for a in db().execute(select(Attendance).where(Attendance.fecha == fecha)).scalars()}
 
 
-def summary(desde=None, hasta=None, linea="", area="Producción"):
+def summary(desde=None, hasta=None, linea="", area="Producción", areas=False):
+    """areas: conjunto de áreas (None = todas); si se omite, se usa «area»."""
     hasta = hasta or date.today()
     desde = desde or hasta - timedelta(days=29)
+    if areas is False:
+        areas = {area}
     rows = [a for a in db().execute(select(Attendance).where(Attendance.fecha >= desde, Attendance.fecha <= hasta)).scalars()
-            if (a.worker.area or "Producción") == area]
+            if areas is None or (a.worker.area or "Producción") in areas]
     por = defaultdict(Counter)
     for a in rows:
         if linea and a.worker.linea != linea:

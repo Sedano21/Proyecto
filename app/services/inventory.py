@@ -9,8 +9,9 @@ from . import alerts
 from .core import BusinessError, audit, check_warehouse_scope, has_perm
 
 
-def open_count(user, warehouse_code, product_prefix="", observacion="", base=None, codigos=None):
-    """base: conteo anterior cuya lista de productos se repite; codigos: lista de productos preexistente (ronda UX)."""
+def open_count(user, warehouse_code, product_prefix="", observacion="", base=None, codigos=None, por_producto=False):
+    """base: conteo anterior cuya lista de productos se repite; codigos: lista de productos preexistente (ronda UX).
+    por_producto (V17): se abre vacío y se van agregando los productos a medida que se cuentan (add_products)."""
     if not has_perm(user, "stock.conteo"):
         raise BusinessError("Su rol no registra conteos.")
     if base is not None:
@@ -24,14 +25,44 @@ def open_count(user, warehouse_code, product_prefix="", observacion="", base=Non
         q = q.where(StockLot.product_code.like(f"{product_prefix}%"))
     if codigos:
         q = q.where(StockLot.product_code.in_([x.strip().upper() for x in codigos if x.strip()]))
-    for lot in db().execute(q.order_by(StockLot.product_code, StockLot.lote)).scalars():
-        c.lines.append(PhysicalCountLine(lot_id=lot.id, product_code=lot.product_code, lote=lot.lote, sap=lot.cantidad))
-    if not c.lines:
-        raise BusinessError("No hay stock registrado para contar con ese filtro.")
+    if not por_producto:
+        for lot in db().execute(q.order_by(StockLot.product_code, StockLot.lote)).scalars():
+            c.lines.append(PhysicalCountLine(lot_id=lot.id, product_code=lot.product_code, lote=lot.lote, sap=lot.cantidad))
+        if not c.lines:
+            raise BusinessError("No hay stock registrado para contar con ese filtro.")
     db().add(c)
     db().flush()
     audit(user, "CONTEO_ABIERTO", "PhysicalCount", c.id, {"almacen": warehouse_code, "lineas": len(c.lines)})
     return c
+
+
+def add_products(c, user, codigos, lote_nuevo=None):
+    """V17: agrega al conteo abierto los lotes del producto (o productos) a medida que se cuentan. Si el producto no
+    tiene stock registrado en el almacén, se agrega una línea sin lote del sistema (SAP 0) para registrar lo hallado."""
+    if c.estado != "ABIERTO":
+        raise BusinessError("El conteo ya no está abierto.")
+    if not has_perm(user, "stock.conteo"):
+        raise BusinessError("Su rol no registra conteos.")
+    from ..models import Product
+    ya = {(l.product_code, l.lote) for l in c.lines}
+    n = 0
+    for code in [x.strip().upper() for x in (codigos or []) if x and x.strip()]:
+        if db().get(Product, code) is None:
+            raise BusinessError(f"El producto {code} no existe en el maestro de artículos.")
+        lots = list(db().execute(select(StockLot).where(StockLot.warehouse_code == c.warehouse_code,
+                                                        StockLot.product_code == code, StockLot.cantidad > 0)
+                                 .order_by(StockLot.lote)).scalars())
+        for lot in lots:
+            if (code, lot.lote) not in ya:
+                c.lines.append(PhysicalCountLine(lot_id=lot.id, product_code=code, lote=lot.lote, sap=lot.cantidad))
+                ya.add((code, lot.lote))
+                n += 1
+        if not lots and (code, lote_nuevo or "SIN LOTE") not in ya:
+            c.lines.append(PhysicalCountLine(lot_id=None, product_code=code, lote=(lote_nuevo or "SIN LOTE")[:40], sap=0))
+            ya.add((code, lote_nuevo or "SIN LOTE"))
+            n += 1
+    db().flush()
+    return n
 
 
 def compute_line(line):
@@ -80,8 +111,12 @@ def needs_recount(line):
 
 
 def close_count(c, user):
+    """V17: quien cuenta termina el conteo y lo envía a validar al Jefe de Logística. Hasta que lo valide, no se
+    actualiza el sistema (cantidad verificada, reservas) ni se envía nada a SAP."""
     if c.estado != "ABIERTO":
-        raise BusinessError("El conteo ya está cerrado.")
+        raise BusinessError("El conteo ya fue enviado o cerrado.")
+    if not c.lines:
+        raise BusinessError("Agregue al menos un producto al conteo.")
     sin = [l for l in c.lines if l.conteo is None]
     if sin:
         raise BusinessError(f"Hay {len(sin)} líneas sin conteo.")
@@ -89,10 +124,53 @@ def close_count(c, user):
     if recontar:
         raise BusinessError("Recuente antes de cerrar (diferencia mayor a la tolerancia): "
                             + ", ".join(f"{l.product_code} lote {l.lote}" for l in recontar[:10]) + ".")
+    c.estado = "POR_VALIDAR"
+    difs = [l for l in c.lines if l.faltante or l.sobrante]
+    alerts.emit("CONTEO_POR_VALIDAR", f"Conteo #{c.id} ({c.warehouse_code}) por validar: {len(difs)} diferencia(s)",
+                "; ".join(f"{l.product_code} lote {l.lote}: SAP {l.sap:g} / físico {l.fisico:g}" for l in difs[:20])
+                or "Sin diferencias.", "PhysicalCount", c.id, dedup_key=f"CONTEO_VALIDAR:{c.id}", creado_por=user)
+    audit(user, "CONTEO_ENVIADO_A_VALIDAR", "PhysicalCount", c.id, {"diferencias": len(difs)})
+    return difs
+
+
+def can_validate(user):
+    """V17: valida el conteo el Jefe de Logística (permiso propio de su perfil; no se hereda por perfiles equivalentes)."""
+    from sqlalchemy import select as _sel
+    from ..models import RolePermission
+    from .core import roles_of
+    return user is not None and db().execute(_sel(RolePermission.id).where(
+        RolePermission.perm_code == "conteo.validar",
+        RolePermission.role_code.in_(sorted(roles_of(user, equivalentes=False))))).first() is not None
+
+
+def validate_count(c, user, aprobar=True, comentario=""):
+    """V17: el Jefe de Logística valida el conteo (entonces se actualiza el sistema) o lo devuelve para recontar."""
+    if not can_validate(user):
+        raise BusinessError("El conteo lo valida el Jefe de Logística.")
+    if c.estado != "POR_VALIDAR":
+        raise BusinessError("El conteo no está pendiente de validación.")
+    if not aprobar:
+        if not (comentario or "").strip():
+            raise BusinessError("Indique qué debe revisarse.")
+        c.estado = "ABIERTO"
+        c.validacion = {"estado": "DEVUELTO", "user": user.nombre, "ts": now().isoformat(timespec="minutes"),
+                        "comentario": comentario.strip()}
+        alerts.close_by_system(f"CONTEO_VALIDAR:{c.id}", f"Devuelto por {user.nombre}: {comentario.strip()}")
+        audit(user, "CONTEO_DEVUELTO", "PhysicalCount", c.id, {"comentario": comentario})
+        return []
+    c.validacion = {"estado": "VALIDADO", "user": user.nombre, "ts": now().isoformat(timespec="minutes"),
+                    "comentario": (comentario or "").strip()}
+    alerts.close_by_system(f"CONTEO_VALIDAR:{c.id}", f"Validado por {user.nombre}")
+    return _apply_count(c, user)
+
+
+def _apply_count(c, user):
     difs = []
     for line in c.lines:
         lot = db().get(StockLot, line.lot_id) if line.lot_id else None
         if lot is None:
+            if line.sobrante:  # V17: producto hallado sin stock en el sistema
+                difs.append(line)
             continue
         lot.verificado = True
         lot.fecha_verificacion = now()
@@ -108,7 +186,9 @@ def close_count(c, user):
         # reservas por encima de lo físico: reevaluar OV afectadas
         from .stock import evaluate_order, free_qty, reserved_qty, ORDEN_ESTADOS_CERRADOS, _release
         for l in difs:
-            lot = db().get(StockLot, l.lot_id)
+            lot = db().get(StockLot, l.lot_id) if l.lot_id else None
+            if lot is None:
+                continue
             exceso = reserved_qty(lot) - min(lot.cantidad, lot.cantidad_verificada or 0)
             afectadas = set()
             for res in sorted([r for r in lot.reservations if r.estado == "ACTIVA"], key=lambda r: r.id, reverse=True):

@@ -194,7 +194,9 @@ def test_conteo_fisico_diferencias(s, U):
     with pytest.raises(BusinessError, match="Recuente"):  # V8 (A06): diferencia mayor a la tolerancia
         inv.close_count(c, U("coord.almacen.mp"))
     inv.save_lines(c, U("coord.almacen.mp"), {str(line.id): {"conteo": "4", "peso_unitario": "3", "recuento": "4"}})
-    difs = inv.close_count(c, U("coord.almacen.mp"))
+    difs = inv.close_count(c, U("coord.almacen.mp"))  # V17: se envía a validar al Jefe de Logística
+    assert len(difs) == 1 and c.estado == "POR_VALIDAR"
+    difs = inv.validate_count(c, U("jefe.logistica"), True)
     s.commit()
     assert len(difs) == 1
     a = alerts_of(s, "INVENTARIO_DIFERENCIA")[0]
@@ -299,6 +301,9 @@ def test_matriz_permisos_reglas_documentadas(s):
         r = {rp.role_code for rp in s.query(RolePermission).filter_by(perm_code=perm)}
         # V14: el Gerente General Adjunto tiene el mismo poder que Gerencia General
         assert ("GERENCIA_GENERAL" in r) == ("GERENTE_GENERAL_ADJUNTO" in r), perm
+        # V17: la Jefatura de Operaciones tiene las facultades de la Jefatura de Logística
+        if "JEFE_LOGISTICA" in r:
+            r = r - {"JEFE_OPERACIONES"}
         return r - {"GERENTE_GENERAL_ADJUNTO"}
     # Q4: Gerencia General aprueba; Sistemas tiene acceso pero no aprueba
     assert roles_con("ov.cancelar") == {"COORD_VENTAS", "JEFE_VENTAS", "GERENCIA_GENERAL"}
@@ -308,7 +313,9 @@ def test_matriz_permisos_reglas_documentadas(s):
     assert roles_con("compras.aprobar_solicitud") == {"JEFE_LOGISTICA", "COORD_LOGISTICA", "COORD_ALMACEN", "COORD_ALMACEN_MP",
                                                       "GERENCIA_GENERAL"}
     assert roles_con("distribucion.aprobar_salida_discrepancia") == {"JEFE_LOGISTICA", "COORD_LOGISTICA", "GERENCIA_GENERAL"}
-    assert roles_con("reempaque.solicitar") == {"COORD_ALMACEN", "COORD_ALMACEN_MP", "SUPERV_ALMACEN", "GERENCIA_GENERAL"}
+    # V17: la Coordinación de Logística hace lo de los Supervisores de Almacén 1560 y 1524
+    assert roles_con("reempaque.solicitar") == {"COORD_ALMACEN", "COORD_ALMACEN_MP", "SUPERV_ALMACEN", "COORD_LOGISTICA",
+                                                "GERENCIA_GENERAL"}
     assert roles_con("calidad.certificado_revisar") == {"JEFE_CALIDAD", "SUPERV_CALIDAD", "GERENCIA_GENERAL"}
     assert roles_con("distribucion.confirmar_salida") == {"LIDER_ALMACEN", "GERENCIA_GENERAL"}
     # Q3: despacho parcial lo aprueba GO o Jefatura de Logística (y GG por acceso completo)

@@ -2359,3 +2359,99 @@ DEMO_RENOMBRE = {
     "vendedor1": ("Ejecutivo de Ventas 1", "Ejecutivo Comercial 1"),
     "vendedor2": ("Ejecutivo de Ventas 2", "Ejecutivo Comercial 2"),
 }
+
+# ---------------------------------------------------------------------------------------------------------------------
+# V17 (02-nov-2026): observaciones al módulo (numeración automática, seguimiento comercial, Jefatura de Operaciones,
+# Coordinación de Logística con el alcance de los supervisores, conteo validado por el Jefe de Logística, indicadores).
+V17 = "Observaciones al módulo del 02-nov-2026 (V17)"
+JOP = "JEFE_OPERACIONES"
+ROLES.append((JOP, "Jefatura de Operaciones", "Operaciones", V17,
+              "Aprueba el despacho parcial (con la Jefatura de Logística); ve la asistencia de todo el personal, el nivel de "
+              "servicio (OTIF, fill rate, a tiempo), los tiempos de respuesta y el desempeño de los equipos."))
+_V17_PERMS = [
+    ("asistencia.todas", "Ver la asistencia de todo el personal (todas las áreas)", "Gerencial", "consulta",
+     [JOP, "GERENCIA_GENERAL", GGA]),
+    ("asistencia.ver_area", "Ver la asistencia del personal de su propia área", "Almacén", "consulta",
+     ["COORD_LOGISTICA", "COORD_ALMACEN", "COORD_ALMACEN_MP", "SUPERV_ALMACEN"]),
+    ("calidad.formatos_revisar", "Revisión de formatos de Calidad, reportes y consolidado (exclusivo de Calidad)", "Calidad",
+     "exclusivo", ["JEFE_CALIDAD", "SUPERV_CALIDAD", "ASIST_CALIDAD"]),
+    ("conteo.validar", "Validar el conteo físico antes de actualizar el sistema (Jefe de Logística)", "Almacén", "aprobacion",
+     ["JEFE_LOGISTICA", "GERENCIA_GENERAL", GGA]),
+    ("indicadores.servicio", "Nivel de servicio del mes (OTIF, fill rate, a tiempo) con su detalle por OV", "Gerencial", "consulta",
+     ["COORD_LOGISTICA", "JEFE_LOGISTICA", JOP, "GERENCIA_GENERAL", GGA]),
+    ("desempeno.equipo", "Tiempos de respuesta por tipo de solicitud y desempeño del equipo operativo", "Gerencial", "consulta",
+     [JOP, "JEFE_LOGISTICA", "COORD_LOGISTICA", "COORD_ALMACEN", "COORD_ALMACEN_MP", "GERENCIA_GENERAL", GGA]),
+    ("expedientes.ver", "Expedientes agrupados por cliente y fecha de despacho", "Comercial", "consulta",
+     ["JEFE_VENTAS", "COORD_VENTAS", "ASIST_VENTAS", "EJECUTIVO_VENTAS", "GERENTE_COMERCIAL", "COORD_ALMACEN",
+      "COORD_ALMACEN_MP", "SUPERV_ALMACEN", "LIDER_ALMACEN", "COORD_LOGISTICA", "JEFE_LOGISTICA", JOP, "JEFE_CALIDAD",
+      "SUPERV_CALIDAD", "ASIST_CALIDAD", "COORD_DISTRIBUCION", "ASIST_DISTRIBUCION", "GERENCIA_GENERAL", GGA, "SISTEMAS"]),
+]
+for _code, _n, _m, _t, _roles in _V17_PERMS:
+    PERMISSIONS.append((_code, _n, _m, _t))
+    for _r in _roles:
+        ROLE_PERMISSIONS.setdefault(_r, []).append((_code, "DEFINIDO", V17))
+# la revisión de formatos de Calidad es exclusiva de Calidad: se retira de los demás perfiles el acceso al consolidado
+# (sigue con «calidad.ver» lo que no es revisión de formatos)
+# Coordinación de Logística: puede hacer todo lo que hacen el Supervisor de Almacén 1560 y el 1524; maneja todos los
+# almacenes salvo los de Producción
+_ya = {p for p, _, _ in ROLE_PERMISSIONS["COORD_LOGISTICA"]}
+for _r in ("COORD_ALMACEN", "COORD_ALMACEN_MP"):
+    for _p, _o, _f in ROLE_PERMISSIONS.get(_r, []):
+        if _p not in _ya:
+            ROLE_PERMISSIONS["COORD_LOGISTICA"].append((_p, _o, f"{V17}: lo que hacen los Supervisores de Almacén 1560 y 1524"))
+            _ya.add(_p)
+# los supervisores asignan el picking a su personal y al montacarguista
+for _r in ("SUPERV_ALMACEN",):
+    if not any(p == "picking.asignar" for p, _, _ in ROLE_PERMISSIONS[_r]):
+        ROLE_PERMISSIONS[_r].append(("picking.asignar", "DEFINIDO", f"{V17}: los supervisores asignan el picking"))
+# Jefatura de Operaciones: las facultades de la Jefatura de Logística, consulta de Almacén, Producción, Calidad y
+# Distribución y la aprobación del despacho parcial
+_jop = {p: (o, f"{V17}: Jefatura de Operaciones") for p, o, _ in ROLE_PERMISSIONS["JEFE_LOGISTICA"]}
+_modulos = {"Almacén", "Logística", "Producción", "Distribución", "Calidad", "Gerencial"}
+for _code, _n, _m, _t in PERMISSIONS:
+    if _t == "consulta" and _m in _modulos:
+        _jop.setdefault(_code, ("DEFINIDO", f"{V17}: consulta de las áreas de Operaciones"))
+for _p in ("ov.aprobar_parcial",):
+    _jop[_p] = ("DEFINIDO", f"{V17}: aprueba el despacho parcial (Jefatura de Logística o de Operaciones)")
+_jop.pop("conteo.validar", None)  # el conteo lo valida el Jefe de Logística
+ROLE_PERMISSIONS[JOP] = [(p, o, f) for p, (o, f) in _jop.items()]
+ALERT_TYPES += [
+    ("OV_RETRASO_EJECUTIVO", "OV atrasada o detenida (aviso al ejecutivo comercial)", "Comercial", "Estados de pedidos", "ALTA",
+     [], "DEFINIDO", V17, "Al ejecutivo comercial a cargo, en cuanto su OV se atrasa, se detiene o sale hoy sin estar preparada.", True),
+    ("CONTEO_POR_VALIDAR", "Conteo físico por validar", "Logística", "Inventario", "ALTA", ["JEFE_LOGISTICA"], "DEFINIDO", V17,
+     "El conteo terminado no actualiza el sistema ni SAP hasta que lo valida el Jefe de Logística.", True),
+]
+_V17_ALERTAS = [("TRASLADO_AUTORIZADO", [], ["COORD_DISTRIBUCION"]), ("OV_PARCIAL_APROBADO", [], ["COORD_VENTAS", "JEFE_VENTAS"]),
+                ("OV_DECISION_PARCIAL", [], [JOP])]
+ALERTAS_ROLES_CAMBIO += _V17_ALERTAS
+_cambios = {c: a for c, _q, a in _V17_ALERTAS}
+ALERT_TYPES[:] = [(c, n, a, g, p, list(r) + [x for x in _cambios.get(c, []) if x not in r], *rest)
+                  for c, n, a, g, p, r, *rest in ALERT_TYPES]
+_PUNTOS_ANTES = next(v for k, v, *_ in PARAMS if k == "puntos_movimiento")
+_PUNTOS_V17 = {**_PUNTOS_ANTES, "*": list(_PUNTOS_ANTES.get("*", [])) + ["Zona manual", "Almacén 1524", "Almacén 1560"]}
+_EQ_ANTES = next(v for k, v, *_ in PARAMS if k == "roles_equivalentes")
+_V17_CAMBIOS = [
+    ("parcial_aprobadores", [GGA, "JEFE_LOGISTICA"], ["JEFE_LOGISTICA", JOP],
+     f"{V17}: el despacho parcial lo aprueba la Jefatura de Logística o la de Operaciones"),
+    ("puntos_movimiento", _PUNTOS_ANTES, _PUNTOS_V17, f"{V17}: zonas manual, almacén 1524 y 1560"),
+    ("roles_equivalentes", _EQ_ANTES, {**_EQ_ANTES, JOP: ["JEFE_LOGISTICA"]},
+     f"{V17}: la Jefatura de Operaciones ve y atiende lo de la Jefatura de Logística"),
+]
+PARAMS_CAMBIO += _V17_CAMBIOS
+_NUEVOS = {k: n for k, _a, n, _f in _V17_CAMBIOS}
+PARAMS = [(k, _NUEVOS.get(k, v), *rest) for k, v, *rest in PARAMS]
+PARAMS += [
+    ("numeracion_prefijos", {"OV": "OV-", "OC": "OC-", "GUIA": "GS-"}, "dict", "Comercial",
+     "Prefijos de la numeración automática (OV del módulo, orden de compra y guía de contingencia). Los números no se "
+     "escriben a mano; al enviarse a SAP, la OV guarda también el número que asigna SAP.", "DEFINIDO", V17),
+    ("asistencia_areas_por_rol", {"JEFE_LOGISTICA": ["Logística", "Almacén", "Distribución"], "COORD_LOGISTICA": ["Logística", "Almacén"]},
+     "dict", "Turnos", "Áreas cuyo personal ve cada perfil en Asistencia (por defecto, la de su perfil). La Jefatura de "
+     "Operaciones y las Gerencias ven todas.", "PROPUESTO", f"{V17}: Almacén y Logística ven a su personal, no al de Producción"),
+    ("alcance_almacen_excepto", {"COORD_LOGISTICA": ["ALM-003", "PRO-*"]}, "dict", "Almacén",
+     "Perfiles que manejan todos los almacenes salvo los indicados (la Coordinación de Logística: todos menos los de "
+     "Producción).", "DEFINIDO", V17),
+    ("direccion_recojo", "", "str", "Comercial",
+     "Dirección del almacén donde el cliente recoge su pedido (OV con «recojo en almacén»). Si está vacío se muestra "
+     "«Almacén de Corporación Productiva».", "PENDIENTE", V17),
+]
+DEMO_USERS_V17 = [("jefe.operaciones", "Jefatura de Operaciones", JOP)]

@@ -158,7 +158,8 @@ def counts():
             base = db().get(PhysicalCount, int(f["base_id"])) if f.get("base_id") else None
             codigos = [x for x in f.get("lista", "").replace(",", "\n").splitlines() if x.strip()]
             holder["c"] = isvc.open_count(g.user, f.get("warehouse_code") or (base.warehouse_code if base else ""),
-                                          f.get("prefijo", "").strip().upper(), f.get("observacion", ""), base, codigos or None)
+                                          f.get("prefijo", "").strip().upper(), f.get("observacion", ""), base, codigos or None,
+                                          por_producto=f.get("por_producto") == "1")
         resp = act(_do, "Conteo abierto.", url_for("alm.counts"))
         if "c" in holder and holder["c"].id:
             return redirect(url_for("alm.count_detail", cid=holder["c"].id))
@@ -169,9 +170,17 @@ def counts():
 
 
 @bp.route("/conteos/<int:cid>", methods=["GET", "POST"])
-@perm_required("stock.conteo")
+@perm_required("stock.conteo", "conteo.validar")
 def count_detail(cid):
     c = db().get(PhysicalCount, cid) or abort(404)
+    back = url_for("alm.count_detail", cid=cid)
+    if request.method == "POST" and request.form.get("accion") == "agregar":  # V17: producto por producto
+        return act(lambda: isvc.add_products(c, g.user, request.form.getlist("producto"), request.form.get("lote", "").strip()),
+                   lambda n: f"{n} línea(s) agregada(s): registre lo contado.", back)
+    if request.method == "POST" and request.form.get("accion") in ("validar", "devolver"):  # V17: Jefe de Logística
+        return act(lambda: isvc.validate_count(c, g.user, request.form["accion"] == "validar", request.form.get("comentario", "")),
+                   "Conteo validado: se actualizó el sistema." if request.form["accion"] == "validar" else
+                   "Conteo devuelto para revisar.", back)
     if request.method == "POST":
         vals = {}
         for line in c.lines:
@@ -184,8 +193,12 @@ def count_detail(cid):
             isvc.save_lines(c, g.user, vals)
             if request.form.get("cerrar") == "1":
                 return isvc.close_count(c, g.user)
-        return act(_do, "Conteo guardado.", url_for("alm.count_detail", cid=cid))
-    return render_template("count_detail.html", c=c, recontar=isvc.needs_recount)
+        return act(_do, lambda r: "Conteo enviado al Jefe de Logística para su validación." if r is not None else "Conteo guardado.",
+                   url_for("alm.count_detail", cid=cid))
+    from ..models import Product
+    prods = list(db().execute(select(Product).order_by(Product.code)).scalars()) if c.estado == "ABIERTO" else []
+    return render_template("count_detail.html", c=c, recontar=isvc.needs_recount, prods=prods,
+                           puede_validar=isvc.can_validate(g.user))
 
 
 # ------------------------------- traslados ---------------------------------
@@ -299,6 +312,14 @@ def picking_schedule():
         ref = date.today()
     desde = ref if vista == "dia" else ref - timedelta(days=ref.weekday())
     hasta = ref if vista == "dia" else desde + timedelta(days=6)
+    if vista == "semana" and request.args.get("desde") and request.args.get("hasta"):  # V17: rango de fechas elegido
+        try:
+            desde, hasta = date.fromisoformat(request.args["desde"]), date.fromisoformat(request.args["hasta"])
+        except ValueError:
+            pass
+        if hasta < desde:
+            desde, hasta = hasta, desde
+        hasta = min(hasta, desde + timedelta(days=62))
     asigna = "picking.asignar" in g.perms
     wh = request.args.get("almacen") or ""
     rows = pk.schedule(g.user, desde, hasta, wh or None, solo_mios=not asigna)
@@ -331,8 +352,11 @@ def picking_task(tid):
         acc = f.get("accion")
         up = current_app.config["UPLOAD_DIR"]
         fn = {
-            "asignar": lambda: pk.assign(t, g.user, ([f.get("persona")] if f.get("modo") == "persona" else f.getlist("grupo"))
-                                         if f.get("modo") else f.getlist("user_id"), f_date("fecha"), f.get("comentario", "")),
+            # V17: filas «+» (persona y si reporta en el sistema)
+            "asignar": lambda: pk.assign(t, g.user, f.getlist("persona") if f.getlist("persona") else
+                                         (f.getlist("grupo") if f.get("modo") == "grupo" else f.getlist("user_id")),
+                                         f_date("fecha"), f.get("comentario", ""),
+                                         [p for p, r in zip(f.getlist("persona"), f.getlist("reporta")) if r == "1"]),
             "iniciar": lambda: pk.start(t, g.user, save_upload(request.files.get("foto"), up, f"picking{t.id}_ini")),
             # obs. demo v0.7: el auxiliar solo llena «Despachado und»; lote, fechas y bultos salen del stock reservado
             "registrar": lambda: pk.record(t, g.user, f.get("line_id"), f_float("cantidad", True), f.get("lote", "")),

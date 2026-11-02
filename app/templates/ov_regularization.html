@@ -10,8 +10,10 @@
 <details class="card" {{ 'open' if not rows }}><summary><b>{{ ic('plus') }} Registrar una OV a regularizar</b></summary>
 <form method="post" id="regform" style="margin-top:10px" data-borrador>{{ csrf() }}
 <div class="row">
-<div><label>N° de OV / documento</label><input name="numero" required></div>
-<div class="grow"><label>Cliente</label><select name="customer_id" required data-search><option value="">Elija el cliente</option>{% for c in customers %}<option value="{{ c.id }}">{{ c.nombre }} · {{ c.ruc }}</option>{% endfor %}</select></div>
+<div><label>N° de OV</label><input value="Lo asigna el sistema al guardar" disabled></div>
+<div class="grow"><label>Cliente</label><input id="reg_cliente" list="reg_clientes" required placeholder="Escriba nombre o RUC y elija de la lista" autocomplete="off"><input type="hidden" name="customer_id" id="reg_customer_id">
+<datalist id="reg_clientes">{% for c in customers %}<option value="{{ c.nombre }} · {{ c.ruc }}" data-id="{{ c.id }}"></option>{% endfor %}</datalist>
+<script>(function(){var t=document.getElementById('reg_cliente'),h=document.getElementById('reg_customer_id'),l=document.getElementById('reg_clientes');function u(){var o=[].find.call(l.options,function(x){return x.value===t.value;});h.value=o?o.dataset.id:'';t.setCustomValidity(o?'':'Elija un cliente de la lista');}t.addEventListener('input',u);t.addEventListener('change',u);})();</script></div>
 <div><label>Fecha del pedido (anterior a hoy)</label><input type="date" name="fecha_compromiso" max="{{ ayer.isoformat() }}" required></div>
 <div><label>Hora de cita</label><select name="hora_cita"><option value="">—</option>{% for h in horas %}<option>{{ h }}</option>{% endfor %}</select></div>
 <div><label>Ejecutivo comercial</label><select name="vendedor_id"><option value="">(—)</option>{% for v in vendedores %}<option value="{{ v.id }}" {{ 'selected' if v.id==user.id }}>{{ v.nombre }}</option>{% endfor %}</select></div>
@@ -37,7 +39,7 @@
 {% set gu = o.regularizacion.guia %}
 {% if gu %}<p class="small">{{ ic('file') }} Guía <b>{{ gu.numero }}</b> <a class="ibtn" href="{{ url_for('main.evidence', name=gu.archivo) }}" title="Ver guía" aria-label="Ver guía">{{ ic('eye') }}</a> · {{ gu.user }} {{ gu.ts|replace('T', ' ') }}</p>
 {% else %}<div class="pending-why">Falta la guía de lo que salió: sin guía no se descuenta el inventario.</div>
-<form method="post" enctype="multipart/form-data" class="row">{{ csrf() }}<input type="hidden" name="accion" value="guia"><input type="hidden" name="oid" value="{{ o.id }}"><div><label>N° de guía</label><input name="guia_numero" required size="12"></div><div class="grow"><label>Archivo de la guía</label><input type="file" name="guia_archivo" accept="image/*,.pdf" required></div><div><button class="small">Adjuntar guía</button></div></form>
+<form method="post" enctype="multipart/form-data" class="row">{{ csrf() }}<input type="hidden" name="accion" value="guia"><input type="hidden" name="oid" value="{{ o.id }}"><div><label>N° de guía</label><input value="Lo trae SAP (conciliación de despachos)" disabled size="28"></div><div class="grow"><label>Archivo de la guía</label><input type="file" name="guia_archivo" accept="image/*,.pdf" required></div><div><button class="small">Adjuntar guía</button></div></form>
 {% if can('ov.regularizar') %}<form method="post">{{ csrf() }}<input type="hidden" name="accion" value="pedir_guia"><input type="hidden" name="oid" value="{{ o.id }}"><button class="sec small">Pedir la guía a Distribución</button></form>{% endif %}{% endif %}
 <div class="row">{% if can('ov.regularizar_cerrar') and gu %}<button type="button" class="small" data-open="#dlg-cerrar-{{ o.id }}">{{ ic('check') }} La mercadería ya salió: descontar y cerrar</button>{% elif not can('ov.regularizar_cerrar') %}<span class="small muted">La cierran el Coordinador, el Jefe o el Gerente Comercial.</span>{% endif %}
 <button type="button" class="sec small" data-open="#dlg-liberar-{{ o.id }}">Aún no se atiende: pasar al flujo normal</button></div>

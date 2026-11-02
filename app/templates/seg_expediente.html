@@ -1,0 +1,14 @@
+{% extends "base.html" %}{% from "_m.html" import b %}
+{% block content %}<h1>Expediente: {{ c.nombre }} · despacho {{ fecha|d }}</h1>
+<p class="noprint"><a class="btn sec small" href="?certificados=producto">Certificados: uno por producto</a> <a class="btn sec small" href="?certificados=consolidado">Certificado consolidado (varios productos)</a> <a class="btn sec small" href="?certificados={{ modo }}&imprimir=1" target="_blank">Imprimir</a></p>
+<div class="tw"><table><tr><th>OV</th><th>Estado</th><th>Dónde está</th><th class="r">Productos</th><th class="r">Líneas</th><th>Retraso</th><th>Ejecutivo</th><th>Documentos</th></tr>
+{% for o in ovs %}<tr><td><a href="{{ url_for('com.order_detail', oid=o.id) }}">{{ o.numero }}</a>{% if o.sap_docnum %}<br><span class="small muted">SAP {{ o.sap_docnum }}</span>{% endif %}{% if o.modalidad_entrega == 'RECOJO' %}<br><span class="b">recojo</span>{% endif %}</td><td>{{ b(o.estado) }}</td><td>{{ area[o.id] }}</td>
+<td class="r">{{ avance[o.id].unidades }} %</td><td class="r">{{ avance[o.id].lineas }} %</td><td>{% if retraso[o.id] %}<span class="b ALTA">{{ retraso[o.id] }}</span>{% else %}—{% endif %}</td><td>{{ o.vendedor.nombre if o.vendedor else o.vendedor_nombre }}</td>
+<td class="small">{% for d in docs[o.id].adjuntos %}<a href="{{ url_for('main.evidence', name=d.archivo) if d.archivo else '#' }}">{{ d.nombre }}</a>{{ ', ' if not loop.last }}{% else %}—{% endfor %}{% if docs[o.id].facturas %} · {{ docs[o.id].facturas|length }} factura(s){% endif %}</td></tr>{% endfor %}</table></div>
+<h2>Certificados {{ '(uno por producto)' if modo != 'consolidado' else '(consolidado por producto)' }}</h2>
+{% if modo != 'consolidado' %}<ul>{% for x in certs %}<li><a href="{{ url_for('cal.certificate_detail', cid=x.id) }}">{{ x.numero }}</a> · {{ x.product_code }} {{ pd(x.product_code) }} · {{ b(x.estado) }}</li>{% else %}<li class="muted">Sin certificados emitidos para estas OV.</li>{% endfor %}</ul>
+{% else %}<div class="card doc"><h3>Certificado consolidado · {{ c.nombre }} · despacho {{ fecha|d }}</h3><table class="small"><tr><th>Producto</th><th>Certificados (lotes)</th><th>Estado</th></tr>
+{% for code, lst in certs %}<tr><td>{{ code }} {{ pd(code) }}</td><td>{% for x in lst %}<a href="{{ url_for('cal.certificate_detail', cid=x.id) }}">{{ x.numero }}</a>{{ ', ' if not loop.last }}{% endfor %}</td><td>{% for x in lst %}{{ b(x.estado) }} {% endfor %}</td></tr>{% else %}<tr><td colspan="3" class="muted">Sin certificados emitidos para estas OV.</td></tr>{% endfor %}</table>
+<p class="small muted">Reúne en un solo documento los certificados de todos los productos del despacho; cada certificado individual sigue disponible.</p></div>{% endif %}
+{% if imprimir %}<script>window.addEventListener('load',function(){window.print();});</script>{% endif %}
+{% endblock %}

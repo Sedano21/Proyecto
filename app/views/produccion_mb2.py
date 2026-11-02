@@ -150,7 +150,7 @@ def control():
 
 
 @bp.route("/asistencia", methods=["GET", "POST"])
-@perm_required("produccion.ver", "produccion.asistencia", "asistencia.area")
+@perm_required("produccion.ver", "produccion.asistencia", "asistencia.area", "asistencia.ver_area", "asistencia.todas")
 def attendance():
     fecha = f_date("fecha") or date.today()
     back = url_for("prod.attendance", fecha=fecha.isoformat())
@@ -163,11 +163,12 @@ def attendance():
         obs = {k[4:]: v for k, v in f.items() if k.startswith("obs_")}
         return act(lambda: asvc.register_day(g.user, fecha, marcas, obs), lambda n: f"Asistencia registrada ({n}).", back)
     from ..catalogs import PRODUCTION_LINES
-    area = asvc.area_of(g.user) or "Producción"
-    return render_template("attendance.html", fecha=fecha, workers=asvc.workers_of(g.user) if asvc.area_of(g.user) else
-                           list(db().execute(select(Worker).where(Worker.area == "Producción").order_by(Worker.linea, Worker.nombre)).scalars()),
+    # V17: Almacén y Logística ven solo su propio personal (no el de Producción); Jefatura de Operaciones, todo
+    visibles = asvc.visible_areas(g.user)
+    area = asvc.area_of(g.user) or ("todas las áreas" if visibles is None else ", ".join(sorted(visibles)) or "su área")
+    return render_template("attendance.html", fecha=fecha, workers=asvc.workers_of(g.user, ver=True),
                            dia=asvc.day(fecha), estados=asvc.states(), puede=asvc.can_register(g.user), area=area,
-                           resumen=asvc.summary(fecha - timedelta(days=29), fecha, area=area), lineas=PRODUCTION_LINES)
+                           resumen=asvc.summary(fecha - timedelta(days=29), fecha, areas=visibles), lineas=PRODUCTION_LINES)
 
 
 @bp.route("/productividad")

@@ -148,15 +148,18 @@ def order_new():
             if c is None:
                 raise BusinessError("Cliente no válido.")
             sid = fm.get("site_id", "")
-            entrega = osvc.resolve_delivery(c, sid if sid not in ("", "OTRO", "FISCAL") else None, fm.get("lugar_otro", ""),
-                                            fm.get("direccion", ""), fm.get("distrito", ""), fm.get("provincia", ""),
-                                            guardar=True, user=g.user)
-            if sid == "FISCAL" and not entrega["site_id"]:
-                entrega["lugar_entrega"] = "Dirección fiscal"
+            if fm.get("modalidad_entrega") == "RECOJO":  # V17: el cliente recoge en el almacén de la empresa
+                entrega = osvc.pickup_delivery()
+            else:
+                entrega = osvc.resolve_delivery(c, sid if sid not in ("", "OTRO", "FISCAL") else None, fm.get("lugar_otro", ""),
+                                                fm.get("direccion", ""), fm.get("distrito", ""), fm.get("provincia", ""),
+                                                guardar=True, user=g.user)
+                if sid == "FISCAL" and not entrega["site_id"]:
+                    entrega["lugar_entrega"] = "Dirección fiscal"
             from flask import current_app
             from ..services.finance import save_document
             oc = save_document(request.files.get("oc_archivo"), current_app.config["UPLOAD_DIR"], "oc")
-            o = osvc.create_order(g.user, fm.get("numero"), fm.get("customer_id"),
+            o = osvc.create_order(g.user, None, fm.get("customer_id"),
                                   f_date("fecha_compromiso", True), _lines_from_form(), urgente=f_bool("urgente"),
                                   comentarios=fm.get("comentarios", ""), hora_cita=fm.get("hora_cita", ""),
                                   cita_confirmada=f_bool("cita_confirmada"), vendedor_id=fm.get("vendedor_id") or None,
@@ -228,6 +231,8 @@ def order_detail(oid):
                            saldos=saldos, aprobadores=osvc.partial_approvers(), pendientes_parcial=osvc.partial_pending_roles(o),
                            parcial_modo=str(param("parcial_modo", "CUALQUIERA")).upper(), presol=presol,
                            horas=osvc.horas_cita(), penal=penalty_estimate(o),
+                           cumplimiento=__import__("app.services.seguimiento", fromlist=["x"]).customer_compliance(o.customer_id),
+                           saldo_lineas=__import__("app.services.seguimiento", fromlist=["x"]).pending_lines(o),
                            vida=lambda lot: options_svc._vida(lot, o), seguimiento=options_svc.progress(o),
                            ve_opciones=ve_opciones, cond_prod=cond_por_producto(o),
                            hay_pendiente=o.estado not in ("CANCELADA", "DESPACHADA", "ENTREGADA") and any(
@@ -290,7 +295,7 @@ def regularization():
                            url_for("com.regularization"))
             from flask import current_app
             from ..services.distribution import save_upload
-            return act(lambda: osvc.attach_regularization_guide(o, g.user, fm.get("guia_numero", ""), save_upload(
+            return act(lambda: osvc.attach_regularization_guide(o, g.user, "", save_upload(
                 request.files.get("guia_archivo"), current_app.config["UPLOAD_DIR"], f"guia_reg_{o.numero}")),
                 "Guía adjuntada: ya se puede cerrar la regularización.", url_for("com.regularization"))
         if fm.get("accion") in ("liberar", "cerrar", "corregir_fecha"):
@@ -316,7 +321,7 @@ def regularization():
                 raise BusinessError("Cliente no válido.")
             if not fm.get("motivo", "").strip():
                 raise BusinessError("Indique el motivo de la regularización.")
-            return osvc.create_order(g.user, fm.get("numero"), c.id, f_date("fecha_compromiso", True), _lines_from_form(),
+            return osvc.create_order(g.user, None, c.id, f_date("fecha_compromiso", True), _lines_from_form(),
                                      comentarios=fm.get("comentarios", ""), hora_cita=fm.get("hora_cita", ""),
                                      vendedor_id=fm.get("vendedor_id") or None, canal_precio=fm.get("canal_precio", ""),
                                      regularizacion=fm.get("motivo", ""))
@@ -405,6 +410,14 @@ def order_action(oid, accion):
                          "Solicitud de cambio de fecha enviada a Comercial."),
         "documento": (lambda: __import__("app.services.finance", fromlist=["x"]).attach_to_order(
             o, u, f.get("tipo"), _doc("ovdoc"), f.get("nombre", ""), f.get("observacion", "")), "Documento agregado al expediente."),
+        # V17: pago en el expediente, entrega por recojo en almacén y decisión sobre el saldo de un despacho incompleto
+        "pago": (lambda: _pago(), "Pago agregado al expediente; Finanzas lo confirma."),
+        "recojo": (lambda: __import__("app.services.seguimiento", fromlist=["x"]).register_pickup(
+            o, u, f.get("receptor", ""), f.get("documento", ""), _doc("recojo") if request.files.get("archivo") else ""),
+                   "Entrega registrada: el cliente recogió el pedido en almacén."),
+        "saldo": (lambda: __import__("app.services.seguimiento", fromlist=["x"]).resolve_balance(
+            db().get(SalesOrder, int(f.get("saldo_id") or 0)) or o, u, f.getlist("cerrar"), f_date("fecha_saldo"),
+            f.get("motivo", "")), "Saldo actualizado: las líneas cerradas no se enviarán; las demás salen en la fecha indicada."),
         "nota_credito": (lambda: __import__("app.services.finance", fromlist=["x"]).request_credit_note(
             o, u, f.get("motivo", ""), f_float("monto")), "Nota de crédito solicitada a Facturación y Finanzas."),
     }
@@ -413,8 +426,19 @@ def order_action(oid, accion):
         from flask import current_app
         from ..services.finance import save_document
         return save_document(request.files.get("archivo"), current_app.config["UPLOAD_DIR"], f"{prefix}_{o.numero}")
+
+    def _pago():
+        from ..services import finance as fin
+        arch = _doc("pago")
+        p = fin.report_payment(u, o.customer, f_date("fecha_pago", True), f.get("monto"), arch, None, f.get("medio", ""),
+                               f.get("operacion", ""), f"OV {o.numero}. {f.get('observacion', '')}".strip())
+        fin.attach_to_order(o, u, "PAGO", arch, f"Pago S/ {float(f.get('monto') or 0):,.2f} ({f.get('medio', '')})",
+                            f"Comprobante enviado a Finanzas para su confirmación. {f.get('operacion', '')}".strip())
+        return p
     if accion == "documento" and not ({"ov.modificar", "ov.crear", "distribucion.entrega", "calidad.registrar",
                                        "facturas.cargar", "nc.solicitar"} & g.perms):
+        abort(403)
+    if accion == "pago" and "pagos.reportar" not in g.perms:
         abort(403)
     if accion not in actions:
         abort(404)

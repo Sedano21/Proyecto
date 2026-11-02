@@ -94,14 +94,15 @@ def _avisar(t, ids, user):
                 extra_users=ids, creado_por=user, dedup_key=f"PICKING_ASIG:{t.id}:{','.join(map(str, sorted(ids)))}")
 
 
-def assign(t, user, user_ids, fecha=None, comentario=""):
-    """Asigna (o reasigna) el picking a una persona o a un grupo del mismo almacén."""
+def assign(t, user, user_ids, fecha=None, comentario="", reportantes=None):
+    """Asigna (o reasigna) el picking a una persona o a un grupo del mismo almacén. V17: los supervisores también
+    asignan (a su personal y al montacarguista); reportantes: del grupo, quién(es) registra(n) el avance en el sistema."""
     from .core import check_warehouse_scope
     if not has_perm(user, "picking.asignar"):
         raise BusinessError("El picking lo asigna el Líder Operativo o el Supervisor de Almacén.")
     if t.estado == "LISTO":
         raise BusinessError("El picking ya está listo para despacho.")
-    if user.role_code.startswith("COORD_ALMACEN"):
+    if user.role_code.startswith("COORD_ALMACEN") or user.role_code in ("SUPERV_ALMACEN", "COORD_LOGISTICA"):
         check_warehouse_scope(user, t.warehouse_code)
     ids = sorted({int(x) for x in user_ids if str(x).strip()})
     if not ids:
@@ -118,6 +119,8 @@ def assign(t, user, user_ids, fecha=None, comentario=""):
                             "agregue un refuerzo de emergencia en «Turnos del personal».")
     antes = list(t.asignados or [])
     t.asignados = ids
+    rep_ids = sorted({int(x) for x in (reportantes or []) if str(x).strip()} & set(ids))
+    t.reportantes = rep_ids if len(ids) > 1 else []
     if fecha:
         t.fecha = fecha
     t.asignado_por = user.id
@@ -130,7 +133,10 @@ def assign(t, user, user_ids, fecha=None, comentario=""):
 
 
 def _es_asignado(t, user):
-    return user.id in (t.asignados or []) or has_perm(user, "picking.asignar")
+    """Registra el avance quien fue asignado; si en el grupo se eligió quién reporta, solo esa(s) persona(s)."""
+    if has_perm(user, "picking.asignar"):
+        return True
+    return user.id in (t.reportantes or t.asignados or [])
 
 
 def start(t, user, foto):

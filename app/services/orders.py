@@ -157,6 +157,12 @@ def convert_sale_units(ln):
     return dict(ln, cantidad=sacos * kg, cantidad_venta=sacos, precio_unitario=precio / kg if precio else 0)
 
 
+def pickup_delivery():
+    """V17: OV de recojo en almacén: el cliente recoge el pedido en el almacén de la empresa (no va a ruta)."""
+    return {"site_id": None, "lugar_entrega": "Recojo en almacén", "modalidad": "RECOJO",
+            "direccion": (param("direccion_recojo", "") or "Almacén de Corporación Productiva"), "distrito": "", "provincia": ""}
+
+
 def resolve_delivery(customer, site_id=None, lugar="", direccion="", distrito="", provincia="", guardar=False, user=None,
                      exigir=True):
     """Lugar de entrega de la OV: un lugar registrado del cliente u 'otro' con su dirección. Dirección, distrito y
@@ -252,8 +258,9 @@ def create_order(user, numero, customer_id, fecha_compromiso, lines, urgente=Fal
     if origen == "MODULO" and not has_perm(user, "ov.crear"):
         raise BusinessError("Su rol no puede registrar OV.")
     numero = (numero or "").strip()
-    if not numero:
-        raise BusinessError("El número de OV es obligatorio.")
+    if not numero:  # V17: el número lo asigna el sistema (las OV de SAP traen el suyo)
+        from .numeracion import next_order_number
+        numero = next_order_number()
     if db().execute(select(SalesOrder).where(SalesOrder.numero == numero)).scalars().first():
         raise BusinessError(f"La OV {numero} ya existe.")
     _validate_header(customer_id, fecha_compromiso)
@@ -281,6 +288,7 @@ def create_order(user, numero, customer_id, fecha_compromiso, lines, urgente=Fal
                    comentarios=comentarios, hora_cita=hora_cita or c.horario_recepcion, cita_confirmada=bool(cita_confirmada),
                    direccion=entrega["direccion"], distrito=entrega["distrito"], provincia=entrega["provincia"],
                    lugar_entrega=entrega["lugar_entrega"], site_id=entrega["site_id"], vendedor_id=vend.id if vend else None,
+                   modalidad_entrega=entrega.get("modalidad", "ENTREGA"),
                    vendedor_nombre=vend.nombre if vend else vendedor_nombre, fecha_emision=fecha_emision or date.today(),
                    tipo_venta=tipo_venta or "", canal_precio=(canal_precio or "").strip(),
                    origen=origen, creado_por=user.id if user else None, corte=next_cutoff(),
@@ -729,7 +737,7 @@ def decide_partial(order, user, aprobar, comentario="", fecha_saldo=None):
     puede aprobar en nombre de ellos. Cualquier aprobador puede rechazar. El saldo no despachado se reprograma en una
     OV de saldo para una próxima entrega (fecha obligatoria)."""
     if not has_perm(user, "ov.aprobar_parcial"):
-        raise BusinessError("El despacho parcial lo aprueba Gerencia de Operaciones o Jefatura de Logística (Q3).")
+        raise BusinessError("El despacho parcial lo aprueba la Jefatura de Logística o la Jefatura de Operaciones.")
     if order.estado_stock == "COMPLETA":
         raise BusinessError("La OV está completa; no requiere despacho parcial.")
     if order.decision_parcial == "APROBADA":
@@ -787,7 +795,8 @@ def decide_partial(order, user, aprobar, comentario="", fecha_saldo=None):
     alerts.close_by_system(f"OV_DECISION_PARCIAL:{order.id}", "Despacho parcial aprobado por " + ", ".join(aprob))
     alerts.emit("OV_PARCIAL_APROBADO", f"Despacho parcial aprobado: OV {order.numero}",
                 f"Cobertura {order.cobertura_unidades}% unidades. Saldo reprogramado al {order.fecha_saldo:%d/%m/%Y}. "
-                "Se generó propuesta de ruta.", "SalesOrder", order.id, creado_por=user)
+                "Se generó propuesta de ruta.", "SalesOrder", order.id, creado_por=user,
+                extra_users=[order.vendedor_id] if order.vendedor_id else None)  # V17: al ejecutivo comercial a cargo
     from .distribution import active_stop, propose_routes
     from .stock import _after_evaluation
     _after_evaluation(order, user)  # certificado pre-elaborado y programación automática (TO-BE)
@@ -1166,8 +1175,10 @@ def attach_regularization_guide(order, user, numero, archivo):
     if order.estado not in ("REGULARIZADA", "REGULARIZACION_OBSERVADA"):
         raise BusinessError("La OV no está en regularización.")
     numero = (numero or "").strip().upper()
-    if not numero or not archivo:
-        raise BusinessError("Indique el número de la guía y adjunte el archivo.")
+    if not archivo:
+        raise BusinessError("Adjunte el archivo de la guía.")
+    if not numero:  # V17: el número no se escribe; lo trae la conciliación de despachos de SAP (guía de esa OV)
+        numero = str(((order.preguia or {}).get("sap") or {}).get("docnum") or "") or "POR CONCILIAR CON SAP"
     reg = dict(order.regularizacion or {})
     reg["guia"] = {"numero": numero[:40], "archivo": archivo, "user": user.nombre, "ts": now().isoformat(timespec="minutes")}
     order.regularizacion = reg

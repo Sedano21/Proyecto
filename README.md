@@ -16,7 +16,7 @@ python -m app.cli demo
 python run.py                                          # http://127.0.0.1:5000  · contraseña demo: Demo2026!
 ```
 
-Pruebas: `pip install -r requirements-dev.txt && python -m pytest tests -v` (419 pruebas; verificadas también en PostgreSQL 16 con TEST_DATABASE_URL).
+Pruebas: `pip install -r requirements-dev.txt && python -m pytest tests -v` (442 pruebas; verificadas también en PostgreSQL 16 con TEST_DATABASE_URL).
 
 ## Documentación entregada (`docs/`)
 
@@ -30,6 +30,7 @@ Pruebas: `pip install -r requirements-dev.txt && python -m pytest tests -v` (419
 | [29_RONDA_V14](docs/29_RONDA_V14.md) | Hora práctica, fotos con galería/cámara y «+», miniaturas; higiene del personal PHS-003 y de equipos PHS-001/002; reportes PDF/Excel por fecha o rango; muestreo de compras; precertificado y firma; calificación de inspecciones; capacidad real vs programada vs ejecutada; movimientos de granel y MP; Gerente General Adjunto; contactos por lugar de entrega |
 | [30_CONEXION_SAP_Y_PASO_A_PRODUCCION](docs/30_CONEXION_SAP_Y_PASO_A_PRODUCCION.md) | Cola de envíos a SAP sin duplicados ni sobrescritura, estado y alerta de conexión, túnel estable, diagnóstico, inventario sincerado y lista para pasar a la base real |
 | [31_RONDA_V16_PERFILES_Y_AVISOS](docs/31_RONDA_V16_PERFILES_Y_AVISOS.md) | Sin Gerencia de Operaciones (pasa al Gerente General Adjunto), Supervisores de Almacén 1560 y 1524, Jefe de Administración y Finanzas, ejecutivos comerciales, avisos en rojo y sonidos por urgencia |
+| [32_RONDA_V17_OBSERVACIONES](docs/32_RONDA_V17_OBSERVACIONES.md) | Numeración automática, inicio del ejecutivo, expedientes por cliente y despacho, recojo, saldo, Jefatura de Operaciones, conteo validado, nivel de servicio, tiempos de respuesta y desempeño |
 | [23_OBSERVACIONES_V7](docs/23_OBSERVACIONES_V7.md) | Observaciones del módulo V7: regularización, penalidades, informe de gestión comercial, catálogo, cotizaciones SAP, metas, proyección, turnos, movimientos, carga chofer→auxiliar, GEOSATELITAL |
 | [01_INVENTARIO_FUENTES](docs/01_INVENTARIO_FUENTES.md) | Los 30 archivos analizados, qué contiene cada uno y cómo se usó |
 | [02_ESPECIFICACION_CONSOLIDADA](docs/02_ESPECIFICACION_CONSOLIDADA.md) | Alcance consolidado, contradicciones, vacíos, dependencias, decisiones técnicas y **preguntas Q1–Q17** (Q1, Q3, Q4 resueltas) |

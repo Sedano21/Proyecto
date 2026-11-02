@@ -45,7 +45,7 @@ def dispatchable_orders(fecha=None, require_prepared=True):
     out = []
     usados = orders_in_active_route()
     for o in db().execute(q).scalars():
-        if o.id in usados:
+        if o.id in usados or o.modalidad_entrega == "RECOJO":  # V17: el cliente recoge en almacén: no va a ruta
             continue
         if not (o.estado_stock == "COMPLETA" or o.decision_parcial == "APROBADA") or o.retenida_precio:
             continue

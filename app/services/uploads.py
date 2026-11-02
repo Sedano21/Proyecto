@@ -1617,12 +1617,16 @@ def _c_despachos(b, user, opciones):
         from .guides import apply_sap_date  # V12: el cambio de fecha de la guía hecho en SAP llega al módulo
         for gnum, gf in g["fechas"].items():
             apply_sap_date(o, gnum, gf)
+        reg = dict(o.regularizacion or {})  # V17: la guía de una regularización toma su número de SAP
+        if g["guias"] and (reg.get("guia") or {}).get("numero") == "POR CONCILIAR CON SAP":
+            reg["guia"] = dict(reg["guia"], numero=", ".join(sorted(g["guias"]))[:40])
+            o.regularizacion = reg
         stops = list(s.execute(select(RouteStop).where(RouteStop.order_id == o.id)).scalars())
         guias_mod = {st.guia_numero for st in stops if st.guia_numero}
         fact_mod = {st.factura_numero for st in stops if st.factura_numero}
         if g["guias"] and g["guias"] != guias_mod:
             conc.add("DESPACHO", numero, "Guía", ", ".join(sorted(g["guias"])), ", ".join(sorted(guias_mod)) or "sin guía",
-                     "En marcha blanca la guía válida es la de SAP: registre su número en la ruta o explique la diferencia")
+                     "La guía válida es la de SAP: envíe la pre-guía a SAP desde la ruta (el número lo asigna SAP) o explique la diferencia")
         if g["facturas"] and g["facturas"] != fact_mod:
             conc.add("FACTURA", numero, "Factura", ", ".join(sorted(g["facturas"])), ", ".join(sorted(fact_mod)) or "sin factura")
         desp = defaultdict(float)

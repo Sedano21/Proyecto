@@ -299,8 +299,11 @@ def generate_order(r, user, numero_oc, fecha_prevista, warehouse_code):
     if needs_go_approval(r):
         raise BusinessError("La ejecución de la compra requiere la aprobación del Gerente General Adjunto "
                             "(pídala con las cotizaciones registradas).")
-    if not numero_oc.strip() or not fecha_prevista:
-        raise BusinessError("Indique número de orden y fecha prevista de recepción.")
+    if not fecha_prevista:
+        raise BusinessError("Indique la fecha prevista de recepción.")
+    if not (numero_oc or "").strip():  # V17: el número de la orden de compra lo asigna el sistema
+        from .numeracion import next_purchase_order_number
+        numero_oc = next_purchase_order_number()
     r.numero_oc = numero_oc.strip()
     r.fecha_prevista = fecha_prevista
     r.warehouse_code = warehouse_code

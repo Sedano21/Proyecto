@@ -41,7 +41,7 @@
 <div class="row"><div class="grow"><label>Producto / lote</label><select name="lot_id" required>{% for l in lotes %}<option value="{{ l.id }}">{{ l.product_code }} · {{ l.product.descripcion if l.product }} · {{ l.lote }}</option>{% endfor %}</select></div>
 <div><label>Tipo de certificado</label><select name="tipo"><option value="">Automático (el que requiere el producto)</option>{% for k, t in tipos.items() %}<option value="{{ k }}">{{ k }} – {{ t.nombre }}</option>{% endfor %}</select></div><div><button>Generar</button></div></div>
 <p class="small muted">Se genera en borrador con el formato, logos, encabezado y pie del certificado; Calidad lo revisa y aprueba.</p></form>{% endif %}</div>{% endif %}
-<h2>Revisión de formatos</h2>
+{% if can('calidad.formatos_revisar') %}<h2>Revisión de formatos</h2>
 <form method="get" class="card"><div class="row"><div><label>Día</label><input type="date" name="dia" value="{{ dia.isoformat() if dia }}"></div><div><label>o desde</label><input type="date" name="desde" value="{{ desde.isoformat() if desde and not dia }}"></div><div><label>hasta</label><input type="date" name="hasta" value="{{ hasta.isoformat() if hasta and not dia }}"></div>
 <div class="grow"><label>Tipos de formato (uno o varios)</label><div id="ftipos">{% for x in (sel or ['']) %}<div class="dynrow row"><div class="grow"><select name="formato" aria-label="Tipo de formato" style="width:100%"><option value="">(todos)</option>{% for k, n in nombres.items() %}<option value="{{ k }}" {{ 'selected' if k == x }}>{{ n }}</option>{% endfor %}</select></div><div><button type="button" class="ibtn" data-delrow aria-label="Quitar tipo">×</button></div></div>{% endfor %}</div>
 <button type="button" class="sec small" data-addrow="#ftipos">+ Agregar otro tipo</button></div>
@@ -54,4 +54,5 @@
 <div><button name="solo_mp" value="0">Todos los formatos</button> <button class="sec" name="solo_mp" value="1">Solo materia prima</button></div></div></form>
 {% if can('calidad.registrar') %}<form method="post" action="{{ url_for('cal.consolidated') }}" enctype="multipart/form-data" class="card">{{ csrf() }}<h3>Cargar una base anterior</h3><p class="small muted">Use el mismo formato del consolidado exportado (una hoja por formato con los mismos encabezados). Las filas ya cargadas no se duplican.</p>
 <div class="row"><div class="grow"><input type="file" name="archivo" accept=".xlsx" required aria-label="Consolidado"></div><div><button class="sec">Cargar</button></div></div></form>{% endif %}</div>
+{% endif %}
 {% endblock %}

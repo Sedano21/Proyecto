@@ -65,6 +65,7 @@ DEMO_USERS = [
     ("facturacion", "Facturación", "FACTURACION"),
     ("coord.finanzas", "Coordinación de Finanzas", "COORD_FINANZAS"),
     ("jefe.finanzas", "Jefe de Administración y Finanzas", "JEFE_ADMIN_FINANZAS"),
+    ("jefe.operaciones", "Jefatura de Operaciones", "JEFE_OPERACIONES"),
 ]
 
 

@@ -1,0 +1,13 @@
+{% extends "base.html" %}{% from "_m.html" import b %}
+{% block content %}<h1>Expedientes por cliente y despacho</h1>
+<p class="small muted">Las OV de un mismo cliente que salen el mismo día, juntas: avance, retrasos, documentos y certificados. Cada área puede verlas por orden o por cliente y despacho.</p>
+<form method="get" class="card row"><div><label>Desde</label><input type="date" name="desde" value="{{ f.desde }}"></div><div><label>Hasta</label><input type="date" name="hasta" value="{{ f.hasta }}"></div>
+<div class="grow"><label>Cliente</label><select name="cliente" data-search="Buscar cliente…"><option value="">(todos)</option>{% for c in clientes %}<option value="{{ c.id }}" {{ 'selected' if f.cliente == c.id|string }}>{{ c.nombre }}</option>{% endfor %}</select></div>
+{% if user.role_code != 'EJECUTIVO_VENTAS' %}<div><label>Ejecutivo comercial</label><select name="vendedor"><option value="">(todos)</option>{% for v in vendedores %}<option value="{{ v.id }}" {{ 'selected' if vend == v.id|string }}>{{ v.nombre }}</option>{% endfor %}</select></div>{% endif %}
+<div><button class="sec">Ver</button></div></form>
+<div class="tw"><table><tr><th>Despacho</th><th>Cliente</th><th class="r">OV</th><th class="r">kg</th><th class="r">Avance</th><th>Estados</th><th>Retrasos</th><th></th></tr>
+{% for gx in grupos %}<tr><td>{{ gx.fecha|d }}</td><td>{{ gx.cliente.nombre if gx.cliente }}</td><td class="r">{{ gx.ovs|length }}</td><td class="r">{{ gx.kg|n }}</td><td class="r">{{ gx.avance }} %</td>
+<td class="small">{% for e, n in gx.estados.items() %}{{ b(e) }} {{ n }} {% endfor %}</td><td>{% if gx.retrasos %}<span class="b ALTA">{{ gx.retrasos }}</span>{% else %}—{% endif %}</td>
+<td><a class="btn sec small" href="{{ url_for('seg.group', cid=gx.cliente.id, fecha=gx.fecha.isoformat()) }}">Ver expediente</a></td></tr>
+{% else %}<tr><td colspan="8" class="muted">Sin OV en el periodo.</td></tr>{% endfor %}</table></div>
+{% endblock %}

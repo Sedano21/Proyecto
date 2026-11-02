@@ -157,19 +157,29 @@ def _json_safe(analisis):
 
 
 # ----------------------------- solicitud preliminar ------------------------
-def create_request(product_code, cantidad, user, order=None, fecha_requerida=None, origen="OV", repack=None, observacion=""):
+def create_request(product_code, cantidad, user, order=None, fecha_requerida=None, origen="OV", repack=None, observacion="",
+                   customer_id=None, validar_ov=False):
+    """validar_ov (V17, solicitud manual): si se relaciona una OV, el producto a producir debe estar en esa OV."""
     if cantidad <= 0:
         raise BusinessError("La cantidad a producir debe ser mayor que cero.")
     p = db().get(Product, product_code)
     if p is None:
         raise BusinessError(f"Producto {product_code} no existe en el catálogo.")
+    if validar_ov and order is not None:
+        en_ov = {l.product_code for l in order.lines if l.activa}
+        if product_code not in en_ov:
+            raise BusinessError(f"{product_code} no está en la OV {order.numero} (productos de la OV: {', '.join(sorted(en_ov))}). "
+                                "Elija un producto de la OV o quite la OV relacionada.")
+        if customer_id and int(customer_id) != order.customer_id:
+            raise BusinessError("El cliente elegido no es el de la OV relacionada.")
     analisis = material_requirements(product_code, cantidad)
     v = active_bom()
     r = ProductionRequest(order_id=order.id if order else None, product_code=product_code, cantidad=cantidad,
                           fecha_requerida=fecha_requerida or (order.fecha_compromiso if order else None),
                           origen=origen, repack_id=repack.id if repack else None, analisis=analisis,
                           bom_version_id=v.id if v else None, creado_por=user.id if user else None,
-                          observacion=observacion)
+                          observacion=observacion,
+                          customer_id=(order.customer_id if order else (int(customer_id) if customer_id else None)))
     db().add(r)
     db().flush()
     audit(user, "PRODUCCION_SOLICITUD_CREADA", "ProductionRequest", r.id, {"producto": product_code, "cantidad": cantidad})

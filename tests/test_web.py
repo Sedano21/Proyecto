@@ -97,10 +97,11 @@ def test_flujo_web_ov_y_detalles(app):
                content_type="multipart/form-data", follow_redirects=True)
     html = r.get_data(as_text=True)
     # Comercial ve solo el avance de su pedido, no la evaluación de opciones (observaciones al demo v0.6)
-    assert r.status_code == 200 and "OV WEB-1" in html and "Seguimiento del pedido" in html
+    # V17: el número de la OV lo asigna el sistema (aunque el formulario envíe uno, se ignora)
+    assert r.status_code == 200 and "OV OV-000001" in html and "WEB-1" not in html and "Seguimiento del pedido" in html
     assert "Alternativas ante faltante" not in html and "Historial (auditoría)" not in html
     from app.models import SalesOrder
-    o = SessionLocal().query(SalesOrder).filter_by(numero="WEB-1").one()
+    o = SessionLocal().query(SalesOrder).filter_by(numero="OV-000001").one()
     assert c.get(f"/ov/{o.id}/opciones").status_code == 403
     ca = app.test_client()
     login(ca, "coord.almacen")

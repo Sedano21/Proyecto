@@ -146,6 +146,11 @@ def check_warehouse_scope(user, warehouse_code):
     rol (alternativos) los opera cualquiera con el permiso."""
     if user is None or not warehouse_code:
         return
+    excepto = (param("alcance_almacen_excepto", {}) or {}).get(user.role_code)
+    if excepto is not None:  # V17: maneja todos los almacenes salvo estos (Coord. de Logística: no los de Producción)
+        if wh_in(warehouse_code, excepto):
+            raise BusinessError(f"El almacén {warehouse_code} es de Producción: no lo maneja su rol.")
+        return
     scopes = warehouse_scopes()
     mios = scopes.get(user.role_code)
     if mios is None or wh_in(warehouse_code, mios):

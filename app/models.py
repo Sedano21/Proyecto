@@ -334,9 +334,11 @@ class PhysicalCount(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     warehouse_code: Mapped[str] = mapped_column(ForeignKey("warehouses.code"))
     fecha: Mapped[date] = mapped_column(Date, default=date.today)
-    estado: Mapped[str] = mapped_column(String(20), default="ABIERTO")  # ABIERTO / CERRADO
+    estado: Mapped[str] = mapped_column(String(20), default="ABIERTO")  # ABIERTO / POR_VALIDAR / CERRADO
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     observacion: Mapped[str] = mapped_column(Text, default="")
+    # V17: el conteo no actualiza el sistema ni SAP hasta que lo valida el Jefe de Logística {user, ts, comentario, ...}
+    validacion: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}")
     lines = relationship("PhysicalCountLine", back_populates="count", cascade="all, delete-orphan")
     warehouse = relationship("Warehouse")
 
@@ -393,6 +395,8 @@ class SalesOrder(Base):
     distrito: Mapped[str] = mapped_column(String(80), default="")
     provincia: Mapped[str] = mapped_column(String(80), default="")
     lugar_entrega: Mapped[str] = mapped_column(String(120), default="")  # almacén/punto de entrega del cliente
+    # V17: ENTREGA (en la dirección que indique el cliente) o RECOJO (el cliente recoge en el almacén de la empresa)
+    modalidad_entrega: Mapped[str] = mapped_column(String(10), default="ENTREGA", server_default="ENTREGA")
     site_id: Mapped[int | None] = mapped_column(ForeignKey("customer_sites.id"), nullable=True)
     hora_cita: Mapped[str] = mapped_column(String(20), default="")
     cita_confirmada: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -481,6 +485,8 @@ class PickingTask(Base):
     warehouse_code: Mapped[str] = mapped_column(String(20))
     fecha: Mapped[date] = mapped_column(Date)
     asignados: Mapped[list] = mapped_column(JSON, default=list)  # ids de usuario (persona o grupo)
+    # V17: del grupo, quién(es) reporta(n) en el sistema (vacío = cualquiera del grupo); lo elige el líder o el supervisor
+    reportantes: Mapped[list] = mapped_column(JSON, default=list, server_default="[]")
     asignado_por: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     estado: Mapped[str] = mapped_column(String(15), default="PROGRAMADO")  # PROGRAMADO / EN_PROCESO / LISTO
     inicio_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -626,6 +632,7 @@ class ProductionRequest(Base):
     __tablename__ = "production_requests"
     id: Mapped[int] = mapped_column(primary_key=True)
     order_id: Mapped[int | None] = mapped_column(ForeignKey("sales_orders.id"), nullable=True)
+    customer_id: Mapped[int | None] = mapped_column(ForeignKey("customers.id"), nullable=True)  # V17: cliente relacionado
     product_code: Mapped[str] = mapped_column(ForeignKey("products.code"))
     cantidad: Mapped[float] = mapped_column(Float)
     fecha_requerida: Mapped[date | None] = mapped_column(Date, nullable=True)
@@ -647,6 +654,7 @@ class ProductionRequest(Base):
     bom_revision: Mapped[dict] = mapped_column(JSON, default=dict)  # Producción confirma u observa la lista de materiales
     ts: Mapped[datetime] = mapped_column(DateTime, default=now)
     product = relationship("Product")
+    customer = relationship("Customer")
     order = relationship("SalesOrder")
     line = relationship("ProductionLine")
 

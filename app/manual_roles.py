@@ -298,3 +298,16 @@ ROLES["JEFE_ADMIN_FINANZAS"] = dict(ROLES["COORD_FINANZAS"], resumen=(
     "Mismo poder y autoridad que la Coordinación de Finanzas: puede hacer todo lo que ella hace. Las tareas de Finanzas no "
     "le suenan; si la Coordinación no las atiende en su plazo, se le alerta para que las atienda o las designe. "
     + ROLES["COORD_FINANZAS"]["resumen"]))
+
+# V17 (02-nov-2026): Jefatura de Operaciones
+ROLES["JEFE_OPERACIONES"] = {
+    "resumen": "Tiene las facultades de la Jefatura de Logística y la consulta de Almacén, Producción, Calidad y Distribución. "
+               "Aprueba el despacho parcial (junto con la Jefatura de Logística, basta una), ve la asistencia de todo el "
+               "personal, el nivel de servicio del mes (OTIF, fill rate y a tiempo), los tiempos de respuesta por tipo de "
+               "solicitud y el desempeño de los equipos.",
+    "no_hace": "Validar el conteo físico (lo valida el Jefe de Logística).",
+    "tareas": [ALERTA,
+               _t("Revisar el nivel de servicio del mes", "Almacén · Nivel de servicio (OTIF, fill rate)",
+                  "Pulse un indicador para ver las OV que lo componen (las que no cumplen, las tardías o las incompletas)."),
+               _t("Revisar tiempos de respuesta y desempeño", "Almacén · Tiempos de respuesta y desempeño",
+                  "Elija el periodo: verá cuánto tardan los movimientos y traslados por tipo de solicitud y lo que hizo cada persona.")]}

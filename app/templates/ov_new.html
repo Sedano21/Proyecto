@@ -6,7 +6,7 @@
 <div class="note small">Reglas de registro: la <b>unidad</b> la fija el código (MP, GR, SER en kilos; PT, AB, MQ en unidades){% if corte %}; después de las <b>{{ corte }}</b> no se registra <b>producto terminado</b> para despachar <b>mañana</b> (materia prima y granel no tienen corte; queda en borrador){% endif %}{% if exigir_oc %}; sin la <b>orden de compra</b> del cliente (o la plantilla del pedido por WhatsApp o correo) la OV queda como <b>borrador</b> y no se evalúa{% endif %}. Un prospecto o un cliente sin condición de pago aprobada por Finanzas solo admite <b>OV de muestra</b>.</div>
 <form method="post" class="card" id="ovform" enctype="multipart/form-data" data-borrador>{{ csrf() }}
 <div class="row">
-<div><label>N° de OV / documento</label><input name="numero" required></div>
+<div><label>N° de OV</label><input value="Lo asigna el sistema al guardar" disabled title="El número lo asigna el sistema; al enviarse a SAP se agrega el número de SAP"></div>
 <div class="grow"><label>Cliente</label><input name="cliente_txt" id="cliente_txt" list="clientes" required placeholder="Escriba nombre o RUC" autocomplete="off"><input type="hidden" name="customer_id" id="customer_id">
 <datalist id="clientes">{% for c in customers %}<option value="{{ c.nombre }} · {{ c.ruc }}" data-id="{{ c.id }}"></option>{% endfor %}</datalist></div>
 <div><label>Fecha comprometida de despacho</label><input type="date" name="fecha_compromiso" id="fecha_compromiso" min="{{ today.isoformat() }}" required></div>
@@ -16,15 +16,18 @@
 <div><label>Ejecutivo comercial responsable</label><select name="vendedor_id"><option value="">(—)</option>{% for v in vendedores %}<option value="{{ v.id }}" {{ 'selected' if v.id==user.id }}>{{ v.nombre }}</option>{% endfor %}</select></div>
 </div>
 <fieldset class="card"><legend>Entrega</legend>
-<div class="row">
+<div class="row"><div><label>Modalidad</label><select name="modalidad_entrega" id="modalidad"><option value="ENTREGA">Envío a la dirección que indique el cliente</option><option value="RECOJO">Recojo en almacén de Corporación Productiva</option></select></div></div>
+<div class="row" data-entrega>
 <div class="grow"><label>Lugar de entrega del cliente</label><select name="site_id" id="site_id"><option value="FISCAL">Dirección 1 (fiscal)</option><option value="OTRO">Otra dirección…</option></select></div>
 <div><label>Hora de cita (24 h)</label><select name="hora_cita" id="hora_cita"><option value="">Sin cita / horario del cliente</option>{% for h in horas %}<option>{{ h }}</option>{% endfor %}</select></div>
 <div><label><input type="checkbox" name="cita_confirmada" value="1"> Cita confirmada</label><label><input type="checkbox" name="urgente" value="1"> Urgente</label><label title="Sin precio: la OV queda detenida hasta la confirmación del Coordinador o Jefe Comercial"><input type="checkbox" name="muestra" id="muestra" value="1"> Muestra comercial (sin precio)</label></div>
 </div>
 <div id="otro" class="row" style="display:none"><div class="grow"><label>Nombre del lugar (opcional: almacén, tienda, sede)</label><input name="lugar_otro" id="lugar_otro"></div>
 <p class="small muted">La nueva dirección se guarda sola en la ficha del cliente como una dirección más (no reemplaza las anteriores) y aparecerá en esta lista en la próxima OV.</p></div>
-<div class="row"><div class="grow"><label>Dirección</label><input name="direccion" id="direccion" required></div><div><label>Distrito</label><input name="distrito" id="distrito" required></div><div><label>Provincia</label><input name="provincia" id="provincia" required></div></div>
+<div data-entrega><div class="row"><div class="grow"><label>Dirección</label><input name="direccion" id="direccion" required></div><div><label>Distrito</label><input name="distrito" id="distrito" required></div><div><label>Provincia</label><input name="provincia" id="provincia" required></div></div></div>
 <p class="small muted" id="horario_cli"></p>
+<p class="small muted" data-recojo hidden>El cliente recoge el pedido en el almacén: la OV no va a ruta; el Líder Operativo o el Supervisor registra la entrega en la OV cuando el pedido está preparado.</p>
+<script>(function(){var m=document.getElementById('modalidad');function u(){var r=m.value==='RECOJO';document.querySelectorAll('[data-entrega]').forEach(function(d){d.hidden=r;d.querySelectorAll('input,select').forEach(function(i){if(i.dataset.req===undefined)i.dataset.req=i.required?'1':'';i.required=!r&&i.dataset.req==='1';});});document.querySelectorAll('[data-recojo]').forEach(function(d){d.hidden=!r;});}m.addEventListener('change',u);u();})();</script>
 </fieldset>
 <label>Comentarios</label><textarea name="comentarios"></textarea>
 <h3>Líneas</h3>

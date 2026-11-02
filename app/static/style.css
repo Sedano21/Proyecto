@@ -550,3 +550,7 @@ a.ev-thumb img{height:110px;max-width:160px;object-fit:cover;border-radius:6px;b
 @keyframes latido{0%,100%{outline-color:#ff5252}50%{outline-color:#ffcdd2}}
 @media (prefers-reduced-motion:reduce){.reco-big.ALTA{animation:none}}
 @media print{.reco-big.MEDIA,.reco-big.ALTA,.reco-item.ALTA,.reco-item.MEDIA{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+/* V17: los indicadores del Inicio abren su detalle */
+a.kpi{display:block;color:inherit;text-decoration:none;cursor:pointer;transition:box-shadow .15s,transform .15s}
+a.kpi:hover,a.kpi:focus-visible{box-shadow:0 0 0 2px var(--cp-verde,#0f7a55) inset;transform:translateY(-1px)}
+a.kpi[href="#"]{cursor:default}a.kpi[href="#"]:hover{box-shadow:none;transform:none}

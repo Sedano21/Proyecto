@@ -20,7 +20,8 @@ def test_sin_gerencia_de_operaciones_y_sus_funciones_al_gga(s, U):
     gga = U("gerente.adjunto")
     for perm in ("terceros.aprobar", "ov.aprobar_parcial", "compras.aprobar_mayor_volumen"):
         assert has_perm(gga, perm), perm
-    assert GGA in param("parcial_aprobadores") and "GERENCIA_OPERACIONES" not in param("parcial_aprobadores")
+    # V17: luego el despacho parcial pasó a la Jefatura de Logística o la de Operaciones
+    assert "GERENCIA_OPERACIONES" not in param("parcial_aprobadores")
     assert GGA in s.get(AlertType, "TERCERO_POR_APROBAR").roles
     jefes = param("jefe_por_rol")
     assert jefes["JEFE_LOGISTICA"] == [GGA] and jefes[GGA] == ["GERENCIA_GENERAL"] and "GERENCIA_OPERACIONES" not in jefes
