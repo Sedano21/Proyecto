@@ -3,6 +3,8 @@ import secrets
 from datetime import date, datetime
 from functools import wraps
 
+from sqlalchemy.exc import SQLAlchemyError
+
 from flask import abort, flash, g, redirect, request, session, url_for
 
 from ..db import db
@@ -74,6 +76,13 @@ def act(fn, ok_msg, redirect_to, redirect_fn=None):
     except (ValueError, TypeError) as e:
         db().rollback()
         flash(f"Dato inválido: {e}", "error")
+    except SQLAlchemyError as e:  # V16: un dato que la base no acepta (texto muy largo, duplicado) no es un error 500
+        db().rollback()
+        import logging
+        logging.getLogger("operaciones").exception("Error de base de datos en una acción")
+        detalle = str(getattr(e, "orig", e)).strip().splitlines()[0][:300]
+        flash(f"No se pudo guardar: la base de datos rechazó un dato ({type(getattr(e, 'orig', e)).__name__}: {detalle}). "
+              "Nada se guardó. Envíe este mensaje a Sistemas.", "error")
     return redirect(redirect_to)
 
 

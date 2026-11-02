@@ -178,7 +178,8 @@ def rows_ov(sl):
             qty = float(ln.get("Quantity") or 0)
             filas.append({"Número de documento": o.get("DocNum"), "Estado": "Abierto", "Fecha de Emisión": _d(o.get("DocDate")),
                           "Fecha de Vencimiento": _d(o.get("DocDueDate")), "Vendedor": vend.get(o.get("SalesPersonCode"), ""),
-                          "Ruc": bp.get("FederalTaxID") or o.get("CardCode"), "Nombre de cliente": o.get("CardName"),
+                          "Ruc": _ruc_de(bp) or bp.get("FederalTaxID") or o.get("CardCode"),
+                          "Código de cliente": o.get("CardCode"), "Nombre de cliente": o.get("CardName"),
                           "Dirección": o.get("Address2") or bp.get("Address") or "", "Distrito": bp.get("County") or "",
                           "Provincia": bp.get("City") or "", "Código de Producto": ln.get("ItemCode"),
                           "Descripción de Producto": ln.get("ItemDescription"), "Solicitado": qty,
@@ -198,6 +199,13 @@ def rows_ov(sl):
     return filas
 
 
+def _doc_extranjero(bp):
+    """V16: identificación del cliente del extranjero: su FederalTaxID (letras y números) o, si no tiene, su código."""
+    import re
+    v = re.sub(r"[^A-Za-z0-9.\-]", "", str(bp.get("FederalTaxID") or "")).upper()
+    return v if len(v) >= 3 else str(bp.get("CardCode") or "").upper()
+
+
 def _ruc_de(bp):
     """RUC/DNI del socio de negocio: FederalTaxID (LicTradNum); si viene vacío o con otros caracteres, los dígitos del
     propio FederalTaxID o del código del cliente (en Perú es usual «C» + RUC, p. ej. C20123456789)."""
@@ -213,8 +221,11 @@ def rows_clientes(sl):
     out = []
     for bp in sl.get_all("BusinessPartners", {"$filter": "CardType eq 'cCustomer'",
                                               "$select": "CardCode,CardName,FederalTaxID,Address,City,County,Phone1,"
-                                                         "EmailAddress,ContactPerson"}):
-        out.append({"RUC": _ruc_de(bp), "Nombre de cliente": bp.get("CardName"), "Código de cliente": bp.get("CardCode"),
+                                                         "EmailAddress,ContactPerson,Country"}):
+        pais = (bp.get("Country") or "").strip().upper()
+        extranjero = pais not in ("", "PE")
+        out.append({"RUC": _doc_extranjero(bp) if extranjero else _ruc_de(bp), "País": pais if extranjero else "",
+                    "Nombre de cliente": bp.get("CardName"), "Código de cliente": bp.get("CardCode"),
                     "Dirección": bp.get("Address") or "", "Distrito": bp.get("County") or "", "Provincia": bp.get("City") or "",
                     "Teléfono": bp.get("Phone1") or "", "Correo electrónico": bp.get("EmailAddress") or "",
                     "Persona de contacto": bp.get("ContactPerson") or ""})
@@ -320,6 +331,8 @@ def test_connection(sl=None):
     sl = sl or ServiceLayer()
     r = sl.login()
     sl.logout()
+    if connection_state().get("ok") is False:  # V16: si respondió, se quita al momento el aviso de SAP sin conexión
+        _set_state(True)
     return {"version": r.get("Version", ""), "timeout_min": r.get("SessionTimeout")}
 
 

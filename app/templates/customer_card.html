@@ -1,6 +1,6 @@
 {% extends "base.html" %}{% from "_m.html" import b, csrf, ic, empty %}
 {% block content %}<p class="small"><a href="{{ url_for('com.customer_list') }}">← Clientes</a></p>
-<h1>{{ c.nombre }} <span class="muted mono" style="font-size:16px">RUC {{ c.ruc }}</span></h1>
+<h1>{{ c.nombre }} <span class="muted mono" style="font-size:16px">{{ 'Id. fiscal' if c.tipo_documento == 'EXTRANJERO' else (c.tipo_documento or 'RUC') }} {{ c.ruc }}{% if c.tipo_documento == 'EXTRANJERO' %} · {{ c.pais }}{% endif %}</span></h1>
 {% set est = p.cuenta %}
 <p>{% if c.es_prospecto %}<span class="b MEDIA">PROSPECTO</span> {% endif %}Condición de pago: {{ b(c.condicion_estado) }} {{ fin.CONDICIONES.get(c.condicion_pago, '') }}{% if c.condicion_pago == 'CREDITO' %} S/ {{ (c.credito_monto or 0)|n }} a {{ c.credito_dias }} días{% endif %}
 {% if can('finanzas.ver') %} · Estado de pago: {{ b(est.estado_pago) }}{% if est.deuda %} · <b class="{{ 'err' if est.deuda_vencida }}">Deuda S/ {{ est.deuda|n }}{% if est.deuda_vencida %} (vencida S/ {{ est.deuda_vencida|n }}){% endif %}</b>{% endif %}{% endif %}</p>

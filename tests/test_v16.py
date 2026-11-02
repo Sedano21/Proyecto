@@ -96,3 +96,103 @@ def test_avisos_en_rojo_y_sonidos_por_urgencia(app):
     login(c, "sistemas")
     html = c.get("/alertas/configuracion").get_data(as_text=True)
     assert "Probar urgente" in html
+
+
+# ----------------------------------------------------------- correcciones del 02-nov-2026 (servidor)
+def test_fechas_aaaammdd_de_la_consulta_de_sap():
+    from datetime import date
+    from app.services.uploads import _date
+    assert _date("20270411") == date(2027, 4, 11) and _date(20270411) == date(2027, 4, 11) and _date("20270411.0") == date(2027, 4, 11)
+
+
+def test_cliente_del_extranjero(s, U):
+    import pytest
+    from app.services import customers as csv_
+    from app.services.core import BusinessError
+    with pytest.raises(BusinessError, match="país"):
+        csv_.save_customer(U("coord.ventas"), None, {"ruc": "76.123.456-7", "tipo_documento": "EXTRANJERO", "nombre": "CLIENTE DEMO CL",
+                                                     "grupo": "INSTITUCIONAL"})
+    c = csv_.save_customer(U("coord.ventas"), None, {"ruc": "76.123.456-7", "tipo_documento": "EXTRANJERO", "pais": "Chile",
+                                                     "nombre": "CLIENTE DEMO CL", "grupo": "INSTITUCIONAL"})
+    assert c.tipo_documento == "EXTRANJERO" and c.pais == "CHILE" and c.ruc == "76.123.456-7" and not c.ubigeo
+    with pytest.raises(BusinessError, match="RUC: 11"):
+        csv_.save_customer(U("coord.ventas"), None, {"ruc": "123", "nombre": "X", "grupo": "INSTITUCIONAL", "ubigeo": "150101"})
+    from app.services import sap_sl
+    assert sap_sl._doc_extranjero({"FederalTaxID": "76.123.456-7", "CardCode": "CE001"}) == "76.123.456-7"
+    assert sap_sl._doc_extranjero({"FederalTaxID": "", "CardCode": "ce001"}) == "CE001"
+
+
+def test_una_verificacion_que_falla_no_detiene_las_demas_ni_a_sap(s, monkeypatch):
+    from app.services import scheduler
+    llamadas = []
+
+    def falla():
+        raise RuntimeError("dato raro")
+    pasos = [("sap_service_layer", lambda: llamadas.append("sap") or 1), ("rota", falla), ("otra", lambda: llamadas.append("otra") or 2)]
+    monkeypatch.setattr(scheduler, "_pasos", lambda user, today: pasos)
+    out = scheduler.run_checks()
+    assert llamadas == ["sap", "otra"] and out["rota"].startswith("error: RuntimeError") and out["otra"] == 2
+
+
+def test_probar_conexion_quita_el_aviso_de_sap(s, monkeypatch):
+    from app.services import sap_sl
+
+    class SL:
+        def login(self):
+            return {"Version": "1000160"}
+
+        def logout(self):
+            pass
+    sap_sl._set_state(False, "Connection refused")
+    s.commit()
+    assert sap_sl.connection_state()["ok"] is False
+    sap_sl.test_connection(SL())
+    assert sap_sl.connection_state()["ok"] is True
+
+
+def test_ov_de_sap_busca_al_cliente_por_su_codigo_y_no_cae_por_textos_largos(s, U, tmp_path):
+    import openpyxl
+    from app.models import Customer, SalesOrder
+    from app.services import uploads as up
+    c = s.query(Customer).first()
+    c.codigo_sap = "C-DEMO-1"
+    s.commit()
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "OVS"
+    ws.append(["Número de documento", "Estado", "Fecha de Emisión", "Fecha de Vencimiento", "Vendedor", "Ruc", "Código de cliente",
+               "Nombre de cliente", "Dirección", "Código de Producto", "Descripción de Producto", "Solicitado", "Moneda"])
+    ws.append([77001, "Abierto", "20261102", "20261110", "X" * 300, "000999", "C-DEMO-1", "OTRO NOMBRE", "D" * 400,
+               "PT-901", "Producto demo", 5, "SOL"])
+    ws.append([77002, "Abierto", "20261102", "20261110", "", "20999999991", "C-NUEVO-9", "CLIENTE DEMO NUEVO " + "Z" * 250,
+               "Av. " + "Y" * 400, "PT-901", "Producto demo", 3, "SOL"])
+    p = str(tmp_path / "ov.xlsx")
+    wb.save(p)
+    b = up.create_batch(U("coord.ventas"), "OV", p, "ov.xlsx")
+    up.confirm(b, U("coord.ventas"))
+    s.commit()
+    assert s.query(SalesOrder).filter_by(numero="77001").one().customer_id == c.id
+    nuevo = s.query(SalesOrder).filter_by(numero="77002").one().customer
+    assert nuevo.codigo_sap == "C-NUEVO-9" and len(nuevo.direccion) == 250 and len(nuevo.nombre) == 200
+
+
+def test_version_instalada_y_errores_de_base_como_mensaje(app, s, U):
+    from sqlalchemy.exc import IntegrityError
+    from app.views.common import act
+    assert app.config["APP_VERSION"].startswith("1.0.0-mb")
+    with app.test_request_context("/"):
+        def rompe():
+            raise IntegrityError("INSERT", {}, Exception("duplicate key value violates unique constraint"))
+        r = act(rompe, "ok", "/")
+        assert r.status_code == 302
+        from flask import get_flashed_messages
+        assert any("rechazó un dato" in m for m in get_flashed_messages())
+
+
+def test_textos_largos_se_recortan_en_vez_de_rechazar_el_guardado(s):
+    from app.models import Customer
+    c = s.query(Customer).first()
+    c.direccion = "Av. " + "X" * 500
+    s.commit()
+    s.refresh(c)
+    assert len(c.direccion) == 250

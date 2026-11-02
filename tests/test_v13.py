@@ -67,7 +67,11 @@ def test_bloqueado_solo_lo_libera_calidad_con_solicitud(s, U):
 def test_reservas_solo_disponibles(s, U):
     from app.services import quality_v13 as q
     from app.services.production import available_in
-    lot = _lot(s)
+    from app.models import StockLot
+    from app.services.stock import free_qty, lot_usable
+    # un lote que hoy suma a lo disponible (utilizable y con saldo libre); antes se tomaba el primero sin orden fijo
+    lot = next(x for x in s.query(StockLot).filter(StockLot.estado == "DISPONIBLE", StockLot.cantidad > 0).order_by(StockLot.id)
+               if lot_usable(x)[0] and free_qty(x) > 0)
     antes = available_in(lot.product_code)
     q.observe_lot(U("asist.calidad"), lot, "VENCIMIENTO")
     s.flush()

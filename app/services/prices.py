@@ -217,14 +217,14 @@ def check_order_prices(order, user=None):
             m, motivo = minimum_for(l.product, order.customer, order.canal_precio or None)
         if m is None:
             l.precio_minimo = None
-            l.precio_origen = "Sin precio mínimo: " + motivo
+            l.precio_origen = ("Sin precio mínimo: " + motivo)[:160]
             faltantes.append(motivo)
             continue
         ref, _ = price_for(l.product, order.customer, order.canal_precio or None)
         l.precio_minimo = ref
         estado, detalle = _compare(l, l.product, m, margen)
         sin = "" if l.precio_unitario else " (OV sin precio de venta)"
-        l.precio_origen = f"{ESTADO_TXT[estado]}{sin}: {detalle} (canal {m['canal']})"
+        l.precio_origen = f"{ESTADO_TXT[estado]}{sin}: {detalle} (canal {m['canal']})"[:160]
         if estado == "LIMITE" and l.precio_unitario and param("precio_limite_informativo", True):
             # V7: en el límite del mínimo solo se informa (no detiene la OV)
             en_limite.append(f"{l.product_code}: {ESTADO_TXT[estado].lower()} – {detalle}")

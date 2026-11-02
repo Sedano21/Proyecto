@@ -68,7 +68,8 @@ SPECS = {
                  "precio": ["P. Unitario SOLES", "Precio Unitario", "P. Unitario", "Precio unitario SOLES", "Precio"],
                  "tipo_venta": ["Tipo de Venta", "Tipo de venta"],
                  "forma_pago": ["Forma de pago", "Condición de pago", "Condicion de pago", "Términos de pago"],
-                 "moneda": ["Moneda"], "descuento": ["Descuento"], "tax_code": ["TaxCode", "Tax Code", "Código de impuesto"]},
+                 "moneda": ["Moneda"], "descuento": ["Descuento"], "tax_code": ["TaxCode", "Tax Code", "Código de impuesto"],
+                 "codigo_cliente": ["Código de cliente", "Código SN", "CardCode"]},
         "req": ["numero", "fecha_compromiso", "ruc", "cliente", "producto", "solicitado"],
     },
     "LIQUIDACION": {
@@ -126,7 +127,7 @@ SPECS = {
                  "contacto": ["Persona de contacto", "Contacto"],
                  "lugar": ["Lugar de entrega", "Destino", "Nombre dirección de entrega", "Almacén cliente"],
                  "dir_entrega": ["Dirección de entrega", "Dirección destino"], "distrito_entrega": ["Distrito de entrega"],
-                 "provincia_entrega": ["Provincia de entrega"]},
+                 "provincia_entrega": ["Provincia de entrega"], "pais": ["País", "Pais", "Country"]},
         "req": ["ruc", "nombre"],
     },
     "COSTOS": {
@@ -387,6 +388,10 @@ def _date(v):
     if isinstance(v, (int, float)) and 20000 < v < 80000:  # número de serie de fecha de Excel
         return date(1899, 12, 30) + timedelta(days=int(v))
     s = str(v).strip()
+    if s.endswith(".0") and s[:-2].isdigit():
+        s = s[:-2]
+    if len(s) == 8 and s.isdigit():  # V16: AAAAMMDD, como lo devuelven las consultas SQL del Service Layer
+        s = f"{s[:4]}-{s[4:6]}-{s[6:]}"
     for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%d/%m/%y", "%d-%m-%y"):
         try:
             d = datetime.strptime(s[:10] if fmt == "%Y-%m-%d" else s, fmt).date()
@@ -1053,19 +1058,23 @@ def _c_ov(b, user, opciones):
     errores = []
     for numero, items in grupos.items():
         d0 = items[0]
-        c = s.execute(select(Customer).where(Customer.ruc == _txt(d0["ruc"]))).scalars().first()
+        # V16: el cliente se busca primero por su código de SAP (CardCode) y luego por el RUC/documento
+        cod = _txt(d0.get("codigo_cliente"))
+        c = s.execute(select(Customer).where(Customer.codigo_sap == cod)).scalars().first() if cod else None
+        c = c or s.execute(select(Customer).where(Customer.ruc == _txt(d0["ruc"])[:20])).scalars().first()
         if c is None:
-            c = Customer(ruc=_txt(d0["ruc"]), nombre=_txt(d0["cliente"]), grupo=_txt(d0.get("grupo")),
-                         direccion=_txt(d0.get("direccion")), distrito=_txt(d0.get("distrito")),
-                         provincia=_txt(d0.get("provincia")), condicion_estado="APROBADA")  # cliente de SAP: condición aprobada
+            c = Customer(ruc=_txt(d0["ruc"])[:20], nombre=_txt(d0["cliente"])[:200], grupo=_txt(d0.get("grupo"))[:60],
+                         direccion=_txt(d0.get("direccion"))[:250], distrito=_txt(d0.get("distrito"))[:80],
+                         provincia=_txt(d0.get("provincia"))[:80], codigo_sap=cod[:30],
+                         condicion_estado="APROBADA")  # cliente de SAP: condición aprobada
             s.add(c)
             s.flush()
         cons = {}
         for d in items:
             um = "KILOGRAMO" if _txt(d.get("um")).upper().startswith("KILO") else "UNIDAD"
             tipo = _txt(d.get("tipo"))
-            _ensure_product(_txt(d["producto"]), _txt(d.get("descripcion")), tipo if tipo in ("PT", "GR", "MP") else None, um,
-                            _num(d.get("peso")))
+            _ensure_product(_txt(d["producto"])[:30], _txt(d.get("descripcion"))[:200], tipo if tipo in ("PT", "GR", "MP") else None,
+                            um, _num(d.get("peso")))
             ln = cons.setdefault(_txt(d["producto"]), {"product_code": _txt(d["producto"]), "cantidad": 0.0,
                                                         "precio_unitario": _num(d.get("precio")) or 0,
                                                         "descuento": 0.0, "tax_code": _txt(d.get("tax_code")).upper()})
@@ -1080,12 +1089,12 @@ def _c_ov(b, user, opciones):
             if o is None:
                 o = create_order(user, numero, c.id, _date(d0["fecha_compromiso"]), lines, comentarios=_txt(d0.get("comentarios")),
                                  vendedor_id=vend.id if vend else None, fecha_emision=_date(d0.get("fecha_emision")),
-                                 origen="CARGA_SAP", tipo_venta=_txt(d0.get("tipo_venta")),
-                                 vendedor_nombre=_txt(d0.get("vendedor")))
+                                 origen="CARGA_SAP", tipo_venta=_txt(d0.get("tipo_venta"))[:40],
+                                 vendedor_nombre=_txt(d0.get("vendedor"))[:120])
                 if not vend:
-                    o.vendedor_nombre = _txt(d0.get("vendedor"))
-                o.forma_pago = _txt(d0.get("forma_pago"))
-                o.moneda = (_txt(d0.get("moneda")) or "SOLES").upper()
+                    o.vendedor_nombre = _txt(d0.get("vendedor"))[:120]
+                o.forma_pago = _txt(d0.get("forma_pago"))[:60]
+                o.moneda = ((_txt(d0.get("moneda")) or "SOLES").upper())[:10]
                 creadas += 1
             else:
                 actual = {l.product_code: l.cantidad for l in o.lines if l.activa}
@@ -1241,7 +1250,13 @@ def _v_clientes(b):
             continue
         d, e, w = r.datos, [], []
         ruc = _txt(d.get("ruc"))
-        if not ruc.isdigit() or len(ruc) not in (8, 11):
+        from .customers import PAISES_PERU, check_document
+        if _txt(d.get("pais")).upper() not in PAISES_PERU:  # V16: cliente del extranjero
+            try:
+                check_document(ruc, "EXTRANJERO", _txt(d.get("pais")))
+            except BusinessError as ex:
+                e.append(str(ex))
+        elif not ruc.isdigit() or len(ruc) not in (8, 11):
             e.append(f"RUC/DNI inválido: '{ruc}'")
         if len(nombres[ruc]) > 1:
             e.append("El mismo RUC aparece con nombres distintos")
@@ -1262,13 +1277,19 @@ def _c_clientes(b, user, opciones):
             continue
         d = r.datos
         ruc = _txt(d.get("ruc"))
+        from .customers import PAISES_PERU
+        extranjero = _txt(d.get("pais")).upper() not in PAISES_PERU
+        if extranjero:
+            ruc = ruc.upper()
         c = s.execute(select(Customer).where(Customer.ruc == ruc)).scalars().first()
         if c is None:
-            c = Customer(ruc=ruc, nombre=_txt(d.get("nombre")), condicion_estado="APROBADA")  # cliente de SAP: condición aprobada
+            c = Customer(ruc=ruc, nombre=_txt(d.get("nombre"))[:200], condicion_estado="APROBADA")  # cliente de SAP: condición aprobada
             s.add(c)
             nuevos += 1
         else:
             act += 1
+        c.tipo_documento = "EXTRANJERO" if extranjero else ("DNI" if len(ruc) == 8 else "RUC")
+        c.pais = _txt(d.get("pais")).upper()[:60] if extranjero else "PERÚ"
         for k, col in (("nombre", "nombre"), ("codigo_sap", "codigo"), ("grupo", "grupo"), ("direccion", "direccion"),
                        ("distrito", "distrito"), ("provincia", "provincia"), ("telefono", "telefono"), ("contacto", "contacto")):
             v = _txt(d.get(col))

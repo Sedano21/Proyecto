@@ -37,22 +37,49 @@ def _ubigeo(valor, obligatorio):
     return v
 
 
+TIPOS_DOCUMENTO = {"RUC": "RUC (11 dígitos)", "DNI": "DNI (8 dígitos)",
+                   "EXTRANJERO": "Cliente del extranjero (identificación fiscal de su país)"}
+PAISES_PERU = ("", "PE", "PER", "PERU", "PERÚ")
+
+
+def check_document(numero, tipo=None, pais=None):
+    """V16: valida el documento del cliente según su tipo. Perú: RUC de 11 dígitos o DNI de 8. Extranjero: la
+    identificación fiscal de su país (letras, números, guion o punto; 3 a 20 caracteres) y el país obligatorio.
+    Devuelve (número, tipo, país)."""
+    import re
+    numero = (numero or "").strip()
+    pais = (pais or "").strip()
+    tipo = (tipo or "").strip().upper() or ("DNI" if len(numero) == 8 and numero.isdigit() else "RUC")
+    if tipo == "EXTRANJERO":
+        numero = numero.upper()
+        if not re.fullmatch(r"[A-Z0-9][A-Z0-9.\-/ ]{1,18}[A-Z0-9]", numero):
+            raise BusinessError("Identificación del cliente del extranjero: 3 a 20 letras o números (puede llevar guion o punto).")
+        if pais.upper() in PAISES_PERU:
+            raise BusinessError("Indique el país del cliente del extranjero.")
+        return numero, tipo, pais.upper()[:60]
+    if tipo == "DNI" and not (numero.isdigit() and len(numero) == 8):
+        raise BusinessError("DNI: 8 dígitos.")
+    if tipo == "RUC" and not (numero.isdigit() and len(numero) == 11):
+        raise BusinessError("RUC: 11 dígitos. Si el cliente es del extranjero, elija «Cliente del extranjero».")
+    if tipo not in TIPOS_DOCUMENTO:
+        raise BusinessError("Tipo de documento no válido.")
+    return numero, tipo, "PERÚ"
+
+
 def save_customer(user, c, datos):
     _require(user)
     nuevo = c is None
     if nuevo:
-        ruc = (datos.get("ruc") or "").strip()
-        if not ruc.isdigit() or len(ruc) not in (8, 11):
-            raise BusinessError("RUC (11 dígitos) o DNI (8 dígitos) obligatorio.")
+        ruc, tipo_doc, pais = check_document(datos.get("ruc"), datos.get("tipo_documento"), datos.get("pais"))
         if db().execute(select(Customer).where(Customer.ruc == ruc)).scalars().first():
-            raise BusinessError("El RUC ya existe.")
+            raise BusinessError("Ya existe un cliente con ese RUC o documento.")
         # ronda 23-oct-2026: el cliente creado en el módulo empieza como prospecto (pasa a cliente con una acción y su
         # orden de compra) y sin condición de pago: Finanzas la aprueba
-        c = Customer(ruc=ruc, nombre="", condicion_estado="SIN_SOLICITAR",
+        c = Customer(ruc=ruc, nombre="", condicion_estado="SIN_SOLICITAR", tipo_documento=tipo_doc, pais=pais,
                      es_prospecto=str(datos.get("prospecto", "1")) in ("1", "on", "true", "True"))
         db().add(c)
-    if nuevo or "ubigeo" in datos:
-        c.ubigeo = _ubigeo(datos.get("ubigeo"), nuevo)
+    if nuevo or "ubigeo" in datos:  # el ubigeo es peruano: no se exige al cliente del extranjero
+        c.ubigeo = _ubigeo(datos.get("ubigeo"), nuevo and c.tipo_documento != "EXTRANJERO")
     for k in CAMPOS:
         if k in datos and datos[k] is not None:
             setattr(c, k, str(datos[k]).strip())

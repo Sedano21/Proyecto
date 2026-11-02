@@ -175,8 +175,11 @@ class LeadTime(Base):
 class Customer(Base):
     __tablename__ = "customers"
     id: Mapped[int] = mapped_column(primary_key=True)
-    ruc: Mapped[str] = mapped_column(String(20), unique=True)
+    ruc: Mapped[str] = mapped_column(String(20), unique=True)  # RUC, DNI o identificación fiscal del extranjero
     nombre: Mapped[str] = mapped_column(String(200))
+    # V16: clientes del extranjero (RUC / DNI / EXTRANJERO) y su país
+    tipo_documento: Mapped[str] = mapped_column(String(12), default="RUC", server_default="RUC")
+    pais: Mapped[str] = mapped_column(String(60), default="PERÚ", server_default="PERÚ")
     grupo: Mapped[str] = mapped_column(String(60), default="")
     direccion: Mapped[str] = mapped_column(String(250), default="")
     distrito: Mapped[str] = mapped_column(String(80), default="")

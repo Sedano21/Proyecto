@@ -33,6 +33,27 @@ def init_engine(url: str):
     return engine
 
 
+def _recorta_textos(session, flush_context, instances):
+    """V16: red de seguridad. Un texto descriptivo (columna de 100 caracteres o más) que excede su largo se recorta en vez
+    de que PostgreSQL rechace todo el guardado (SQLite no controla el largo, por eso no se veía en la demostración).
+    Los códigos y números (columnas cortas) no se tocan: ahí un exceso sigue siendo un error a corregir."""
+    from sqlalchemy import String, inspect as _insp
+    for obj in list(session.new) + list(session.dirty):
+        try:
+            mapper = _insp(obj).mapper
+        except Exception:  # noqa: BLE001
+            continue
+        for col in mapper.columns:
+            if isinstance(col.type, String) and col.type.length and col.type.length >= 100:
+                key = mapper.get_property_by_column(col).key
+                v = getattr(obj, key, None)
+                if isinstance(v, str) and len(v) > col.type.length:
+                    setattr(obj, key, v[:col.type.length])
+
+
+event.listen(SessionLocal, "before_flush", _recorta_textos)
+
+
 def create_all():
     from . import models  # noqa: F401  (registra tablas)
     Base.metadata.create_all(engine)

@@ -54,6 +54,25 @@ def register_views(app):
     def _400(e):
         return render_template("error.html", code=400, msg=str(getattr(e, "description", e))), 400
 
+    @app.errorhandler(500)
+    def _500(e):
+        """V16: en vez de «Internal Server Error», una página con la hora y el detalle para Sistemas (el error completo
+        queda en el registro del servidor: journalctl -u operaciones)."""
+        from datetime import datetime as _dt
+        from ..db import db as _db
+        try:
+            _db().rollback()
+        except Exception:  # noqa: BLE001
+            pass
+        orig = getattr(e, "original_exception", None) or e
+        detalle = f"{type(orig).__name__}: {str(getattr(orig, 'orig', orig)).strip().splitlines()[0][:300] if str(orig).strip() else ''}"
+        try:
+            return render_template("error.html", code=500, msg=(
+                f"Ocurrió un error inesperado ({_dt.now():%d/%m/%Y %H:%M:%S}). No se guardó la acción. Envíe a Sistemas "
+                f"esta pantalla: {detalle}")), 500
+        except Exception:  # noqa: BLE001
+            return f"Error inesperado ({_dt.now():%d/%m/%Y %H:%M:%S}): {detalle}", 500
+
 
 # ------------------------------- acceso ------------------------------------
 @bp.route("/login", methods=["GET", "POST"])

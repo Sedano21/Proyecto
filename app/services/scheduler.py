@@ -18,11 +18,7 @@ from .purchasing import run_replenishment
 from .stock import ORDEN_ESTADOS_CERRADOS, expiring_lots
 
 
-def run_checks(user=None, today=None):
-    today = today or date.today()
-    out = {}
-    out["fases_importacion"] = check_phases(today)
-    # OV con fecha comprometida vencida y sin salida
+def _ov_retrasadas(today):
     n = 0
     for o in db().execute(select(SalesOrder).where(SalesOrder.fecha_compromiso < today,
                                                    SalesOrder.estado.notin_(ORDEN_ESTADOS_CERRADOS + ("EN_RUTA",)))).scalars():
@@ -30,32 +26,24 @@ def run_checks(user=None, today=None):
                     f"Estado {o.estado}; cobertura {o.cobertura_unidades}%. {o.motivo_detencion}", "SalesOrder", o.id,
                     extra_users=[o.vendedor_id] if o.vendedor_id else None, dedup_key=f"OV_RETRASO:{o.id}")
         n += 1
-    out["ov_retrasadas"] = n
-    from .prod_home import check_long_stops
-    out["paradas_prolongadas"] = check_long_stops()  # V12: paradas de línea que superan el tiempo configurado
-    from .demand_plan import check_purchase_deadlines
-    out["proyeccion_compras"] = check_purchase_deadlines(today)
-    from .quality_v13 import check_fumigation_release, check_observed, check_reprocess
-    out["lotes_observados"] = check_observed(today)
-    out["fumigaciones_por_liberar"] = check_fumigation_release(today)
-    out["reprocesos_vencidos"] = check_reprocess()
-    from .third_party import check_payments
-    out["terceros_pagos_vencidos"] = check_payments(today)
-    from .budget import check_consumption
-    out["presupuesto_consumo"] = check_consumption(today)
-    from .guides import check_route_planning
-    out["rutas_manana_sin_planificar"] = check_route_planning()
-    # Vencimiento próximo (solo si el umbral está configurado)
+    return n
+
+
+def _por_vencer(today):
     dias = param("dias_vencimiento_proximo")
+    if dias is None:
+        return "umbral no configurado"
     n = 0
-    if dias is not None:
-        for lot in expiring_lots(int(dias)):
-            alerts.emit("VENCIMIENTO_PROXIMO", f"Lote {lot.lote} de {lot.product_code} vence el {lot.fecha_venc:%d/%m/%Y}",
-                        f"Almacén {lot.warehouse_code}; cantidad {lot.cantidad:g}.", "StockLot", lot.id,
-                        dedup_key=f"VENC:{lot.id}")
-            n += 1
-    out["lotes_por_vencer"] = n if dias is not None else "umbral no configurado"
-    # Tiempo máximo de almacenamiento (riesgo de infestación) – configurable por producto
+    for lot in expiring_lots(int(dias)):
+        alerts.emit("VENCIMIENTO_PROXIMO", f"Lote {lot.lote} de {lot.product_code} vence el {lot.fecha_venc:%d/%m/%Y}",
+                    f"Almacén {lot.warehouse_code}; cantidad {lot.cantidad:g}.", "StockLot", lot.id,
+                    dedup_key=f"VENC:{lot.id}")
+        n += 1
+    return n
+
+
+def _tiempo_maximo(today):
+    """Tiempo máximo de almacenamiento (riesgo de infestación) – configurable por producto."""
     n = 0
     for p in db().execute(select(Product).where(Product.tiempo_max_almacen_dias.is_not(None))).scalars():
         lim = today - timedelta(days=p.tiempo_max_almacen_dias)
@@ -67,50 +55,70 @@ def run_checks(user=None, today=None):
                         f"{p.code}: ingreso {lot.fecha_admision:%d/%m/%Y}, máximo {p.tiempo_max_almacen_dias} días. "
                         "Evaluar fumigación/estado No utilizable.", "StockLot", lot.id, dedup_key=f"TMAX:{lot.id}")
             n += 1
-    out["lotes_tiempo_maximo"] = n
-    out["reposicion_solicitudes"] = len(run_replenishment(user, ref=today))
-    from .penalties import check_overdue as penalidades_vencidas
-    out["penalidades_vencidas"] = penalidades_vencidas(today)
-    from .inventory import check_cycle_counts
-    out["conteos_ciclicos"] = check_cycle_counts(today)
-    from .supply import check_scheduled_moves
-    out["movimientos_programados"] = check_scheduled_moves()
-    from .commercial_mgmt import check_goal_alerts
-    out["metas_atrasadas"] = check_goal_alerts(today)
-    from .prices import check_validity
-    out["listas_precio_por_vencer"] = check_validity(today)
-    out["cargas_desactualizadas"] = check_upload_freshness()
-    from .stock import activate_deferred, check_expired_reservations
-    out["ov_reserva_activada"] = activate_deferred(user, today)
-    out["reservas_vencidas"] = check_expired_reservations(user, today)
-    from .maps import check_active_routes
-    out["rutas_trafico"] = check_active_routes(today)
-    from .quality import fumigation_alerts
-    out["avisos_fumigacion"] = fumigation_alerts(today)
-    from .transfers import remind_arrivals
-    out["traslados_llegan_hoy"] = remind_arrivals(today)
-    from .costs import check_market_alerts
-    out["costo_vs_mercado"] = check_market_alerts(user)
-    from .customer_behavior import check_purchase_variations
-    out["variacion_compra_clientes"] = check_purchase_variations(user, today)
-    from .fleet import check_alerts as fleet_alerts
-    out["flota"] = fleet_alerts(today)
-    from .supply import check_no_rotation, check_order_risk
-    out["ov_riesgo_48_24h"] = check_order_risk()
-    out["stock_sin_rotacion_mensual"] = check_no_rotation(today)
-    from .maintenance import check_alerts as mant_alerts
-    out["mantenimiento_saneamiento"] = mant_alerts(today)
-    from .shifts import check_overdue
-    out["tareas_incumplidas_aviso_jefe"] = check_overdue()
-    from .shifts import check_end_of_shift
-    out["tareas_pendientes_fin_turno"] = check_end_of_shift()
-    from .commitment import check_pending
-    out["ov_sin_compromiso"] = check_pending()
-    from .finance import check_overdue as facturas_vencidas
-    out["facturas_vencidas"] = facturas_vencidas(today)
-    from .sap_sl import scheduled_sync
-    out["sap_service_layer"] = scheduled_sync()
-    out["correo"] = flush_outbox()
+    return n
+
+
+def _pasos(user, today):
+    """(nombre, función) de cada verificación. V16: SAP va primero, para que el estado de la conexión (aviso rojo) y la
+    cola de OV no dependan de las demás verificaciones."""
+    from . import (budget, commercial_mgmt, commitment, costs, customer_behavior, demand_plan, finance, fleet, guides,
+                   inventory, maintenance, maps, penalties, prices, prod_home, quality, quality_v13, sap_sl, shifts,
+                   stock, supply, third_party, transfers)
+    return [
+        ("sap_service_layer", lambda: sap_sl.scheduled_sync()),
+        ("fases_importacion", lambda: check_phases(today)),
+        ("ov_retrasadas", lambda: _ov_retrasadas(today)),
+        ("paradas_prolongadas", lambda: prod_home.check_long_stops()),  # V12: paradas que superan el tiempo configurado
+        ("proyeccion_compras", lambda: demand_plan.check_purchase_deadlines(today)),
+        ("lotes_observados", lambda: quality_v13.check_observed(today)),
+        ("fumigaciones_por_liberar", lambda: quality_v13.check_fumigation_release(today)),
+        ("reprocesos_vencidos", lambda: quality_v13.check_reprocess()),
+        ("terceros_pagos_vencidos", lambda: third_party.check_payments(today)),
+        ("presupuesto_consumo", lambda: budget.check_consumption(today)),
+        ("rutas_manana_sin_planificar", lambda: guides.check_route_planning()),
+        ("lotes_por_vencer", lambda: _por_vencer(today)),
+        ("lotes_tiempo_maximo", lambda: _tiempo_maximo(today)),
+        ("reposicion_solicitudes", lambda: len(run_replenishment(user, ref=today))),
+        ("penalidades_vencidas", lambda: penalties.check_overdue(today)),
+        ("conteos_ciclicos", lambda: inventory.check_cycle_counts(today)),
+        ("movimientos_programados", lambda: supply.check_scheduled_moves()),
+        ("metas_atrasadas", lambda: commercial_mgmt.check_goal_alerts(today)),
+        ("listas_precio_por_vencer", lambda: prices.check_validity(today)),
+        ("cargas_desactualizadas", lambda: check_upload_freshness()),
+        ("ov_reserva_activada", lambda: stock.activate_deferred(user, today)),
+        ("reservas_vencidas", lambda: stock.check_expired_reservations(user, today)),
+        ("rutas_trafico", lambda: maps.check_active_routes(today)),
+        ("avisos_fumigacion", lambda: quality.fumigation_alerts(today)),
+        ("traslados_llegan_hoy", lambda: transfers.remind_arrivals(today)),
+        ("costo_vs_mercado", lambda: costs.check_market_alerts(user)),
+        ("variacion_compra_clientes", lambda: customer_behavior.check_purchase_variations(user, today)),
+        ("flota", lambda: fleet.check_alerts(today)),
+        ("ov_riesgo_48_24h", lambda: supply.check_order_risk()),
+        ("stock_sin_rotacion_mensual", lambda: supply.check_no_rotation(today)),
+        ("mantenimiento_saneamiento", lambda: maintenance.check_alerts(today)),
+        ("tareas_incumplidas_aviso_jefe", lambda: shifts.check_overdue()),
+        ("tareas_pendientes_fin_turno", lambda: shifts.check_end_of_shift()),
+        ("ov_sin_compromiso", lambda: commitment.check_pending()),
+        ("facturas_vencidas", lambda: finance.check_overdue(today)),
+        ("correo", lambda: flush_outbox()),
+    ]
+
+
+def run_checks(user=None, today=None):
+    """Ejecuta las verificaciones. V16: cada una se guarda por separado; si una falla, se deshace solo esa, queda en el
+    registro del servidor (journalctl) con su detalle y las demás siguen (antes un error descartaba todas, también la
+    sincronización con SAP y el estado de la conexión)."""
+    import logging
+    today = today or date.today()
+    out = {}
+    for nombre, fn in _pasos(user, today):
+        try:
+            out[nombre] = fn()
+            db().commit()
+        except Exception as e:  # noqa: BLE001
+            db().rollback()
+            logging.getLogger("verificaciones").exception("Verificación «%s» falló", nombre)
+            out[nombre] = f"error: {type(e).__name__}: {str(e)[:200]}"
     return out
 
 

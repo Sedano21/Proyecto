@@ -71,3 +71,22 @@ sudo -u operaciones bash -c 'set -a; . /etc/operaciones/operaciones.env; cd /opt
   - sonidos en `app/static/app.js`;
   - colores en `app/static/style.css`.
 - Pruebas: `tests/test_v16.py`. Suite completa: 410 pasan y 1 se omite (SQLite); las de V16, V14 y flujos también en PostgreSQL 16.
+
+## 6. Correcciones tras la prueba en el servidor (02-nov-2026)
+
+| Lo que pasó | Causa | Corrección |
+|---|---|---|
+| El aviso rojo «SAP sin conexión» siguió aunque el túnel ya estaba activo, hasta las 11:20 | La sincronización con SAP se ejecutaba **al final** de las verificaciones automáticas. Si cualquier verificación anterior fallaba, se descartaba todo, también la sincronización y el estado de la conexión. Además, «Probar conexión» no actualizaba el estado. | SAP va primero. Cada verificación se guarda por separado y, si una falla, queda en el registro del servidor (`journalctl -u operaciones`) sin afectar a las demás. «Probar conexión» (y `sap-probar`) quita el aviso en cuanto SAP responde. |
+| «Internal Server Error» al autorizar la carga de OV | Reproducido en PostgreSQL: el texto del resultado de la validación de precio incluye el nombre del cliente y supera los 160 caracteres del campo (SQLite no controla el largo; por eso no apareció en la demostración). Además, el cliente se buscaba por un RUC distinto del normalizado en la carga de clientes. | La OV busca al cliente por su **código de SAP** (CardCode) y luego por el RUC normalizado. Recorta los textos al largo del campo y, como red de seguridad, todo texto descriptivo (campos de 100 caracteres o más) que exceda su largo se recorta en lugar de rechazar el guardado. Un error de base de datos ya no da «Internal Server Error»: se muestra el motivo y no se guarda nada. Los demás errores muestran una página con la hora y el detalle para Sistemas. |
+| Carga de stock #3 «validada con errores» (1337 filas) | La consulta de SAP devuelve las fechas como `20270411` (AAAAMMDD) y el módulo no las reconocía. | Se aceptan fechas AAAAMMDD. **Traiga el stock de nuevo** (`sap-traer STOCK sistemas`) y revise la carga nueva. |
+| Clientes del extranjero | El RUC exigía 11 dígitos. | Tipo de documento **RUC, DNI o Cliente del extranjero**. El cliente del extranjero lleva su identificación fiscal (3 a 20 letras o números, con guion o punto) y su **país**, y no exige ubigeo. La carga de clientes desde SAP usa el país de la ficha (`Country`): si no es PE, el cliente entra como extranjero. Migración `0029`. |
+| ¿El servidor tomó la última actualización? | — | Al pie del menú se ve la versión instalada, con el commit y su fecha (p. ej. «Versión 1.0.0-mb · a1b2c3d 02/11 16:40»). Debe coincidir con el último commit de la rama. |
+
+### Comprobar las actualizaciones automáticas en el servidor
+
+```bash
+systemctl list-timers operaciones-actualizar.timer     # próxima y última ejecución (cada 5 min)
+sudo tail -n 40 /var/log/operaciones-actualizar.log    # qué hizo la última actualización (o por qué no)
+git -C /opt/operaciones log -1 --format='%h %cd %s'    # commit instalado
+sudo journalctl -u operaciones -n 80 --no-pager        # errores de la aplicación (incluye verificaciones que fallan)
+```

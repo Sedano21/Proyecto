@@ -19,7 +19,7 @@ def create_app(config=None):
         SESSION_COOKIE_SAMESITE="Lax",
         SESSION_COOKIE_SECURE=os.environ.get("SESSION_COOKIE_SECURE", "0") == "1",
         DEMO_MODE=os.environ.get("DEMO_MODE", "1") == "1",
-        APP_VERSION=os.environ.get("APP_VERSION", "1.0.0-mb"),  # versión que se muestra y queda en las observaciones
+        APP_VERSION=os.environ.get("APP_VERSION", "1.0.0-mb") + _git_version(),  # versión que se muestra y queda en las observaciones
     )
     if config:
         app.config.update(config)
@@ -46,6 +46,19 @@ def create_app(config=None):
         from .services.scheduler import start_background
         start_background(None, interval, os.path.join(app.instance_path, "verificaciones.lock"))
     return app
+
+
+def _git_version():
+    """V16: commit instalado y su fecha (p. ej. « · a1b2c3d 02/11 16:40»), para comprobar que el servidor tomó la última
+    actualización del repositorio. Vacío si no hay git."""
+    import subprocess
+    raiz = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    try:
+        r = subprocess.run(["git", "-C", raiz, "log", "-1", "--format=%h %cd", "--date=format:%d/%m %H:%M"],
+                           capture_output=True, text=True, timeout=3)
+        return f" · {r.stdout.strip()}" if r.returncode == 0 and r.stdout.strip() else ""
+    except Exception:  # noqa: BLE001
+        return ""
 
 
 def _instance_secret(path):
