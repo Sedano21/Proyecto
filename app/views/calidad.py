@@ -10,7 +10,7 @@ from ..models import Certificate, Product, PurchaseRequest, QualityRecord, Stock
 from ..services import purchasing as buysvc
 from ..services import quality as qsvc
 from ..services.core import audit
-from .common import act, f_date, login_required, perm_required
+from .common import act, f_date, login_required, paginate, perm_required
 
 bp = Blueprint("cal", __name__, url_prefix="/calidad")
 
@@ -33,7 +33,7 @@ def home():
         q = q.where(QualityRecord.fecha >= desde)
     if hasta:
         q = q.where(QualityRecord.fecha <= hasta)
-    recs = list(db().execute(q.limit(300)).scalars())
+    recs = paginate(q, 50)  # V19
     muestras = list(db().execute(select(PurchaseRequest).where(PurchaseRequest.estado == "MUESTRA_EN_CALIDAD")).scalars())
     lotes = list(db().execute(select(StockLot).where(StockLot.cantidad > 0).order_by(StockLot.product_code, StockLot.lote)).scalars())
     fum = qsvc.fumigation_plan()
@@ -170,7 +170,7 @@ def certificates():
                    lambda c: f"Certificado {c.numero} generado (borrador).", url_for("cal.certificates"))
     rows = list(db().execute(select(Certificate).order_by(Certificate.id.desc())).scalars())
     lots = list(db().execute(select(StockLot).where(StockLot.cantidad > 0).order_by(StockLot.product_code)).scalars())
-    return render_template("certificates.html", rows=rows, lots=lots, tipos=qsvc.CERT_TIPOS)
+    return render_template("certificates.html", rows=paginate(rows), lots=lots, tipos=qsvc.CERT_TIPOS)
 
 
 @bp.route("/certificados/<int:cid>", methods=["GET", "POST"])

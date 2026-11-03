@@ -1,0 +1,14 @@
+{# V19: velo de carga con un gato negro durmiendo (SVG propio, sin imágenes externas) #}
+{% macro gato(clase='') %}<svg class="gato {{ clase }}" viewBox="0 0 200 130" role="img" aria-label="Cargando">
+<ellipse class="gato-sombra" cx="100" cy="118" rx="70" ry="7"/>
+<g class="gato-cuerpo">
+<path class="gato-negro" d="M38 104c-6-30 18-56 56-58 34-2 64 16 68 44 2 12-6 22-20 24H56c-10 0-16-4-18-10z"/>
+<path class="gato-negro gato-cola" d="M150 108c18 2 30-6 30-18 0-8-6-14-12-12-4 2-2 8 2 10 2 6-6 12-20 11z"/>
+<g class="gato-cabeza"><path class="gato-negro" d="M30 108c-10-2-16-12-14-24 1-8 6-14 12-17l-2-17 14 10c6-2 13-2 19 0l13-10-1 17c6 4 10 11 10 19 0 14-12 23-27 23H30z"/>
+<path class="gato-ojo" d="M34 88c3 3 8 3 11 0"/><path class="gato-ojo" d="M55 88c3 3 8 3 11 0"/>
+<path class="gato-nariz" d="M48 95l2 2 2-2z"/></g>
+<path class="gato-negro" d="M70 112c-2-6 4-10 12-10s12 4 10 10z"/>
+</g>
+<g class="gato-z"><text x="78" y="40">z</text><text x="94" y="26">z</text><text x="112" y="12">Z</text></g>
+</svg>{% endmacro %}
+{% macro velo() %}<div id="velo-carga" class="velo-carga" hidden role="status" aria-live="polite"><div class="velo-caja">{{ gato() }}<p data-texto>Cargando…</p><p class="small">Espere, no cierre ni vuelva a pulsar.</p></div></div>{% endmacro %}

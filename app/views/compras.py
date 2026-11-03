@@ -7,7 +7,7 @@ from ..models import DateChange, ImportPhase, ImportShipment, Product, PurchaseR
 from ..services import imports as isvc
 from ..services import purchasing as psvc
 from ..services.core import param
-from .common import act, f_bool, f_date, f_float, perm_required
+from .common import act, f_bool, f_date, f_float, paginate, perm_required
 
 bp = Blueprint("buy", __name__, url_prefix="/abastecimiento")
 
@@ -22,9 +22,10 @@ def purchases():
     q = select(PurchaseRequest).order_by(PurchaseRequest.id.desc())
     if estado:
         q = q.where(PurchaseRequest.estado == estado)
-    rows = list(db().execute(q).scalars())
+    pres = list(db().execute(q.where(PurchaseRequest.creado_por.is_(None))).scalars())  # presolicitudes automáticas
+    rows = paginate(q)
     prods = list(db().execute(select(Product).order_by(Product.code)).scalars())
-    return render_template("purchases.html", rows=rows, prods=prods, estado=estado, umbral=param("umbral_mayor_volumen"))
+    return render_template("purchases.html", rows=rows, pres_todas=pres, prods=prods, estado=estado, umbral=param("umbral_mayor_volumen"))
 
 
 @bp.route("/compras/<int:pid>", methods=["GET", "POST"])
@@ -100,7 +101,7 @@ def imports():
     rows = list(db().execute(select(ImportShipment).order_by(ImportShipment.id.desc())).scalars())
     prods = list(db().execute(select(Product).where(Product.tipo.in_(["MP", "GR", "INSUMO"])).order_by(Product.code)).scalars())
     whs = list(db().execute(select(Warehouse).order_by(Warehouse.prioridad)).scalars())
-    return render_template("imports.html", rows=rows, prods=prods, whs=whs)
+    return render_template("imports.html", rows=paginate(rows), prods=prods, whs=whs)
 
 
 @bp.route("/importaciones/<int:sid>", methods=["GET", "POST"])

@@ -15,3 +15,18 @@
 <div id="{{ id }}" class="prod-picker">{% for x in (filas or [{}]) %}{% set pv = x.producto if x is mapping else x %}<div class="dynrow row"><input name="productos" list="{{ id }}-dl" value="{{ pv or '' }}" placeholder="Escriba o elija del catálogo" autocomplete="off" class="grow" aria-label="Producto de interés"><input name="prod_kg" type="number" step="0.01" min="0" value="{{ x.kg_mes if x is mapping and x.kg_mes is not none else '' }}" placeholder="kg/mes" style="width:90px" aria-label="kg por mes"><input name="prod_soles" type="number" step="0.01" min="0" value="{{ x.soles_mes if x is mapping and x.soles_mes is not none else '' }}" placeholder="S/ mes" style="width:100px" aria-label="S/ por mes"><button type="button" class="ibtn" data-delrow title="Quitar" aria-label="Quitar producto">{{ ic('x') }}</button></div>{% endfor %}</div>
 <datalist id="{{ id }}-dl">{% for p in products %}<option value="{{ p.code }} · {{ p.descripcion }}"></option>{% endfor %}</datalist>
 <button type="button" class="sec small" data-addrow="#{{ id }}">{{ ic('plus') }} Agregar producto</button> <span class="small muted">Si indica la proyección por producto, el total es la suma.</span>{% endmacro %}
+{# V19: fallo del sistema con su código, en una ventana emergente que se abre sola #}
+{% macro fallo_modal(codigo, mensaje, detalle='') %}<dialog class="fallo-dlg" data-abrir role="alertdialog" aria-labelledby="fallo-t-{{ codigo }}">
+<div class="fallo-cab"><span class="fallo-ic" aria-hidden="true">!</span><h2 id="fallo-t-{{ codigo }}">Ocurrió un fallo en el sistema</h2></div>
+<p>{{ mensaje }}</p>{% if detalle %}<p class="small muted">{{ detalle }}</p>{% endif %}
+<div class="fallo-cod"><span>Código del fallo</span><b data-codigo>{{ codigo }}</b><button type="button" class="sec small" data-copiar="{{ codigo }}">Copiar</button></div>
+<p class="small muted">Envíe este código a Sistemas (también puede usar «Reportar observación»). Con el código, Sistemas ve el detalle completo del fallo.</p>
+<form method="dialog"><button>Entendido</button></form></dialog>{% endmacro %}
+{# V19: paginación (conserva los filtros; dentro de [data-lista] solo recarga la lista) #}
+{% macro paginacion(p, nombre='registros') %}{% if p and p.total > p.por or (p and p.page > 1) %}<nav class="pag" aria-label="Paginación">
+<span class="pag-info">{{ p.desde }}–{{ p.hasta }} de {{ p.total }} {{ nombre }}</span><span class="pag-nums">
+{% if p.page > 1 %}<a href="{{ p.url(p.page - 1) }}" aria-label="Página anterior">‹</a>{% endif %}
+{% for n in p.numeros() %}{% if n is none %}<span class="gap">…</span>{% elif n == p.page %}<span class="act" aria-current="page">{{ n }}</span>{% else %}<a href="{{ p.url(n) }}">{{ n }}</a>{% endif %}{% endfor %}
+{% if p.page < p.pages %}<a href="{{ p.url(p.page + 1) }}" aria-label="Página siguiente">›</a>{% endif %}
+<span class="pag-por">{% for x in (25, 50, 100) %}{% if x == p.por %}<span class="act" title="por página">{{ x }}</span>{% else %}<a href="{{ p.url(1, por=x) }}" title="{{ x }} por página">{{ x }}</a>{% endif %}{% endfor %}</span>
+</span></nav>{% elif p %}<nav class="pag"><span class="pag-info">{{ p.total }} {{ nombre if p.total != 1 or not nombre.endswith("s") else nombre[:-1] }}</span></nav>{% endif %}{% endmacro %}

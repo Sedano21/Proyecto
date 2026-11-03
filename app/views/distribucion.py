@@ -12,7 +12,7 @@ from ..services import despacho as dsp
 from ..services import distribution as dsvc
 from ..services.core import BusinessError
 from ..services.core import audit
-from .common import act, f_bool, f_date, f_float, perm_required
+from .common import act, f_bool, f_date, f_float, paginate, perm_required
 
 bp = Blueprint("dist", __name__, url_prefix="/distribucion")
 
@@ -315,7 +315,7 @@ def incidents():
     rows = list(db().execute(select(Incident).order_by(Incident.id.desc()).limit(200)).scalars())
     from ..catalogs import INCIDENT_GROUPS, INCIDENT_SUBTYPES
     from ..services.catalogs_helpers import incident_group_name, incident_type_name
-    return render_template("incidents.html", rows=rows, tipos=INCIDENT_TYPES, grupos=INCIDENT_GROUPS, subtipos=INCIDENT_SUBTYPES,
+    return render_template("incidents.html", rows=paginate(rows), tipos=INCIDENT_TYPES, grupos=INCIDENT_GROUPS, subtipos=INCIDENT_SUBTYPES,
                            nombre=incident_type_name, grupo_nombre=incident_group_name, paradas=paradas, dia=dia,
                            por_dia=bool(request.args.get("fecha")))
 

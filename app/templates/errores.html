@@ -1,0 +1,7 @@
+{% extends "base.html" %}{% from "_m.html" import empty, paginacion %}
+{% block content %}<div class="page-head"><div><h1>Errores del sistema</h1><p class="sub">Cada fallo inesperado tiene un código (el que el usuario ve en la ventana). Busque el código para ver qué pasó, dónde y a quién.</p></div></div>
+<form method="get" class="card row"><div class="grow"><label>Código, mensaje o ruta</label><input name="q" value="{{ q }}" placeholder="p. ej. E261103-101530-A3F2" type="search"></div><div><button class="sec">Buscar</button></div></form>
+<div class="card" data-lista id="lista-errores">{% if rows %}<div class="tw"><table class="small"><thead><tr><th>Código</th><th>Fecha y hora</th><th>Usuario</th><th>Ruta</th><th>Qué pasó</th></tr></thead><tbody>
+{% for e in rows %}<tr><td class="mono"><b>{{ e.codigo }}</b></td><td style="white-space:nowrap">{{ (e.ts or '')|replace('T', ' ') }}</td><td>{{ e.usuario or '—' }}</td><td class="mono">{{ e.metodo }} {{ e.ruta }}</td>
+<td>{{ e.resumen }}<details><summary class="small">Detalle técnico</summary><pre class="small" style="white-space:pre-wrap;max-height:320px;overflow:auto">{{ e.traza }}</pre></details></td></tr>{% endfor %}</tbody></table></div>
+{{ paginacion(rows, "fallos") }}{% else %}{{ empty('Sin fallos registrados' ~ (' con «' ~ q ~ '»' if q else '') ~ '.', 'check') }}{% endif %}</div>{% endblock %}

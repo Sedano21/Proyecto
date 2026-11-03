@@ -78,11 +78,17 @@ def act(fn, ok_msg, redirect_to, redirect_fn=None):
         flash(f"Dato inválido: {e}", "error")
     except SQLAlchemyError as e:  # V16: un dato que la base no acepta (texto muy largo, duplicado) no es un error 500
         db().rollback()
-        import logging
-        logging.getLogger("operaciones").exception("Error de base de datos en una acción")
-        detalle = str(getattr(e, "orig", e)).strip().splitlines()[0][:300]
-        flash(f"No se pudo guardar: la base de datos rechazó un dato ({type(getattr(e, 'orig', e)).__name__}: {detalle}). "
-              "Nada se guardó. Envíe este mensaje a Sistemas.", "error")
+        from ..services import errores
+        codigo, resumen = errores.registrar(e)
+        flash(f"{codigo}|No se pudo guardar: la base de datos rechazó un dato ({resumen}). Nada se guardó.", "fallo")
+    except Exception as e:  # noqa: BLE001  V19: todo fallo inesperado se muestra con su código en una ventana
+        from flask import current_app
+        if current_app.config.get("TESTING") and not current_app.config.get("CAPTURAR_FALLOS"):
+            raise  # en las pruebas los errores de programación no se ocultan
+        db().rollback()
+        from ..services import errores
+        codigo, resumen = errores.registrar(e)
+        flash(f"{codigo}|Ocurrió un error inesperado y no se guardó la acción ({resumen}).", "fallo")
     return redirect(redirect_to)
 
 
@@ -294,3 +300,73 @@ def install(app):
 def fail(msg, redirect_to):
     flash(msg, "error")
     return redirect(redirect_to)
+
+
+# ------------------------------------------------------------------ V19: paginación de listas
+class Pagina:
+    """Una página de una lista: items, número, total, páginas y enlaces (conserva los filtros de la URL)."""
+
+    def __init__(self, items, page, por, total):
+        self.items, self.page, self.por, self.total = items, page, por, total
+        self.pages = max(1, -(-total // por)) if por else 1
+        self.desde = (page - 1) * por + 1 if total else 0
+        self.hasta = min(page * por, total)
+
+    def __iter__(self):
+        return iter(self.items)
+
+    def __len__(self):
+        return len(self.items)
+
+    def __bool__(self):
+        return bool(self.items)
+
+    def __getitem__(self, i):
+        return self.items[i]
+
+    def url(self, page, **extra):
+        args = request.args.to_dict(flat=False)
+        args.pop("_dl", None)
+        args["page"] = [str(page)]
+        for k, v in extra.items():
+            args[k] = [str(v)]
+        from urllib.parse import urlencode
+        return f"{request.path}?{urlencode(args, doseq=True)}"
+
+    def numeros(self):
+        """Números a mostrar: 1 … 4 5 [6] 7 8 … 20 (None = salto)."""
+        out, last = [], 0
+        for n in range(1, self.pages + 1):
+            if n in (1, self.pages) or abs(n - self.page) <= 2:
+                if last and n - last > 1:
+                    out.append(None)
+                out.append(n)
+                last = n
+        return out
+
+
+POR_PAGINA = 25
+POR_PAGINA_OPCIONES = (25, 50, 100)
+
+
+def paginate(fuente, por=None):
+    """Pagina una consulta (select de SQLAlchemy) o una lista ya filtrada. Lee ?page= y ?por= de la URL.
+    Con una consulta solo trae de la base la página pedida (LIMIT/OFFSET), así la lista responde rápido."""
+    try:
+        por = int(request.args.get("por") or por or POR_PAGINA)
+    except ValueError:
+        por = POR_PAGINA
+    por = max(5, min(por, 200))
+    try:
+        page = max(1, int(request.args.get("page") or 1))
+    except ValueError:
+        page = 1
+    if isinstance(fuente, (list, tuple)):
+        total = len(fuente)
+        page = min(page, max(1, -(-total // por)))
+        return Pagina(list(fuente[(page - 1) * por: page * por]), page, por, total)
+    from sqlalchemy import func, select
+    total = db().execute(select(func.count()).select_from(fuente.order_by(None).subquery())).scalar() or 0
+    page = min(page, max(1, -(-total // por)))
+    items = list(db().execute(fuente.limit(por).offset((page - 1) * por)).scalars())
+    return Pagina(items, page, por, total)

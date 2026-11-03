@@ -11,7 +11,7 @@ from ..db import db
 from ..models import ProcessLiquidation, Product, ProductionLine, ProductionReport, StockLot
 from ..services import process_liq as pl
 from ..services.distribution import save_upload
-from .common import act, perm_required
+from .common import act, paginate, perm_required
 from .produccion import bp
 
 VER = ("produccion.liquidacion_proceso", "vista.total")
@@ -49,7 +49,7 @@ def process_liqs():
     lineas = [x.code for x in db().execute(select(ProductionLine).order_by(ProductionLine.code)).scalars()]
     productos = list(db().execute(select(Product.code, Product.descripcion).order_by(Product.code)).all())
     lotes = sorted({x for x in db().execute(select(StockLot.lote).where(StockLot.lote != "").distinct()).scalars() if x})[:800]
-    return render_template("liq_proceso_lista.html", rows=rows, partes=partes, usados=usados, lineas=lineas, a=a,
+    return render_template("liq_proceso_lista.html", rows=paginate(rows), partes=partes, usados=usados, lineas=lineas, a=a,
                            calc=pl.calc, header=pl.header, columnas=pl.COLUMNAS_LISTA, productos=productos, lotes=lotes,
                            servicio_pr=pl.SERVICIO_PR, servicio_pf=pl.SERVICIO_PF, producto_campos=pl.PRODUCTO,
                            hoy=date.today())

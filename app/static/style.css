@@ -605,3 +605,53 @@ a.kpi[href="#"]{cursor:default}a.kpi[href="#"]:hover{box-shadow:none;transform:n
 .cp-kpi.ok{--acc:var(--st-ok)}.cp-kpi.ok b{color:var(--st-ok)}.cp-kpi.warn{--acc:var(--st-warn);background:#fffbf3}.cp-kpi.warn b{color:var(--st-warn)}
 .cp-kpi.alert{--acc:var(--st-alert);background:#fff6f6}.cp-kpi.alert b{color:var(--st-alert)}
 .kpis.kpis-ts>.kpi b{font-size:18px;line-height:1.3;white-space:nowrap}
+
+/* ---------------------------------------------------------------- V19: velo de carga (gato negro durmiendo) */
+.velo-carga{position:fixed;inset:0;z-index:9999;background:rgba(30,36,40,.42);backdrop-filter:blur(1.5px);display:flex;align-items:center;justify-content:center;cursor:progress}
+.velo-carga[hidden]{display:none}
+.velo-caja{background:#fff;border-radius:18px;padding:22px 30px 18px;box-shadow:0 18px 50px rgba(0,0,0,.25);text-align:center;max-width:300px;width:calc(100% - 48px)}
+.velo-caja p{margin:6px 0 0;color:#2b3236;font-weight:600}.velo-caja p.small{color:#6b7479;font-weight:400}
+.gato{width:150px;height:auto;display:block;margin:0 auto}
+.gato .gato-negro{fill:#1d1f21}.gato .gato-sombra{fill:#e7eaec;animation:gato-sombra 2.6s ease-in-out infinite}
+.gato .gato-ojo{fill:none;stroke:#8fd18c;stroke-width:2.4;stroke-linecap:round}.gato .gato-nariz{fill:#e48aa0}
+.gato .gato-cuerpo{transform-origin:100px 116px;animation:gato-respira 2.6s ease-in-out infinite}
+.gato .gato-cola{transform-origin:150px 108px;animation:gato-cola 3.4s ease-in-out infinite}
+.gato .gato-z text{font:700 16px/1 system-ui,sans-serif;fill:#5b8f3c;opacity:0;animation:gato-z 2.6s ease-in infinite}
+.gato .gato-z text:nth-child(2){animation-delay:.6s;font-size:19px}.gato .gato-z text:nth-child(3){animation-delay:1.2s;font-size:23px}
+@keyframes gato-respira{0%,100%{transform:scale(1,1)}50%{transform:scale(1.03,1.06)}}
+@keyframes gato-sombra{0%,100%{transform:scaleX(1)}50%{transform:scaleX(1.04)}}
+@keyframes gato-cola{0%,100%{transform:rotate(0)}50%{transform:rotate(-7deg)}}
+@keyframes gato-z{0%{opacity:0;transform:translate(0,8px)}30%{opacity:1}100%{opacity:0;transform:translate(10px,-14px)}}
+@media (prefers-reduced-motion:reduce){.gato *{animation:none!important}.gato .gato-z text{opacity:1}}
+html.cargando,html.cargando *{cursor:progress!important}
+/* carga parcial: solo la lista que se actualiza */
+[data-lista]{position:relative}
+.lista-cargando{pointer-events:none;min-height:140px}
+.lista-cargando>*{opacity:.35;transition:opacity .15s}
+.lista-cargando::after{content:"";position:absolute;left:50%;top:50%;width:90px;height:60px;margin:-30px 0 0 -45px;
+ background:url("img/gato_carga.svg") center/contain no-repeat;animation:gato-respira 2.6s ease-in-out infinite;z-index:2}
+.lista-cargando::before{content:"Cargando…";position:absolute;left:0;right:0;top:calc(50% + 34px);text-align:center;font-weight:600;color:#2b3236;z-index:2}
+/* ventana de fallo con código */
+dialog.fallo-dlg{border:0;border-radius:16px;padding:22px 24px;max-width:480px;width:calc(100% - 32px);box-shadow:0 20px 60px rgba(0,0,0,.3)}
+dialog.fallo-dlg::backdrop{background:rgba(20,24,28,.5)}
+.fallo-cab{display:flex;gap:12px;align-items:center}.fallo-cab h2{margin:0;font-size:18px}
+.fallo-ic{flex:0 0 34px;height:34px;border-radius:50%;background:#fde8e6;color:#b42318;font-weight:800;display:flex;align-items:center;justify-content:center;font-size:20px}
+.fallo-cod{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;background:#f4f6f7;border:1px dashed #b9c2c7;border-radius:10px;padding:10px 12px;margin:12px 0}
+.fallo-cod span{color:#6b7479;font-size:13px}.fallo-cod b{font-family:ui-monospace,Consolas,monospace;font-size:17px;letter-spacing:.5px;color:#1d1f21}
+dialog.fallo-dlg form{text-align:right;margin-top:8px}
+/* paginación */
+.pag{display:flex;flex-wrap:wrap;gap:6px;align-items:center;justify-content:space-between;margin:12px 0 2px}
+.pag .pag-info{color:#6b7479;font-size:13px}.pag .pag-nums{display:flex;flex-wrap:wrap;gap:4px}
+.pag a,.pag span.act,.pag span.gap{min-width:34px;height:34px;padding:0 10px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;font-size:14px;text-decoration:none}
+.pag a{border:1px solid #d5dbde;color:#2b3236;background:#fff}.pag a:hover{border-color:#2f7d32;color:#2f7d32}
+.pag span.act{background:#2f7d32;color:#fff;font-weight:700}.pag span.gap{color:#8a9398}
+.pag select{width:auto;padding:4px 8px;height:34px}
+dialog.modal.wide{max-width:860px}.pag .pag-por{display:inline-flex;gap:4px;margin-left:10px;padding-left:10px;border-left:1px solid #d5dbde}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 10px}.chip{display:inline-flex;gap:6px;align-items:center;padding:4px 10px;border:1px solid #d5dbde;border-radius:999px;font-size:13px;color:#2b3236;background:#fff;text-decoration:none}.chip b{color:#2f7d32}.chip.on{background:#2f7d32;color:#fff;border-color:#2f7d32}.chip.on b{color:#fff}
+/* V19: fotos de inicio y fin del movimiento: miniatura debajo de la hora, sin superponerse (también en celular) */
+.mov-times{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px}
+.mov-times>div{padding-right:0;min-width:0}
+.mov-times a.mov-foto{position:static;display:flex;flex-direction:column;align-items:flex-start;gap:4px;margin-top:6px;font-size:12px;color:var(--cp-verde-700);text-decoration:none}
+.mov-times a.mov-foto img{width:100%;max-width:180px;height:96px;object-fit:cover;border-radius:8px;border:1px solid var(--line)}
+.mov-times a.mov-foto .ic{display:none}
+.mov-times a.mov-foto::after{content:"Ver foto"}

@@ -16,7 +16,7 @@ from ..services import uploads as usvc
 from ..services.core import BusinessError
 from ..services.stock import (BLOQUEADOS, ESTADOS_FISICOS, ESTADOS_LABEL, base_qty, change_lot_state, free_qty, product_stock_summary,
                               reserved_qty)
-from .common import act, f_date, f_float, fail, perm_required
+from .common import act, f_date, f_float, fail, paginate, perm_required
 
 bp = Blueprint("alm", __name__, url_prefix="/almacen")
 
@@ -35,7 +35,7 @@ def stock():
         stmt = stmt.where(StockLot.warehouse_code == wh)
     if est:
         stmt = stmt.where(StockLot.estado == est)
-    lots = list(db().execute(stmt.order_by(StockLot.product_code, StockLot.fecha_venc).limit(800)).scalars())
+    lots = paginate(stmt.order_by(StockLot.product_code, StockLot.fecha_venc), 50)  # V19: solo la página pedida
     codes = sorted({l.product_code for l in lots})
     resumen = {c: product_stock_summary(c) for c in codes[:300]}
     whs = list(db().execute(select(Warehouse).where(Warehouse.habilitado.is_(True)).order_by(Warehouse.prioridad, Warehouse.code)).scalars())
@@ -67,7 +67,7 @@ def uploads():
     propios = usvc.specs_for(g.user, area or None)
     tipos = set(propios) if area else set(usvc.specs_for(g.user))
     rows = [r for r in db().execute(select(UploadBatch).order_by(UploadBatch.id.desc()).limit(400)).scalars() if r.tipo in tipos]
-    return render_template("uploads.html", rows=rows[:200], specs=usvc.SPECS, propios=propios, area=area,
+    return render_template("uploads.html", rows=paginate(rows), specs=usvc.SPECS, propios=propios, area=area,
                            areas=[a for a in usvc.AREAS if usvc.specs_for(g.user, a)])
 
 
@@ -109,7 +109,17 @@ def upload_detail(bid):
     rows = b.rows
     if filtro == "problemas":
         rows = [r for r in rows if r.errores or r.advertencias or r.excluida or r.editada]
-    return render_template("upload_detail.html", bt=b, rows=rows[:1000], filtro=filtro, spec=usvc.SPECS[b.tipo])
+    # V19: resumen por tipo de aviso (p. ej. «Lote con puntos o comas al final»: 298) y filtro por ese tipo
+    from collections import Counter
+
+    def _tipo(m):
+        return m.split(":")[0].split("'")[0].strip()
+    tipos = Counter(_tipo(m) for r in rows for m in (r.errores or []) + (r.advertencias or []))
+    aviso = request.args.get("aviso", "")
+    if aviso:
+        rows = [r for r in rows if any(_tipo(m) == aviso for m in (r.errores or []) + (r.advertencias or []))]
+    return render_template("upload_detail.html", bt=b, rows=paginate(rows, 50), filtro=filtro, spec=usvc.SPECS[b.tipo],
+                           tipos=tipos.most_common(), aviso=aviso)
 
 
 @bp.route("/cargas/<int:bid>/fila/<int:rid>", methods=["POST"])
@@ -166,7 +176,7 @@ def counts():
         return resp
     rows = list(db().execute(select(PhysicalCount).order_by(PhysicalCount.id.desc())).scalars())
     whs = list(db().execute(select(Warehouse).order_by(Warehouse.prioridad)).scalars())
-    return render_template("counts.html", rows=rows, whs=whs)
+    return render_template("counts.html", rows=paginate(rows), whs=whs)
 
 
 @bp.route("/conteos/<int:cid>", methods=["GET", "POST"])
@@ -205,8 +215,7 @@ def count_detail(cid):
 @bp.route("/traslados")
 @perm_required("traslados.ver")
 def transfers():
-    rows = list(db().execute(select(Transfer).order_by(Transfer.id.desc())).scalars())
-    return render_template("transfers.html", rows=rows)
+    return render_template("transfers.html", rows=paginate(select(Transfer).order_by(Transfer.id.desc())))
 
 
 @bp.route("/traslados/<int:tid>")
@@ -271,7 +280,7 @@ def repacks():
     lots = list(db().execute(select(StockLot).where(StockLot.cantidad > 0, StockLot.estado.in_(["DISPONIBLE", "PENDIENTE_REVISION"]),
                                                     StockLot.product_code.like("P%")).order_by(StockLot.product_code)).scalars())
     prods = list(db().execute(select(Product).where(Product.tipo == "PT").order_by(Product.code)).scalars())
-    return render_template("repacks.html", rows=rows, lots=lots, prods=prods, tipos=REPACK_TYPES, free=free_qty)
+    return render_template("repacks.html", rows=paginate(rows), lots=lots, prods=prods, tipos=REPACK_TYPES, free=free_qty)
 
 
 @bp.route("/reempaques/<int:rid>", methods=["GET", "POST"])
@@ -421,7 +430,7 @@ def entries():
     q = select(Liquidation).where(Liquidation.fecha >= desde).order_by(Liquidation.fecha.desc(), Liquidation.id.desc())
     estado = request.args.get("estado", "")
     rows = [l for l in db().execute(q.limit(300)).scalars() if not estado or l.estado == estado]
-    return render_template("entries.html", rows=rows, desde=desde, estado=estado,
+    return render_template("entries.html", rows=paginate(rows), desde=desde, estado=estado,
                            estados=["REGISTRADA", "BLOQUEADA", "RECIBIDA_COMPLETA", "RECIBIDA_FALTANTE", "RECIBIDA_SOBRANTE"])
 
 

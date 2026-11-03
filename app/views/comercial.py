@@ -11,11 +11,11 @@ from ..services import production as psvc
 from ..services import purchasing as buysvc
 from ..services import repack as rsvc
 from ..services import transfers as tsvc
-from ..services.core import BusinessError
+from ..services.core import BusinessError, param
 from ..services.stock import alternatives_for_order, line_reserved, priority_key
 from ..services import options as options_svc
 from ..services.customer_conditions import by_product as cond_por_producto, for_customer as cond_for, penalty_estimate
-from .common import act, f_bool, f_date, f_float, perm_required
+from .common import act, f_bool, f_date, f_float, paginate, perm_required
 
 bp = Blueprint("com", __name__, url_prefix="/ov")
 
@@ -48,13 +48,12 @@ def orders():
         q = q.where(SalesOrder.estado == estado)
     if stock:
         q = q.where(SalesOrder.estado_stock == stock)
-    rows = list(db().execute(q).scalars())
     if g.user.role_code == "EJECUTIVO_VENTAS" and request.args.get("mias") != "0":
-        rows = [o for o in rows if o.vendedor_id == g.user.id]
-    rows.sort(key=priority_key)
+        q = q.where(SalesOrder.vendedor_id == g.user.id)
+    rows = sorted(db().execute(q).scalars(), key=priority_key)  # el orden por prioridad se calcula; luego se pagina
     pend = list(db().execute(select(OVChangeRequest).where(OVChangeRequest.estado == "PENDIENTE")).scalars())
     pend = [r for r in pend if osvc.can_authorize_change(g.user, r.order) or r.solicitado_por == g.user.id]
-    return render_template("ov_list.html", rows=rows, estado=estado or "", estado_stock=stock or "", pend=pend)
+    return render_template("ov_list.html", rows=paginate(rows), estado=estado or "", estado_stock=stock or "", pend=pend)
 
 
 @bp.route("/api/precio")
@@ -536,7 +535,7 @@ def prices():
     from ..models import Alert
     faltantes = list(db().execute(select(Alert).where(Alert.type_code == "PRECIO_FALTANTE", Alert.estado != "CERRADA")
                                   .order_by(Alert.id.desc()).limit(30)).scalars())
-    return render_template("prices.html", rows=rows[:600], total=len(rows), lista=lista, q=q, canal=canal,
+    return render_template("prices.html", rows=paginate(rows), total=len(rows), lista=lista, q=q, canal=canal,
                            canales=psvc.canales(), hist=hist, sku=request.args.get("sku", ""), metas=metas,
                            canal_granel=(param("lista_granel_canales", []) or ["-"])[0], faltantes=faltantes)
 
@@ -585,13 +584,16 @@ def customer_list():
     from ..services import prices as psvc
     a = request.args
     f = {"q": a.get("q", ""), "grupo": a.get("grupo", ""), "canal": a.get("canal", ""), "vendedor_id": a.get("vendedor_id", "")}
-    rows = csv_.search(f["q"], f["grupo"], f["canal"], f["vendedor_id"] or None)
-    todos = list(db().execute(select(Customer)).scalars())
+    # V19: solo se trae de la base la página pedida (25 por defecto)
+    rows = paginate(csv_.search_query(f["q"], f["grupo"], f["canal"], f["vendedor_id"] or None))
     vendedores = list(db().execute(select(User).where(User.role_code.in_(("EJECUTIVO_VENTAS", "COORD_VENTAS", "JEFE_VENTAS")))
                                    .order_by(User.nombre)).scalars())
+    grupos = sorted({x for x in db().execute(select(Customer.grupo).distinct()).scalars() if x})
+    canales = sorted({x for x in db().execute(select(Customer.canal_precio).distinct()).scalars() if x}
+                     | {c for c in (param("canal_precio_por_grupo", {}) or {}).values() if c})
     return render_template("customer_list.html", rows=rows, f=f, canal_de=psvc.channel_of, vendedores=vendedores,
-                           grupos=sorted({c.grupo for c in todos if c.grupo}), grupos_alta=csv_.customer_groups(),
-                           canales=sorted({psvc.channel_of(c) for c in todos if psvc.channel_of(c)}))
+                           grupos=grupos, grupos_alta=csv_.customer_groups(), canales=canales,
+                           abrir_alta=request.args.get("nuevo") == "1")
 
 
 @bp.route("/clientes/<int:cid>", methods=["GET", "POST"])

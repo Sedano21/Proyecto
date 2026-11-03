@@ -514,7 +514,14 @@ def _v_stock(b):
         if not _txt(d.get("lote")):
             w.append("Lote vacío: se registrará como 'SIN LOTE'")
         elif not re.match(r"^[A-Za-z0-9/\-]+$", _txt(d.get("lote"))):
-            w.append(f"Lote con caracteres inusuales: '{_txt(d.get('lote'))}' (verifique en SAP)")
+            lt = _txt(d.get("lote"))
+            if re.match(r"^[A-Za-z0-9/\-]+[.,]+$", lt):
+                # V19: en SAP hay lotes que se diferencian con puntos o comas al final (p. ej. 310000CA y 310000CA.);
+                # vienen así en la consulta de SAP y se conservan exactos, porque SAP los necesita iguales en guías y entregas
+                w.append(f"Lote con puntos o comas al final: '{lt}'. Así está registrado en SAP; se carga igual "
+                         "(consulte con Producción si es un error de digitación)")
+            else:
+                w.append(f"Lote con caracteres inusuales: '{lt}' (verifique en SAP)")
         try:
             q = _num(d.get("cantidad"))
             if q is None:

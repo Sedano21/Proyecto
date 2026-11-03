@@ -14,7 +14,7 @@ from ..services import opportunities as opsvc
 from ..services import parte as ptsvc
 from ..services.core import BusinessError, param
 from .comercial import bp
-from .common import act, f_date, perm_required
+from .common import act, f_date, paginate, perm_required
 
 
 def _vendedores():
@@ -47,7 +47,7 @@ def opportunities():
     rows = opsvc.listing(g.user, a.get("estado", ""), a.get("vendedor_id") or None)
     clientes = list(db().execute(select(Customer).order_by(Customer.es_prospecto.desc(), Customer.nombre)).scalars())
     products = list(db().execute(select(Product).where(Product.tipo.in_(["PT", "GR", "MP"])).order_by(Product.code)).scalars())
-    return render_template("opportunities.html", rows=rows, fun=opsvc.funnel(g.user, f_date("desde"), f_date("hasta")), products=products,
+    return render_template("opportunities.html", rows=paginate(rows), fun=opsvc.funnel(g.user, f_date("desde"), f_date("hasta")), products=products,
                            estados=opsvc.ESTADOS, clientes=clientes, sel=a.get("customer_id", ""),
                            tipos=param("tipos_accion_cliente", []) or [], vendedores=_vendedores(), f=a, today=date.today())
 
@@ -119,7 +119,7 @@ def quotes():
     origen = request.args.get("origen", "")
     if origen:
         rows = [q for q in rows if q.origen == origen]
-    return render_template("quotes.html", rows=rows, origen=origen, sap_ok=sap_sl.configured(),
+    return render_template("quotes.html", rows=paginate(rows), origen=origen, sap_ok=sap_sl.configured(),
                            escritura=bool(param("sap_escritura_cotizaciones", False)))
 
 
@@ -301,7 +301,7 @@ def catalog():
     if request.args.get("con_foto") == "1":
         rows = [p for p in rows if p.foto]
     from ..services.orders import unit_for
-    return render_template("catalog.html", rows=rows, q=q, unit_for=unit_for, con_foto=request.args.get("con_foto", ""),
+    return render_template("catalog.html", rows=rows, pagina=paginate(rows, 24), q=q, unit_for=unit_for, con_foto=request.args.get("con_foto", ""),
                            destacados=ctsvc.featured(), dest_txt=ctsvc.DESTACADOS, dest=request.args.get("destacado", ""))
 
 

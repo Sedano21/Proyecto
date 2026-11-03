@@ -8,7 +8,7 @@ from ..db import db
 from ..models import BOMLine, BOMVersion, Liquidation, Product, ProductionLine, ProductionRequest, SalesOrder, Warehouse
 from ..services import production as psvc
 from ..services.core import BusinessError
-from .common import act, f_bool, f_date, f_float, perm_required
+from .common import act, f_bool, f_date, f_float, paginate, perm_required
 
 bp = Blueprint("prod", __name__, url_prefix="/produccion")
 
@@ -178,7 +178,7 @@ def liquidations():
     rows = psvc.liquidations_list(desde, hasta, a.get("tipo", ""), a.get("producto", ""))
     whs = list(db().execute(select(Warehouse).where(Warehouse.uso == "PT")).scalars())
     from ..services.quality import lot_entries_vs_liquidation
-    return render_template("liquidations.html", rows=rows, whs=whs, merma=psvc.merma_real_pct, vs_calidad=lot_entries_vs_liquidation,
+    return render_template("liquidations.html", rows=paginate(rows), whs=whs, merma=psvc.merma_real_pct, vs_calidad=lot_entries_vs_liquidation,
                            f=a, desde=desde, total=sum(l.cantidad_completada or 0 for l in rows))
 
 
@@ -288,7 +288,7 @@ def reports():
     products = list(db().execute(select(Product).where(Product.tipo.in_(["PT", "GR", "MP", "C3"])).order_by(Product.code)).scalars())
     from ..models import ProductGTIN
     gtins = list(db().execute(select(ProductGTIN).order_by(ProductGTIN.product_code)).scalars())  # V18: EAN en lista o escrito
-    return render_template("prod_reports.html", rows=rows, lineas=[x for x in PRODUCTION_LINES if x[0] in visibles], hoy=date.today(), gtins=gtins,
+    return render_template("prod_reports.html", rows=paginate(rows), lineas=[x for x in PRODUCTION_LINES if x[0] in visibles], hoy=date.today(), gtins=gtins,
                            products=products, programados=programados, turnos=param("turnos_produccion", []) or [],
                            estados=ptsvc.ESTADOS_PARTE, no_editables=ptsvc.NO_EDITABLES, f=a, desde=desde,
                            formato_hora=(param("formato_hora", "24H") or "24H").upper(), fmt_hora=ptsvc.fmt_hora,

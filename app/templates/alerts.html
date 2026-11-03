@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% from "_m.html" import b, ic, empty %}
+{% extends "base.html" %}{% from "_m.html" import b, ic, empty, paginacion %}
 {% block content %}
 <div class="page-head"><div><h1>Alertas y tareas</h1><p class="sub">Las <b>tareas</b> requieren aprobación o atención; los <b>avisos</b> son informativos y se reconocen. Lo que su perfil no puede aprobar, desestimar ni asignar se le muestra como <b>información</b>.</p></div>
 {% if can('export.datos') %}<a class="btn sec" href="{{ url_for('main.export', entidad='alertas') }}">Exportar</a>{% endif %}</div>
@@ -12,7 +12,7 @@
   <div><label for="fa_agr">Agrupar por</label><select id="fa_agr" name="agrupar"><option value="">(no agrupar)</option><option value="area" {{ 'selected' if agrupar=='area' }}>Área + urgencia</option><option value="grupo" {{ 'selected' if agrupar=='grupo' }}>Grupo + urgencia</option><option value="tipo" {{ 'selected' if agrupar=='tipo' }}>Tipo + urgencia</option></select></div>
   <div><button>Aplicar</button> <a class="btn sec" href="{{ url_for('main.alerts') }}">Limpiar</a></div>
 </form>
-<div id="live-alerts" data-live><p class="small muted">{{ rows|length }} alerta(s). <span class="live-note">Se actualiza sola cuando otro destinatario interactúa.</span></p>
+<div id="live-alerts" data-live data-lista><p class="small muted">{{ rows.total if rows.total is defined else rows|length }} alerta(s). <span class="live-note">Se actualiza sola cuando otro destinatario interactúa.</span></p>
 {% macro tabla(lista) %}<div class="tw"><table class="stack"><thead><tr><th>Urgencia</th><th>Qué ocurrió</th><th>Naturaleza</th><th>Área</th><th>Estado</th><th>Responsable</th><th>Fecha</th></tr></thead><tbody>
 {% for a in lista %}{% set tarea = es_tarea(a) %}<tr>
 <td>{{ b(a.prioridad) }}</td>
@@ -22,6 +22,6 @@
 <td>{{ a.asignado.nombre if a.asignado else (a.asignado_rol or '—') }}</td><td class="small" style="white-space:nowrap">{{ a.creado_ts|d }}</td></tr>
 {% else %}<tr><td colspan="7">{{ empty('No hay alertas con estos filtros.', 'bell') }}</td></tr>{% endfor %}</tbody></table></div>{% endmacro %}
 {% if agrupar %}{% for key, lista in grupos.items() %}<div class="card"><div class="card-head"><h3>{{ key[0] }} {{ b(key[1]) }}</h3><span class="muted small">{{ lista|length }}</span></div>{{ tabla(lista) }}</div>{% else %}{{ empty('No hay alertas con estos filtros.', 'bell') }}{% endfor %}
-{% else %}<div class="card" style="padding:0;overflow:hidden">{{ tabla(rows) }}</div>{% endif %}
+{% else %}<div class="card" style="padding:0;overflow:hidden">{{ tabla(rows) }}</div>{{ paginacion(rows, "alertas") }}{% endif %}
 </div>
 {% endblock %}

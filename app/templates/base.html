@@ -10,7 +10,7 @@
 </head>
 <body{% if user %} data-alertas="{{ url_for('main.alerts_status') }}"{% endif %}>
 {% include "_icons.html" %}
-{% from "_m.html" import ic %}
+{% from "_m.html" import ic, fallo_modal %}{% from "_carga.html" import velo %}
 {% macro nl(href, icono, texto, extra='') %}<a href="{{ href }}" title="{{ texto }}">{{ ic(icono) }}<span class="lbl">{{ texto }}</span>{{ extra }}</a>{% endmacro %}
 {% if user %}
 <a class="skip" href="#contenido">Saltar al contenido</a>
@@ -126,7 +126,8 @@
       {% if ve('config.ver') %}{{ nl(url_for('main.config'), 'settings', 'Configuración') }}{% endif %}
       {% if can('canales.gestionar') %}{{ nl(url_for('main.channels'), 'tag', 'Canales y grupos') }}{% endif %}
       {% if ve('config.editar') %}{{ nl(url_for('alm.uploads', area='Configuración'), 'database', 'Cargas de configuración') }}
-      {{ nl(url_for('alm.sap_sync'), 'refresh', 'Integración SAP (estado y cola)') }}{% endif %}
+      {{ nl(url_for('alm.sap_sync'), 'refresh', 'Integración SAP (estado y cola)') }}
+      {{ nl(url_for('main.system_errors'), 'alert', 'Errores del sistema') }}{% endif %}
       {% if ve('config.ver') %}{{ nl(url_for('main.products'), 'box', 'Artículos (maestro)') }}{% endif %}
       {% if ve('usuarios.administrar') %}{{ nl(url_for('main.users'), 'user', 'Usuarios') }}
       {{ nl(url_for('main.permissions'), 'key', 'Permisos por rol') }}{% endif %}
@@ -166,7 +167,7 @@
       {% if contingencia %}<div class="flash warn noprint" role="status">{{ ic('alert') }}<span><b>Registro en contingencia activo</b> desde {{ (contingencia.desde or '')[:16]|replace('T', ' ') }} ({{ contingencia.motivo }}): todo lo que registre queda marcado como «registrado en contingencia».</span></div>{% endif %}
       {% set _sap = sap_estado() if user and (can('ov.crear') or can('ov.modificar') or can('config.editar') or can('guias.estado')) else none %}{% if _sap %}<div class="flash error noprint" role="alert">SAP sin conexión desde {{ (_sap.desde or '')|replace('T', ' ') }}: lo que registre (OV, guías) queda guardado en cola y se envía solo cuando vuelva la conexión.</div>{% endif %}
       {% if demo_mode %}<div class="demo-strip noprint">{{ ic('info') }} Entorno de demostración con datos ficticios. No conectado a SAP ni a sistemas productivos.</div>{% endif %}
-      {% with msgs = get_flashed_messages(with_categories=true) %}{% for c, m in msgs %}<div class="flash {{ c }}" role="{{ 'alert' if c == 'error' else 'status' }}">{{ ic('x' if c == 'error' else ('check' if c == 'ok' else 'info')) }}<span>{{ m }}</span></div>{% endfor %}{% endwith %}
+      {% with msgs = get_flashed_messages(with_categories=true) %}{% for c, m in msgs %}{% if c == 'fallo' %}{% set p = m.split('|', 1) %}{{ fallo_modal(p[0], p[1] if p|length > 1 else '') }}{% else %}<div class="flash {{ c }}" role="{{ 'alert' if c == 'error' else 'status' }}">{{ ic('x' if c == 'error' else ('check' if c == 'ok' else 'info')) }}<span>{{ m }}</span></div>{% endif %}{% endfor %}{% endwith %}
       <a class="back-link noprint" href="#" data-back hidden>{{ ic('chevron') }}<span>Volver</span></a>
       {% block content %}{% endblock %}
     </main>
@@ -244,5 +245,6 @@
 <script src="{{ url_for('static', filename='ux.js') }}?v=1.1.0"></script>
 <script src="{{ url_for('static', filename='v14.js') }}?v=1.0"></script>
 <script src="{{ url_for('static', filename='v18.js') }}?v=1.0"></script>
+{{ velo() }}<script src="{{ url_for('static', filename='v19.js') }}?v=1.0"></script>
 </body>
 </html>

@@ -10,7 +10,7 @@ from ..models import MoveRequest, Product, SalesOrder, Warehouse
 from ..services import supply as ssvc
 from ..services.core import BusinessError
 from ..services.distribution import save_upload
-from .common import act, f_date, perm_required
+from .common import act, f_date, paginate, perm_required
 
 bp = Blueprint("sup", __name__, url_prefix="/suministro")
 
@@ -122,7 +122,7 @@ def moves():
     from ..models import Customer, Product
     prods = list(db().execute(select(Product).order_by(Product.code)).scalars())
     from ..services.stock import product_kind
-    return render_template("moves.html", rows=ssvc.moves(g.user), ejecutores=ssvc.move_executors(),
+    return render_template("moves.html", rows=paginate(ssvc.moves(g.user), 20), ejecutores=ssvc.move_executors(),
                            tipos_carga=ssvc.TIPOS_CARGA, prod_pt=[p for p in prods if product_kind(p) == "PT"],
                            prod_mp=[p for p in prods if product_kind(p) in ("MP", "GR")],
                            clientes=list(db().execute(select(Customer).order_by(Customer.nombre)).scalars()),

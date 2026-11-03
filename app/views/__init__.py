@@ -16,7 +16,7 @@ from ..models import (Alert, AlertType, AuditLog, Customer, EmailOutbox, GGAlert
 from ..services import alerts as alert_svc
 from ..services import prices as prices_svc
 from ..services.core import BusinessError, audit, coerce_param, set_param
-from .common import act, f_date, f_float, install, login_required, perm_required
+from .common import act, f_date, f_float, install, login_required, paginate, perm_required
 
 bp = Blueprint("main", __name__)
 _FAILS = {}
@@ -44,6 +44,17 @@ def register_views(app):
     from . import seguimiento
     app.register_blueprint(seguimiento.bp)
 
+    @app.after_request
+    def _aviso_descarga(resp):
+        """V19: al terminar de generar un archivo (Excel, PDF…), una cookie avisa a la página para quitar el velo de carga."""
+        token = request.args.get("_dl", "")
+        if token and token.isalnum() and len(token) <= 20 and \
+                ("attachment" in (resp.headers.get("Content-Disposition") or "") or resp.mimetype in (
+                    "application/pdf", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    "application/vnd.openxmlformats-officedocument.presentationml.presentation", "text/csv", "application/zip")):
+            resp.set_cookie("descarga", token, max_age=120, samesite="Lax", path="/")
+        return resp
+
     @app.errorhandler(403)
     def _403(e):
         return render_template("error.html", code=403, msg="Su rol no tiene permiso para esta función."), 403
@@ -58,22 +69,27 @@ def register_views(app):
 
     @app.errorhandler(500)
     def _500(e):
-        """V16: en vez de «Internal Server Error», una página con la hora y el detalle para Sistemas (el error completo
-        queda en el registro del servidor: journalctl -u operaciones)."""
-        from datetime import datetime as _dt
+        """V16/V19: en vez de «Internal Server Error», una ventana con el código del fallo para Sistemas (el detalle
+        completo queda en el registro del servidor y en Sistemas → Errores del sistema)."""
         from ..db import db as _db
+        from ..services import errores
         try:
             _db().rollback()
         except Exception:  # noqa: BLE001
             pass
-        orig = getattr(e, "original_exception", None) or e
-        detalle = f"{type(orig).__name__}: {str(getattr(orig, 'orig', orig)).strip().splitlines()[0][:300] if str(orig).strip() else ''}"
+        codigo, resumen = errores.registrar(e)
+        if request.headers.get("X-Parcial") == "1":
+            r = app.response_class(f"Fallo {codigo}: {resumen}", status=500, mimetype="text/plain")
+            r.headers["X-Error-Code"] = codigo
+            return r
         try:
-            return render_template("error.html", code=500, msg=(
-                f"Ocurrió un error inesperado ({_dt.now():%d/%m/%Y %H:%M:%S}). No se guardó la acción. Envíe a Sistemas "
-                f"esta pantalla: {detalle}")), 500
+            r = app.make_response((render_template("error.html", code=500, codigo=codigo, msg=(
+                "Ocurrió un error inesperado. No se guardó la acción. Envíe a Sistemas el código del fallo."),
+                detalle=resumen), 500))
         except Exception:  # noqa: BLE001
-            return f"Error inesperado ({_dt.now():%d/%m/%Y %H:%M:%S}): {detalle}", 500
+            r = app.make_response((f"Error inesperado. Código del fallo: {codigo} ({resumen})", 500))
+        r.headers["X-Error-Code"] = codigo
+        return r
 
 
 # ------------------------------- acceso ------------------------------------
@@ -296,7 +312,7 @@ def alerts():
             key = (a.area if agrupar == "area" else a.type.grupo if agrupar == "grupo" else a.type.nombre, a.prioridad)
             grupos.setdefault(key, []).append(a)
         grupos = dict(sorted(grupos.items(), key=lambda kv: (alert_svc.PRIORIDAD_ORDEN.get(kv[0][1], 9), kv[0][0])))
-    return render_template("alerts.html", rows=rows, f=f, tipos=tipos, agrupar=agrupar, grupos=grupos,
+    return render_template("alerts.html", rows=rows if agrupar else paginate(rows), f=f, tipos=tipos, agrupar=agrupar, grupos=grupos,
                            areas=sorted({t.area for t in tipos}), grupos_tipo=sorted({t.grupo for t in tipos}),
                            estados=alert_svc.ESTADOS, estado_txt=alert_svc.ESTADO_TXT, naturaleza=naturaleza)
 
@@ -458,6 +474,15 @@ def gg_prefs():
     return render_template("gg_prefs.html", tipos=tipos, prefs=prefs)
 
 
+@bp.route("/sistemas/errores")
+@perm_required("config.editar")
+def system_errors():
+    """V19: fallos del sistema por código (el que ve el usuario en la ventana emergente), con su detalle técnico."""
+    from ..services import errores
+    q = (request.args.get("q") or "").strip()
+    return render_template("errores.html", rows=paginate(errores.ultimos(500, q)), q=q)
+
+
 @bp.route("/correo", methods=["GET", "POST"])
 @perm_required("alertas.configurar")
 def outbox():
@@ -465,7 +490,7 @@ def outbox():
     if request.method == "POST":
         return act(flush_outbox, lambda r: f"Resultado: {r}", url_for("main.outbox"))
     rows = list(db().execute(select(EmailOutbox).order_by(EmailOutbox.id.desc()).limit(300)).scalars())
-    return render_template("outbox.html", rows=rows, smtp=smtp_configured())
+    return render_template("outbox.html", rows=paginate(rows), smtp=smtp_configured())
 
 
 # ------------------------------- manual de usuario -------------------------
@@ -642,7 +667,7 @@ def products():
     rows = list(db().execute(stmt.limit(300)).scalars())
     from ..catalogs import PCC1_HUMEDAD
     cats = [lt.categoria for lt in db().execute(select(LeadTime)).scalars()]
-    return render_template("products.html", rows=rows, q=q, cats=sorted(set(cats)), pcc1=PCC1_HUMEDAD)
+    return render_template("products.html", rows=paginate(rows), q=q, cats=sorted(set(cats)), pcc1=PCC1_HUMEDAD)
 
 
 @bp.route("/configuracion/productos/<code>", methods=["POST"])
@@ -705,7 +730,7 @@ def customers():
     from ..services.core import param
     canales = sorted(set(psvc.canales()) | set(param("lista_granel_canales", []) or []))
     from ..services.customers import customer_groups
-    return render_template("customers.html", rows=rows, canales=canales, canal_de=psvc.channel_of, grupos=customer_groups())
+    return render_template("customers.html", rows=paginate(rows), canales=canales, canal_de=psvc.channel_of, grupos=customer_groups())
 
 
 @bp.route("/configuracion/guia", methods=["POST"])
@@ -926,7 +951,7 @@ def audit_view():
     rows = list(db().execute(q.limit(1000)).scalars())
     usuarios = list(db().execute(select(User).order_by(User.nombre)).scalars())
     entidades = sorted({e for e in db().execute(select(AuditLog.entidad).distinct()).scalars() if e})
-    return render_template("audit.html", rows=rows, ent=ent or "", acc=acc or "", usuarios=usuarios, entidades=entidades,
+    return render_template("audit.html", rows=paginate(rows), ent=ent or "", acc=acc or "", usuarios=usuarios, entidades=entidades,
                            f=request.args)
 
 

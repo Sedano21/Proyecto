@@ -7,6 +7,21 @@ from flask import Flask, g, session
 from .db import SessionLocal, create_all, init_engine
 
 
+def _set_timezone():
+    """V19: el sistema trabaja con la hora de Perú (America/Lima), no con la del servidor (que suele estar en UTC).
+    Afecta a datetime.now() y date.today() de todo el proceso: registros, cargas, alertas, cortes y plazos.
+    Se cambia con la variable APP_TZ."""
+    import time
+    tz = os.environ.get("APP_TZ", "America/Lima").strip() or "America/Lima"
+    if os.environ.get("TZ") != tz:
+        os.environ["TZ"] = tz
+    if hasattr(time, "tzset"):
+        time.tzset()
+
+
+_set_timezone()
+
+
 def create_app(config=None):
     app = Flask(__name__, instance_relative_config=True)
     os.makedirs(app.instance_path, exist_ok=True)

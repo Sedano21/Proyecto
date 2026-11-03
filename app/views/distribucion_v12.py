@@ -16,7 +16,7 @@ from ..services import third_party as tp
 from ..services import vehicle_checklist as vc
 from ..services.core import BusinessError, has_perm, param
 from ..services.distribution import save_upload
-from .common import act, f_date, f_float, perm_required
+from .common import act, f_date, f_float, paginate, perm_required
 from .distribucion import bp
 
 
@@ -34,7 +34,7 @@ def checklists():
     q = select(VehicleChecklist).where(VehicleChecklist.fecha >= desde).order_by(VehicleChecklist.id.desc())
     if request.args.get("estado"):
         q = q.where(VehicleChecklist.estado == request.args["estado"])
-    return render_template("checklists.html", lista=list(db().execute(q.limit(300)).scalars()), desde=desde,
+    return render_template("checklists.html", lista=paginate(q, 20), desde=desde,
                            items=dict((c, i) for c, _, i, _ in vc.items()), f=request.args)
 
 

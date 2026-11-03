@@ -7,7 +7,7 @@ from sqlalchemy import select
 
 from ..db import db
 from ..models import Customer, CustomerSite, Incident, SalesOrder
-from .core import BusinessError, audit, has_perm
+from .core import BusinessError, audit, has_perm, param
 
 CAMPOS = ("nombre", "grupo", "direccion", "distrito", "provincia", "horario_recepcion", "contacto", "telefono", "correo",
           "codigo_sap", "observaciones", "certificaciones", "penalidades")
@@ -184,6 +184,29 @@ def search(q="", grupo="", canal="", vendedor_id=None):
         vid = int(vendedor_id)
         rows = [c for c in rows if c.vendedor_id == vid or (c.vendedor_id is None and vid in _vendedores_ov(c))]
     return rows
+
+
+def search_query(q="", grupo="", canal="", vendedor_id=None):
+    """V19: la misma búsqueda como consulta SQL, para paginar sin traer todos los clientes."""
+    from sqlalchemy import exists, func, or_
+    st = select(Customer).order_by(Customer.nombre)
+    q = (q or "").strip().upper()
+    if q:
+        st = st.where(or_(func.upper(Customer.nombre).contains(q), Customer.ruc.contains(q)))
+    if grupo:
+        st = st.where(func.upper(Customer.grupo) == grupo.upper())
+    if canal:
+        grupos = [g for g, c in (param("canal_precio_por_grupo", {}) or {}).items() if c == canal]
+        cond = Customer.canal_precio == canal
+        if grupos:
+            cond = or_(cond, (func.coalesce(Customer.canal_precio, "") == "") & func.upper(Customer.grupo).in_(grupos))
+        st = st.where(cond)
+    if vendedor_id:
+        vid = int(vendedor_id)
+        st = st.where(or_(Customer.vendedor_id == vid,
+                          Customer.vendedor_id.is_(None) & exists().where((SalesOrder.customer_id == Customer.id)
+                                                                          & (SalesOrder.vendedor_id == vid))))
+    return st
 
 
 def _vendedores_ov(c):

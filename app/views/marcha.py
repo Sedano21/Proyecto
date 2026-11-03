@@ -13,7 +13,7 @@ from ..services import conciliation as csvc
 from ..services import observations as osvc
 from ..services import shifts as ssvc
 from ..services.core import BusinessError, audit, contingency, param, set_param
-from .common import act, f_date, login_required, perm_required
+from .common import act, f_date, login_required, paginate, perm_required
 
 bp = Blueprint("mb", __name__)
 
@@ -66,7 +66,7 @@ def observations():
                          mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     from collections import Counter
     todas = osvc.listing(g.user, "", "")
-    return render_template("observations.html", rows=rows, gestiona=gestiona, tipos=osvc.TIPOS, clasif=osvc.CLASIFICACION,
+    return render_template("observations.html", rows=paginate(rows), gestiona=gestiona, tipos=osvc.TIPOS, clasif=osvc.CLASIFICACION,
                            estados=osvc.ESTADOS, estado=estado, clasificacion=request.args.get("clasificacion", ""),
                            conteo=Counter(o.clasificacion for o in todas if o.estado == "ABIERTA"))
 
@@ -138,7 +138,7 @@ def conciliation():
     area = request.args.get("area", "")
     origen = request.args.get("origen", "")
     rows = csvc.listing(estado, area, origen)
-    return render_template("conciliation.html", rows=rows, estado=estado, area=area, origen=origen,
+    return render_template("conciliation.html", rows=paginate(rows, 50), estado=estado, area=area, origen=origen,
                            areas=sorted(set(csvc.AREA.values())), origenes=csvc.ORIGEN_TXT, resumen=csvc.summary(),
                            puede=lambda d: csvc.can_resolve(g.user, d), cortes=param("cortes_carga_sap", []) or [])
 
