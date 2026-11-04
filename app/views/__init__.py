@@ -233,7 +233,9 @@ def dashboard():
     d2 = date.fromisoformat(hasta) if hasta else None
     mios = ind.default_set(g.user) if "dashboard.ver" in g.perms else set()
     # rediseño 28-oct-2026: cada perfil ve solo los indicadores pertinentes (matriz de indicadores)
-    k = compute(d1, d2) if mios - {c for c in mios if c.startswith("PROD_")} else None
+    from ..services.core import ttl_cache  # V20: los indicadores agregados se recalculan como máximo cada 60 s
+    k = ttl_cache(("kpis", d1, d2, date.today()), 60, lambda: compute(d1, d2)) \
+        if mios - {c for c in mios if c.startswith("PROD_")} else None
     prod = ind.production_summary(d1, d2, mios) if any(c.startswith("PROD_") for c in mios) else None
     hoy_prod = None
     if mios & {"PROD_LINEAS_HOY", "PROD_PLAN_HOY", "PROD_PENDIENTES", "PROD_REEMPAQUES"}:
@@ -300,7 +302,8 @@ def alerts():
     codes = {t.code for t in tipos}
     if f["type_code"] and f["type_code"] not in codes:
         f["type_code"] = None
-    rows = alert_svc.inbox(g.user, **f)  # solo los tipos de su área o que se comunican con ella
+    # solo los tipos de su área o que se comunican con ella; V20: las cerradas, de los últimos 30 días (salvo filtro de estado)
+    rows = alert_svc.inbox(g.user, dias_cerradas=int(request.args.get("dias") or 30), **f)
     naturaleza = request.args.get("naturaleza") or ""
     if naturaleza in ("TAREA", "INFORMATIVA"):
         rows = [a for a in rows if alert_svc.nature_for(g.user, a) == naturaleza]
@@ -322,6 +325,30 @@ def alerts():
 def alerts_status():
     """Estado de alertas para el aviso sonoro: tareas abiertas que el usuario puede accionar, importantes (ALTA) y las
     más recientes visibles. Las importantes suenan distinto y se repiten hasta que se resuelvan (obs. demo v0.7)."""
+    from ..services.core import param
+    # V20: cada pestaña consulta esto cada pocos segundos; si ninguna alerta cambió desde la última vez, se responde
+    # lo mismo sin recalcular (la clave cambia con cualquier alerta nueva, evento o cambio de estado)
+    import time as _t
+    from sqlalchemy import func as _f
+    from ..models import AlertEvent as _AE
+    from flask import current_app as _ca
+    huella = (id(_ca._get_current_object()), g.user.id, g.user.role_code, request.args.get("desde", type=int) or 0,
+              db().execute(select(_f.max(Alert.id))).scalar(), db().execute(select(_f.max(_AE.id))).scalar(),
+              db().execute(select(_f.count(Alert.id)).where(Alert.estado.notin_(alert_svc.CERRADOS))).scalar())
+    guardado = _ESTADO_ALERTAS.get(huella)
+    if guardado and _t.time() - guardado[0] < 120:
+        return guardado[1]
+    resp = _alerts_status_calc()
+    if len(_ESTADO_ALERTAS) > 1000:
+        _ESTADO_ALERTAS.clear()
+    _ESTADO_ALERTAS[huella] = (_t.time(), resp)
+    return resp
+
+
+_ESTADO_ALERTAS = {}
+
+
+def _alerts_status_calc():
     from ..services.core import param
     rows = alert_svc.inbox(g.user, solo_abiertas=True)
     tareas = [a for a in rows if alert_svc.can_act(g.user, a) and alert_svc.is_direct(g.user, a)]
@@ -472,6 +499,79 @@ def gg_prefs():
     prefs = {p.type_code for p in db().execute(select(GGAlertPreference).where(
         GGAlertPreference.user_id == g.user.id, GGAlertPreference.recibir_directo.is_(True))).scalars()}
     return render_template("gg_prefs.html", tipos=tipos, prefs=prefs)
+
+
+# ------------------------------- V20: notificaciones en el celular (Web Push) y aplicación instalable
+@bp.route("/sw.js")
+def service_worker():
+    """El service worker se sirve desde la raíz para poder recibir las notificaciones de todo el sistema."""
+    from flask import current_app
+    r = send_from_directory(current_app.static_folder, "sw.js", mimetype="application/javascript", max_age=0)
+    r.headers["Service-Worker-Allowed"] = "/"
+    r.headers["Cache-Control"] = "no-cache"
+    return r
+
+
+@bp.route("/manifest.webmanifest")
+def manifest():
+    from flask import current_app
+    return send_from_directory(current_app.static_folder, "manifest.webmanifest", mimetype="application/manifest+json")
+
+
+@bp.route("/notificaciones", methods=["GET", "POST"])
+@login_required
+def notifications():
+    """Dispositivos del usuario con notificaciones activas; activar, probar o quitar."""
+    from ..services import push
+    if request.method == "POST":
+        f = request.form
+        if f.get("accion") == "probar":
+            return act(lambda: push.enviar_a_usuario(g.user, "Prueba de notificación",
+                                                     "Si ve este aviso, las alertas le llegarán a este dispositivo.", "/alertas"),
+                       lambda n: f"Notificación de prueba enviada a {n} dispositivo(s)." if n else
+                       "No tiene dispositivos con notificaciones activas.", url_for("main.notifications"))
+        if f.get("accion") == "quitar":
+            def _q():
+                from ..models import PushSubscription
+                x = db().get(PushSubscription, f.get("sid", type=int) or 0)
+                if x is not None and x.user_id == g.user.id:
+                    db().delete(x)
+            return act(_q, "Dispositivo quitado.", url_for("main.notifications"))
+        abort(400)
+    return render_template("notificaciones.html", dispositivos=push.devices(g.user), disponible=push.disponible())
+
+
+@bp.route("/push/clave")
+@login_required
+def push_key():
+    from ..services import push
+    if not push.disponible():
+        return {"error": "Las notificaciones no están disponibles en el servidor."}, 503
+    return {"clave": push.public_key()}
+
+
+@bp.route("/push/suscribir", methods=["POST"])
+@login_required
+def push_subscribe():
+    from ..services import push
+    datos = request.get_json(silent=True) or {}
+    try:
+        push.subscribe(g.user, datos.get("suscripcion") or {}, (request.user_agent.string or "")[:200])
+        db().commit()
+    except BusinessError as e:
+        db().rollback()
+        return {"ok": False, "error": str(e)}, 400
+    return {"ok": True}
+
+
+@bp.route("/push/baja", methods=["POST"])
+@login_required
+def push_unsubscribe():
+    from ..services import push
+    datos = request.get_json(silent=True) or {}
+    push.unsubscribe(g.user, datos.get("endpoint") or "")
+    db().commit()
+    return {"ok": True}
 
 
 @bp.route("/sistemas/errores")

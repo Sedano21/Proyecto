@@ -12,7 +12,42 @@ class BusinessError(Exception):
 
 
 # ------------------------------- parámetros -------------------------------
+_SIN = object()
+
+
+def _cache():
+    """V20: caché por petición web (parámetros y permisos se consultaban miles de veces por página)."""
+    try:
+        from flask import has_request_context, request
+    except ImportError:  # pragma: no cover
+        return None
+    if not has_request_context():
+        return None
+    # en el objeto de la petición (no en g): g puede durar más que una petición si hay un contexto de app abierto
+    c = getattr(request, "_core_cache", None)
+    if c is None:
+        c = {"param": {}, "perms": {}, "inbox": {}}
+        request._core_cache = c
+    return c
+
+
+def clear_cache():
+    c = _cache()
+    if c is not None:
+        c["param"].clear()
+        c["perms"].clear()
+        c["inbox"].clear()
+
+
 def param(key, default=None):
+    c = _cache()
+    if c is not None:
+        v = c["param"].get(key, _SIN)
+        if v is _SIN:
+            p = db().get(Param, key)
+            v = None if p is None else (p.valor or {}).get("v")
+            c["param"][key] = v
+        return default if v is None else v
     p = db().get(Param, key)
     if p is None:
         return default
@@ -26,6 +61,7 @@ def set_param(key, value, user=None, estado=None):
         raise BusinessError(f"Parámetro desconocido: {key}")
     p.version += 1
     p.valor = {"v": value}
+    clear_cache()
     if estado:
         p.estado = estado
     db().add(ParamHistory(key=key, version=p.version, valor={"v": value}, estado=p.estado,
@@ -78,6 +114,9 @@ GERENCIA_GENERAL_ROLES = ("GERENCIA_GENERAL", "GERENTE_GENERAL_ADJUNTO")
 
 
 def audit(user, accion, entidad, entidad_id="", detalle=None):
+    c = _cache()
+    if c is not None:
+        c["inbox"].clear()  # algo cambió: el buzón de alertas se recalcula
     detalle = dict(detalle or {})
     if contingency():
         detalle["registrado_en_contingencia"] = True  # todo lo registrado mientras está activo queda marcado
@@ -116,8 +155,15 @@ def can_self_approve(user):
 def user_perms(user):
     if user is None:
         return set()
+    c = _cache()
+    clave = (user.id, user.role_code, user.username)
+    if c is not None and clave in c["perms"]:
+        return c["perms"][clave]
     rows = db().execute(select(RolePermission.perm_code).where(RolePermission.role_code.in_(sorted(roles_of(user))))).scalars()
-    return set(rows)
+    out = frozenset(rows)
+    if c is not None:
+        c["perms"][clave] = out
+    return out
 
 
 def has_perm(user, perm):
@@ -177,3 +223,27 @@ def fmt_qty(x):
     if abs(x - round(x)) < 1e-9:
         return f"{int(round(x)):,}".replace(",", " ")
     return f"{x:,.2f}".replace(",", " ")
+
+
+# ------------------------------------------------------------------ V20: caché breve de resúmenes del inicio
+_TTL = {}
+
+
+def ttl_cache(clave, segundos, calcular):
+    """Guarda un resumen (indicadores del mes, gestión comercial) unos segundos por proceso: el inicio de 30 personas no
+    recalcula lo mismo 30 veces. Las tareas y alertas no pasan por aquí: siempre están al día. En pruebas no se usa."""
+    import time
+    try:
+        from flask import current_app
+        if current_app.config.get("TESTING"):
+            return calcular()
+    except RuntimeError:
+        return calcular()
+    v = _TTL.get(clave)
+    if v and time.time() - v[0] < segundos:
+        return v[1]
+    r = calcular()
+    if len(_TTL) > 500:
+        _TTL.clear()
+    _TTL[clave] = (time.time(), r)
+    return r

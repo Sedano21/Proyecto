@@ -1,0 +1,16 @@
+{% extends "base.html" %}{% from "_m.html" import csrf, empty, ic %}
+{% block content %}<div class="page-head"><div><h1>Notificaciones en el celular</h1><p class="sub">Las alertas urgentes y de prioridad media le llegan como notificación del sistema, aunque la pantalla esté apagada o el navegador cerrado.</p></div></div>
+<div class="card"><div class="card-head"><h3>Este dispositivo</h3><b data-push-estado>Revisando…</b></div>
+{% if not disponible %}<p class="flash error">El servidor aún no tiene instaladas las notificaciones (se instalan con la próxima actualización).</p>{% endif %}
+<p><button type="button" data-push-activar-btn>{{ ic('bell') }} Activar notificaciones en este dispositivo</button></p>
+<details class="small"><summary>¿No le llegan? Revise según su equipo</summary><ul>
+<li><b>Android (Chrome):</b> permita las notificaciones del sitio y quite la «optimización de batería» de Chrome para que lleguen con la pantalla apagada.</li>
+<li><b>Brave:</b> en Configuración → Privacidad y seguridad, active «Usar los servicios de Google para mensajería push»; sin eso Brave no recibe notificaciones.</li>
+<li><b>iPhone (iOS 16.4 o más):</b> abra el sistema en Safari, toque Compartir → «Agregar a pantalla de inicio», ábralo desde ese ícono y active aquí. En Safari normal, sin agregarlo al inicio, iPhone no permite notificaciones web.</li>
+<li><b>Computadora:</b> funciona en Chrome, Edge, Firefox y Brave mientras el navegador esté abierto (aunque la pestaña esté cerrada).</li>
+<li>Si cierra sesión o borra los datos del navegador, vuelva a activarlas.</li></ul></details></div>
+<div class="card"><div class="card-head"><h3>Mis dispositivos</h3><form method="post">{{ csrf() }}<input type="hidden" name="accion" value="probar"><button class="sec small">Enviar una notificación de prueba</button></form></div>
+{% if dispositivos %}<div class="tw"><table class="small"><thead><tr><th>Dispositivo</th><th>Activado</th><th>Último envío</th><th></th></tr></thead><tbody>
+{% for d in dispositivos %}<tr><td>{{ (d.dispositivo or 'Navegador')[:90] }}</td><td>{{ d.creado_ts|d }}</td><td>{{ d.ultimo_envio_ts|d if d.ultimo_envio_ts else '—' }}{% if d.fallos %} <span class="b warn">{{ d.fallos }} fallo(s)</span>{% endif %}</td>
+<td><form method="post">{{ csrf() }}<input type="hidden" name="accion" value="quitar"><input type="hidden" name="sid" value="{{ d.id }}"><button class="small sec">Quitar</button></form></td></tr>{% endfor %}</tbody></table></div>
+{% else %}{{ empty('Aún no activó las notificaciones en ningún dispositivo.', 'bell') }}{% endif %}</div>{% endblock %}

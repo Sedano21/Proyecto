@@ -1,10 +1,26 @@
+# V20: límites de tiempo contra conexiones lentas o abiertas a propósito (slowloris) y conexiones con gunicorn
+{
+	servers {
+		timeouts {
+			read_header 10s
+			read_body 120s
+			write 180s
+			idle 2m
+		}
+	}
+}
+
 # HTTPS automático (Let's Encrypt). Reemplace DOMINIO por el nombre elegido (p. ej. operaciones-cp.duckdns.org).
 DOMINIO {
 	encode gzip
 	request_body {
 		max_size 25MB
 	}
-	reverse_proxy 127.0.0.1:8000
+	reverse_proxy 127.0.0.1:8000 {
+		transport http {
+			keepalive 30s
+		}
+	}
 	header {
 		Strict-Transport-Security "max-age=31536000"
 		X-Content-Type-Options nosniff

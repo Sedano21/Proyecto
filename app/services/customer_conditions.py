@@ -61,9 +61,44 @@ def parse(lotes, vida, penalidades):
     return out
 
 
+def _indice():
+    """V20: en una petición web, todas las condiciones se leen una vez y se buscan en memoria."""
+    from .core import _cache
+    cache = _cache()
+    if cache is None:
+        return None
+    idx = cache["inbox"].get("_condiciones")
+    if idx is None:
+        por_id, por_ruc, por_nombre = {}, {}, {}
+        for c in db().execute(select(CustomerCondition).order_by(CustomerCondition.id)).scalars():
+            if c.customer_id is not None:
+                por_id.setdefault(c.customer_id, c)
+            if c.ruc:
+                por_ruc.setdefault(c.ruc, c)
+            if c.nombre_norm:
+                por_nombre.setdefault(c.nombre_norm, c)
+        idx = cache["inbox"]["_condiciones"] = (por_id, por_ruc, por_nombre)
+    return idx
+
+
 def for_customer(customer):
     if customer is None:
         return None
+    idx = _indice()
+    if idx is not None:
+        por_id, por_ruc, por_nombre = idx
+        c = por_id.get(customer.id)
+        if c is None and customer.ruc:
+            c = por_ruc.get(customer.ruc)
+            if c is not None and c.customer_id is None:
+                c.customer_id = customer.id
+        if c is None:
+            c = por_nombre.get(norm_name(customer.nombre))
+            if c is not None and c.ruc and c.ruc != customer.ruc:
+                c = None
+            if c is not None and c.customer_id is None:
+                c.customer_id = customer.id
+        return c
     s = db()
     c = s.execute(select(CustomerCondition).where(CustomerCondition.customer_id == customer.id)).scalars().first()
     if c is None and customer.ruc:
@@ -85,11 +120,20 @@ def max_lots(customer):
 
 
 def penalty_score(customer):
+    from .core import _cache
+    cache = _cache()
+    clave = ("penalidad", customer.id if customer is not None else None)
+    if cache is not None and clave in cache["inbox"]:  # V20: una vez por cliente y petición (la lista de OV lo pide por cada OV)
+        return cache["inbox"][clave]
     c = for_customer(customer)
     if c is None:
-        return 0
-    pesos = param("peso_penalidad", {}) or {}
-    return sum(float(pesos.get(t, 0) or 0) for t in (c.penalidad_tipos or []))
+        v = 0
+    else:
+        pesos = param("peso_penalidad", {}) or {}
+        v = sum(float(pesos.get(t, 0) or 0) for t in (c.penalidad_tipos or []))
+    if cache is not None:
+        cache["inbox"][clave] = v
+    return v
 
 
 def add_months(d, meses):

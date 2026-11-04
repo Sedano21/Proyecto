@@ -38,6 +38,11 @@ def create_app(config=None):
     )
     if config:
         app.config.update(config)
+    # V20: detrás de Caddy, la IP real del usuario llega en X-Forwarded-For (gunicorn solo escucha en 127.0.0.1)
+    hops = int(os.environ.get("PROXY_HOPS", "1") or 0)
+    if hops > 0 and not app.config.get("TESTING"):
+        from werkzeug.middleware.proxy_fix import ProxyFix
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=hops, x_proto=hops, x_host=hops)
     os.makedirs(app.config["UPLOAD_DIR"], exist_ok=True)
     init_engine(app.config["DATABASE_URL"])
     if os.environ.get("SCHEMA_AUTO_CREATE", "1") != "0":  # en producción el esquema se gestiona con Alembic
@@ -52,6 +57,8 @@ def create_app(config=None):
 
     from .views import register_views
     register_views(app)
+    from .services import push
+    push.init(app)  # V20: notificaciones en el celular
     from .services.audit_trail import install as install_audit_trail
     install_audit_trail()  # trazabilidad de todo cambio hecho por un usuario (ronda 23-oct-2026)
 

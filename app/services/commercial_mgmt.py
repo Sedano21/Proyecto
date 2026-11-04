@@ -16,6 +16,7 @@ from collections import Counter, defaultdict
 from datetime import date, timedelta
 
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 
 from ..db import db
 from ..models import (AuditLog, Customer, CustomerInvoice, Opportunity, Product, Quote, SalesOrder, SalesTarget,
@@ -151,8 +152,10 @@ def gestion(desde=None, hasta=None, filtros=None, ver_costos=False, user=None):
     hasta = hasta or hoy
     s = db()
     usuarios = {str(u.id): u.nombre for u in s.execute(select(User)).scalars()}
-    todas = [o for o in s.execute(select(SalesOrder).where(SalesOrder.fecha_emision >= desde,
-                                                           SalesOrder.fecha_emision <= hasta)).scalars()]
+    from ..models import SalesOrderLine
+    todas = [o for o in s.execute(select(SalesOrder).options(  # V20: líneas, productos y clientes en pocas consultas
+        selectinload(SalesOrder.lines).selectinload(SalesOrderLine.product), selectinload(SalesOrder.customer)).where(
+        SalesOrder.fecha_emision >= desde, SalesOrder.fecha_emision <= hasta)).scalars()]
     todas = [o for o in _filtrar(todas, f) if _lineas(o, tipo)]
     ovs = [o for o in todas if o.estado not in ("CANCELADA", "BORRADOR", "REGULARIZACION_OBSERVADA")]
 
@@ -293,7 +296,15 @@ def _recomendaciones(nivel, metas, personas, pend, sin_mov, con_stock, pagos, in
 
 
 def home_summary(user):
-    """Resumen para la portada del Coordinador, Jefe y Gerente Comercial: metas del mes y totales."""
+    """Resumen para la portada del Coordinador, Jefe y Gerente Comercial: metas del mes y totales (V20: se recalcula
+    como máximo cada 60 s por perfil; solo datos simples, sin objetos de la base)."""
+    from .core import ttl_cache
+    hoy = date.today()
+    return ttl_cache(("gestion_inicio", user.id if user else None, user.role_code if user else None, hoy), 60,
+                     lambda: _home_summary(user))
+
+
+def _home_summary(user):
     hoy = date.today()
     d = gestion(hoy.replace(day=1), hoy, {}, False, user)
     return {"metas": d["metas"], "ingresadas": d["ingresadas"], "atendidas": d["atendidas"], "pendientes": d["pendientes"],

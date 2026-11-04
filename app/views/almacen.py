@@ -30,7 +30,9 @@ def stock():
     from ..services.stock import enabled_warehouses
     stmt = select(StockLot).where(StockLot.cantidad > 0, StockLot.warehouse_code.in_(enabled_warehouses()))
     if q:
-        stmt = stmt.join(Product).where((StockLot.product_code.like(f"%{q}%")) | (Product.descripcion.like(f"%{q}%")))
+        # V20: también por lote; «000863FA» encuentra todas sus variantes (000863FA., 000863FA..)
+        stmt = stmt.join(Product).where((StockLot.product_code.like(f"%{q}%")) | (Product.descripcion.like(f"%{q}%"))
+                                        | StockLot.lote.like(f"%{q.rstrip('.,')}%"))
     if wh:
         stmt = stmt.where(StockLot.warehouse_code == wh)
     if est:

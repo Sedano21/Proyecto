@@ -35,6 +35,10 @@ PRIORIDAD_ORDEN = {"ALTA": 0, "MEDIA": 1, "BAJA": 2}
 def emit(type_code, titulo, mensaje="", entidad="", entidad_id="", prioridad=None, extra_roles=None,
          extra_users=None, dedup_key="", creado_por=None):
     """Crea una alerta según la configuración de su tipo. Devuelve la alerta (o la existente si dedup)."""
+    from .core import _cache
+    c = _cache()
+    if c is not None:
+        c["inbox"].clear()
     s = db()
     t = s.get(AlertType, type_code)
     if t is None:
@@ -57,6 +61,14 @@ def emit(type_code, titulo, mensaje="", entidad="", entidad_id="", prioridad=Non
                      comentario=f"Destinatarios: roles {', '.join(roles) or '-'}; usuarios {usuarios or '-'}"))
     if t.enviar_correo and param("correo_habilitado", False):
         _queue_emails(a, t, roles, usuarios)
+    # V20: notificación en el celular o la computadora (aunque la pantalla esté apagada o el navegador cerrado)
+    if a.prioridad in (param("push_prioridades", ["ALTA", "MEDIA"]) or []):
+        try:
+            from . import push
+            push.encolar(a, list(_destinatarios(t, roles, usuarios)))
+        except Exception:  # noqa: BLE001  la notificación nunca impide registrar la alerta
+            import logging
+            logging.getLogger("operaciones").exception("No se pudo preparar la notificación push")
     return a
 
 
@@ -129,6 +141,24 @@ def _filter_by_warehouse(roles, entidad, entidad_id):
     return filtrados
 
 
+def _destinatarios(t, roles, usuarios):
+    """Usuarios que reciben el aviso directo (correo o notificación en el celular) de una alerta del tipo t."""
+    s = db()
+    destinatarios = {u.id: u for u in users_with_roles(roles)}
+    for uid in usuarios:
+        u = s.get(User, uid)
+        if u and u.activo:
+            destinatarios[u.id] = u
+    # Gerencia General recibe directamente solo los tipos configurados (IF §14)
+    for u in list(destinatarios.values()):
+        if u.role_code in ("GERENCIA_GENERAL", "GERENTE_GENERAL_ADJUNTO"):
+            pref = s.execute(select(GGAlertPreference).where(GGAlertPreference.user_id == u.id,
+                                                             GGAlertPreference.type_code == t.code)).scalars().first()
+            if not (pref and pref.recibir_directo):
+                destinatarios.pop(u.id)
+    return destinatarios
+
+
 def _queue_emails(alert, t, roles, usuarios):
     s = db()
     destinatarios = {u.id: u for u in users_with_roles(roles)}
@@ -152,13 +182,19 @@ def _queue_emails(alert, t, roles, usuarios):
 
 
 # ------------------------------ visibilidad --------------------------------
-def visible_alerts(user, estado=None, area=None, prioridad=None, grupo=None, type_code=None, solo_abiertas=False):
-    """Alertas visibles para el usuario con filtros (área, estado, urgencia, grupo/tipo). IF §14, §22."""
+def visible_alerts(user, estado=None, area=None, prioridad=None, grupo=None, type_code=None, solo_abiertas=False,
+                   dias_cerradas=None):
+    """Alertas visibles para el usuario con filtros (área, estado, urgencia, grupo/tipo). IF §14, §22.
+    dias_cerradas (V20): las cerradas solo de los últimos N días (las abiertas, todas), para que la lista no crezca sin fin."""
     q = select(Alert).order_by(Alert.creado_ts.desc(), Alert.id.desc())
     if estado:
         q = q.where(Alert.estado == estado)
     if solo_abiertas:
         q = q.where(Alert.estado.notin_(CERRADOS))
+    elif dias_cerradas and not estado:
+        from datetime import timedelta
+        from sqlalchemy import or_
+        q = q.where(or_(Alert.estado.notin_(CERRADOS), Alert.creado_ts >= now() - timedelta(days=int(dias_cerradas))))
     if area:
         q = q.where(Alert.area == area)
     if prioridad:
@@ -180,12 +216,20 @@ def sees_all(user):
 
 
 def inbox(user, **filtros):
-    """Alertas visibles del usuario limitadas a los tipos de su área (o que se comunican con ella) y a lo designado."""
+    """Alertas visibles del usuario limitadas a los tipos de su área (o que se comunican con ella) y a lo designado.
+    V20: se calcula una vez por petición (el contador del menú y el inicio piden lo mismo)."""
+    from .core import _cache
+    c = _cache()
+    clave = ("inbox", user.id if user else None, tuple(sorted((k, str(v)) for k, v in filtros.items())))
+    if c is not None and clave in c["inbox"]:
+        return list(c["inbox"][clave])
     rows = visible_alerts(user, **filtros)
-    if sees_all(user):
-        return rows
-    codes = {t.code for t in visible_types(user)}
-    return [a for a in rows if a.type_code in codes or is_assignee(user, a)]
+    if not sees_all(user):
+        codes = {t.code for t in visible_types(user)}
+        rows = [a for a in rows if a.type_code in codes or is_assignee(user, a)]
+    if c is not None:
+        c["inbox"][clave] = rows
+    return list(rows)
 
 
 def can_see(user, alert):
@@ -526,3 +570,35 @@ def by_priority(user, rows):
         accion = nature_for(user, a) == "TAREA"
         return (cerrada, not accion, PRIORIDAD_ORDEN.get(a.prioridad, 9), -(a.creado_ts.timestamp() if a.creado_ts else 0), -a.id)
     return sorted(rows, key=key)
+
+
+# ------------------------------------------------------------------ V20: contador del menú sin recalcular
+_CONTADOR = {}
+
+
+def huella():
+    """Cambia con cualquier alerta nueva, evento (asignación, avance, cierre) o cambio de la cantidad de abiertas."""
+    from sqlalchemy import func
+    return (db().execute(select(func.max(Alert.id))).scalar(), db().execute(select(func.max(AlertEvent.id))).scalar(),
+            db().execute(select(func.count(Alert.id)).where(Alert.estado.notin_(CERRADOS))).scalar())
+
+
+def open_count(user):
+    """Alertas abiertas del buzón del usuario (el número rojo del menú), con caché por usuario mientras nada cambie."""
+    import time
+    if user is None:
+        return 0
+    try:
+        from flask import current_app
+        app_id = id(current_app._get_current_object())
+    except RuntimeError:
+        app_id = 0
+    clave = (app_id, user.id, user.role_code, huella())
+    v = _CONTADOR.get(clave)
+    if v and time.time() - v[0] < 300:
+        return v[1]
+    n = len(inbox(user, solo_abiertas=True))
+    if len(_CONTADOR) > 2000:
+        _CONTADOR.clear()
+    _CONTADOR[clave] = (time.time(), n)
+    return n

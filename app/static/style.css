@@ -655,3 +655,40 @@ dialog.modal.wide{max-width:860px}.pag .pag-por{display:inline-flex;gap:4px;marg
 .mov-times a.mov-foto img{width:100%;max-width:180px;height:96px;object-fit:cover;border-radius:8px;border:1px solid var(--line)}
 .mov-times a.mov-foto .ic{display:none}
 .mov-times a.mov-foto::after{content:"Ver foto"}
+.aviso-push{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center}.aviso-push-acc{margin-left:auto;display:flex;gap:6px}
+.lote-v{white-space:nowrap;border-bottom:1px dotted #8a9398;cursor:help}.lote-v sup{font-size:10px;font-weight:700;color:#2f7d32;margin-left:2px}
+/* V20: tabla apilada automáticamente cuando no entra en su espacio (celular o PC) */
+table.apilada{min-width:0!important;width:100%}
+table.apilada thead{display:none}
+table.apilada,table.apilada tbody,table.apilada tr{display:block;width:100%}
+table.apilada tr:first-child:has(> th){display:none}
+table.apilada tr{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px 14px;padding:10px 12px;border-bottom:1px solid var(--line)}
+table.apilada td{display:block;border:none;padding:2px 0;min-width:0;overflow-wrap:anywhere;white-space:normal;text-align:left!important}
+table.apilada td:first-child{grid-column:1/-1;font-weight:600}
+table.apilada td[data-label]::before{content:attr(data-label);display:block;font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#7b8781;margin-bottom:1px}
+table.apilada td:empty{display:none}
+table.apilada td input,table.apilada td select,table.apilada td textarea{max-width:100%}
+table.apilada tr:nth-child(even){background:var(--surface)}
+.tw:has(> table.apilada),.tbl:has(> table.apilada){overflow-x:visible}
+/* V20: tablet y pantallas medianas: la barra superior no se sale de la pantalla */
+.top-right{min-width:0;flex-wrap:nowrap}
+@media (max-width:1100px){
+  .top .who.hide-sm,.top-right .who{display:none}
+  .stock-chip span{max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .crumbs{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+}
+@media (max-width:900px){
+  .top-right .obs-btn span{display:none}
+  .stock-chip span{max-width:110px}
+}
+table.apilada td .mono,table.apilada td code,table.apilada td pre{white-space:pre-wrap;word-break:break-all;overflow-wrap:anywhere}
+.content{min-width:0}
+table.apilada tr{grid-template-columns:repeat(auto-fill,minmax(min(150px,100%),1fr))}
+table.apilada td,table.apilada td *{white-space:normal!important;overflow-wrap:anywhere;max-width:100%}
+@media (max-width:1366px){
+  .top-right .who{display:none}
+  .stock-chip span{max-width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+}
+@media (max-width:900px){.stock-chip span{max-width:110px}}
+@media (max-width:760px){.stock-chip span{max-width:90px}}
+table.apilada td[style]{min-width:0!important}table.apilada td:last-child{grid-column:1/-1}

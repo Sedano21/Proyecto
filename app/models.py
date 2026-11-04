@@ -452,6 +452,8 @@ class SalesOrder(Base):
     lines = relationship("SalesOrderLine", back_populates="order", cascade="all, delete-orphan",
                          order_by="SalesOrderLine.id")
     parent = relationship("SalesOrder", remote_side="SalesOrder.id")
+    # V20: ejecutivo comercial de la OV (varias pantallas usaban o.vendedor y fallaban con error 500)
+    vendedor = relationship("User", foreign_keys=[vendedor_id], viewonly=True)
 
 
 class SalesOrderLine(Base):
@@ -1219,6 +1221,22 @@ class AlertEvent(Base):
     accion: Mapped[str] = mapped_column(String(30))
     comentario: Mapped[str] = mapped_column(Text, default="")
     alert = relationship("Alert", back_populates="events")
+    user = relationship("User")
+
+
+class PushSubscription(Base):
+    """V20: dispositivo (celular o computadora) donde el usuario activó las notificaciones. Las alertas le llegan como
+    notificación del sistema aunque la pantalla esté apagada o el navegador cerrado (Web Push con claves VAPID)."""
+    __tablename__ = "push_subscriptions"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    endpoint: Mapped[str] = mapped_column(Text, unique=True)
+    p256dh: Mapped[str] = mapped_column(String(200))
+    auth: Mapped[str] = mapped_column(String(100))
+    dispositivo: Mapped[str] = mapped_column(String(200), default="", server_default="")
+    creado_ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    ultimo_envio_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    fallos: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     user = relationship("User")
 
 

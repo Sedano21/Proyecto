@@ -40,10 +40,12 @@ SPECS = {
     "STOCK": {
         "area": "Almacén", "nombre": "Stock por lote (SAP)", "perm": "stock.cargar", "confirm_perm": "stock.autorizar_carga",
         "hojas": ["STOCK_LOTE"],
-        "cols": {"articulo": ["Número de artículo", "ItemCode"], "descripcion": ["Descripción del artículo", "ItemName"],
-                 "lote": ["Lote", "DistNumber"], "almacen": ["Almacén", "WhsCode"], "cantidad": ["Cantidad", "Quantity"],
-                 "fecha_venc": ["Fecha de vencimiento", "ExpDate"], "fecha_fab": ["Fecha de fabricación", "MnfDate"],
-                 "fecha_admision": ["Fecha de admisión", "InDate"]},
+        # V20: también los encabezados de la consulta de SAP (articulo, almacen, fecha_venc, fecha_fab, fecha_admision)
+        "cols": {"articulo": ["Número de artículo", "ItemCode", "articulo", "artículo"],
+                 "descripcion": ["Descripción del artículo", "ItemName", "descripción", "descripcion"],
+                 "lote": ["Lote", "DistNumber"], "almacen": ["Almacén", "WhsCode", "almacen"], "cantidad": ["Cantidad", "Quantity"],
+                 "fecha_venc": ["Fecha de vencimiento", "ExpDate", "fecha_venc"], "fecha_fab": ["Fecha de fabricación", "MnfDate", "fecha_fab"],
+                 "fecha_admision": ["Fecha de admisión", "InDate", "fecha_admision"]},
         "req": ["articulo", "lote", "almacen", "cantidad"],
     },
     "BOM": {
@@ -515,11 +517,12 @@ def _v_stock(b):
             w.append("Lote vacío: se registrará como 'SIN LOTE'")
         elif not re.match(r"^[A-Za-z0-9/\-]+$", _txt(d.get("lote"))):
             lt = _txt(d.get("lote"))
-            if re.match(r"^[A-Za-z0-9/\-]+[.,]+$", lt):
-                # V19: en SAP hay lotes que se diferencian con puntos o comas al final (p. ej. 310000CA y 310000CA.);
-                # vienen así en la consulta de SAP y se conservan exactos, porque SAP los necesita iguales en guías y entregas
-                w.append(f"Lote con puntos o comas al final: '{lt}'. Así está registrado en SAP; se carga igual "
-                         "(consulte con Producción si es un error de digitación)")
+            from . import lotes as _lotes
+            if re.match(r"^[A-Za-z0-9/\-]+\.+$", lt) or re.match(r"^[A-Za-z0-9\-]+\.\d{3}$", lt):
+                pass  # V20 (también la numeración con sufijo .001, .002 que se usa en algunos lotes): variante por puntos = el mismo lote producido en otra fecha (regla de Producción); no es error
+            elif re.match(r"^[A-Za-z0-9/\-]+[.,]+$", lt):
+                w.append(f"Lote con coma: '{lt}'. Las variantes de un lote se marcan con puntos; verifique en SAP si la coma "
+                         "es un error de digitación")
             else:
                 w.append(f"Lote con caracteres inusuales: '{lt}' (verifique en SAP)")
         try:
@@ -540,6 +543,26 @@ def _v_stock(b):
         r.errores, r.advertencias = e, w
     _dup_check(activos, lambda d: (_txt(d["articulo"]), _txt(d.get("lote")) or "SIN LOTE", _txt(d["almacen"])),
                "artículo/lote/almacén")
+    # V20: dos variantes del mismo lote (mismo número con distinta cantidad de puntos) con las mismas fechas: posible duplicado
+    from . import lotes as _lotes
+    por_base = defaultdict(list)
+    for r in activos:
+        lt = _txt(r.datos.get("lote"))
+        if lt:
+            por_base[(_txt(r.datos.get("articulo")), _lotes.base(lt))].append(r)
+    for (_art, lb), filas in por_base.items():
+        if len({_txt(f.datos.get("lote")) for f in filas}) < 2:
+            continue
+        fechas = defaultdict(list)
+        for f in filas:
+            fechas[(_txt(f.datos.get("fecha_fab")), _txt(f.datos.get("fecha_venc")))].append(f)
+        for (fp, fv), mismas in fechas.items():
+            distintos = sorted({_txt(f.datos.get("lote")) for f in mismas})
+            if len(distintos) > 1 and (fp or fv):
+                for f in mismas:
+                    f.advertencias = list(f.advertencias or []) + [
+                        f"Posible duplicado: las variantes {', '.join(distintos)} del lote {lb} tienen las mismas fechas "
+                        f"(FP {fp or '—'}, FV {fv or '—'}); cada variante debería ser otra producción"]
     # diferencias contra el stock del sistema (en los almacenes incluidos en el archivo)
     file_whs = {_txt(r.datos.get("almacen")) for r in activos}
     actual = defaultdict(float)

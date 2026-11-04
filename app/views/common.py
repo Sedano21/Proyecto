@@ -5,7 +5,7 @@ from functools import wraps
 
 from sqlalchemy.exc import SQLAlchemyError
 
-from flask import abort, flash, g, redirect, request, session, url_for
+from flask import abort, flash, g, redirect, render_template, request, session, url_for
 
 from ..db import db
 from ..models import User
@@ -146,6 +146,7 @@ def fmt_num(x, dec=2):
 
 
 _LIBRES = {"static", "main.login", "main.logout", "main.change_password", "main.privacy_notice", "main.alerts_status",
+           "main.service_worker", "main.manifest",
            "main.evidence"}
 
 
@@ -177,7 +178,17 @@ def _sap_estado():
 def install(app):
     @app.before_request
     def _load_user():
+        import time as _t
+        g._t0 = _t.perf_counter()
         g.user = current_user()
+        # V20: límite de peticiones contra abusos (scripts, recargas sin parar); en pruebas se desactiva
+        if not app.config.get("TESTING") or app.config.get("LIMITES_EN_PRUEBAS"):
+            from ..services import limites
+            motivo = limites.revisar(request, g.user)
+            if motivo:
+                r = app.make_response((render_template("error.html", code=429, msg=motivo), 429))
+                r.headers["Retry-After"] = "30"
+                return r
         g.perms = user_perms(g.user) if g.user else set()
         check_csrf()
         # marcha blanca: aviso de datos personales y responsabilidad (primer ingreso o nueva versión) y contraseña al día
@@ -185,6 +196,38 @@ def install(app):
             destino = access_gate(g.user)
             if destino:
                 return redirect(url_for(destino, next=request.full_path if request.method == "GET" else None))
+
+    @app.template_filter("lote")
+    def _lote(valor):
+        """V20: lote base con su variante (los puntos de SAP) a la vista; el lote exacto de SAP queda en el título."""
+        from markupsafe import Markup, escape
+        from ..services import lotes
+        v = lotes.variante(valor)
+        if not v:
+            return escape(valor or "")
+        return Markup(f'<span class="lote-v" title="En SAP: {escape(valor)} ({v + 1}.ª producción de este lote)">'
+                      f'{escape(lotes.base(valor))}<sup>{v + 1}.ª</sup></span>')
+
+    @app.after_request
+    def _tiempo(resp):
+        """V20: tiempo de respuesta en la cabecera Server-Timing y registro de las páginas lentas (> LENTA_SEG, 2 s por
+        defecto) en el registro del servidor, para encontrarlas y mejorarlas."""
+        import logging
+        import os as _os
+        import time as _t
+        t0 = g.get("_t0")
+        if t0 is not None:
+            dt = _t.perf_counter() - t0
+            resp.headers["Server-Timing"] = f"app;dur={dt * 1000:.0f}"
+            try:
+                lenta = float(_os.environ.get("LENTA_SEG") or 2)
+            except ValueError:
+                lenta = 2
+            if dt > lenta:
+                u = g.get("user")
+                logging.getLogger("operaciones").warning("Página lenta: %.1f s %s %s (%s)", dt, request.method,
+                                                         request.full_path, u.username if u else "-")
+        return resp
 
     def _logo_url():
         """Logotipo oficial si Sistemas lo cargó en static/img (logo_oficial.svg/png); si no, el logo de la empresa
@@ -199,12 +242,12 @@ def install(app):
     @app.context_processor
     def _ctx():
         from ..services.stock import stock_freshness
-        from ..services.alerts import inbox
+        from ..services.alerts import open_count
         u = g.get("user")
         abiertas = 0
         if u is not None:
             try:
-                abiertas = len(inbox(u, solo_abiertas=True))
+                abiertas = open_count(u)
             except Exception:  # noqa: BLE001
                 abiertas = 0
         return {"csrf_token": csrf_token, "user": u, "perms": g.get("perms", set()), "can": lambda p: p in g.get("perms", set()),

@@ -2486,3 +2486,12 @@ ALERT_TYPES += [
      "Al validar una solicitud con el plazo NO confirmado, Producción indica la fecha de entrega; debe ser al menos un día "
      "antes del despacho. Si es posterior, se alerta a Logística, Operaciones y Comercial, y al ejecutivo de la OV.", True),
 ]
+
+# ---------------------------------------------------------------------------------------------------------------------
+# V20 (04-nov-2026): rendimiento, notificaciones en el celular, lotes con variantes, tablas que se acomodan
+V20 = "Observaciones del 04-nov-2026 (V20)"
+PARAMS += [
+    ("push_prioridades", ["ALTA", "MEDIA"], "list", "Alertas",
+     "Urgencias de alerta que llegan como notificación al celular o la computadora (en los dispositivos donde el usuario "
+     "activó las notificaciones). BAJA queda solo en la bandeja.", "PROPUESTO", V20),
+]

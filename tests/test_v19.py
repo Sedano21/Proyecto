@@ -120,7 +120,8 @@ def test_lote_con_puntos_de_sap_se_conserva_y_se_explica(s, U, tmp_path):
     wb.save(f)
     b = uploads.create_batch(U("coord.almacen"), "STOCK", str(f), "stock.xlsx")
     avisos = {r.datos["lote"]: r.advertencias for r in b.rows}
-    assert any("Así está registrado en SAP" in w for w in avisos["310000CA."])
+    # V20: los puntos son variantes del lote (misma numeración, otra producción): se conservan y ya no se advierten
+    assert not any("puntos" in w or "inusuales" in w for w in avisos["310000CA."])
     assert not any("puntos" in w for w in avisos["310000CA"])
     assert any("caracteres inusuales" in w for w in avisos["31#00 X"])
     assert not any(e for r in b.rows for e in r.errores if "duplic" in e.lower())  # son dos lotes distintos en SAP

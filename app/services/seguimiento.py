@@ -12,9 +12,15 @@ from collections import Counter, defaultdict
 from datetime import date, datetime, timedelta
 
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 
 from ..db import db
-from ..models import Alert, AlertEvent, MoveRequest, PickingRecord, PickingTask, SalesOrder, Transfer, User, now
+from ..models import Alert, AlertEvent, MoveRequest, PickingRecord, PickingTask, SalesOrder, SalesOrderLine, Transfer, User, now
+
+
+def _con_lineas(q):
+    """V20: líneas y reservas de las OV en pocas consultas (antes, una consulta por OV y por línea)."""
+    return q.options(selectinload(SalesOrder.lines).selectinload(SalesOrderLine.reservations), selectinload(SalesOrder.customer))
 from . import alerts
 from .core import BusinessError, audit, has_perm, param
 
@@ -70,7 +76,7 @@ def delay(o, hoy=None):
 def seller_orders(user, incluir_cerradas_dias=7):
     """OV del ejecutivo comercial (abiertas y las cerradas en los últimos días) con área, avance y retraso."""
     desde = date.today() - timedelta(days=incluir_cerradas_dias)
-    q = select(SalesOrder).where(SalesOrder.vendedor_id == user.id).order_by(SalesOrder.fecha_compromiso)
+    q = _con_lineas(select(SalesOrder)).where(SalesOrder.vendedor_id == user.id).order_by(SalesOrder.fecha_compromiso)
     out = []
     for o in db().execute(q).scalars():
         if o.estado in CERRADAS and (o.fecha_compromiso or date.min) < desde:
@@ -100,7 +106,7 @@ def groups(desde=None, hasta=None, customer_id=None, vendedor_id=None, solo_abie
     """[(cliente, fecha de despacho, [OV])]: las OV de un mismo cliente que salen el mismo día."""
     desde = desde or date.today() - timedelta(days=7)
     hasta = hasta or date.today() + timedelta(days=30)
-    q = select(SalesOrder).where(SalesOrder.fecha_compromiso >= desde, SalesOrder.fecha_compromiso <= hasta)
+    q = _con_lineas(select(SalesOrder)).where(SalesOrder.fecha_compromiso >= desde, SalesOrder.fecha_compromiso <= hasta)
     if customer_id:
         q = q.where(SalesOrder.customer_id == int(customer_id))
     if vendedor_id:
@@ -122,7 +128,7 @@ def groups(desde=None, hasta=None, customer_id=None, vendedor_id=None, solo_abie
 
 
 def group_detail(customer_id, fecha):
-    ovs = list(db().execute(select(SalesOrder).where(SalesOrder.customer_id == customer_id,
+    ovs = list(db().execute(_con_lineas(select(SalesOrder)).where(SalesOrder.customer_id == customer_id,
                                                      SalesOrder.fecha_compromiso == fecha)
                             .order_by(SalesOrder.numero)).scalars())
     return [o for o in ovs if o.estado != "CANCELADA"]
@@ -157,7 +163,7 @@ def service_month(ref=None, customer_id=None, vendedor_id=None, desde=None, hast
     - Fill rate (unidades): unidades despachadas / unidades pedidas de las OV con salida; también por líneas.
     - OTIF: OV que salieron a tiempo y completas / OV del universo cuya fecha ya pasó o ya salieron."""
     ini, fin = (desde, hasta) if desde and hasta else month_bounds(ref)
-    q = select(SalesOrder).where(SalesOrder.fecha_compromiso >= ini, SalesOrder.fecha_compromiso <= fin,
+    q = _con_lineas(select(SalesOrder)).where(SalesOrder.fecha_compromiso >= ini, SalesOrder.fecha_compromiso <= fin,
                                  SalesOrder.estado != "CANCELADA")
     if customer_id:
         q = q.where(SalesOrder.customer_id == int(customer_id))
@@ -346,17 +352,21 @@ def dispatch_board(user, dias=7):
     hoy = date.today()
     vend = user.id if user.role_code == "EJECUTIVO_VENTAS" else None
     out = []
-    for g in groups(hoy - timedelta(days=1), hoy + timedelta(days=dias), vendedor_id=vend):
-        ovs = [o for o in g["ovs"] if o.estado not in ("CANCELADA", "CERRADA")]
-        if not ovs:
-            continue
-        nums = [o.numero for o in ovs]
-        mods = db().execute(select(func_count()).select_from(AuditLog).where(
-            AuditLog.entidad == "SalesOrder", AuditLog.entidad_id.in_(nums),
-            AuditLog.accion.in_(("OV_MODIFICADA", "OV_MODIF_SOLICITADA", "OV_CAMBIO_FECHA_SOLICITADO", "OV_RENEGOCIADA", "OV_FECHA_RENEGOCIADA",
-                                 "OV_PRODUCTO_CAMBIADO")))).scalar() or 0
-        incs = db().execute(select(func_count()).select_from(Incident).where(
-            Incident.order_id.in_([o.id for o in ovs]))).scalar() or 0
+    grupos = [(g, [o for o in g["ovs"] if o.estado not in ("CANCELADA", "CERRADA")])
+              for g in groups(hoy - timedelta(days=1), hoy + timedelta(days=dias), vendedor_id=vend)]
+    grupos = [(g, ovs) for g, ovs in grupos if ovs]
+    # V20: modificaciones e incidencias de todas las OV en dos consultas (antes, dos por grupo)
+    from sqlalchemy import func
+    todas = [o for _, ovs in grupos for o in ovs]
+    mods_por = dict(db().execute(select(AuditLog.entidad_id, func.count()).where(
+        AuditLog.entidad == "SalesOrder", AuditLog.entidad_id.in_([o.numero for o in todas] or [""]),
+        AuditLog.accion.in_(("OV_MODIFICADA", "OV_MODIF_SOLICITADA", "OV_CAMBIO_FECHA_SOLICITADO", "OV_RENEGOCIADA",
+                             "OV_FECHA_RENEGOCIADA", "OV_PRODUCTO_CAMBIADO"))).group_by(AuditLog.entidad_id)).all())
+    incs_por = dict(db().execute(select(Incident.order_id, func.count()).where(
+        Incident.order_id.in_([o.id for o in todas] or [0])).group_by(Incident.order_id)).all())
+    for g, ovs in grupos:
+        mods = sum(mods_por.get(o.numero, 0) for o in ovs)
+        incs = sum(incs_por.get(o.id, 0) for o in ovs)
         problemas = [f"OV {o.numero}: {delay(o)}" for o in ovs if delay(o)]
         problemas += [f"OV {o.numero}: faltante de stock" for o in ovs
                       if o.estado_stock in ("INCOMPLETA", "SIN_STOCK") and o.estado not in CERRADAS and not delay(o)]

@@ -3,6 +3,7 @@ from collections import Counter, defaultdict
 from datetime import date
 
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 
 from ..db import db
 from ..models import (Incident, Liquidation, PhysicalCountLine, ProductionRequest, PurchaseRequest, SalesOrder)
@@ -74,7 +75,10 @@ def fill_rate(salidas):
 
 def compute(desde=None, hasta=None):
     s = db()
-    orders = [o for o in s.execute(select(SalesOrder)).scalars() if _between(o, desde, hasta)]
+    from ..models import SalesOrderLine
+    # V20: líneas y reservas en 3 consultas en lugar de una por OV y por línea
+    orders = [o for o in s.execute(select(SalesOrder).options(
+        selectinload(SalesOrder.lines).selectinload(SalesOrderLine.reservations))).scalars() if _between(o, desde, hasta)]
     activas = [o for o in orders if o.estado != "CANCELADA"]
     k = {}
     estados = Counter(o.estado for o in orders)
