@@ -94,7 +94,8 @@ def create(user, report_ids, variante="PR"):
     r0 = reps[0]
     p = r0.product
     lote = r0.lote or r0.lote_pt or ""
-    lot = db().execute(select(StockLot).where(StockLot.product_code == (r0.mp_codigo or r0.product_code), StockLot.lote == lote)
+    lot = db().execute(select(StockLot).where(StockLot.product_code == (r0.mp_codigo or r0.product_code),
+                                              StockLot.lote.in_(__import__("app.services.lotes", fromlist=["x"]).escrituras(lote)))
                        ).scalars().first() if lote else None
     lineas = list(dict.fromkeys(r.linea for r in reps))
     servicio_labels = SERVICIO_PR if variante == "PR" else SERVICIO_PF

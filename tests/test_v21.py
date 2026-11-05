@@ -62,7 +62,7 @@ def test_revision_de_lotes_y_excel(app, s):
     _lote(s, "31#00 X")
     s.commit()
     tipos = {a["tipo"]: a for a in lotes.anomalias(["PT-901"])}
-    assert tipos["Coma en lugar de punto"]["detalle"] == "Debería ser «201025IN.»"
+    assert "«201025IN.»" in tipos["Coma en lugar de punto"]["detalle"]
     assert "333001AB, 333001AB." == tipos["Variantes con las mismas fechas"]["lote"]
     assert tipos["Variante sin fechas"]["lote"] == "333001AB.."
     assert tipos["Caracteres no válidos"]["lote"] == "31#00 X"
@@ -202,3 +202,51 @@ def test_archivos_de_vpn():
     for f in ("wg-pasarela-linux.conf.ejemplo", "wg-sap-windows.conf.ejemplo"):
         txt = open(os.path.join(base, f), encoding="utf-8").read()
         assert "[Peer]" in txt and "PrivateKey = " in txt and "50000" in txt
+
+
+# ------------------------------------------------------------------ V21b: comas = puntos, artículos de SAP en la OV y catálogo por canal
+def test_la_coma_es_el_punto_mal_digitado(s):
+    from app.services import lotes
+    assert lotes.normal("201025IN,") == "201025IN." and lotes.normal("201025IN.,") == "201025IN.."
+    assert lotes.misma("201025IN,", "201025IN.") and not lotes.misma("201025IN,", "201025IN")
+    assert set(lotes.escrituras("201025IN..")) == {"201025IN..", "201025IN.,", "201025IN,.", "201025IN,,"}
+    d = date(2026, 3, 1)
+    _lote(s, "666001CC", d, d + timedelta(days=365))
+    _lote(s, "666001CC,", d + timedelta(days=30), d + timedelta(days=395))  # 2.ª producción escrita con coma
+    _lote(s, "666001CC.", d + timedelta(days=30), d + timedelta(days=395))  # y la misma con punto
+    s.commit()
+    # la coma ocupa la variante 1: la siguiente producción es la 3.ª
+    assert lotes.asignar("PT-901", "666001CC", d + timedelta(days=60))[0] == "666001CC.."
+    tipos = {a["tipo"]: a for a in lotes.anomalias(["PT-901"])}
+    assert "666001CC," in tipos["Mismo lote con coma y con punto"]["lote"]
+    assert "666001CC." in tipos["Coma en lugar de punto"]["detalle"]
+
+
+def test_picking_acepta_el_lote_con_punto_si_en_sap_esta_con_coma(s, U, new_order):
+    from app.models import StockLot
+    from app.services import orders as osvc
+    for l in s.query(StockLot).filter_by(product_code="PT-905", lote="L905A").all():
+        l.lote = "L905A,"  # así quedó digitado en SAP
+    s.commit()
+    o = new_order([("PT-905", 10)])
+    osvc.validate_picking_plan(o, U("lider.almacen"))
+    osvc.register_picking(o, U("lider.almacen"), o.lines[0].id, 1, "L905A.")
+    assert o.lines[0].preparado == 1
+    with pytest.raises(BusinessError):
+        osvc.register_picking(o, U("lider.almacen"), o.lines[0].id, 1, "L905A")  # sin punto es otra producción
+
+
+def test_articulos_de_sap_sin_tipo_aparecen_en_ov_y_catalogo(app, s):
+    from app.models import PriceItem, Product
+    s.add(Product(code="AB-926", descripcion="ARROZ DEMO LARGO - 50 Kg", tipo=""))  # así llegan del maestro de SAP
+    s.add(Product(code="GR-902", descripcion="GRANEL DEMO", tipo="", um="KILOGRAMO"))
+    s.add(Product(code="EN-991", descripcion="ENVASE DEMO", tipo="EN"))  # no se vende
+    s.add(PriceItem(lista="GENERAL", product_code="AB-926", canal="CANAL DEMO", precio=88.5))
+    s.commit()
+    c = _cliente(app, "coord.ventas")
+    html = c.get("/ov/nueva").get_data(as_text=True)
+    assert "AB-926 · ARROZ DEMO" in html and "GR-902 · GRANEL" in html and "EN-991" not in html
+    assert '"AB-926": "UND"' in html and '"GR-902": "KG"' in html  # la unidad se completa al elegir el producto
+    cat = c.get("/ov/catalogo?canal=CANAL%20DEMO").get_data(as_text=True)
+    assert "AB-926" in cat and "S/ 88.50" in cat and "GR-902" not in cat
+    assert "GR-902" in c.get("/ov/catalogo?q=GR-902").get_data(as_text=True)

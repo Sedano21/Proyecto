@@ -647,7 +647,8 @@ def receive_pt(liq, user, cantidad_recibida, presentacion_ok=True, observacion="
     transito = _transit_wh()
     if transito:  # Q5: sale del tránsito de Producción todo lo liquidado; lo recibido entra al almacén de PT
         t_lot = db().execute(select(StockLot).where(StockLot.product_code == liq.product_code,
-                                                    StockLot.warehouse_code == transito, StockLot.lote == liq.lote)
+                                                    StockLot.warehouse_code == transito,
+                                                    StockLot.lote.in_(__import__("app.services.lotes", fromlist=["x"]).escrituras(liq.lote)))
                              ).scalars().first()
         if t_lot is not None:
             t_lot.cantidad = max(t_lot.cantidad - liq.cantidad_completada, 0)

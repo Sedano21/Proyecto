@@ -232,7 +232,7 @@ def gestion(desde=None, hasta=None, filtros=None, ver_costos=False, user=None):
             vend_p[l.product_code] += l.cantidad * (l.precio_unitario or 0)
             if l.product:
                 vend_pres[l.product.presentacion or l.product.um or "-"] += l.cantidad
-    catalogo = [p for p in s.execute(select(Product).where(Product.tipo.in_(("PT", "GR")))).scalars()
+    catalogo = [p for p in s.execute(select(Product).where(__import__("app.services.orders", fromlist=["x"]).condicion_vendible(False))).scalars()
                 if not tipo or line_kind(p) == tipo]
     con_stock = {c for c, in s.execute(select(StockLot.product_code).where(StockLot.cantidad > 0)).all()}
     menos = sorted(((p, vend_p[p.code]) for p in catalogo if vend_p.get(p.code)), key=lambda x: x[1])[:15]
@@ -366,7 +366,7 @@ def _mercado(desde, hasta, ver_costos):
     filas = [f for f in analysis(max((hasta - desde).days, 30))["venta"] if f["prom_competencia"] or f["prom_sustitutos"]]
     if ver_costos:
         por_base = defaultdict(list)
-        for p in db().execute(select(Product).where(Product.tipo.in_(("PT", "GR")))).scalars():
+        for p in db().execute(select(Product).where(__import__("app.services.orders", fromlist=["x"]).condicion_vendible(False))).scalars():
             base = ((p.producto_base or p.descripcion or "").upper().split("*")[0]).strip()
             c = cost_per_kg(p)
             if c:

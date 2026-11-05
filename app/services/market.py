@@ -47,7 +47,7 @@ def _check(user, categoria):
 def bases():
     """Productos base que ofrecemos (p. ej. LENTEJA, FRIJOL CANARIO) -> códigos."""
     out = defaultdict(list)
-    for p in db().execute(select(Product).where(Product.tipo.in_(("PT", "MP", "GR")))).scalars():
+    for p in db().execute(select(Product).where(__import__("app.services.orders", fromlist=["x"]).condicion_vendible())).scalars():
         b = ((p.producto_base or p.descripcion or "").upper().split("*")[0]).strip()
         if b:
             out[b].append(p.code)

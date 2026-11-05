@@ -146,7 +146,7 @@ def sap_excel_upload():
 def order_new():
     customers = list(db().execute(select(Customer).order_by(Customer.nombre)).scalars())
     vendedores = list(db().execute(select(User).where(User.role_code == "EJECUTIVO_VENTAS")).scalars())
-    products = list(db().execute(select(Product).where(Product.tipo.in_(["PT", "GR", "MP"])).order_by(Product.code)).scalars())
+    products = list(db().execute(select(Product).where(__import__("app.services.orders", fromlist=["x"]).condicion_vendible()).order_by(Product.code)).scalars())
     if request.method == "POST":
         holder = {}
 
@@ -215,7 +215,7 @@ def order_detail(oid):
     hist = list(db().execute(select(AuditLog).where(AuditLog.entidad == "SalesOrder", AuditLog.entidad_id == o.numero)
                              .order_by(AuditLog.id.desc()).limit(60)).scalars()) if "auditoria.ver" in g.perms else []
     certs = list(db().execute(select(Certificate).where(Certificate.order_id == o.id)).scalars())
-    products = list(db().execute(select(Product).where(Product.tipo.in_(["PT", "GR", "MP"])).order_by(Product.code)).scalars())
+    products = list(db().execute(select(Product).where(__import__("app.services.orders", fromlist=["x"]).condicion_vendible()).order_by(Product.code)).scalars())
     peso, sin_peso = osvc.order_weight_kg(o, "solicitado")
     saldos = list(db().execute(select(SalesOrder).where(SalesOrder.parent_id == o.id)).scalars())
     from ..models import ProductionRequest, PurchaseRequest, RepackRequest, Transfer
@@ -346,7 +346,7 @@ def regularization():
     salidas = {o.id: osvc.regularization_exits(o) for o in rows if o.estado == "REGULARIZADA"}
     customers = list(db().execute(select(Customer).order_by(Customer.nombre)).scalars())
     vendedores = list(db().execute(select(User).where(User.role_code == "EJECUTIVO_VENTAS")).scalars())
-    products = list(db().execute(select(Product).where(Product.tipo.in_(["PT", "GR", "MP"])).order_by(Product.code)).scalars())
+    products = list(db().execute(select(Product).where(__import__("app.services.orders", fromlist=["x"]).condicion_vendible()).order_by(Product.code)).scalars())
     return render_template("ov_regularization.html", rows=rows, customers=customers, vendedores=vendedores,
                            products=products, horas=osvc.horas_cita(), salidas=salidas,
                            ayer=date.today() - timedelta(days=1))

@@ -46,7 +46,7 @@ def opportunities():
     a = request.args
     rows = opsvc.listing(g.user, a.get("estado", ""), a.get("vendedor_id") or None)
     clientes = list(db().execute(select(Customer).order_by(Customer.es_prospecto.desc(), Customer.nombre)).scalars())
-    products = list(db().execute(select(Product).where(Product.tipo.in_(["PT", "GR", "MP"])).order_by(Product.code)).scalars())
+    products = list(db().execute(select(Product).where(__import__("app.services.orders", fromlist=["x"]).condicion_vendible()).order_by(Product.code)).scalars())
     return render_template("opportunities.html", rows=paginate(rows), fun=opsvc.funnel(g.user, f_date("desde"), f_date("hasta")), products=products,
                            estados=opsvc.ESTADOS, clientes=clientes, sel=a.get("customer_id", ""),
                            tipos=param("tipos_accion_cliente", []) or [], vendedores=_vendedores(), f=a, today=date.today())
@@ -77,7 +77,7 @@ def opportunity_detail(oid):
             return act(lambda: opsvc.set_quote_state(g.user, q, f.get("estado")), "Cotización actualizada.", back)
         return act(lambda: opsvc.save_opportunity(g.user, o.customer, f, o), "Oportunidad guardada.", back)
     quotes = list(db().execute(select(Quote).where(Quote.opportunity_id == o.id).order_by(Quote.id.desc())).scalars())
-    products = list(db().execute(select(Product).where(Product.tipo.in_(["PT", "GR", "MP"])).order_by(Product.code)).scalars())
+    products = list(db().execute(select(Product).where(__import__("app.services.orders", fromlist=["x"]).condicion_vendible()).order_by(Product.code)).scalars())
     return render_template("opportunity_detail.html", o=o, quotes=quotes, estados=opsvc.ESTADOS, products=products,
                            tipos=param("tipos_accion_cliente", []) or [], today=date.today())
 
@@ -293,15 +293,27 @@ def catalog():
         return act(_do, lambda r: f"{r[0]} foto(s) cargadas." + (f" Sin producto: {', '.join(r[1][:10])}." if r[1] else ""),
                    url_for("com.catalog"))
     q = (request.args.get("q") or "").strip().upper()
-    rows = list(db().execute(select(Product).where(Product.tipo.in_(["PT", "GR", "MP"])).order_by(Product.code)).scalars())
+    rows = list(db().execute(select(Product).where(__import__("app.services.orders", fromlist=["x"]).condicion_vendible()).order_by(Product.code)).scalars())
     if request.args.get("destacado"):
         rows = [p for p in rows if p.destacado == request.args["destacado"]]
     if q:
         rows = [p for p in rows if q in p.code.upper() or q in (p.descripcion or "").upper() or q in (p.marca or "").upper()]
     if request.args.get("con_foto") == "1":
         rows = [p for p in rows if p.foto]
+    # V21: catálogo por canal: los productos con precio vigente en la lista del canal (granel: la lista mayorista granel)
+    from ..services import prices as psvc
+    from ..services.core import param
+    granel_c = [str(c).upper() for c in (param("lista_granel_canales", []) or [])]
+    canales_cat = sorted(set(psvc.canales()) | set(granel_c))
+    canal = (request.args.get("canal") or "").strip().upper()
+    precios = {}
+    if canal:
+        items = psvc.vigentes("GRANEL") if canal in granel_c else psvc.vigentes("GENERAL", canal=canal)
+        for it in items:
+            precios.setdefault(it.product_code, it)
+        rows = [p for p in rows if p.code in precios]
     from ..services.orders import unit_for
-    return render_template("catalog.html", rows=rows, pagina=paginate(rows, 24), q=q, unit_for=unit_for, con_foto=request.args.get("con_foto", ""),
+    return render_template("catalog.html", canal=canal, canales_cat=canales_cat, precios=precios, rows=rows, pagina=paginate(rows, 24), q=q, unit_for=unit_for, con_foto=request.args.get("con_foto", ""),
                            destacados=ctsvc.featured(), dest_txt=ctsvc.DESTACADOS, dest=request.args.get("destacado", ""))
 
 

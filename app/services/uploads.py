@@ -538,8 +538,8 @@ def _v_stock(b):
             if re.match(r"^[A-Za-z0-9/\-]+\.+$", lt) or re.match(r"^[A-Za-z0-9\-]+\.\d{3}$", lt):
                 pass  # V20 (también la numeración con sufijo .001, .002 que se usa en algunos lotes): variante por puntos = el mismo lote producido en otra fecha (regla de Producción); no es error
             elif re.match(r"^[A-Za-z0-9/\-]+[.,]+$", lt):
-                w.append(f"Lote con coma: '{lt}'. Las variantes de un lote se marcan con puntos; verifique en SAP si la coma "
-                         "es un error de digitación")
+                w.append(f"Lote con coma: '{lt}'. Se toma como «{_lotes.normal(lt)}» (la coma es un error de digitación del "
+                         "punto); corríjalo en SAP cuando pueda")
             else:
                 w.append(f"Lote con caracteres inusuales: '{lt}' (verifique en SAP)")
         try:

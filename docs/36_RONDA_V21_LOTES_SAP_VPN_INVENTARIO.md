@@ -186,7 +186,46 @@ número de lote en la hoja de los lotes observados.
 **5. Después del ajuste:** volver a traer el stock de SAP y autorizarlo. **Lotes y variantes** debería quedar vacío o casi
 vacío. Desde ese momento, Producción solo escribe el número del lote y el sistema pone los puntos.
 
-## 7. Archivos tocados
+## 7. Ajustes tras la revisión del 05-nov-2026 (V21b)
+
+### La coma vale como punto
+
+Producción confirmó que las comas son errores de digitación del punto. En el módulo, `201025IN,` es el mismo lote que
+`201025IN.` (2.ª producción):
+
+- **Al asignar lotes:** la coma ocupa su variante, así que la siguiente producción toma el punto siguiente.
+- **En el picking:** si en SAP el lote está con coma y el operario escribe el punto, se acepta y se registra el lote tal
+  como está en SAP.
+- **Al cruzar datos:** liquidación con stock, registros de Calidad con liquidación, precertificado y tránsito de
+  Producción reconocen las dos formas.
+- **En la carga de stock:** el aviso dice que la coma se toma como punto y que se corrija en SAP cuando se pueda.
+- **En Lotes y variantes:**
+  - la coma figura como «Es el mismo lote que…»;
+  - hay un tipo nuevo, «Mismo lote con coma y con punto», para cuando existen las dos escrituras y hay que unificarlas.
+
+En SAP los lotes siguen con su escritura actual hasta que se corrijan en el inventario: el módulo no cambia nada en SAP.
+
+### Artículos de SAP en la OV y en el catálogo
+
+**Causa.** Los artículos traídos del maestro de SAP llegan sin la columna TIPO (PT/GR/MP). La OV, el catálogo, las
+oportunidades y los informes de menos vendidos solo listaban artículos con TIPO, así que no aparecían, y la unidad se
+quedaba en «—».
+
+**Arreglo.** Ahora también se listan los artículos sin TIPO cuyo prefijo tiene una unidad de venta definida en
+`um_por_prefijo`: PT, AB y MQ en unidades; MP, GR y SER en kilos. Los demás (envases, suministros con otro TIPO) siguen
+fuera. La unidad se completa al elegir el producto.
+
+### Catálogo por canal
+
+El catálogo tiene un filtro **Canal**:
+
+- **Canal con lista general:** muestra los productos con precio vigente en esa lista, con su precio.
+- **Canal granel** (`lista_granel_canales`): muestra la lista mayorista granel, con el precio por kg y por saco.
+- **Sin canal:** muestra todo el catálogo.
+
+Si un canal no muestra productos, falta cargar su lista de precios (Comercial → Listas de precios).
+
+## 8. Archivos tocados
 
 | Archivo | Cambio |
 |---|---|
@@ -205,3 +244,12 @@ vacío. Desde ese momento, Producción solo escribe el número del lote y el sis
 | `tests/test_v21.py` | Pruebas de esta ronda |
 
 No se agregaron tablas: no hay migración nueva y la cabeza sigue en 0032.
+
+V21b también tocó:
+
+- `app/services/lotes.py` (`normal`, `escrituras`, `misma`);
+- `app/services/orders.py` (`condicion_vendible` y el picking con coma);
+- `app/services/picking.py`, `production.py`, `quality.py` y `process_liq.py` (cruce de lotes);
+- `app/views/comercial.py`, `app/views/comercial_mb2.py`, `app/services/market.py` y `app/services/commercial_mgmt.py`
+  (artículos de SAP);
+- `app/templates/catalog.html` (filtro por canal).

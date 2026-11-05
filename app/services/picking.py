@@ -170,7 +170,7 @@ def record(t, user, line_id, cantidad, lote, fecha_produccion=None, fecha_venc=N
     line = next((l for l in order.lines if l.id == int(line_id)), None)
     if line is None:
         raise BusinessError("Línea no encontrada.")
-    lot = next((r.lot for r in line.reservations if r.estado == "ACTIVA" and r.lot.lote == lote), None)
+    lot = next((r.lot for r in line.reservations if r.estado == "ACTIVA" and __import__("app.services.lotes", fromlist=["x"]).misma(r.lot.lote, lote)), None)
     avance = register_picking(order, user, line_id, cantidad, lote)
     db().add(PickingRecord(order_id=order.id, line_id=line.id, task_id=t.id, lote=lote, cantidad=cantidad,
                            bultos=bultos if bultos is not None else bultos_de(line.product, cantidad),

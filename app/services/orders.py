@@ -81,6 +81,18 @@ def unit_for(product):
     return "KG" if (product.um or "").upper().startswith("K") else "UND"
 
 
+def condicion_vendible(incluir_mp=True):
+    """V21: artículos que se ofrecen en OV y catálogo: los de tipo PT/GR/MP del maestro y, aunque no traigan TIPO (los que
+    vienen del maestro de SAP), los que tienen un prefijo con unidad de venta definida («um_por_prefijo»: PT, AB, MQ en
+    unidades; MP, GR, SER en kilos)."""
+    from sqlalchemy import or_
+    from ..models import Product
+    tipos = ["PT", "GR", "MP"] if incluir_mp else ["PT", "GR"]
+    prefijos = [k.upper() for k in (param("um_por_prefijo", {}) or {}) if incluir_mp or k.upper() != "MP"]
+    sin_tipo = or_(Product.tipo.is_(None), Product.tipo == "")
+    return or_(Product.tipo.in_(tipos), *[sin_tipo & Product.code.like(f"{pr}%") for pr in prefijos])
+
+
 def apply_unit_rule(lines):
     """La unidad no se elige: KG (permite vender por saco el granel) o UND según el código."""
     out = []
@@ -976,6 +988,9 @@ def register_picking(order, user, line_id, cantidad, lote):
     if line is None:
         raise BusinessError("Línea no encontrada.")
     lotes_reservados = {r.lot.lote: r for r in line.reservations if r.estado == "ACTIVA"}
+    if lote not in lotes_reservados:  # V21: la coma es el punto mal digitado: se toma el lote reservado tal como está en SAP
+        from . import lotes as _lotes
+        lote = next((k for k in lotes_reservados if _lotes.misma(k, lote)), lote)
     if lote not in lotes_reservados:
         raise BusinessError(f"El lote {lote} no corresponde a los lotes reservados ({', '.join(lotes_reservados) or '-'}). "
                             "Verifique lote/vencimiento (IF §22).")

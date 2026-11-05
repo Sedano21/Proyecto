@@ -30,6 +30,28 @@ def tiene_coma(lote):
     return "," in _FIN.search((lote or "").strip()).group(0) if _FIN.search((lote or "").strip()) else False
 
 
+def normal(lote):
+    """V21: forma canónica del lote: la coma es un error de digitación del punto (mismo lote, misma variante)."""
+    lote = (lote or "").strip()
+    return base(lote) + "." * variante(lote) if lote else lote
+
+
+def escrituras(lote):
+    """Formas en que puede estar escrito el mismo lote (puntos y comas mezclados) para buscarlo en la base."""
+    from itertools import product as _prod
+    lote = (lote or "").strip()
+    b, n = base(lote), variante(lote)
+    if not lote or n == 0:
+        return [lote]
+    if n > 4:  # caso raro: el exacto y la forma con puntos
+        return list(dict.fromkeys([lote, normal(lote)]))
+    return list(dict.fromkeys([lote] + [b + "".join(c) for c in _prod(".,", repeat=n)]))
+
+
+def misma(a, b):
+    return normal(a) == normal(b)
+
+
 def etiqueta(lote):
     v = variante(lote)
     return base(lote) if not v else f"{base(lote)} · {v + 1}.ª prod."
@@ -92,7 +114,8 @@ def anomalias(product_codes=None):
         grupos[(l.product_code, base(l.lote))].append(l)
         if tiene_coma(l.lote):
             out.append({"tipo": "Coma en lugar de punto", "producto": l.product_code, "lote": l.lote, "almacen": l.warehouse_code,
-                        "detalle": f"Debería ser «{base(l.lote) + '.' * variante(l.lote)}»", "lot_id": l.id})
+                        "detalle": f"Es el mismo lote que «{normal(l.lote)}» (la coma se toma como punto); corríjalo en SAP",
+                        "lot_id": l.id})
         elif not _re.match(r"^[A-Za-z0-9/\-]+(\.+|\.\d{3})?$", l.lote or ""):
             out.append({"tipo": "Caracteres no válidos", "producto": l.product_code, "lote": l.lote, "almacen": l.warehouse_code,
                         "detalle": "Revise el número del lote en SAP", "lot_id": l.id})
@@ -100,6 +123,13 @@ def anomalias(product_codes=None):
         codigos = {l.lote for l in ls}
         if len(codigos) < 2:
             continue
+        por_var = defaultdict(set)
+        for l in ls:
+            por_var[normal(l.lote)].add(l.lote)
+        for nl, cods in por_var.items():
+            if len(cods) > 1:
+                out.append({"tipo": "Mismo lote con coma y con punto", "producto": pc, "lote": ", ".join(sorted(cods)),
+                            "almacen": "", "detalle": f"Son el mismo lote «{nl}»: unifíquelos en SAP", "lot_id": None})
         por_fecha = defaultdict(set)
         for l in ls:
             if l.fecha_fab or l.fecha_venc:
@@ -113,5 +143,5 @@ def anomalias(product_codes=None):
             out.append({"tipo": "Variante sin fechas", "producto": pc, "lote": ", ".join(sin_fecha), "almacen": "",
                         "detalle": "Sin fecha de producción ni de vencimiento no se distingue de las otras variantes",
                         "lot_id": None})
-    orden = {"Coma en lugar de punto": 0, "Variantes con las mismas fechas": 1, "Variante sin fechas": 2, "Caracteres no válidos": 3}
+    orden = {"Coma en lugar de punto": 0, "Mismo lote con coma y con punto": 0, "Variantes con las mismas fechas": 1, "Variante sin fechas": 2, "Caracteres no válidos": 3}
     return sorted(out, key=lambda x: (orden.get(x["tipo"], 9), x["producto"], x["lote"]))

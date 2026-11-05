@@ -11,6 +11,7 @@ from sqlalchemy import func, select
 from ..catalogs import CRITERIO_PESO_PENDIENTE, CRITERIOS_PESO, PCC1_HUMEDAD, SPEC_CALIDAD_SUPERIOR
 from ..db import db
 from ..models import Certificate, Liquidation, Product, QualityRecord, SalesOrder, StockLot, now
+from . import lotes as _lotes
 from . import alerts
 from .core import BusinessError, audit, has_perm, param
 
@@ -169,7 +170,7 @@ ETAPAS_PRODUCCION = {
 def lot_entries_vs_liquidation(liq):
     """Contraste del lote registrado por Calidad durante la producción con la liquidación (obs. demo v0.7)."""
     recs = list(db().execute(select(QualityRecord).where(QualityRecord.formato == "LOTE_PRODUCIDO",
-                                                         QualityRecord.lote == liq.lote,
+                                                         QualityRecord.lote.in_(_lotes.escrituras(liq.lote)),
                                                          QualityRecord.product_code == liq.product_code)).scalars())
     if not recs:
         return None
@@ -366,7 +367,7 @@ def register(user, formato, datos, product_code=None, lote="", lot_id=None, resu
 def _contrastar_lote(rec, user):
     """Si el lote ya fue liquidado, contrasta lo registrado por Calidad con la liquidación y alerta las diferencias."""
     from ..models import Liquidation
-    for liq in db().execute(select(Liquidation).where(Liquidation.lote == rec.lote,
+    for liq in db().execute(select(Liquidation).where(Liquidation.lote.in_(_lotes.escrituras(rec.lote)),
                                                       Liquidation.product_code == rec.product_code)).scalars():
         c = lot_entries_vs_liquidation(liq)
         if c and not c["coincide"]:
@@ -516,7 +517,8 @@ def certificate_data(lot, order=None, tipo=None):
     p = lot.product
     tipo = tipo or certificate_type_for(lot)
     td = CERT_TIPOS[tipo]
-    liq = s.execute(select(Liquidation).where(Liquidation.product_code == lot.product_code, Liquidation.lote == lot.lote)
+    liq = s.execute(select(Liquidation).where(Liquidation.product_code == lot.product_code,
+                                              Liquidation.lote.in_(_lotes.escrituras(lot.lote)))
                     .order_by(Liquidation.id.desc())).scalars().first()
     # V14: el precertificado toma todo lo que el sistema sabe del lote: registros por lote o por id de lote, y los del
     # proceso de producción que lo generó (lote de MP de los partes con este lote de PT)
