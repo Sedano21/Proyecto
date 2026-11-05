@@ -692,3 +692,4 @@ table.apilada td,table.apilada td *{white-space:normal!important;overflow-wrap:a
 @media (max-width:900px){.stock-chip span{max-width:110px}}
 @media (max-width:760px){.stock-chip span{max-width:90px}}
 table.apilada td[style]{min-width:0!important}table.apilada td:last-child{grid-column:1/-1}
+table.kv td{overflow-wrap:anywhere;word-break:break-word}table.kv td.mono{white-space:normal}

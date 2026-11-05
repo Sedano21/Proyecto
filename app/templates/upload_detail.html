@@ -3,7 +3,7 @@
 <h1>Carga #{{ bt.id }}: {{ spec.nombre }} <span class="b {{ bt.estado }}">{{ bt.estado|replace('_',' ') }}</span></h1>
 <div class="card"><table class="kv"><tr><td>Archivo / hoja</td><td>{{ bt.archivo }} / {{ bt.hoja }}</td></tr><tr><td>Subido</td><td>{{ bt.ts|d }} por {{ bt.user.nombre if bt.user }}</td></tr>
 {% if bt.confirmado_ts %}<tr><td>Autorizada</td><td>{{ bt.confirmado_ts|d }}</td></tr>{% endif %}
-{% for k, v in bt.resumen.items() if not k.startswith('detalle') %}<tr><td>{{ k|replace('_',' ') }}</td><td class="mono">{{ v }}</td></tr>{% endfor %}</table>
+{% for k, v in bt.resumen.items() if not k.startswith('detalle') %}<tr><td>{{ k|replace('_',' ') }}</td><td class="mono">{{ v|join(', ') if v is iterable and v is not string and v is not mapping else v }}</td></tr>{% endfor %}</table>
 {{ errs(bt.errores_generales, 'warn-list') }}
 {% for k in ['detalle_modificados','detalle_ausentes','detalle_reservas_afectadas'] if bt.resumen.get(k) %}<details><summary>{{ k|replace('_',' ') }} ({{ bt.resumen[k]|length }})</summary><div class="mono small">{% for x in bt.resumen[k] %}{{ x }}<br>{% endfor %}</div></details>{% endfor %}
 </div>

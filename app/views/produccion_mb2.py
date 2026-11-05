@@ -34,7 +34,7 @@ def part_new():
     if r is None and f["fecha"] != date.today():
         return act(lambda: _err("«Registrar» inicia el parte hoy; para otra fecha use «Programar»."),
                    "", url_for("prod.reports"))
-    return act(lambda: ptsvc.start(g.user, f, r), "Parte iniciado.", url_for("prod.reports"),
+    return act(lambda: ptsvc.start(g.user, f, r), lambda x: "Parte iniciado." + (f" Lote para SAP: {x.lote_pt}. {getattr(x, 'lote_pt_nota', '')}" if getattr(x, "lote_pt", "") else ""), url_for("prod.reports"),
                redirect_fn=lambda x: url_for("prod.part_detail", pid=x.id))
 
 

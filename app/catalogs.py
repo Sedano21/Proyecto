@@ -2495,3 +2495,17 @@ PARAMS += [
      "Urgencias de alerta que llegan como notificación al celular o la computadora (en los dispositivos donde el usuario "
      "activó las notificaciones). BAJA queda solo en la bandeja.", "PROPUESTO", V20),
 ]
+# V21 (05-nov-2026)
+V21 = "Observaciones del 05-nov-2026 (V21)"
+ALERT_TYPES += [
+    ("CARGA_POR_AUTORIZAR", "Carga de archivo o de SAP por autorizar", "Almacén", "Cargas", "MEDIA", [], "DEFINIDO", V21,
+     "Cuando quien sube una carga (p. ej. Sistemas al traer el stock de SAP) no puede autorizarla, se avisa a los perfiles "
+     "que sí pueden (permiso de confirmación del tipo de carga).", True),
+]
+PARAMS += [
+    ("sap_despachos_dias", 30, "int", "Integración SAP",
+     "Días hacia atrás de las entregas (guías) que se traen de SAP con «Traer de SAP → Despachos».", "PROPUESTO", V21),
+    ("sap_liquidacion_dias", 30, "int", "Integración SAP",
+     "Días hacia atrás de las entradas por producción que se traen de SAP como liquidaciones (sin consulta SQL).",
+     "PROPUESTO", V21),
+]

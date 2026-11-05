@@ -20,6 +20,15 @@ from .common import act, f_bool, f_date, f_float, paginate, perm_required
 bp = Blueprint("com", __name__, url_prefix="/ov")
 
 
+def _verificar_sap(o):
+    """V21: verificación previa con SAP (no crea nada)."""
+    from ..services import sap_sl
+    problemas, avisos = sap_sl.preflight_order(o)
+    if problemas:
+        raise BusinessError("Antes de enviar a SAP corrija: " + " · ".join(problemas))
+    return "Verificación con SAP correcta: la OV se puede crear." + (" Avisos: " + " · ".join(avisos) if avisos else "")
+
+
 def _lines_from_form():
     lines = []
     codes = request.form.getlist("product_code")
@@ -398,6 +407,7 @@ def order_action(oid, accion):
         "registrar": (lambda: osvc.complete_draft(o, u), "OV registrada y evaluada."),
         "sap": (lambda: __import__("app.services.sap_sl", fromlist=["x"]).push_order_now(o, u),
                 lambda r: f"OV enviada a SAP ({o.sap_docnum or r})." if r else "No se envió: revise el aviso de la OV."),
+        "sap_verificar": (lambda: _verificar_sap(o), lambda r: r),
         "sap_forzar": (lambda: __import__("app.services.sap_sl", fromlist=["x"]).push_order_now(o, u, forzar=True),
                        lambda r: f"OV enviada a SAP ({o.sap_docnum or r})." if r else "No se envió: revise el aviso de la OV."),
         # ronda 23-oct-2026

@@ -138,6 +138,10 @@
     var forms = $all('form').filter(function (x) { return x.action === st.action; });
     var f = forms[st.idx] || forms[0];
     if (!f) return;
+    // V21: formularios de un solo botón (p. ej. «Traer de SAP») no tienen nada escrito que conservar
+    var escritos = [].filter.call(f.elements, function (el) {
+      return el.name && el.type !== 'hidden' && el.type !== 'submit' && el.type !== 'button' && el.tagName !== 'BUTTON'; });
+    if (!escritos.length) return;
     var porNombre = {};
     st.datos.forEach(function (d) { (porNombre[d[0]] = porNombre[d[0]] || []).push(d); });
     Object.keys(porNombre).forEach(function (n) {

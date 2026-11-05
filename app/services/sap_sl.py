@@ -239,7 +239,8 @@ def rows_productos(sl):
 
 
 def rows_despachos(sl, desde=None):
-    desde = desde or date.today()
+    # V21: por defecto, las entregas de los últimos «sap_despachos_dias» (30) días; antes solo las de hoy
+    desde = desde or (date.today() - timedelta(days=int(param("sap_despachos_dias", 30) or 30)))
     ords = {}
     out = []
     for dn in sl.get_all("DeliveryNotes", {"$filter": f"DocDate ge '{desde.isoformat()}'",
@@ -256,6 +257,45 @@ def rows_despachos(sl, desde=None):
     return out
 
 
+_ESTADO_OF = {"boposPlanned": "Planificado", "boposReleased": "Liberado", "boposClosed": "Cerrado",
+              "boposCancelled": "Cancelado"}
+
+
+def rows_liquidacion(sl, desde=None):
+    """V21: liquidaciones de producción con entidades estándar del Service Layer (sin consulta SQL): las entradas de
+    mercancía por producción (InventoryGenEntries con líneas basadas en una orden de fabricación, BaseType 202) de los
+    últimos «sap_liquidacion_dias» días, con su orden (ProductionOrders) y sus lotes. Una fila por orden y lote."""
+    desde = desde or (date.today() - timedelta(days=int(param("sap_liquidacion_dias", 30) or 30)))
+    ofs = {}
+
+    def orden(entry):
+        if entry not in ofs:
+            ofs[entry] = sl._req("GET", f"ProductionOrders({entry})?$select=AbsoluteEntry,DocumentNumber,ItemNo,"
+                                        "ProductDescription,PlannedQuantity,CompletedQuantity,ProductionOrderStatus,"
+                                        "Warehouse,PostingDate,Remarks,InventoryUOM")
+        return ofs[entry]
+    out = []
+    for ent in sl.get_all("InventoryGenEntries", {"$filter": f"DocDate ge '{desde.isoformat()}'",
+                                                  "$select": "DocEntry,DocNum,DocDate,Comments,DocumentLines"}):
+        for ln in ent.get("DocumentLines") or []:
+            if ln.get("BaseType") != 202 or not ln.get("BaseEntry"):
+                continue  # solo entradas por producción (no otras entradas de mercancía)
+            of = orden(ln["BaseEntry"])
+            lotes = ln.get("BatchNumbers") or [{"BatchNumber": "", "Quantity": ln.get("Quantity")}]
+            for b in lotes:
+                out.append({"Número de documento": of.get("DocumentNumber") or ln["BaseEntry"],
+                            "Tipo de Operación": "Producción", "Almacén": ln.get("WarehouseCode") or of.get("Warehouse") or "",
+                            "Fecha de creación": _d(ent.get("DocDate")), "Código de producto": ln.get("ItemCode"),
+                            "Descripción de producto": ln.get("ItemDescription") or of.get("ProductDescription") or "",
+                            "Cantidad Planificada": of.get("PlannedQuantity"), "Cantidad Completada": b.get("Quantity"),
+                            "Unidad de medida": of.get("InventoryUOM") or ln.get("UoMCode") or "",
+                            "Estado": _ESTADO_OF.get(of.get("ProductionOrderStatus"), of.get("ProductionOrderStatus") or ""),
+                            "Realizado por": "", "Comentarios": (of.get("Remarks") or ent.get("Comments") or "")[:250],
+                            "Lote": b.get("BatchNumber") or "", "Fecha de admisión": _d(b.get("ManufacturingDate") or b.get("AddmisionDate")),
+                            "Fecha de vencimiento": _d(b.get("ExpiryDate")), "Entrada SAP": ent.get("DocNum")})
+    return out
+
+
 def rows_consulta(sl, tipo):
     code = (param("sap_consultas", {}) or {}).get(tipo)
     if not code:
@@ -266,6 +306,8 @@ def rows_consulta(sl, tipo):
 
 def fetch(tipo, sl):
     fn = {"OV": rows_ov, "CLIENTES": rows_clientes, "PRODUCTOS": rows_productos, "DESPACHOS": rows_despachos}.get(tipo)
+    if tipo == "LIQUIDACION" and not (param("sap_consultas", {}) or {}).get("LIQUIDACION"):
+        fn = rows_liquidacion  # V21: sin consulta configurada, con las entidades estándar
     return fn(sl) if fn else rows_consulta(sl, tipo)
 
 
@@ -302,6 +344,12 @@ def sync(tipo, user, upload_dir, sl=None, autoconfirmar=None, solo_si_cambia=Fal
         if propio:
             sl.logout()
     if not filas:
+        if tipo == "DESPACHOS":
+            raise BusinessError(f"SAP no tiene entregas (guías) en los últimos {param('sap_despachos_dias', 30)} días "
+                                "(parámetro «sap_despachos_dias»). No hay nada que traer.")
+        if tipo == "LIQUIDACION":
+            raise BusinessError(f"SAP no tiene entradas por producción (órdenes de fabricación) en los últimos "
+                                f"{param('sap_liquidacion_dias', 30)} días (parámetro «sap_liquidacion_dias»).")
         raise BusinessError(f"SAP no devolvió datos de {TIPOS_SAP[tipo].lower()}.")
     # V8 (S07): con sincronización cada minuto no se crea una carga nueva si SAP no cambió nada desde la anterior
     import hashlib
@@ -704,6 +752,58 @@ def push_order(o, user=None, sl=None, forzar=False):
     alerts.close_by_system(f"SAP_OV_ERR:{o.id}", f"OV registrada en SAP ({o.sap_docnum})")
     audit(user, f"SAP_OV_{accion}", "SalesOrder", o.numero, {"sap_docnum": o.sap_docnum, "docentry": o.sap_docentry})
     return accion
+
+
+def preflight_order(o, sl=None):
+    """V21: verificación previa con SAP antes de crear la OV (no escribe nada): conexión, base autorizada, cliente con
+    código y activo en SAP, artículos existentes, de venta y activos, y códigos de impuesto. Devuelve (problemas, avisos)."""
+    problemas, avisos = [], []
+    motivo = write_enabled(sl.cfg if sl is not None else None)
+    if motivo:
+        problemas.append(motivo)
+    body = order_payload(o)
+    if not body["CardCode"]:
+        problemas.append(f"El cliente {o.customer.nombre} no tiene código de SAP (créelo en SAP o regístrelo en su ficha).")
+    if not body["DocumentLines"]:
+        problemas.append("La OV no tiene líneas activas.")
+    if problemas and not body["CardCode"]:
+        return problemas, avisos
+    own = sl is None
+    sl = sl or ServiceLayer()
+    if own:
+        sl.login()
+    try:
+        try:
+            bp = sl._req("GET", f"BusinessPartners('{body['CardCode'].replace(chr(39), chr(39) * 2)}')"
+                                "?$select=CardCode,CardName,CardType,Valid,Frozen")
+            if bp.get("CardType") not in ("cCustomer", "C"):
+                problemas.append(f"{body['CardCode']} no es un cliente en SAP ({bp.get('CardType')}).")
+            if bp.get("Frozen") == "tYES" or bp.get("Valid") == "tNO":
+                problemas.append(f"El cliente {body['CardCode']} está inactivo o bloqueado en SAP.")
+        except SapConnectionError:
+            raise
+        except BusinessError:
+            problemas.append(f"El cliente {body['CardCode']} no existe en esta base de SAP ({sl.cfg.get('company')}).")
+        for ln in body["DocumentLines"]:
+            code = ln["ItemCode"]
+            try:
+                it = sl._req("GET", f"Items('{code.replace(chr(39), chr(39) * 2)}')?$select=ItemCode,SalesItem,Valid,Frozen")
+                if it.get("SalesItem") == "tNO":
+                    problemas.append(f"El artículo {code} no es de venta en SAP.")
+                if it.get("Frozen") == "tYES" or it.get("Valid") == "tNO":
+                    problemas.append(f"El artículo {code} está inactivo en SAP.")
+            except SapConnectionError:
+                raise
+            except BusinessError:
+                problemas.append(f"El artículo {code} no existe en esta base de SAP.")
+            if not ln.get("TaxCode"):
+                avisos.append(f"{code}: sin código de impuesto en el módulo; SAP usará el del cliente o artículo.")
+            if not ln.get("UnitPrice"):
+                avisos.append(f"{code}: precio 0.")
+    finally:
+        if own:
+            sl.logout()
+    return problemas, avisos
 
 
 def push_pending_orders(ahora=None, sl=None):

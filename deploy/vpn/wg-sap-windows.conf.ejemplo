@@ -1,0 +1,13 @@
+# Opción B: WireGuard para Windows instalado en el mismo servidor de SAP (se instala como servicio de Windows: queda
+# activo aunque nadie haya iniciado sesión, a diferencia del túnel actual de la máquina virtual).
+# En el servidor del módulo, el Service Layer queda en https://10.77.0.2:50000/b1s/v1 (SAP_SL_URL).
+[Interface]
+Address = 10.77.0.2/30
+PrivateKey = <CLAVE_PRIVADA_GENERADA_POR_WIREGUARD_PARA_WINDOWS>
+
+[Peer]
+PublicKey = <CLAVE_PUBLICA_DEL_SERVIDOR>
+Endpoint = <IP_PUBLICA_DEL_SERVIDOR_AWS>:51820
+AllowedIPs = 10.77.0.1/32
+PersistentKeepalive = 25
+# Firewall de Windows: permita el puerto TCP 50000 solo desde 10.77.0.1 (regla de entrada con «Dirección IP remota»).

@@ -50,7 +50,7 @@
       {% if ve('clientes.ver') and not ve('ov.ver') %}{{ nl(url_for('com.customer_list'), 'users', 'Clientes') }}{% endif %}
     </div>{% endif %}
     {% if ve('stock.ver') or ve('traslados.ver') or ve('reempaque.ver') or ve('tareas.ejecutar') or ve('movimiento.solicitar') or ve('movimiento.ejecutar') or ve('demanda.ver') or ve('ingresos.ver') or ve('asistencia.area') %}<div class="grp" data-grupo="Almacén"><h4><span class="lbl">Almacén</span></h4>
-      {% if ve('stock.ver') %}{{ nl(url_for('alm.stock'), 'box', 'Stock y reservas') }}{% endif %}
+      {% if ve('stock.ver') %}{{ nl(url_for('alm.stock'), 'box', 'Stock y reservas') }}{{ nl(url_for('alm.lot_review'), 'tag', 'Lotes y variantes') }}{% endif %}
       {% if ve('expedientes.ver') and not ve('ov.ver') %}{{ nl(url_for('seg.groups'), 'layers', 'Expedientes por cliente y despacho') }}{% endif %}
       {% if ve('indicadores.servicio') %}{{ nl(url_for('seg.service'), 'gauge', 'Nivel de servicio (OTIF, fill rate)') }}{% endif %}
       {% if ve('desempeno.equipo') %}{{ nl(url_for('seg.performance'), 'chart', 'Tiempos de respuesta y desempeño') }}{% endif %}

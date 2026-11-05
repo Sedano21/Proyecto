@@ -1,7 +1,7 @@
 """Vistas de Almacén: stock y estados, cargas de archivos, conteos, traslados y reempaques."""
 import os
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
 from flask import Blueprint, abort, current_app, g, redirect, render_template, request, url_for
 from sqlalchemy import func, select
@@ -19,6 +19,47 @@ from ..services.stock import (BLOQUEADOS, ESTADOS_FISICOS, ESTADOS_LABEL, base_q
 from .common import act, f_date, f_float, fail, paginate, perm_required
 
 bp = Blueprint("alm", __name__, url_prefix="/almacen")
+
+
+@bp.route("/lotes")
+@perm_required("stock.ver")
+def lot_review():
+    """V21: lotes y sus variantes por puntos (cada nueva producción del mismo número), con las anomalías a corregir en SAP
+    (comas, variantes con las mismas fechas, variantes sin fechas, caracteres no válidos). Exportable a Excel."""
+    from ..services import lotes
+    q = (request.args.get("q") or "").strip()
+    tipo = request.args.get("tipo") or ""
+    grupo = []
+    if q:
+        b = lotes.base(q)
+        filas = db().execute(select(StockLot).where(StockLot.lote.like(f"{b}%"), StockLot.cantidad > 0)
+                             .order_by(StockLot.product_code, StockLot.lote)).scalars()
+        grupo = [l for l in filas if lotes.base(l.lote) == b]
+    anom = lotes.anomalias()
+    tipos = {}
+    for a in anom:
+        tipos[a["tipo"]] = tipos.get(a["tipo"], 0) + 1
+    if tipo:
+        anom = [a for a in anom if a["tipo"] == tipo]
+    if request.args.get("salida") == "xlsx":
+        import io
+        from flask import send_file
+        from openpyxl import Workbook
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Lotes a corregir"
+        ws.append(["Tipo", "Artículo", "Lote(s) en SAP", "Almacén", "Qué corregir"])
+        for a in anom:
+            ws.append([a["tipo"], a["producto"], a["lote"], a["almacen"], a["detalle"]])
+        for col, w in zip("ABCDE", (30, 14, 40, 10, 70)):
+            ws.column_dimensions[col].width = w
+        out = io.BytesIO()
+        wb.save(out)
+        out.seek(0)
+        return send_file(out, as_attachment=True, download_name=f"lotes_a_corregir_{date.today():%Y%m%d}.xlsx",
+                         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    return render_template("lotes.html", q=q, grupo=grupo, anomalias=paginate(anom, 50), tipos=tipos, tipo=tipo,
+                           lotes=lotes)
 
 
 @bp.route("/stock")

@@ -1,0 +1,14 @@
+{% extends "base.html" %}{% from "_m.html" import empty, paginacion, ic %}
+{% block content %}<div class="page-head"><div><h1>Lotes y sus variantes</h1><p class="sub">Cada nueva producción del mismo número de lote se registra en SAP con un punto más (000863FA → 000863FA. → 000863FA..). Desde los partes de producción el sistema asigna ese código solo; aquí se revisa lo que ya está en SAP.</p></div>
+<div><a class="btn sec" href="{{ url_for('alm.lot_review', tipo=tipo, salida='xlsx') }}">{{ ic('download') }} Excel de lotes a corregir</a></div></div>
+<form method="get" class="card row"><div class="grow"><label>Número de lote (con o sin puntos)</label><input name="q" value="{{ q }}" placeholder="p. ej. 000863FA" type="search"></div><input type="hidden" name="tipo" value="{{ tipo }}"><div><button class="sec">Ver variantes</button></div></form>
+{% if q %}<div class="card"><div class="card-head"><h3>Variantes de {{ lotes.base(q) }}</h3><span class="small muted">{{ grupo|length }} en stock</span></div>
+{% if grupo %}<div class="tw"><table class="small"><thead><tr><th>Código en SAP</th><th>Producción</th><th>Artículo</th><th>Almacén</th><th class="r">Cantidad</th><th>F. producción</th><th>F. vencimiento</th><th>Estado</th></tr></thead><tbody>
+{% for l in grupo|sort(attribute='lote')|sort(attribute='product_code') %}<tr><td class="mono">{{ l.lote }}</td><td>{{ lotes.variante(l.lote) + 1 }}.ª{% if lotes.tiene_coma(l.lote) %} <span class="b ALTA">coma</span>{% endif %}</td><td>{{ l.product_code }} <span class="muted">{{ l.product.descripcion[:40] if l.product }}</span></td><td>{{ l.warehouse_code }}</td><td class="r">{{ l.cantidad|n }}</td><td>{{ l.fecha_fab|d if l.fecha_fab else '—' }}</td><td>{{ l.fecha_venc|d if l.fecha_venc else '—' }}</td><td>{{ l.estado }}</td></tr>{% endfor %}</tbody></table></div>
+{% else %}{{ empty('No hay lotes con ese número en el stock.') }}{% endif %}</div>{% endif %}
+<div class="section-title">Lotes a corregir en SAP</div>
+<div class="chips">{% for t, n in tipos.items() %}<a class="chip {{ 'on' if tipo == t }}" href="{{ url_for('alm.lot_review', q=q, tipo=t) }}">{{ t }} <b>{{ n }}</b></a>{% endfor %}{% if tipo %}<a class="chip" href="{{ url_for('alm.lot_review', q=q) }}">× todos</a>{% endif %}</div>
+<div class="card" data-lista id="lista-anomalias">{% if anomalias %}<div class="tw"><table class="small"><thead><tr><th>Tipo</th><th>Artículo</th><th>Lote(s) en SAP</th><th>Almacén</th><th>Qué corregir</th></tr></thead><tbody>
+{% for a in anomalias %}<tr><td>{{ a.tipo }}</td><td>{{ a.producto }}</td><td class="mono"><a href="{{ url_for('alm.lot_review', q=a.lote.split(',')[0]) }}">{{ a.lote }}</a></td><td>{{ a.almacen or '—' }}</td><td>{{ a.detalle }}</td></tr>{% endfor %}</tbody></table></div>
+{{ paginacion(anomalias, 'lotes') }}{% else %}{{ empty('Sin lotes por corregir.', 'check') }}{% endif %}</div>
+{% endblock %}

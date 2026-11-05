@@ -82,7 +82,9 @@ SPECS = {
                  "planificada": ["Cantidad Planificada"], "completada": ["Cantidad Completada"], "um": ["Unidad de medida"],
                  "valorizado": ["Valorizado"], "estado": ["Estado"], "realizado_por": ["Realizado por"],
                  "comentarios": ["Comentarios"], "lote": ["Lote"], "fecha_fab": ["Fecha de admisión"],
-                 "fecha_venc": ["Fecha de vencimiento"]},
+                 "fecha_venc": ["Fecha de vencimiento"],
+                 # V21: entrada de SAP (traída por el Service Layer): ya trae la cantidad real de cada lote
+                 "entrada_sap": ["Entrada SAP"]},
         "req": ["numero", "producto", "completada", "lote"],
     },
     "DESPACHOS": {
@@ -452,7 +454,22 @@ def create_batch(user, tipo, path, filename, hoja=None):
     db().flush()
     validate_batch(b)
     audit(user, "CARGA_SUBIDA", "UploadBatch", b.id, {"tipo": tipo, "archivo": filename, "hoja": sheet, "filas": len(rows)})
+    # V21: si quien carga no puede autorizarla (p. ej. Sistemas trae el stock de SAP), se avisa a quienes sí pueden
+    if not has_perm(user, spec["confirm_perm"]):
+        roles = autorizadores(tipo)
+        if roles:
+            from . import alerts
+            alerts.emit("CARGA_POR_AUTORIZAR", f"Carga #{b.id} por autorizar: {spec['nombre']}",
+                        f"Subida por {user.nombre} ({len(rows)} filas). Revísela y autorícela en Cargas de archivos.",
+                        "UploadBatch", b.id, extra_roles=roles, dedup_key=f"CARGA_POR_AUTORIZAR:{b.id}", creado_por=user)
     return b
+
+
+def autorizadores(tipo):
+    """Perfiles que pueden autorizar un tipo de carga (según su permiso de confirmación)."""
+    from ..models import RolePermission
+    perm = SPECS[tipo]["confirm_perm"]
+    return sorted(set(db().execute(select(RolePermission.role_code).where(RolePermission.perm_code == perm)).scalars()))
 
 
 def validate_batch(b):
@@ -695,7 +712,7 @@ def _v_liq(b):
         if _txt(r.datos.get("numero")):
             grupos[_txt(r.datos.get("numero"))].append(r)
     for num, rs in grupos.items():
-        if len(rs) < 2 or any("completada_doc" in r.datos for r in rs):
+        if len(rs) < 2 or any("completada_doc" in r.datos or r.datos.get("entrada_sap") for r in rs):
             continue
         try:
             qs = [_num(r.datos.get("completada")) for r in rs]
@@ -720,7 +737,9 @@ def _v_liq(b):
             e.append("Número de documento vacío")
         elif (num, _txt(d.get("lote"))) in existentes:
             w.append("Liquidación ya registrada en el módulo: no se duplica; se compara con SAP (conciliación)")
-        if num and por_doc[num] > 1:
+        if num and por_doc[num] > 1 and d.get("entrada_sap"):
+            pass  # de SAP: cada lote con su cantidad real
+        elif num and por_doc[num] > 1:
             tot = d.get("completada_doc")
             if tot is not None:
                 suma = sum(_num(x.datos.get("completada")) or 0 for x in grupos[num])
@@ -855,7 +874,10 @@ def discard(b, user):
 def confirm(b, user, opciones=None):
     spec = SPECS[b.tipo]
     if not has_perm(user, spec["confirm_perm"]):
-        raise BusinessError("Su rol no puede autorizar esta carga.")
+        from ..models import Role
+        nombres = [r.nombre for r in db().execute(select(Role).where(Role.code.in_(autorizadores(b.tipo)))).scalars()]
+        raise BusinessError("Su perfil puede subir esta carga pero no autorizarla (control de doble revisión). La autoriza: "
+                            + (", ".join(sorted(nombres)) or "nadie configurado") + ". Ya se les avisó con una alerta.")
     if b.estado == "CONFIRMADO":
         raise BusinessError("La carga ya fue confirmada.")
     if b.estado == "DESCARTADO":

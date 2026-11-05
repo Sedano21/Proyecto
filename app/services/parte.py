@@ -244,6 +244,14 @@ def start(user, datos, r=None):
     for k in ("fv_mp", "fv_pt"):
         if datos.get(k):
             setattr(r, k, datos[k] if isinstance(datos[k], date) else date.fromisoformat(str(datos[k])))
+    if datos.get("lote_pt") not in (None, ""):
+        # V21: el sistema asigna el código del lote para SAP (Producción escribe solo el número; los puntos de cada nueva
+        # producción del mismo lote los pone el sistema, sin comas ni duplicados)
+        from . import lotes as _lotes
+        cod, _nueva, nota = _lotes.asignar(r.product_code, r.lote_pt, r.fecha, r.fv_pt)
+        if cod:
+            r.lote_pt = cod
+            r.lote_pt_nota = nota
     if r.sacos and r.peso_saco_kg:
         r.peso_entrada_kg = round(r.sacos * r.peso_saco_kg + (r.saldo_mp_kg or 0), 3)
     if not r.peso_entrada_kg or r.peso_entrada_kg <= 0:
