@@ -35,7 +35,7 @@
 <div class="kpi"><b>S/ {{ d.facturacion.soles|n }}</b><span>Facturación</span><small>{{ d.facturacion.fuente }}</small></div>
 <div class="kpi"><b>{{ d.canceladas }}</b><span>OV canceladas</span></div></div>
 
-<h2 class="sec-title">Nivel de servicio <span class="small muted">({{ d.nivel.n }} OV que salieron)</span></h2>
+<h2 class="sec-title">Nivel de servicio <span class="small muted">(base: {{ d.nivel.n }} OV que corresponden despacharse en el periodo · {{ d.nivel.salieron }} salieron · {{ d.nivel.en_plazo }} aún en plazo)</span></h2>
 <div class="kpis">{% for k, t in [('otif', 'OTIF'), ('on_time', 'On time'), ('in_full', 'In full'), ('fill_unidades', 'Fill rate (unidades)'), ('fill_lineas', 'Fill rate (líneas)')] %}{% set v = d.nivel[k] %}
 <div class="kpi {{ '' if v is none else ('ok' if v >= 95 else ('warn' if v >= 85 else 'err')) }}"><b>{{ v if v is not none else '—' }}{{ ' %' if v is not none }}</b><span>{{ t }}</span><small title="Fórmula">{{ d.formulas[k] }}</small></div>{% endfor %}</div>
 
@@ -70,11 +70,31 @@
 
 <div class="card"><h3>Penalidades</h3><div class="kpis"><div class="kpi"><b>S/ {{ d.penalidades.calculada|n }}</b><span>Calculada</span></div><div class="kpi ok"><b>S/ {{ d.penalidades.pagada|n }}</b><span>Pagada</span></div><div class="kpi"><b>S/ {{ d.penalidades.desestimada|n }}</b><span>Desestimada</span><small>{{ d.penalidades.pct_desestimada }} % de lo calculado</small></div><div class="kpi {{ 'warn' if d.penalidades.pendientes }}"><b>{{ d.penalidades.pendientes }}</b><span>Por resolver</span></div></div></div>
 
-<div class="card small"><h3>Indicadores que recomendamos sumar</h3><ul>
-<li><b>Tasa de recompra</b>: clientes que vuelven a comprar dentro de su frecuencia habitual ÷ clientes activos.</li>
-<li><b>Venta por cliente nuevo y SKU nuevo</b> en clientes existentes (penetración del catálogo).</li>
-<li><b>Días de venta pendiente (DSO comercial)</b>: deuda ÷ venta diaria promedio, por ejecutivo comercial.</li>
-<li><b>Precio realizado vs precio base</b> por canal (descuento efectivo) y <b>margen de contribución por kg</b>.</li>
-<li><b>Lead time de pedido</b>: emisión de la OV → entrega, y tasa de OV con renegociación de fecha.</li></ul></div>
+{% set v = d.v23 %}
+<h2 class="sec-title">Indicadores comerciales adicionales</h2>
+<div class="kpis">
+<div class="kpi {{ '' if v.recompra.tasa is none else ('ok' if v.recompra.tasa >= 80 else 'warn') }}"><b>{{ v.recompra.tasa if v.recompra.tasa is not none else '—' }}{{ ' %' if v.recompra.tasa is not none }}</b><span>Tasa de recompra</span><small>{{ v.recompra.recompran }} de {{ v.recompra.activos }} clientes activos compran dentro de su frecuencia</small></div>
+<div class="kpi"><b>S/ {{ v.nuevos.soles_clientes|n }}</b><span>Venta a clientes nuevos</span><small>{{ v.nuevos.n_clientes }} cliente(s) · {{ v.nuevos.pct_clientes or 0 }} % de la venta</small></div>
+<div class="kpi"><b>S/ {{ v.nuevos.soles_sku|n }}</b><span>SKU nuevos en clientes existentes</span><small>{{ v.nuevos.n_sku }} combinación(es) cliente-SKU · {{ v.nuevos.pct_sku or 0 }} %</small></div>
+<div class="kpi {{ 'warn' if v.dso.total and v.dso.total > 45 }}"><b>{{ v.dso.total if v.dso.total is not none else '—' }}</b><span>DSO comercial (días)</span><small>deuda ÷ venta diaria de los últimos {{ v.dso.ventana }} días</small></div>
+<div class="kpi"><b>{{ v.lead.promedio if v.lead.promedio is not none else '—' }} d</b><span>Lead time de pedido</span><small>emisión → entrega · mediana {{ v.lead.mediana if v.lead.mediana is not none else '—' }} d · {{ v.lead.n }} OV</small></div>
+<div class="kpi {{ 'warn' if (v.lead.tasa_renegociacion or 0) > 10 }}"><b>{{ v.lead.tasa_renegociacion if v.lead.tasa_renegociacion is not none else '—' }}{{ ' %' if v.lead.tasa_renegociacion is not none }}</b><span>OV con fecha renegociada</span><small>{{ v.lead.renegociadas }} de {{ v.lead.ovs }} OV del periodo</small></div>
+</div>
+<div class="grid g2">
+<div class="card"><h3>Precio realizado vs precio de lista por canal</h3><div class="tw"><table class="list small"><thead><tr><th>Canal</th><th class="r">Venta S/</th><th class="r">A precio de lista S/</th><th class="r">Realizado</th><th class="r">Descuento efectivo</th><th class="r">kg</th>{% if v.ver_costos %}<th class="r">Margen contrib. S/</th><th class="r">S/ por kg</th>{% endif %}</tr></thead>
+{% for x in v.precio %}<tr><td>{{ x.canal }}</td><td class="r">{{ x.real|n }}</td><td class="r">{{ x.lista|n }}</td><td class="r">{{ x.realizado_pct if x.realizado_pct is not none else '—' }} %</td><td class="r {{ 'err' if x.descuento_pct and x.descuento_pct > 5 }}">{{ x.descuento_pct if x.descuento_pct is not none else '—' }} %</td><td class="r">{{ x.kg|n }}</td>{% if v.ver_costos %}<td class="r">{{ x.mcv|n if x.mcv is not none else '—' }}</td><td class="r">{{ x.mcv_kg if x.mcv_kg is not none else '—' }}</td>{% endif %}</tr>{% if x.sin_lista %}<tr><td colspan="8" class="small muted">{{ x.sin_lista }} de {{ x.lineas }} línea(s) sin precio de lista en este canal (no entran al descuento).</td></tr>{% endif %}{% else %}<tr><td colspan="8" class="muted">Sin OV en el periodo.</td></tr>{% endfor %}</table></div>
+<p class="small muted">Descuento efectivo = 1 − venta ÷ venta a precio de lista. {% if v.ver_costos %}Margen de contribución por kg = margen de contribución de la cascada de margen ÷ kg vendidos.{% else %}El margen por kg solo lo ven los perfiles con acceso a costos.{% endif %}</p></div>
+<div class="card"><h3>DSO comercial por ejecutivo</h3><div class="tw"><table class="list small"><thead><tr><th>Ejecutivo comercial</th><th class="r">Deuda S/</th><th class="r">Vencida S/</th><th class="r">Venta diaria S/</th><th class="r">DSO (días)</th></tr></thead>
+{% for x in v.dso.filas %}<tr><td>{{ x.ejecutivo }}</td><td class="r">{{ x.deuda|n }}</td><td class="r {{ 'err' if x.vencida }}">{{ x.vencida|n }}</td><td class="r">{{ x.venta_diaria|n }}</td><td class="r">{{ x.dso if x.dso is not none else '—' }}</td></tr>{% else %}<tr><td colspan="5" class="muted">Sin deuda ni venta en la ventana.</td></tr>{% endfor %}</table></div></div>
+</div>
+<div class="grid g2">
+<div class="card"><h3>Clientes que no recompraron en su frecuencia</h3><p class="small muted">Cliente activo: con OV en los últimos {{ v.recompra.ventana }} días. Frecuencia habitual: promedio de días entre sus OV (con una sola OV, {{ v.recompra.defecto|int }} días). Tolerancia {{ v.recompra.tolerancia|int }} %.</p><div class="tw"><table class="list small"><thead><tr><th>Cliente</th><th>Ejecutivo</th><th>Última OV</th><th class="r">Frecuencia (d)</th><th class="r">Días sin comprar</th></tr></thead>
+{% for x in v.recompra.sin_recompra %}<tr><td>{{ x.cliente }}</td><td>{{ x.ejecutivo }}</td><td>{{ x.ultima|d }}</td><td class="r">{{ x.frecuencia }}</td><td class="r err">{{ x.dias }}</td></tr>{% else %}<tr><td colspan="5" class="muted">Todos los clientes activos están dentro de su frecuencia.</td></tr>{% endfor %}</table></div>
+{% if v.recompra.por_ejecutivo %}<p class="small">Por ejecutivo: {% for n, t, a, b2 in v.recompra.por_ejecutivo %}<b>{{ n }}</b> {{ t }} % ({{ a }}/{{ b2 }}){{ ' · ' if not loop.last }}{% endfor %}</p>{% endif %}</div>
+<div class="card"><h3>Penetración del catálogo</h3><h4 class="small">Clientes nuevos</h4><ul class="small">{% for n, s in v.nuevos.clientes[:10] %}<li>{{ n }} · S/ {{ s|n }}</li>{% else %}<li class="muted">Sin clientes nuevos en el periodo.</li>{% endfor %}</ul>
+<h4 class="small">SKU nuevos en clientes existentes</h4><ul class="small">{% for (n, c), s in v.nuevos.sku[:12] %}<li>{{ n }} · {{ c }} · S/ {{ s|n }}</li>{% else %}<li class="muted">Sin SKU nuevos en clientes existentes.</li>{% endfor %}</ul></div>
+</div>
+{% if d.nivel.fallas %}<div class="card"><h3>OV del periodo que no cumplen OTIF</h3><div class="tw"><table class="list small"><thead><tr><th>OV</th><th>Cliente</th><th>Comprometida</th><th>Salida</th><th>A tiempo</th><th>Completa</th><th>Estado</th></tr></thead>
+{% for x in d.nivel.fallas[:40] %}<tr><td><a href="{{ url_for('com.order_detail', oid=x.id) }}">{{ x.numero }}</a></td><td>{{ x.cliente }}</td><td>{{ x.fecha|d }}</td><td>{{ x.salida.strftime('%d/%m %H:%M') if x.salida else 'no salió' }}</td><td>{{ 'Sí' if x.a_tiempo else 'No' }}</td><td>{{ 'Sí' if x.completo else 'No' }}</td><td>{{ x.estado }}</td></tr>{% endfor %}</table></div></div>{% endif %}
 <script>document.querySelectorAll('[data-ms-filter]').forEach(function(i){i.addEventListener('input',function(){var q=i.value.toLowerCase();i.parentNode.querySelectorAll('label.chk').forEach(function(l){l.style.display=l.textContent.toLowerCase().indexOf(q)<0?'none':'';});});});</script>
 {% endblock %}

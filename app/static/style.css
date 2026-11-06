@@ -709,3 +709,8 @@ table.kv td{overflow-wrap:anywhere;word-break:break-word}table.kv td.mono{white-
 .areas-gg .it b{font-variant-numeric:tabular-nums}.areas-gg .it.alto b{color:var(--err)}.areas-gg .it.medio b{color:#b37400}
 .meta.sep{display:flex;flex-wrap:wrap;gap:4px 14px}
 .ind-group td.r label.chk{display:inline-flex;align-items:center;gap:3px;margin:0 0 0 8px;width:auto;padding:2px 6px}
+/* V23: bandeja de gerencia */
+.bandeja-ger .prio-ger{border-left:4px solid var(--err,#c0392b)}
+.cons-areas details{border-bottom:1px solid var(--line,#e3e6ea);padding:6px 0}
+.cons-areas summary{cursor:pointer;display:flex;gap:8px;align-items:center}
+.cons-areas table{margin-top:6px}

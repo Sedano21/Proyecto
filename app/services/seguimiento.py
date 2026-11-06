@@ -159,12 +159,15 @@ def month_bounds(ref=None):
 def service_month(ref=None, customer_id=None, vendedor_id=None, desde=None, hasta=None):
     """OTIF, fill rate y a tiempo (on time) sobre el universo de OV cargadas cuya fecha comprometida cae en el mes en
     curso (o en el rango dado), sin las canceladas. Cada indicador trae el detalle de sus OV.
-    - On time: OV que salieron hasta su fecha comprometida / OV con salida.
-    - Fill rate (unidades): unidades despachadas / unidades pedidas de las OV con salida; también por líneas.
-    - OTIF: OV que salieron a tiempo y completas / OV del universo cuya fecha ya pasó o ya salieron."""
+    V23 (fórmula de la empresa): la base de los tres indicadores son todas las OV que se subieron y corresponden
+    despacharse en el periodo (fecha comprometida dentro).
+    - On time: OV que salieron hasta su fecha comprometida / OV del universo.
+    - In full: OV que salieron con todas sus líneas completas / OV del universo.
+    - OTIF: OV que salieron a tiempo y completas / OV del universo.
+    - Fill rate (unidades): unidades despachadas / unidades pedidas de las OV con salida; también por líneas."""
     ini, fin = (desde, hasta) if desde and hasta else month_bounds(ref)
     q = _con_lineas(select(SalesOrder)).where(SalesOrder.fecha_compromiso >= ini, SalesOrder.fecha_compromiso <= fin,
-                                 SalesOrder.estado != "CANCELADA")
+                                 SalesOrder.estado.notin_(("CANCELADA", "BORRADOR", "REGULARIZACION_OBSERVADA")))
     if customer_id:
         q = q.where(SalesOrder.customer_id == int(customer_id))
     if vendedor_id:
@@ -188,8 +191,11 @@ def service_month(ref=None, customer_id=None, vendedor_id=None, desde=None, hast
     def pct(a, b):
         return round(100 * a / b, 1) if b else None
     return {"desde": ini, "hasta": fin, "universo": len(filas), "filas": filas,
-            "otif": pct(sum(1 for f in evaluables if f["otif"]), len(evaluables)), "otif_n": (sum(1 for f in evaluables if f["otif"]), len(evaluables)),
-            "on_time": pct(sum(1 for f in salieron if f["a_tiempo"]), len(salieron)), "on_time_n": (sum(1 for f in salieron if f["a_tiempo"]), len(salieron)),
+            "otif": pct(sum(1 for f in filas if f["otif"]), len(filas)), "otif_n": (sum(1 for f in filas if f["otif"]), len(filas)),
+            "on_time": pct(sum(1 for f in filas if f["a_tiempo"]), len(filas)), "on_time_n": (sum(1 for f in filas if f["a_tiempo"]), len(filas)),
+            "in_full": pct(sum(1 for f in filas if f["completo"]), len(filas)), "in_full_n": (sum(1 for f in filas if f["completo"]), len(filas)),
+            "en_plazo": sum(1 for f in filas if not f["salio"] and not f["evaluable"]),
+            "evaluables": len(evaluables),
             "fill_rate": pct(sum(f["despachado"] for f in salieron), sum(f["pedido"] for f in salieron)),
             "fill_rate_lineas": pct(sum(f["lineas_ok"] for f in salieron), sum(f["lineas"] for f in salieron)),
             "pendientes": sum(1 for f in filas if not f["salio"])}

@@ -47,7 +47,7 @@ def service():
     d = seg.service_month(f_date("mes") or None, request.args.get("cliente") or None, request.args.get("vendedor") or None)
     ver = request.args.get("ver", "")
     filas = d["filas"]
-    filtros = {"otif_no": lambda x: x["evaluable"] and not x["otif"], "otif_si": lambda x: x["otif"],
+    filtros = {"otif_no": lambda x: not x["otif"], "otif_si": lambda x: x["otif"],
                "tarde": lambda x: x["salio"] and not x["a_tiempo"], "incompletas": lambda x: x["salio"] and not x["completo"],
                "pendientes": lambda x: not x["salio"]}
     if ver in filtros:

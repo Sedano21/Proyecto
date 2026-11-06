@@ -1,0 +1,4 @@
+{% extends "base.html" %}{% from "_bandeja_gerencia.html" import bandeja %}
+{% block content %}<div class="page-head"><div><h1>Bandeja de gerencia</h1><p class="sub">Primero lo de sus áreas prioritarias y lo que requiere su decisión; lo informativo, consolidado por área.</p></div><div><a class="btn sec" href="{{ url_for('main.alerts') }}">Lista completa</a></div></div>
+{{ bandeja(d) }}
+{% endblock %}

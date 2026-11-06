@@ -155,6 +155,20 @@ def _demo():
     return current_app.config.get("DEMO_MODE")
 
 
+@bp.route("/demo/usuarios")
+def demo_users():
+    """V23: solo en modo demostración. Usuarios de cada perfil con la contraseña de la demostración y botón para entrar
+    con ese perfil. En producción (DEMO_MODE=0) no existe: responde 404."""
+    from ..seed import DEMO_PASSWORD
+    if not _demo():
+        abort(404)
+    usuarios = [u for u in db().execute(select(User).where(User.activo.is_(True)).order_by(User.role_code, User.username)).scalars()]
+    por_area = {}
+    for u in usuarios:
+        por_area.setdefault((u.role.area if u.role else "") or "General", []).append(u)
+    return render_template("demo_usuarios.html", por_area=dict(sorted(por_area.items())), clave=DEMO_PASSWORD)
+
+
 @bp.route("/logout")
 def logout():
     session.clear()
@@ -292,8 +306,10 @@ def dashboard():
     if "sugerencias.ver" in p and g.user.role_code in ("GERENCIA_GENERAL", "GERENTE_GENERAL_ADJUNTO", "JEFE_OPERACIONES"):
         from ..services.sugerencias import all_suggestions
         sug = all_suggestions()[:4]
+    # V23: las gerencias ven sus alertas agrupadas (prioritarias, por accionar e informativas consolidadas por área)
+    bandeja = alert_svc.gerencia_bandeja(g.user) if alert_svc.es_gerencia_consolidada(g.user) else None
     return render_template("dashboard.html", k=k, prod=prod, hp=hoy_prod, mis_alertas=mis, tareas=tareas, desde=desde or "", hasta=hasta or "",
-                           areas_gg=areas_gg, sug=sug,
+                           areas_gg=areas_gg, sug=sug, bandeja=bandeja,
                            estado_txt=alert_svc.ESTADO_TXT, arrastre=pending_carryover(g.user), com=com, det=det,
                            mis_ov=mis_ov, nivel=nivel, despachos=despachos)
 
@@ -330,6 +346,14 @@ def alerts():
     return render_template("alerts.html", rows=rows if agrupar else paginate(rows), f=f, tipos=tipos, agrupar=agrupar, grupos=grupos,
                            areas=sorted({t.area for t in tipos}), grupos_tipo=sorted({t.grupo for t in tipos}),
                            estados=alert_svc.ESTADOS, estado_txt=alert_svc.ESTADO_TXT, naturaleza=naturaleza)
+
+
+@bp.route("/alertas/gerencia")
+@login_required
+def alerts_management():
+    """V23: bandeja agrupada de las gerencias (entidades máximas): prioritarias de sus áreas, las que deben accionar y
+    las informativas consolidadas por área y tipo."""
+    return render_template("alerts_gerencia.html", d=alert_svc.gerencia_bandeja(g.user))
 
 
 @bp.route("/alertas/estado.json")

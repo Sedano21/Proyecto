@@ -2670,3 +2670,55 @@ TIPOS_TRANSPORTISTA = {"CHOFER": "Chofer de la empresa", "TRABAJADOR": "Otro tra
 DEMO_USERS_V22 = [("jefe.mantenimiento", "Jefe de Mantenimiento", JMA), ("tecnico.mant1", "Técnico de Mantenimiento 1", TMA),
                   ("tecnico.mant2", "Técnico de Mantenimiento 2", TMA), ("limpieza1", "Personal de Limpieza 1", PLI),
                   ("limpieza2", "Personal de Limpieza 2", PLI), ("gestion.humana", "Gestión Humana", GHU)]
+
+# ----------------------------------------------------------------------------------------------------------------------
+# V23 (06-nov-2026): OTIF del mes, indicadores comerciales, bandeja de gerencia, devoluciones sin hora de corte,
+# análisis de la demanda proyectada
+V23 = "Requerimiento V23 (06-nov-2026)"
+_V23_PERMS = [
+    ("demanda.analisis", "Análisis de la demanda proyectada: cumplimiento, requerimiento de materiales, carga de producción "
+     "y distribución e informe para el Directorio", "Gerencial", "consulta",
+     [JOP, "JEFE_VENTAS", "GERENTE_COMERCIAL", JAF]),
+    ("devoluciones.dejar_en_vehiculo", "Reportar que no hay personal para recibir una devolución y que la mercadería queda "
+     "en el vehículo", "Almacén", "edicion",
+     ["CONDUCTOR", "COORD_DISTRIBUCION", "ASIST_DISTRIBUCION", "COORD_ALMACEN", "COORD_ALMACEN_MP", "SUPERV_ALMACEN",
+      "LIDER_ALMACEN", "AUX_ALMACEN"]),
+    ("demo.credenciales", "Ver los usuarios de demostración y su contraseña (solo en modo demo)", "Sistemas", "consulta",
+     ["SISTEMAS"]),
+]
+for _code, _n, _m, _t, _roles in _V23_PERMS:
+    if not any(p[0] == _code for p in PERMISSIONS):
+        PERMISSIONS.append((_code, _n, _m, _t))
+    for _r in _roles + ["GERENCIA_GENERAL", GGA]:
+        ROLE_PERMISSIONS.setdefault(_r, [])
+        if not any(p[0] == _code for p in ROLE_PERMISSIONS[_r]):
+            ROLE_PERMISSIONS[_r].append((_code, "DEFINIDO", V23 if _r in _roles else f"{V23}; regla general de Gerencia General"))
+ALERT_TYPES += [
+    ("DEVOLUCION_EN_VEHICULO", "Devolución sin personal para recibir: queda en el vehículo", "Almacén", "Devoluciones", "ALTA",
+     ["COORD_ALMACEN", "SUPERV_ALMACEN", "JEFE_LOGISTICA", "COORD_DISTRIBUCION"], "DEFINIDO", V23,
+     "El chofer o Distribución reporta que no hay personal de almacén para recibir la devolución; la mercadería queda en "
+     "el vehículo hasta que Almacén la reciba.", True),
+]
+PARAMS += [
+    ("alertas_prioritarias_gerencia", {"GERENCIA_GENERAL": ["Calidad"], GGA: ["Compras", "Importaciones"]}, "dict",
+     "Alertas", "Áreas cuyas alertas le llegan a cada gerencia de forma prioritaria (aviso directo y primeras en su "
+     "bandeja).", "DEFINIDO", f"{V23}: GG recibe Calidad; GGA, Compras e Importaciones"),
+    ("perfiles_alertas_consolidadas", ["GERENCIA_GENERAL", GGA], "list", "Alertas",
+     "Perfiles que ven sus alertas agrupadas: prioritarias, las que deben accionar y las informativas consolidadas por "
+     "área (solo suenan las prioritarias y las que deben accionar).", "DEFINIDO", V23),
+    ("recompra_ventana_dias", 365, "int", "Comercial",
+     "Días hacia atrás para considerar a un cliente activo y calcular su frecuencia habitual de compra.", "PROPUESTO", V23),
+    ("recompra_frecuencia_defecto_dias", 30, "int", "Comercial",
+     "Frecuencia de compra que se asume para un cliente con una sola OV en la ventana.", "PROPUESTO", V23),
+    ("recompra_tolerancia_pct", 20, "int", "Comercial",
+     "Holgura sobre la frecuencia habitual antes de considerar que el cliente no recompró a tiempo.", "PROPUESTO", V23),
+    ("dso_ventana_dias", 90, "int", "Comercial",
+     "Días de venta usados para la venta diaria promedio del DSO comercial.", "PROPUESTO", V23),
+    ("demanda_jornada_horas", 8, "float", "Producción",
+     "Horas de una jornada normal por línea (para estimar horas extra frente a la demanda proyectada).", "PROPUESTO", V23),
+    ("demanda_horas_extra_max_dia", 2, "float", "Producción",
+     "Horas extra por día y línea que se pueden programar antes de recomendar un tercero.", "PROPUESTO", V23),
+    ("distribucion_kg_viaje_ref", {}, "dict", "Distribución",
+     "Kg por viaje de referencia por vehículo propio (si no se registra, se usa su capacidad real o el peso permitido).",
+     "PROPUESTO", V23),
+]

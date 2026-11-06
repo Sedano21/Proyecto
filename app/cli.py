@@ -15,7 +15,8 @@
     python -m app.cli sap-consulta-stock  # crea en SAP la consulta guardada del stock por lote (solo la consulta)
     python -m app.cli clave <usuario> # asigna una contraseña nueva (la pide en pantalla; se cambia en el primer ingreso)
     python -m app.cli muestras <carpeta>   # genera los Excel ficticios de ejemplo
-    python -m app.cli demo-dia        # agrega un día de operación FICTICIO con todas las casuísticas (sobre la demostración)
+    python -m app.cli demo-dia        # agrega un día de operación FICTICIO con todas las casuísticas y el flujo completo
+                                      # (historial de OV, OV en cada estado, producción, proyección; sobre la demostración)
     python -m app.cli depurar [--aplicar]  # fotos de entrega más antiguas que la retención configurada (sin --aplicar: solo lista)
 """
 import getpass
@@ -74,6 +75,10 @@ def main(argv):
             r = seed_operation_day(app.config["UPLOAD_DIR"])
             s.commit()
             print("Ya estaba cargado el día de operación." if r is None else f"Día de operación ficticio creado: {r}")
+            from .demo_flujo import seed_flow  # V23: flujo completo (historial, OV en cada estado, producción, proyección)
+            f = seed_flow(app.config["UPLOAD_DIR"])
+            s.commit()
+            print("Ya estaba cargado el flujo completo." if f is None else f"Flujo completo ficticio creado: {f}")
         elif cmd == "depurar":
             from .services.retention import purge_photos
             r = purge_photos(app.config["UPLOAD_DIR"], aplicar="--aplicar" in argv)

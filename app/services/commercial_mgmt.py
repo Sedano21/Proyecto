@@ -6,10 +6,11 @@ fórmula; desempeño por persona; embudo comercial; productos y presentaciones c
 por canal; estado de pago por cliente; penalidades; y recomendaciones. Filtros múltiples: canales (incluir o excluir),
 granel o envasado, ejecutivos comerciales y clientes.
 
-Fórmulas (base: OV que salieron del almacén en el periodo):
-- On time   = OV que salieron hasta su fecha comprometida / OV que salieron.
-- In full   = OV que salieron con todas sus líneas completas / OV que salieron.
-- OTIF      = OV a tiempo Y completas / OV que salieron.
+Fórmulas (V23, 06-nov-2026; base: OV que se subieron y corresponden despacharse en el periodo, por su fecha
+comprometida; detalle en comercial_v23.py):
+- On time   = OV que salieron hasta su fecha comprometida / OV que corresponden despacharse en el periodo.
+- In full   = OV que salieron con todas sus líneas completas / OV que corresponden despacharse en el periodo.
+- OTIF      = OV a tiempo Y completas / OV que corresponden despacharse en el periodo.
 - Fill rate = unidades despachadas (hasta lo pedido) / unidades pedidas (también por líneas completas / líneas).
 """
 from collections import Counter, defaultdict
@@ -25,13 +26,7 @@ from .core import param
 
 ABIERTAS = ("BORRADOR", "BLOQUEADA", "REGISTRADA", "EVALUADA", "EN_PREPARACION", "PREPARADA", "PROGRAMADA", "EN_RUTA")
 ATENDIDAS = ("DESPACHADA", "ENTREGADA", "ENTREGA_PARCIAL", "CERRADA", "REGULARIZADA_CERRADA")
-FORMULAS = {
-    "on_time": "OV que salieron hasta su fecha comprometida ÷ OV que salieron",
-    "in_full": "OV que salieron con todas sus líneas completas ÷ OV que salieron",
-    "otif": "OV a tiempo y completas ÷ OV que salieron",
-    "fill_unidades": "Unidades despachadas (hasta lo pedido) ÷ unidades pedidas",
-    "fill_lineas": "Líneas despachadas completas ÷ líneas pedidas",
-}
+from .comercial_v23 import FORMULAS  # noqa: E402  V23: base = OV que corresponden despacharse en el periodo
 
 
 def _pct(a, b):
@@ -84,7 +79,13 @@ def _lineas(o, tipo):
 
 
 def _nivel(ovs, tipo):
-    """On time, In full, OTIF y fill rate de las OV que salieron."""
+    """V23: On time, In full, OTIF y fill rate sobre la base recibida (OV que corresponden despacharse en el periodo)."""
+    from .comercial_v23 import nivel
+    return nivel(ovs, lambda o: _lineas(o, tipo))
+
+
+def _nivel_salidas(ovs, tipo):
+    """Fórmula anterior (base: OV que salieron). Se conserva solo como referencia."""
     base = [o for o in ovs if o.salida_ts is not None and _lineas(o, tipo)]
     ot = inf = otif = 0
     ped = desp = 0.0
@@ -187,7 +188,12 @@ def gestion(desde=None, hasta=None, filtros=None, ver_costos=False, user=None):
                    "Sin facturas cargadas en el periodo: se muestra lo atendido valorizado"}
     if not facts:
         facturacion["soles"] = atendidas["soles"]
-    nivel = _nivel(ovs, tipo)
+    # V23: el nivel de servicio se mide sobre las OV que corresponden despacharse en el periodo (fecha comprometida),
+    # hasta el fin del mes del periodo, con los mismos filtros
+    from .comercial_v23 import base_mes, fin_de_mes, indicadores
+    hasta_nivel = max(hasta, fin_de_mes(hasta)) if hasta.month == hoy.month and hasta.year == hoy.year else hasta
+    base_nivel = [o for o in _filtrar(base_mes(desde, hasta_nivel), f) if _lineas(o, tipo)]
+    nivel = _nivel(base_nivel, tipo)
     # por vendedor, canal y cliente
     grupos = {"vendedor": defaultdict(list), "canal": defaultdict(list), "cliente": defaultdict(list)}
     for o in ovs:
@@ -200,14 +206,18 @@ def gestion(desde=None, hasta=None, filtros=None, ver_costos=False, user=None):
     opps = [x for x in opps if desde <= x.creado_ts.date() <= hasta]
     pen = indicator(desde, hasta)["por_vendedor"]
 
-    def resumen(lst, nombre=None):
+    claves = {"vendedor": lambda o: o.vendedor.nombre if o.vendedor else (o.vendedor_nombre or "(sin ejecutivo comercial)"),
+              "canal": lambda o: order_channel(o) or "(sin canal)", "cliente": lambda o: o.customer.nombre}
+
+    def resumen(lst, nombre=None, grupo=None):
         so = sum(monto(o) for o in lst)
+        base_g = [o for o in base_nivel if claves[grupo](o) == nombre] if grupo else lst
         r = {"ovs": len(lst), "soles": round(so, 2), "kg": round(sum(kg(o) for o in lst), 1),
-             "ticket": round(so / len(lst), 2) if lst else 0, "nivel": _nivel(lst, tipo),
+             "ticket": round(so / len(lst), 2) if lst else 0, "nivel": _nivel(base_g, tipo),
              "modificadas": sum(1 for o in lst if o.numero in mods)}
         r["pct_modificadas"] = _pct(r["modificadas"], len(lst))
         return r
-    por = {k: sorted(((n, resumen(v)) for n, v in g.items()), key=lambda x: -x[1]["soles"]) for k, g in grupos.items()}
+    por = {k: sorted(((n, resumen(v, n, k)) for n, v in g.items()), key=lambda x: -x[1]["soles"]) for k, g in grupos.items()}
     metas = _metas(f"{hasta:%Y-%m}", [o for o in ovs if o.fecha_emision >= hasta.replace(day=1)], tipo, usuarios)
     meta_v = {m["nombre"]: m for m in metas["filas"] if m["alcance"] == "VENDEDOR"}
     personas = []
@@ -261,7 +271,8 @@ def gestion(desde=None, hasta=None, filtros=None, ver_costos=False, user=None):
             "sin_movimiento": sin_mov[:30], "sin_movimiento_con_stock": [p for p in sin_mov if p.code in con_stock][:30],
             "presentaciones_sin_mov": pres_sin, "pagos": pagos, "margen": margen, "mercado": mercado,
             "canceladas": sum(1 for o in todas if o.estado == "CANCELADA"), "recomendaciones": reco,
-            "penalidades": indicator(desde, hasta)["total"]}
+            "penalidades": indicator(desde, hasta)["total"],
+            "v23": indicadores(desde, hasta, lambda lst: [o for o in _filtrar(lst, f) if _lineas(o, tipo)], ver_costos)}
 
 
 def _recomendaciones(nivel, metas, personas, pend, sin_mov, con_stock, pagos, ing):

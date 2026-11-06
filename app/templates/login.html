@@ -16,7 +16,7 @@
     {% if demo_users %}
     <details><summary>Usuarios de demostración (contraseña: Demo2026!)</summary>
       <div class="tw" style="max-height:260px;overflow:auto"><table class="small">{% for u in demo_users %}<tr><td class="mono">{{ u.username }}</td><td>{{ u.role.nombre }}</td></tr>{% endfor %}</table></div>
-    </details>{% endif %}
+    </details><p class="small"><a href="{{ url_for('main.demo_users') }}">Ver todos los usuarios y contraseñas de la demostración</a></p>{% endif %}
   </div>
   <p class="small muted" style="text-align:center">Corporación Productiva · prototipo funcional</p>
 </div>

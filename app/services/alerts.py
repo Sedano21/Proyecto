@@ -156,6 +156,11 @@ def _destinatarios(t, roles, usuarios):
                                                              GGAlertPreference.type_code == t.code)).scalars().first()
             if not (pref and pref.recibir_directo):
                 destinatarios.pop(u.id)
+    # V23: las áreas prioritarias de cada gerencia (GG: Calidad; GGA: Compras e Importaciones) le llegan directo
+    for rol, areas in (param("alertas_prioritarias_gerencia", {}) or {}).items():
+        if t.area in (areas or []):
+            for u in users_with_roles([rol]):
+                destinatarios[u.id] = u
     return destinatarios
 
 
@@ -260,9 +265,12 @@ def visible_types(user):
 
 def is_direct(user, alert):
     """La alerta va dirigida al usuario (su rol, su usuario o una designación), no solo visible por un perfil
-    equivalente (V16): solo estas suenan; el jefe equivalente recibe el aviso si la tarea no se atiende en su plazo."""
+    equivalente (V16): solo estas suenan; el jefe equivalente recibe el aviso si la tarea no se atiende en su plazo.
+    V23: a las gerencias solo les suenan las de sus áreas prioritarias y las que deben accionar."""
     if user is None:
         return False
+    if es_gerencia_consolidada(user):
+        return alert.area in areas_prioritarias(user) or can_act(user, alert)
     roles = roles_of(user, equivalentes=False)
     return (bool(roles & set(alert.roles or [])) or user.id in (alert.usuarios or []) or alert.asignado_a == user.id
             or (alert.asignado_rol and alert.asignado_rol in roles) or sees_all(user))
@@ -607,3 +615,44 @@ def open_count(user):
         _CONTADOR.clear()
     _CONTADOR[clave] = (time.time(), n)
     return n
+
+
+# ------------------------------------------------------------------ V23: bandeja de gerencia (agrupada)
+def areas_prioritarias(user):
+    """Áreas cuyas alertas le llegan a la gerencia de forma prioritaria (parámetro «alertas_prioritarias_gerencia»)."""
+    if user is None:
+        return set()
+    return set((param("alertas_prioritarias_gerencia", {}) or {}).get(user.role_code, []) or [])
+
+
+def es_gerencia_consolidada(user):
+    return user is not None and user.role_code in (param("perfiles_alertas_consolidadas", []) or [])
+
+
+def gerencia_bandeja(user):
+    """Bandeja de las entidades máximas (V23, 06-nov-2026): 1) alertas de sus áreas prioritarias, 2) las que debe
+    accionar (aprobar, desestimar o designar) y 3) las informativas, consolidadas por área y tipo (no una por una: p. ej.
+    «SAP sin conexión: 37»)."""
+    rows = by_priority(user, inbox(user, solo_abiertas=True))
+    prio = areas_prioritarias(user)
+    prioritarias = [a for a in rows if a.area in prio]
+    accion = [a for a in rows if a.area not in prio and can_act(user, a)]
+    resto = [a for a in rows if a.area not in prio and not can_act(user, a)]
+    por_area = {}
+    for a in resto:
+        ar = por_area.setdefault(a.area or "General", {"area": a.area or "General", "total": 0, "alta": 0, "tipos": {}})
+        ar["total"] += 1
+        ar["alta"] += a.prioridad == "ALTA"
+        t = ar["tipos"].setdefault(a.type_code, {"code": a.type_code, "nombre": a.type.nombre if a.type else a.type_code,
+                                                 "n": 0, "ultima": a.creado_ts, "prioridad": a.prioridad,
+                                                 "ejemplo": a.titulo})
+        t["n"] += 1
+        if a.creado_ts and (t["ultima"] is None or a.creado_ts > t["ultima"]):
+            t["ultima"], t["ejemplo"] = a.creado_ts, a.titulo
+        if PRIORIDAD_ORDEN.get(a.prioridad, 9) < PRIORIDAD_ORDEN.get(t["prioridad"], 9):
+            t["prioridad"] = a.prioridad
+    areas = sorted(por_area.values(), key=lambda x: (-x["alta"], -x["total"]))
+    for ar in areas:
+        ar["tipos"] = sorted(ar["tipos"].values(), key=lambda t: (PRIORIDAD_ORDEN.get(t["prioridad"], 9), -t["n"]))
+    return {"prioritarias": prioritarias, "areas_prioritarias": sorted(prio), "accion": accion, "informativas": areas,
+            "n_informativas": len(resto)}

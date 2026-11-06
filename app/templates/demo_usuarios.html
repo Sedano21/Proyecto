@@ -1,0 +1,7 @@
+{% extends "base.html" %}{% from "_m.html" import csrf %}
+{% block content %}<div class="page-head"><div><h1>Usuarios de la demostración</h1><p class="sub">Solo en modo demostración. Contraseña de todos: <b class="mono">{{ clave }}</b> (salvo que el usuario la haya cambiado). Con «Entrar» se cierra la sesión actual y se ingresa con ese perfil.</p></div></div>
+<p class="small muted">En producción (DEMO_MODE=0) esta página no existe y las contraseñas son personales.</p>
+{% for area, us in por_area.items() %}<section class="card"><h3>{{ area }}</h3><div class="tw"><table class="small apilable"><tr><th>Usuario</th><th>Nombre</th><th>Perfil</th><th>Contraseña</th><th></th></tr>
+{% for u in us %}<tr><td class="mono" data-label="Usuario">{{ u.username }}</td><td data-label="Nombre">{{ u.nombre }}</td><td data-label="Perfil">{{ u.role.nombre if u.role else u.role_code }}</td><td class="mono" data-label="Contraseña">{{ clave }}</td>
+<td><form method="post" action="{{ url_for('main.login') }}" style="margin:0">{{ csrf() }}<input type="hidden" name="username" value="{{ u.username }}"><input type="hidden" name="password" value="{{ clave }}"><input type="hidden" name="cambiar_perfil" value="1"><button class="sec small">Entrar</button></form></td></tr>{% endfor %}</table></div></section>{% endfor %}
+{% endblock %}

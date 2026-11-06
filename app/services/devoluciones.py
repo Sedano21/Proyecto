@@ -1,9 +1,13 @@
 """V22 (06-nov-2026): recepción de devoluciones en almacén.
 
 Cuando una entrega vuelve total o parcialmente (devolución, rechazo, cliente ausente o entrega parcial), queda una
-recepción PENDIENTE para Almacén. Almacén la contrasta con la guía el mismo día o, si el vehículo volvió fuera de horario
-(«devolucion_hora_corte»), al día siguiente: cantidad, presentación y si llegó dañado. Si hay observaciones adjunta foto
-o video. Lo devuelto ya ingresó como «Pendiente de revisión» (flujo existente); esta recepción confirma lo que llegó.
+recepción PENDIENTE para Almacén. Almacén la contrasta con la guía cuando llega: cantidad, presentación y si llegó dañado.
+Si hay observaciones adjunta foto o video. Lo devuelto ya ingresó como «Pendiente de revisión» (flujo existente); esta
+recepción confirma lo que llegó.
+
+V23 (06-nov-2026): no hay hora de corte. Si al volver no hay personal de almacén para recibir, el chofer o Distribución
+lo reporta («sin personal para recibir»): la recepción pasa a EN_VEHICULO, la mercadería queda en el vehículo y Almacén
+y Logística reciben una alerta hasta que la reciban. «plazo» queda como la fecha en que se registró la devolución.
 """
 from datetime import date, datetime, timedelta
 
@@ -15,19 +19,12 @@ from . import alerts
 from .core import BusinessError, audit, has_perm, param
 
 
+POR_RECIBIR = ("PENDIENTE", "EN_VEHICULO")
+
+
 def _plazo(momento=None):
-    momento = momento or now()
-    corte = (param("devolucion_hora_corte", "17:00") or "17:00").strip()
-    try:
-        hh, mm = (int(x) for x in corte.split(":"))
-    except ValueError:
-        hh, mm = 17, 0
-    dia = momento.date()
-    if (momento.hour, momento.minute) > (hh, mm):
-        dia += timedelta(days=1)
-        while dia.weekday() == 6:  # domingo: al día hábil siguiente
-            dia += timedelta(days=1)
-    return dia
+    """V23: sin hora de corte; la fecha de referencia es el día en que se registra la devolución."""
+    return (momento or now()).date()
 
 
 def create_for(order, user, tipo="TOTAL", incident=None, stop=None, lineas=None):
@@ -56,7 +53,7 @@ def create_for(order, user, tipo="TOTAL", incident=None, stop=None, lineas=None)
     db().flush()
     alerts.emit("DEVOLUCION_POR_RECIBIR", f"Devolución {tipo.lower()} de OV {order.numero} por recibir",
                 f"{order.customer.nombre}: " + "; ".join(f"{e['producto']} {e['cantidad']:g}" for e in esperado)
-                + f". Contrastar con la guía {r.guia_numero or '-'} hasta el {r.plazo:%d/%m/%Y}.",
+                + f". Contrastar con la guía {r.guia_numero or '-'} cuando llegue el vehículo.",
                 "ReturnReceipt", r.id, dedup_key=f"DEVREC:{r.id}", creado_por=user)
     return r
 
@@ -71,7 +68,7 @@ def receive(user, r, datos, evidencias=None, observacion=""):
     """datos: {line_id: {cantidad, presentacion_ok, danado, detalle}}."""
     if not has_perm(user, "devoluciones.recibir"):
         raise BusinessError("Las devoluciones las recibe Almacén.")
-    if r.estado != "PENDIENTE":
+    if r.estado not in POR_RECIBIR:
         raise BusinessError("La devolución ya fue recibida.")
     recibido, difs = [], []
     for e in r.esperado:
@@ -106,6 +103,7 @@ def receive(user, r, datos, evidencias=None, observacion=""):
     r.recibido_por = user.id
     r.recibido_ts = now()
     alerts.close_by_system(f"DEVREC:{r.id}", f"Recibida por {user.nombre}")
+    alerts.close_by_system(f"DEVVEH:{r.id}", f"Recibida por {user.nombre}")
     if difs:
         alerts.emit("DEVOLUCION_OBSERVADA", f"Devolución de OV {r.order.numero} con observaciones",
                     "; ".join(difs) + (f". {observacion}" if observacion else ""), "ReturnReceipt", r.id,
@@ -115,19 +113,36 @@ def receive(user, r, datos, evidencias=None, observacion=""):
     return difs
 
 
+def leave_in_vehicle(user, r, motivo, evidencias=None):
+    """V23: no hay personal de almacén para recibir; la mercadería queda en el vehículo hasta que Almacén la reciba."""
+    from ..models import Route
+    if not has_perm(user, "devoluciones.dejar_en_vehiculo"):
+        raise BusinessError("Lo reporta el chofer, Distribución o Almacén.")
+    if r.estado != "PENDIENTE":
+        raise BusinessError("Solo una devolución por recibir puede quedar en el vehículo.")
+    motivo = (motivo or "").strip()
+    if not motivo:
+        raise BusinessError("Indique el motivo (p. ej. «no hay personal de almacén disponible para recibir»).")
+    rt = db().get(Route, r.route_id) if r.route_id else None
+    veh = ""
+    if rt is not None:
+        veh = (rt.vehicle.placa if rt.vehicle is not None else "") or (rt.transportista or {}).get("placa", "")
+    r.estado = "EN_VEHICULO"
+    r.en_vehiculo = {"motivo": motivo, "user": user.nombre, "user_id": user.id, "ts": now().isoformat(timespec="minutes"),
+                     "vehiculo": veh, "evidencias": [x for x in (evidencias or []) if x]}
+    alerts.emit("DEVOLUCION_EN_VEHICULO", f"Devolución de OV {r.order.numero} quedó en el vehículo {veh or ''}".strip(),
+                f"{user.nombre}: {motivo}. Recibir y contrastar con la guía {r.guia_numero or '-'} en cuanto haya personal.",
+                "ReturnReceipt", r.id, dedup_key=f"DEVVEH:{r.id}", creado_por=user)
+    audit(user, "DEVOLUCION_EN_VEHICULO", "ReturnReceipt", r.id, {"motivo": motivo, "vehiculo": veh})
+    return r
+
+
 def pending(hoy=None):
-    return list(db().execute(select(ReturnReceipt).where(ReturnReceipt.estado == "PENDIENTE")
+    return list(db().execute(select(ReturnReceipt).where(ReturnReceipt.estado.in_(POR_RECIBIR))
                              .order_by(ReturnReceipt.plazo, ReturnReceipt.id)).scalars())
 
 
 def check_overdue(hoy=None):
-    """Tarea programada: devoluciones no recibidas en su plazo."""
-    hoy = hoy or date.today()
-    n = 0
-    for r in pending():
-        if r.plazo < hoy:
-            alerts.emit("DEVOLUCION_VENCIDA", f"Devolución de OV {r.order.numero} sin recibir (plazo {r.plazo:%d/%m})",
-                        "Contrastar con la guía y registrar lo que llegó.", "ReturnReceipt", r.id,
-                        dedup_key=f"DEVVEN:{r.id}")
-            n += 1
-    return n
+    """V23: sin hora de corte ni plazo de recepción; las que quedan en el vehículo mantienen su alerta abierta hasta que
+    Almacén las reciba. Se conserva la función para la tarea programada (no emite alertas)."""
+    return 0

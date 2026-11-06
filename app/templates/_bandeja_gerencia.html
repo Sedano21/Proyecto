@@ -1,0 +1,15 @@
+{# V23: bandeja de gerencia. d = alerts.gerencia_bandeja(user); compacto = en el inicio #}
+{% macro bandeja(d, compacto=False) %}{% from "_m.html" import b, empty %}
+<div class="grid g2 bandeja-ger">
+<section class="card prio-ger"><div class="card-head"><h3>Prioritarias · {{ d.areas_prioritarias|join(', ') or 'sin áreas configuradas' }}</h3><span class="b {{ 'ALTA' if d.prioritarias else 'ok' }}">{{ d.prioritarias|length }}</span></div>
+{% if d.prioritarias %}<ul class="list-tasks">{% for a in d.prioritarias[:(6 if compacto else 100)] %}<li><span class="prio {{ a.prioridad }}" aria-hidden="true"></span><div class="t"><a href="{{ url_for('main.alert_detail', aid=a.id) }}">{{ a.titulo }}</a><div class="meta">{{ b(a.prioridad) }} {{ a.area }} · {{ a.creado_ts|d }}</div></div></li>{% endfor %}</ul>{% if compacto and d.prioritarias|length > 6 %}<p class="small"><a href="{{ url_for('main.alerts_management') }}">Ver las {{ d.prioritarias|length }}</a></p>{% endif %}
+{% else %}{{ empty('Sin alertas abiertas en sus áreas prioritarias.', 'check') }}{% endif %}</section>
+<section class="card"><div class="card-head"><h3>Requieren su decisión</h3><span class="b {{ 'MEDIA' if d.accion else 'ok' }}">{{ d.accion|length }}</span></div>
+{% if d.accion %}<ul class="list-tasks">{% for a in d.accion[:(6 if compacto else 100)] %}<li><span class="prio {{ a.prioridad }}" aria-hidden="true"></span><div class="t"><a href="{{ url_for('main.alert_detail', aid=a.id) }}">{{ a.titulo }}</a><div class="meta">{{ b(a.prioridad) }} {{ a.area }} · {{ a.creado_ts|d }}</div></div></li>{% endfor %}</ul>{% if compacto and d.accion|length > 6 %}<p class="small"><a href="{{ url_for('main.alerts_management') }}">Ver las {{ d.accion|length }}</a></p>{% endif %}
+{% else %}{{ empty('Nada pendiente de su aprobación o decisión.', 'check') }}{% endif %}</section>
+</div>
+<section class="card"><div class="card-head"><h3>Informativas consolidadas por área</h3><span class="muted small">{{ d.n_informativas }} abiertas · las atiende cada área; no suenan</span></div>
+{% if d.informativas %}<div class="cons-areas">{% for ar in d.informativas %}<details{{ ' open' if not compacto and loop.first }}><summary><b>{{ ar.area }}</b> <span class="b info">{{ ar.total }}</span>{% if ar.alta %} <span class="b ALTA">{{ ar.alta }} alta</span>{% endif %}</summary>
+<table class="small"><tr><th>Tipo</th><th class="r">Abiertas</th><th>Última</th><th></th></tr>{% for t in ar.tipos %}<tr><td>{{ b(t.prioridad) }} {{ t.nombre }}<br><span class="muted">{{ t.ejemplo[:90] }}</span></td><td class="r"><b>{{ t.n }}</b></td><td>{{ t.ultima|d }}</td><td><a href="{{ url_for('main.alerts', type_code=t.code) }}">ver</a></td></tr>{% endfor %}</table></details>{% endfor %}</div>
+{% else %}{{ empty('Sin alertas informativas abiertas.', 'bell') }}{% endif %}</section>
+{% endmacro %}

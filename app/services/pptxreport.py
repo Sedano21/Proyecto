@@ -120,7 +120,7 @@ def gestion_pptx(d, titulo="Gestión comercial"):
     tb = s.shapes.add_textbox(Inches(0.5), Inches(5.2), Inches(12.3), Inches(1.5))
     tb.text_frame.word_wrap = True
     p = tb.text_frame.paragraphs[0]
-    p.text = f"Base del nivel de servicio: {nv['n']} OV que salieron del almacén en el periodo."
+    p.text = f"Base del nivel de servicio: {nv['n']} OV que se subieron y corresponden despacharse en el periodo ({nv['salieron']} salieron)."
     p.font.size, p.font.color.rgb = Pt(11), GRIS
     # metas
     if d["metas"]["filas"]:

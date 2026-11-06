@@ -143,13 +143,17 @@ def absences():
 
 
 # ------------------------------------------------------------------ devoluciones
-@bp.route("/devoluciones", methods=["GET", "POST"])
+@perm_required("devoluciones.ver", "devoluciones.recibir", "devoluciones.dejar_en_vehiculo")
 @perm_required("devoluciones.ver", "devoluciones.recibir")
 def returns():
     back = url_for("v22.returns", estado=request.args.get("estado", ""))
     if request.method == "POST":
         f = request.form
         r = db().get(ReturnReceipt, int(f.get("id") or 0)) or abort(404)
+        if f.get("accion") == "en_vehiculo":
+            return act(lambda: dev.leave_in_vehicle(g.user, r, f.get("motivo", ""),
+                                                    save_evidences(request.files.getlist("evidencias"), _up(), f"devolucion_{r.id}_veh")),
+                       "Registrado: la mercadería queda en el vehículo. Se avisó a Almacén, Logística y Distribución.", back)
         datos = {str(e["line_id"]): {"cantidad": f.get(f"q_{e['line_id']}"), "presentacion_ok": f.get(f"pres_{e['line_id']}", "1"),
                                      "danado": f.get(f"dan_{e['line_id']}", "0"), "detalle": f.get(f"det_{e['line_id']}", "")}
                  for e in r.esperado}
@@ -160,7 +164,9 @@ def returns():
     estado = request.args.get("estado") or "PENDIENTE"
     q = select(ReturnReceipt).order_by(ReturnReceipt.plazo.desc() if estado != "PENDIENTE" else ReturnReceipt.plazo,
                                        ReturnReceipt.id.desc())
-    if estado != "TODAS":
+    if estado == "PENDIENTE":
+        q = q.where(ReturnReceipt.estado.in_(dev.POR_RECIBIR))
+    elif estado != "TODAS":
         q = q.where(ReturnReceipt.estado == estado)
     rows = list(db().execute(q).scalars())
     return render_template("v22_devoluciones.html", rows=paginate(rows), estado=estado, hoy=date.today())

@@ -26,7 +26,7 @@ INDICADORES = {
     "PED_COBERTURA": ("Cobertura promedio de stock de los pedidos", "Logística", "Pedidos",
                       ("Comercial", "Almacén", "Logística"), (), (),
                       "Detectar pedidos sin stock suficiente para reponer, trasladar o renegociar la fecha."),
-    "OTIF_SALIDA": ("OTIF a la salida (completo y a tiempo)", "Logística", "Pedidos",
+    "OTIF_SALIDA": ("OTIF del mes (a tiempo y completas)", "Logística", "Pedidos",
                     ("Comercial", "Almacén", "Logística", "Distribución"), ("Calidad",), (),
                     "Medir el nivel de servicio comprometido con el cliente (decisión Q2)."),
     "FILL_RATE": ("Fill rate a la salida (unidades, líneas y pedidos al 100 %)", "Logística", "Pedidos",
@@ -218,6 +218,16 @@ def _pct(x):
     return "—" if x is None else f"{x} %"
 
 
+def _otif_mes(desde=None, hasta=None):
+    """V23: OTIF = OV a tiempo y completas ÷ OV que corresponden despacharse en el mes (fecha comprometida)."""
+    from .seguimiento import service_month
+    d = service_month(desde=desde, hasta=hasta) if desde and hasta else service_month()
+    if not d["universo"]:
+        return "—", "sin OV que correspondan despacharse en el periodo"
+    return (f"{d['otif']} %", f"{d['otif_n'][0]} de {d['otif_n'][1]} OV del mes · on time {_pct(d['on_time'])} · "
+                              f"in full {_pct(d['in_full'])}")
+
+
 def values(user, codes, desde=None, hasta=None):
     """Valor de cada indicador pedido que el usuario puede ver: [{codigo, nombre, valor, detalle}]. Los no visibles
     se descartan aquí (no basta con no ofrecerlos en pantalla)."""
@@ -235,7 +245,7 @@ def values(user, codes, desde=None, hasta=None):
     fx = {
         "PED_PENDIENTES": lambda: (k["pendientes"], f"{k['completos']} con stock completo · {k['incompletos']} incompletos"),
         "PED_COBERTURA": lambda: (_pct(k["cobertura_unidades_prom"]), f"por líneas {_pct(k['cobertura_lineas_prom'])}"),
-        "OTIF_SALIDA": lambda: otif(k["otif_salida"]),
+        "OTIF_SALIDA": lambda: _otif_mes(desde, hasta),
         "FILL_RATE": lambda: (_pct(k["fill_rate_unidades"]), f"líneas {_pct(k['fill_rate_lineas'])}"),
         "VOLUMEN_OV_KG": lambda: (f"{k['volumen_kg']:,.0f} kg", f"pendiente {k['volumen_pendiente_kg']:,.0f} kg"),
         "RECHAZOS": lambda: (k["rechazos"], f"{k['devoluciones']} devoluciones · {k['entregas_parciales']} parciales"),

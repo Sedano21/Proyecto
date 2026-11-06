@@ -280,6 +280,7 @@ def install(app):
     app.jinja_env.globals["ahora"] = datetime.now
     # V22: categorías del botón «Reportar avería» y archivos de video en las evidencias
     app.jinja_env.globals["ticket_categorias"] = lambda: __import__("app.services.tickets", fromlist=["x"]).categorias()
+    app.jinja_env.globals["es_gerencia"] = lambda u: __import__("app.services.alerts", fromlist=["x"]).es_gerencia_consolidada(u)
     app.jinja_env.globals["es_video"] = lambda n: __import__("app.services.distribution", fromlist=["x"]).es_video(n)
 
     def es_tarea(a):

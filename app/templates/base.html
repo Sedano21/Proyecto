@@ -23,6 +23,7 @@
     <div class="nav-scroll">
     <div class="grp" data-grupo="Panel">
       {{ nl(url_for('main.dashboard'), 'home', 'Inicio') }}
+      {% if es_gerencia(user) %}{{ nl(url_for('main.alerts_management'), 'flag', 'Bandeja de gerencia') }}{% endif %}
       {{ nl(url_for('main.alerts'), 'bell', 'Alertas y tareas', ('<span class="count" aria-label="' ~ alertas_abiertas ~ ' abiertas">' ~ alertas_abiertas ~ '</span>')|safe if alertas_abiertas else '') }}
       {% if ve('alertas.ver') or ve('informes.comercial') or ve('informes.reempaque') or ve('informes.produccion') or ve('informes.distribucion') or ve('informes.almacen') %}{{ nl(url_for('rep.home'), 'chart', 'Informes') }}{% endif %}
       {% if ve('sugerencias.ver') %}{{ nl(url_for('v22.suggestions'), 'trend', 'Sugerencias de eficiencia') }}{% endif %}
@@ -61,7 +62,7 @@
       {% if (ve('preparacion.registrar') or ve('ov.ver')) and user.role.area != 'Producción' %}{{ nl(url_for('com.preparation'), 'clipboard', 'Preparación (picking)') }}{% endif %}{# V12: a Producción no le suma; si lo necesita, lo consulta desde la OV #}
       {% if (ve('picking.asignar') or ve('tareas.ejecutar') or ve('preparacion.registrar')) and user.role.area != 'Producción' %}{{ nl(url_for('alm.picking_schedule'), 'calendar', 'Programación de picking') }}{% endif %}
       {% if ve('traslados.ver') %}{{ nl(url_for('alm.transfers'), 'swap', 'Traslados') }}{% endif %}
-      {% if ve('devoluciones.ver') or ve('devoluciones.recibir') %}{{ nl(url_for('v22.returns'), 'download', 'Devoluciones por recibir') }}{% endif %}
+      {% if ve('devoluciones.ver') or ve('devoluciones.recibir') or ve('devoluciones.dejar_en_vehiculo') %}{{ nl(url_for('v22.returns'), 'download', 'Devoluciones por recibir') }}{% endif %}
       {% if ve('reempaque.ver') %}{{ nl(url_for('alm.repacks'), 'refresh', 'Reempaque') }}{% endif %}
       {% if ve('stock.conteo') %}{{ nl(url_for('alm.counts'), 'count', 'Conteos físicos') }}{% endif %}
       {% if ve('movimiento.solicitar') or ve('movimiento.ejecutar') or ve('movimiento.ver_todos') %}{{ nl(url_for('sup.moves'), 'swap', 'Movimientos punto a punto') }}{% endif %}

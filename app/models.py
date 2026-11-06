@@ -2317,8 +2317,9 @@ class Absence(Base):
 
 
 class ReturnReceipt(Base):
-    """Recepción en almacén de una devolución total o parcial: se contrasta con la guía (cantidad, presentación, daño) el
-    mismo día o, si llegó fuera de horario, al día siguiente; con observaciones se sube foto o video."""
+    """Recepción en almacén de una devolución total o parcial: se contrasta con la guía (cantidad, presentación, daño)
+    cuando llega (V23: sin hora de corte); si no hay personal para recibir, queda EN_VEHICULO; con observaciones se sube
+    foto o video."""
     __tablename__ = "return_receipts"
     id: Mapped[int] = mapped_column(primary_key=True)
     order_id: Mapped[int] = mapped_column(ForeignKey("sales_orders.id"), index=True)
@@ -2335,6 +2336,9 @@ class ReturnReceipt(Base):
     recibido_por: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     recibido_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    # V23: sin hora de corte; si no hay personal para recibir, se reporta y la mercadería queda en el vehículo
+    # {motivo, user, user_id, ts, vehiculo, evidencias}
+    en_vehiculo: Mapped[dict] = mapped_column(JSON, default=dict)
     order = relationship("SalesOrder")
 
 
