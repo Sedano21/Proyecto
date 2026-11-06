@@ -1,0 +1,24 @@
+{% extends "base.html" %}{% from "_m.html" import b, csrf, ic, empty, paginacion %}
+{% block content %}<div class="page-head"><div><h1>Tickets de averías y solicitudes</h1><p class="sub">Reportados desde el botón «Reportar avería» de cualquier perfil</p></div>
+<button class="btn" data-open="dlg-ticket">{{ ic('plus') }} Reportar avería o solicitud</button></div>
+<form method="get" class="row card noprint"><div><label>Para</label><select name="destino"><option value="">(todos)</option><option value="MANTENIMIENTO" {{ 'selected' if destino == 'MANTENIMIENTO' }}>Mantenimiento</option><option value="SISTEMAS" {{ 'selected' if destino == 'SISTEMAS' }}>Sistemas</option></select></div>
+<div><label>Estado</label><select name="estado"><option value="ABIERTOS">Abiertos</option>{% for k, v in estados.items() %}<option value="{{ k }}" {{ 'selected' if estado == k }}>{{ v }}</option>{% endfor %}<option value="TODOS" {{ 'selected' if estado == 'TODOS' }}>Todos</option></select></div><div><button class="sec">Filtrar</button></div></form>
+{% if tiempos %}<details class="card"><summary><b>Tiempos de respuesta (30 días)</b></summary><table class="small"><tr><th>Para</th><th>Categoría</th><th class="r">Tickets</th><th class="r">Urgentes</th><th class="r">Resueltos</th><th class="r">Atención prom. (h)</th><th class="r">Solución prom. (h)</th></tr>
+{% for t in tiempos %}<tr><td>{{ t.destino|capitalize }}</td><td>{{ t.categoria }}</td><td class="r">{{ t.total }}</td><td class="r">{{ t.urgentes }}</td><td class="r">{{ t.resueltos }}</td><td class="r">{{ t.atencion_h if t.atencion_h is not none else '—' }}</td><td class="r">{{ t.solucion_h if t.solucion_h is not none else '—' }}</td></tr>{% endfor %}</table></details>{% endif %}
+<div class="cards">{% for t in rows %}<article class="xcard {{ 'alerta' if t.urgente and t.estado not in ['RESUELTO','RECHAZADO'] }}">
+<div class="xcard-head"><b>#{{ t.id }} · {{ t.categoria }}</b><span>{% if t.urgente %}<span class="b ALTA">urgente</span> {% endif %}<span class="b {{ 'ok' if t.estado == 'RESUELTO' else t.estado }}">{{ estados[t.estado] }}</span></span></div>
+<div class="meta small"><span>{{ t.destino|capitalize }}</span><span>{{ t.lugar or '—' }}</span><span>{{ t.autor.nombre if t.autor }} ({{ t.area_origen }})</span><span>{{ t.ts.strftime('%d/%m %H:%M') }}</span></div>
+<p class="small">{{ t.descripcion }}</p>
+{% if t.evidencias %}<div class="ev-list">{% for e in t.evidencias %}<a href="{{ url_for('main.evidence', name=e) }}" target="_blank">{% if es_video(e) %}<video src="{{ url_for('main.evidence', name=e) }}" muted></video>{% else %}<img src="{{ url_for('main.evidence', name=e) }}" alt="evidencia" loading="lazy">{% endif %}</a>{% endfor %}</div>{% endif %}
+{% if t.asignado_worker %}<p class="small">Asignado a <b>{{ t.asignado_worker.nombre }}</b>{% if t.work_order_id %} · <a href="{{ url_for('mant2.works') }}">trabajo #{{ t.work_order_id }}</a>{% endif %}</p>{% endif %}
+{% if t.solucion %}<p class="small"><b>Solución:</b> {{ t.solucion }}</p>{% endif %}
+{% if atiende(t) and t.estado not in ['RESUELTO','RECHAZADO'] %}<details><summary class="small">Atender</summary>
+{% if t.destino == 'MANTENIMIENTO' %}<form method="post" class="row">{{ csrf() }}<input type="hidden" name="id" value="{{ t.id }}"><input type="hidden" name="accion" value="asignar">
+<div><label>Técnico</label><select name="worker_id"><option value="">(lo atiendo yo)</option>{% for w in tecnicos %}<option value="{{ w.id }}">{{ w.nombre }}{{ ' · ' ~ w.puesto if w.puesto }}</option>{% endfor %}</select></div><div><button class="small">Asignar</button></div></form>
+<form method="post" class="row">{{ csrf() }}<input type="hidden" name="id" value="{{ t.id }}"><input type="hidden" name="accion" value="trabajo">
+<div><label>Programar como trabajo correctivo el</label><input type="date" name="fecha" value="{{ today.isoformat() }}"></div><div><label>Técnico</label><select name="worker_id"><option value="">—</option>{% for w in tecnicos %}<option value="{{ w.id }}">{{ w.nombre }}</option>{% endfor %}</select></div><div><button class="small sec">Programar</button></div></form>{% endif %}
+<form method="post" enctype="multipart/form-data" class="row">{{ csrf() }}<input type="hidden" name="id" value="{{ t.id }}">
+<div><label>Estado</label><select name="estado"><option value="EN_PROCESO">En proceso</option><option value="RESUELTO">Resuelto</option><option value="RECHAZADO">Rechazado</option></select></div>
+<div class="grow"><label>Solución o nota</label><input name="nota"></div><div><label>Foto</label><input type="file" name="evidencias" accept="image/*,video/*" multiple></div><div><button class="small">Guardar</button></div></form></details>{% endif %}
+</article>{% else %}{{ empty('No hay tickets en este estado.', 'check') }}{% endfor %}</div>{{ paginacion(rows, 'tickets') }}
+{% endblock %}

@@ -2509,3 +2509,164 @@ PARAMS += [
      "Días hacia atrás de las entradas por producción que se traen de SAP como liquidaciones (sin consulta SQL).",
      "PROPUESTO", V21),
 ]
+
+# ---------------------------------------------------------------------------------------------------------------------
+# V22 (06-nov-2026): distribución manual, disponibilidad del personal, devoluciones, Mantenimiento y Limpieza, tickets,
+# Jefe de Administración y Finanzas, Gestión Humana, sugerencias
+V22 = "Observaciones del 06-nov-2026 (V22)"
+JMA = "JEFE_MANTENIMIENTO"
+TMA = "TECNICO_MANTENIMIENTO"
+PLI = "PERSONAL_LIMPIEZA"
+GHU = "GESTION_HUMANA"
+ROLES += [
+    (JMA, "Jefe de Mantenimiento", "Mantenimiento", V22,
+     "Mantenimiento y limpieza de todas las zonas, tickets de las áreas, máquinas de producción (configuración, calibración, "
+     "piezas) y acceso a Producción."),
+    (TMA, "Técnico de Mantenimiento", "Mantenimiento", V22, "Ve y ejecuta los trabajos que le asigna el Jefe de Mantenimiento."),
+    (PLI, "Personal de Limpieza", "Mantenimiento", V22, "Ve las zonas que limpia en su jornada y marca cada limpieza."),
+    (GHU, "Gestión Humana", "Gestión Humana", V22, "Solo el reporte de asistencia y disponibilidad del personal por área."),
+]
+_V22_PERMS = [
+    ("personal.ausencias", "Registrar la disponibilidad del personal: vacaciones, descanso médico, faltas justificadas o "
+     "injustificadas", "General", "edicion",
+     ["COORD_DISTRIBUCION", "ASIST_DISTRIBUCION", "JEFE_LOGISTICA", "COORD_LOGISTICA", "JEFE_PRODUCCION", JMA, GHU, JOP]),
+    ("devoluciones.recibir", "Recibir devoluciones y contrastarlas con la guía (cantidad, presentación y daños)", "Almacén",
+     "edicion", ["COORD_ALMACEN", "COORD_ALMACEN_MP", "SUPERV_ALMACEN", "LIDER_ALMACEN", "AUX_ALMACEN"]),
+    ("devoluciones.ver", "Ver las recepciones de devoluciones", "Almacén", "consulta",
+     ["COORD_ALMACEN", "COORD_ALMACEN_MP", "SUPERV_ALMACEN", "LIDER_ALMACEN", "AUX_ALMACEN", "JEFE_LOGISTICA",
+      "COORD_LOGISTICA", "COORD_DISTRIBUCION", "ASIST_DISTRIBUCION", "JEFE_CALIDAD", JOP]),
+    ("tickets.mantenimiento", "Atender los tickets de averías de todas las áreas (Mantenimiento)", "Mantenimiento", "edicion", [JMA]),
+    ("tickets.sistemas", "Atender las solicitudes y fallas de equipos y red (Sistemas)", "Sistemas", "edicion", ["SISTEMAS"]),
+    ("tickets.ver_todos", "Ver los tickets de todas las áreas", "Mantenimiento", "consulta", [JMA, "SISTEMAS", JOP]),
+    ("mantenimiento.gestionar", "Programar y asignar trabajos preventivos y correctivos, cronograma, alertas e informes de "
+     "mantenimiento", "Mantenimiento", "edicion", [JMA]),
+    ("mantenimiento.ejecutar", "Ejecutar los trabajos asignados con foto antes y después", "Mantenimiento", "edicion", [TMA, JMA]),
+    ("limpieza.gestionar", "Programar la limpieza por persona y zona y ver el desempeño", "Mantenimiento", "edicion", [JMA]),
+    ("limpieza.marcar", "Marcar las limpiezas realizadas en las zonas asignadas", "Mantenimiento", "edicion", [PLI]),
+    ("maquinas.ver", "Ver la configuración, calibraciones y cambios de piezas de las máquinas de producción", "Producción",
+     "consulta", [JMA, TMA, "JEFE_PRODUCCION", "ASIST_PRODUCCION", JOP]),
+    ("maquinas.registrar", "Registrar configuración, calibración y cambio de piezas de máquinas", "Producción", "edicion",
+     [JMA, "JEFE_PRODUCCION"]),
+    ("finanzas.gastos_areas", "Ver los gastos y el presupuesto de cada área, desempeño e informes generales", "Finanzas",
+     "consulta", [JAF, JOP]),
+    ("sugerencias.ver", "Ver las sugerencias automáticas de eficiencia", "Gerencial", "consulta",
+     [JOP, "JEFE_LOGISTICA", "COORD_DISTRIBUCION", "JEFE_PRODUCCION", JMA, JAF, "GERENTE_COMERCIAL", "JEFE_VENTAS",
+      "COORD_LOGISTICA"]),
+]
+for _code, _n, _m, _t, _roles in _V22_PERMS:
+    if not any(p[0] == _code for p in PERMISSIONS):
+        PERMISSIONS.append((_code, _n, _m, _t))
+    for _r in _roles + ["GERENCIA_GENERAL", GGA]:
+        ROLE_PERMISSIONS.setdefault(_r, [])
+        if not any(p[0] == _code for p in ROLE_PERMISSIONS[_r]):
+            ROLE_PERMISSIONS[_r].append((_code, "DEFINIDO" if _r not in ("GERENCIA_GENERAL", GGA) else "DEFINIDO",
+                                         f"{V22}" if _r in _roles else f"{V22}; regla general de Gerencia General"))
+# Jefe de Mantenimiento: todo Producción (consulta), mantenimiento de flota y zonas, fumigación con Calidad, su asistencia
+_PERMS_PROD_VER = sorted({p for r in ("JEFE_PRODUCCION",) for p, _o, _f in ROLE_PERMISSIONS[r]
+                          if p.startswith(("produccion.ver", "produccion.partes_ver", "informes.produccion", "dashboard."))})
+for _p in _PERMS_PROD_VER + ["mantenimiento.ver", "mantenimiento.flota", "saneamiento.registrar", "asistencia.area",
+                             "alertas.ver", "alertas.gestionar", "dashboard.ver", "export.datos"]:
+    if not any(p[0] == _p for p in ROLE_PERMISSIONS[JMA]):
+        ROLE_PERMISSIONS[JMA].append((_p, "DEFINIDO", f"{V22}: el Jefe de Mantenimiento accede a Producción y a mantenimiento"))
+ROLE_PERMISSIONS[TMA] += [(p, "DEFINIDO", V22) for p in ("alertas.ver", "maquinas.ver") if not any(x[0] == p for x in ROLE_PERMISSIONS[TMA])]
+ROLE_PERMISSIONS[PLI] += [("alertas.ver", "DEFINIDO", V22)]
+# Gestión Humana: únicamente el reporte de asistencia y disponibilidad (todas las áreas)
+ROLE_PERMISSIONS[GHU] = [x for x in ROLE_PERMISSIONS.get(GHU, [])] + [("asistencia.todas", "DEFINIDO", f"{V22}: reporte de asistencia por área")]
+# Jefe de Administración y Finanzas: además, presupuesto y gastos de todas las áreas, desempeño e informes generales
+for _p in ("dashboard.ver", "presupuesto.ver", "informes.comercial", "informes.distribucion", "informes.almacen",
+           "informes.produccion", "export.datos", "sugerencias.ver"):
+    if any(x[0] == _p for x in PERMISSIONS) and not any(x[0] == _p for x in ROLE_PERMISSIONS[JAF]):
+        ROLE_PERMISSIONS[JAF].append((_p, "DEFINIDO", f"{V22}: gastos por área, desempeño e informes generales"))
+ALERT_TYPES += [
+    ("RUTA_SOBRECARGA", "Ruta con más peso del permitido para el vehículo", "Distribución", "Rutas", "ALTA",
+     ["COORD_DISTRIBUCION", "ASIST_DISTRIBUCION", "JEFE_LOGISTICA"], "PROPUESTO", V22,
+     "El peso de la ruta supera el peso permitido del vehículo (o su capacidad real): riesgo de multa y desgaste.", True),
+    ("PERSONAL_NO_DISPONIBLE", "Persona asignada que no está disponible (vacaciones, descanso médico o falta)", "Distribución",
+     "Rutas", "ALTA", ["COORD_DISTRIBUCION", "ASIST_DISTRIBUCION"], "PROPUESTO", V22,
+     "Al registrar una ausencia se avisa de las rutas ya asignadas a esa persona para reasignarlas.", True),
+    ("DEVOLUCION_POR_RECIBIR", "Devolución por recibir y contrastar con la guía", "Almacén", "Devoluciones", "MEDIA",
+     ["COORD_ALMACEN", "SUPERV_ALMACEN", "LIDER_ALMACEN"], "DEFINIDO", V22,
+     "Almacén la recibe el mismo día o, si llegó fuera de horario, al día siguiente.", True),
+    ("DEVOLUCION_VENCIDA", "Devolución no recibida en su plazo", "Almacén", "Devoluciones", "ALTA",
+     ["COORD_ALMACEN", "JEFE_LOGISTICA"], "PROPUESTO", V22, "Pasó el plazo de recepción de la devolución.", True),
+    ("DEVOLUCION_OBSERVADA", "Devolución recibida con diferencias o daños", "Almacén", "Devoluciones", "ALTA",
+     ["COORD_ALMACEN", "JEFE_LOGISTICA", "COORD_DISTRIBUCION", "JEFE_CALIDAD"], "PROPUESTO", V22,
+     "La cantidad, la presentación o el estado no coinciden con la guía; tiene foto o video de evidencia.", True),
+    ("TICKET_MANTENIMIENTO", "Avería reportada (ticket para Mantenimiento)", "Mantenimiento", "Tickets", "MEDIA", [JMA],
+     "DEFINIDO", V22, "Cualquier área reporta una avería con motivo, lugar, foto e indicación de urgencia.", True),
+    ("TICKET_SISTEMAS", "Solicitud o falla de equipos para Sistemas", "Sistemas", "Tickets", "MEDIA", ["SISTEMAS"],
+     "DEFINIDO", V22, "Tintas, laptops, celulares, impresoras o red.", True),
+    ("MANT_PREVENTIVO_PROXIMO", "Mantenimiento preventivo próximo", "Mantenimiento", "Trabajos", "MEDIA", [JMA], "DEFINIDO",
+     V22, "Avisos antes del inicio de un preventivo (7, 3 y 0 días, configurable) para coordinar.", True),
+    ("TRABAJO_ASIGNADO", "Trabajo de mantenimiento asignado", "Mantenimiento", "Trabajos", "MEDIA", [], "DEFINIDO", V22,
+     "Le llega al técnico asignado.", True),
+    ("LIMPIEZA_INCUMPLIDA", "Limpiezas programadas no realizadas", "Mantenimiento", "Limpieza", "BAJA", [JMA], "PROPUESTO",
+     V22, "Al cierre del día quedaron limpiezas sin marcar.", False),
+    ("PRESUPUESTO_SUPERADO", "Presupuesto de un área superado", "Finanzas", "Presupuesto", "ALTA", [JAF], "DEFINIDO", V22,
+     "El gasto acumulado del periodo supera el presupuesto asignado al área.", True),
+]
+PARAMS += [
+    ("mant_alerta_dias", [7, 3, 0], "list", "Mantenimiento",
+     "Días antes del inicio de un mantenimiento preventivo en que se avisa al Jefe de Mantenimiento.", "DEFINIDO", V22),
+    ("devolucion_hora_corte", "17:00", "str", "Almacén",
+     "Hora hasta la que una devolución se recibe el mismo día; después, al día siguiente.", "PROPUESTO", V22),
+    ("perfiles_solo_alertas_propias", [JAF], "list", "Alertas",
+     "Perfiles que solo ven y reciben las alertas dirigidas a ellos (no las del perfil equivalente ni avisos de "
+     "escalamiento).", "DEFINIDO", f"{V22}: el Jefe de Administración y Finanzas solo recibe alertas si se supera el presupuesto"),
+    ("ticket_categorias", {"MANTENIMIENTO": ["Luz / eléctrico", "Gasfitería / agua", "Infraestructura (puertas, techos, pisos)",
+                                             "Máquina de producción", "Montacargas / equipo de almacén", "Aire / ventilación",
+                                             "Otro"],
+                           "SISTEMAS": ["Tintas / tóner", "Laptop / PC", "Celular", "Impresora", "Red / internet",
+                                        "Accesos / sistema", "Otro"]},
+     "dict", "Tickets", "Categorías del botón «Reportar avería» y de las solicitudes a Sistemas.", "PROPUESTO", V22),
+    ("sobrecarga_tolerancia_pct", 0, "int", "Distribución",
+     "Porcentaje sobre el peso permitido del vehículo a partir del cual se alerta la sobrecarga.", "PROPUESTO", V22),
+    ("costo_mensual_unidad_ref", {}, "dict", "Distribución",
+     "Costo mensual de referencia por tipo de unidad para comparar con el transporte tercero ({tipo: S/}); p. ej. cuota de "
+     "compra o alquiler por periodo. Vacío: la sugerencia muestra solo el gasto en terceros.", "PROPUESTO", V22),
+]
+_ASIS_ANT = next(v for k, v, *_ in PARAMS if k == "asistencia_estados")
+_ASIS_NUEVO = ["ASISTENCIA", "TARDANZA", "VACACIONES", "DESCANSO MÉDICO", "FALTA JUSTIFICADA", "FALTA INJUSTIFICADA"]
+PARAMS_CAMBIO += [("asistencia_estados", _ASIS_ANT, _ASIS_NUEVO, f"{V22}: falta justificada (con motivo) o injustificada")]
+PARAMS = [(k, _ASIS_NUEVO if k == "asistencia_estados" else v, *rest) for k, v, *rest in PARAMS]
+# perfiles nuevos ven su área en la asistencia
+for _i, (_k, _v, *_rest) in enumerate(PARAMS):
+    if _k == "asistencia_areas_por_rol" and isinstance(_v, dict):
+        _v.setdefault(JMA, ["Mantenimiento"])
+
+AUSENCIA_TIPOS = {"VACACIONES": "Vacaciones", "DESCANSO_MEDICO": "Descanso médico", "FALTA_JUSTIFICADA": "Falta justificada",
+                  "FALTA_INJUSTIFICADA": "Falta injustificada", "LICENCIA": "Licencia"}
+AUSENCIA_A_ASISTENCIA = {"VACACIONES": "VACACIONES", "DESCANSO_MEDICO": "DESCANSO MÉDICO",
+                         "FALTA_JUSTIFICADA": "FALTA JUSTIFICADA", "FALTA_INJUSTIFICADA": "FALTA INJUSTIFICADA",
+                         "LICENCIA": "FALTA JUSTIFICADA"}
+# Zonas de la planta (mantenimiento, limpieza y fumigación) indicadas por la empresa
+ZONAS_PLANTA = [
+    ("Selección Manual", "Selección", "Producción"),
+    ("Contenedor de fumigación 1", "Fumigación", "Calidad"),
+    ("Contenedor de fumigación 2", "Fumigación", "Calidad"),
+    ("Línea de Selección Automática – Cimbria", "Selección automática", "Producción"),
+    ("Línea de Selección Automática – Truer", "Selección automática", "Producción"),
+    ("Almacén Producto Terminado – Zona A", "Almacén Producto Terminado", "Almacén"),
+    ("Almacén Producto Terminado – Zona B", "Almacén Producto Terminado", "Almacén"),
+    ("Almacén Producto Terminado – Miniracks", "Almacén Producto Terminado", "Almacén"),
+    ("Almacén Producto Terminado – Zona C", "Almacén Producto Terminado", "Almacén"),
+]
+# Imágenes del checklist vehicular por tipo de unidad (tomadas del Excel del checklist que compartió la empresa)
+IMAGENES_CHECKLIST = {
+    "CAMION": ("Camión furgón (4 vistas)", ["veh_camion.jpg"]),
+    "FURGON": ("Furgón liviano (4 vistas)", ["veh_furgon.jpg"]),
+    "CAMION_CABINA": ("Camión de cabina corta (4 vistas)", ["veh_camion2.jpg"]),
+    "TRACTO": ("Tracto con furgón", ["veh_tracto_lado.png", "veh_tracto_frente.png", "veh_tracto_atras.png",
+                                     "veh_tracto_abierto.png"]),
+    "CAMIONETA": ("Camioneta", ["veh_camioneta_lado.png", "veh_camioneta_frente.png", "veh_camioneta_atras.png"]),
+}
+PARTES_VEHICULO = ["Parachoques delantero", "Faros delanteros", "Parabrisas", "Espejo izquierdo", "Espejo derecho",
+                   "Puerta del conductor", "Puerta del copiloto", "Cabina", "Llanta delantera izquierda",
+                   "Llanta delantera derecha", "Llantas posteriores izquierdas", "Llantas posteriores derechas",
+                   "Lateral izquierdo del furgón", "Lateral derecho del furgón", "Puertas posteriores", "Luces posteriores",
+                   "Parachoques posterior", "Techo", "Placa", "Otro"]
+TIPOS_TRANSPORTISTA = {"CHOFER": "Chofer de la empresa", "TRABAJADOR": "Otro trabajador (vendedor, etc.)",
+                       "TERCERO": "Transporte tercero"}
+DEMO_USERS_V22 = [("jefe.mantenimiento", "Jefe de Mantenimiento", JMA), ("tecnico.mant1", "Técnico de Mantenimiento 1", TMA),
+                  ("tecnico.mant2", "Técnico de Mantenimiento 2", TMA), ("limpieza1", "Personal de Limpieza 1", PLI),
+                  ("limpieza2", "Personal de Limpieza 2", PLI), ("gestion.humana", "Gestión Humana", GHU)]

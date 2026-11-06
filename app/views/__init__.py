@@ -43,6 +43,9 @@ def register_views(app):
     app.register_blueprint(suministro.bp)
     from . import seguimiento
     app.register_blueprint(seguimiento.bp)
+    from . import operacion_v22, planta_v22  # V22: rutas manuales, personal, devoluciones, tickets, mantenimiento y limpieza
+    app.register_blueprint(operacion_v22.bp)
+    app.register_blueprint(planta_v22.bp)
 
     @app.after_request
     def _aviso_descarga(resp):
@@ -281,7 +284,16 @@ def dashboard():
         "COORD_VENTAS", "JEFE_VENTAS", "COORD_LOGISTICA", "EJECUTIVO_VENTAS") else None
     nivel = seg.service_month() if ("indicadores.servicio" in p and g.user.role_code in (
         "COORD_LOGISTICA", "JEFE_LOGISTICA", "JEFE_OPERACIONES", "GERENCIA_GENERAL", "GERENTE_GENERAL_ADJUNTO")) else None
+    # V22: Gerencia General y Gerente General Adjunto ven los principales indicadores de cada área y las sugerencias
+    areas_gg = sug = None
+    if g.user.role_code in ("GERENCIA_GENERAL", "GERENTE_GENERAL_ADJUNTO"):
+        from ..services import tablero_gg
+        areas_gg = tablero_gg.area_cards(perms=frozenset(p))
+    if "sugerencias.ver" in p and g.user.role_code in ("GERENCIA_GENERAL", "GERENTE_GENERAL_ADJUNTO", "JEFE_OPERACIONES"):
+        from ..services.sugerencias import all_suggestions
+        sug = all_suggestions()[:4]
     return render_template("dashboard.html", k=k, prod=prod, hp=hoy_prod, mis_alertas=mis, tareas=tareas, desde=desde or "", hasta=hasta or "",
+                           areas_gg=areas_gg, sug=sug,
                            estado_txt=alert_svc.ESTADO_TXT, arrastre=pending_carryover(g.user), com=com, det=det,
                            mis_ov=mis_ov, nivel=nivel, despachos=despachos)
 

@@ -1,0 +1,12 @@
+{% extends "base.html" %}{% from "_m.html" import b, bar, ic, empty %}
+{% block content %}<div class="page-head"><div><h1>Gastos y desempeño por área</h1><p class="sub">Presupuesto acumulado al mes {{ hoy.month }}/{{ hoy.year }} frente al gasto real</p></div>
+<a class="btn sec" href="{{ url_for('v22.suggestions') }}">{{ ic('trend') }} Sugerencias</a></div>
+<p class="note small">Solo le llegan alertas cuando un área <b>supera</b> su presupuesto. El resto se consulta aquí.</p>
+{% for f in filas %}<section class="card {{ 'alerta' if (f.pct or 0) >= 100 }}"><div class="card-head"><h3>{{ f.area }}</h3><span>{{ b(f.estado) }} {% if f.pct is not none %}<span class="b {{ 'ALTA' if f.pct >= 100 else ('MEDIA' if f.pct >= 75 else 'ok') }}">{{ f.pct }} %</span>{% endif %}</span></div>
+<div class="carga-bar small"><span>Real <b>S/ {{ f.real|n }}</b> de S/ {{ f.presupuesto|n }}</span>{{ bar(f.pct) }}</div>
+<table class="small"><tr><th>Categoría</th><th class="r">Presupuesto</th><th class="r">Real</th><th class="r">%</th></tr>{% for c in f.categorias %}<tr class="{{ 'alerta' if (c.pct or 0) >= 100 }}"><td>{{ c.categoria }}</td><td class="r">{{ c.presupuesto|n }}</td><td class="r">{{ c.real|n }}</td><td class="r">{{ c.pct if c.pct is not none else '—' }}</td></tr>{% endfor %}</table>
+{% if can('presupuesto.ver') %}<a class="small" href="{{ url_for('dist.presupuesto') }}">Ver el presupuesto</a>{% endif %}</section>
+{% else %}{{ empty('No hay presupuestos registrados para este año.', 'chart') }}{% endfor %}
+<div class="section-title">Desempeño de las áreas</div>
+<div class="areas-gg">{% for a in tarjetas %}<section class="card"><h3>{{ a.area }}</h3>{% for it in a.tarjetas %}<div class="it {{ it.nivel }}"><span>{% if it.url %}<a href="{{ it.url }}">{{ it.etiqueta }}</a>{% else %}{{ it.etiqueta }}{% endif %}{% if it.sub %}<br><small class="muted">{{ it.sub }}</small>{% endif %}</span><b>{{ it.valor }}</b></div>{% endfor %}</section>{% endfor %}</div>
+{% endblock %}

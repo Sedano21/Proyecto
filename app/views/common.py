@@ -278,6 +278,9 @@ def install(app):
     app.jinja_env.globals["logo_src"] = _logo_url
     app.jinja_env.globals["informe_meta"] = lambda n: __import__("app.services.report_center", fromlist=["x"]).META.get(n, {})
     app.jinja_env.globals["ahora"] = datetime.now
+    # V22: categorías del botón «Reportar avería» y archivos de video en las evidencias
+    app.jinja_env.globals["ticket_categorias"] = lambda: __import__("app.services.tickets", fromlist=["x"]).categorias()
+    app.jinja_env.globals["es_video"] = lambda n: __import__("app.services.distribution", fromlist=["x"]).es_video(n)
 
     def es_tarea(a):
         """La alerta es tarea para el usuario actual solo si puede accionarla (si no, se le muestra como información)."""

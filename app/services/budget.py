@@ -256,5 +256,9 @@ def check_consumption(hoy=None):
                                "Se recomienda moderar el gasto en lo que resta del periodo."),
                             "AreaBudget", b.id, prioridad="ALTA" if pct >= 100 else "MEDIA",
                             dedup_key=f"PRES_CONS:{b.id}:{nombre}:{hoy:%Y%m}:{'100' if pct >= 100 else 'U'}")
+                if pct >= 100:  # V22: al Jefe de Administración y Finanzas solo le llega cuando se supera el presupuesto
+                    alerts.emit("PRESUPUESTO_SUPERADO", f"{b.area}: presupuesto superado ({nombre}, {pct} %)",
+                                f"Gasto S/ {r:,.2f} de S/ {p:,.2f} presupuestados a {hoy:%m/%Y}.", "AreaBudget", b.id,
+                                dedup_key=f"PRES_SUP:{b.id}:{nombre}:{hoy:%Y%m}")
                 n += 1
     return n

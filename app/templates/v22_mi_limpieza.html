@@ -1,0 +1,9 @@
+{% extends "base.html" %}{% from "_m.html" import b, csrf, ic, empty %}
+{% block content %}<h1>Mis zonas de limpieza</h1><p class="sub">{{ fecha|d }}{% if w %} · {{ w.nombre }}{% endif %}</p>
+{% if not w %}<div class="note">Su cuenta no está vinculada a una persona del personal de limpieza. Pídale al Jefe de Mantenimiento que la vincule.</div>{% endif %}
+<div class="cards">{% for c in mias %}<article class="xcard {{ 'st-ENTREGADO' if c.checks|length >= c.veces }}"><div class="xcard-head"><b>{{ c.zone.nombre }}</b><span class="b {{ 'ok' if c.checks|length >= c.veces else 'MEDIA' }}">{{ c.checks|length }}/{{ c.veces }}</span></div>
+<div class="meta small">{% if c.turno %}<span>{{ c.turno }}</span>{% endif %}{% if c.nota %}<span>{{ c.nota }}</span>{% endif %}{% for k in c.checks %}<span>✔ {{ k.ts[11:16] }}</span>{% endfor %}</div>
+{% if c.checks|length < c.veces %}<form method="post" enctype="multipart/form-data" class="row">{{ csrf() }}<input type="hidden" name="accion" value="marcar"><input type="hidden" name="id" value="{{ c.id }}">
+<div><label>Foto (opcional)</label><input type="file" name="foto" accept="image/*" capture="environment"></div><div><button>{{ ic('check') }} Limpieza realizada</button></div></form>{% endif %}</article>
+{% else %}{{ empty('No tiene zonas asignadas para hoy.', 'check') }}{% endfor %}</div>
+{% endblock %}

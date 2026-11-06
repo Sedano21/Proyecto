@@ -146,7 +146,10 @@ def propose_routes(fecha, user, orders=None, require_prepared=True, automatico=F
     from .fleet import soat_status
     vehicles = [v for v in s.execute(select(Vehicle).where(Vehicle.disponible.is_(True))).scalars() if v.id not in busy_v
                 and (not param("exigir_soat_vigente", True) or soat_status(v, fecha)[0])]  # sin SOAT vigente no se asigna
-    drivers = [d for d in s.execute(select(Driver).where(Driver.disponible.is_(True))).scalars() if d.id not in busy_d]
+    from .ausencias import unavailable_driver_ids
+    ausentes = unavailable_driver_ids(fecha)  # V22: vacaciones, descanso médico o faltas
+    drivers = [d for d in s.execute(select(Driver).where(Driver.disponible.is_(True))).scalars() if d.id not in busy_d
+               and d.id not in ausentes]
     rutas = []
     # zonas en orden de la mejor prioridad que contienen
     for zona, ords in sorted(groups.items(), key=lambda kv: priority_key(kv[1][0])):
@@ -253,6 +256,11 @@ def update_route(route, user, vehicle_id=None, driver_id=None, auxiliar_id=None)
         d = db().get(Driver, int(driver_id))
         if d is None or not d.disponible:
             raise BusinessError("Conductor no disponible.")
+        from .ausencias import texto, unavailable_driver_ids
+        if d.id in unavailable_driver_ids(route.fecha):  # V22
+            from .ausencias import ausencia_de
+            a = ausencia_de("DRIVER", d.id, route.fecha) or ausencia_de("USER", d.user_id, route.fecha)
+            raise BusinessError(f"{d.nombre} no está disponible el {route.fecha:%d/%m/%Y}: {texto(a)}.")
         _, busy_d = _busy(route.fecha)
         if d.id in busy_d and d.id != route.driver_id:
             raise BusinessError("El conductor ya está asignado a otra ruta ese día.")
@@ -268,6 +276,7 @@ def update_route(route, user, vehicle_id=None, driver_id=None, auxiliar_id=None)
             if a is None or a.role_code != "AUX_DESPACHO" or not a.activo:
                 raise BusinessError("Elija un auxiliar de distribución activo.")
             route.auxiliar_id = a.id
+            route.auxiliares = [a.id] + [x for x in (route.auxiliares or []) if x != a.id]
     audit(user, "RUTA_AJUSTADA", "Route", route.id, {"vehicle": vehicle_id, "driver": driver_id, "auxiliar": auxiliar_id})
 
 
@@ -323,17 +332,20 @@ def confirm_route(route, user):
     _req(user)
     if route.estado != "PROPUESTA":
         raise BusinessError("Solo se confirman rutas propuestas.")
-    if not route.stops:
+    from .rutas_manual import route_transfers
+    if not route.stops and not route_transfers(route):
         raise BusinessError("La ruta no tiene paradas.")
-    if route.vehicle_id is None:
+    if route.vehicle_id is None and (route.transportista or {}).get("tipo") != "TRABAJADOR":
         raise BusinessError("Asigne una unidad (propia o tercera registrada) antes de confirmar.")
+    trabajador = (route.transportista or {}).get("tipo") == "TRABAJADOR"  # V22: la lleva un vendedor u otro trabajador
     from .fleet import check_soat
-    check_soat(route.vehicle, route.fecha)
-    if route.driver_id is None:
+    if route.vehicle is not None:
+        check_soat(route.vehicle, route.fecha)
+    if route.driver_id is None and not trabajador:
         raise BusinessError("Asigne un conductor antes de confirmar.")
     if route.requiere_externo and not (route.externo_validacion or {}).get("validado"):
         raise BusinessError("La ruta usa transporte externo: debe validarlo el Coordinador de Distribución antes de confirmar.")
-    motivos = needs_auxiliar(route)
+    motivos = [] if trabajador else needs_auxiliar(route)
     if motivos and not route.auxiliar_id:
         from ..models import User
         ocupados = {r.auxiliar_id for r in db().execute(select(Route).where(Route.fecha == route.fecha,
@@ -345,18 +357,23 @@ def confirm_route(route, user):
             raise BusinessError("La ruta requiere auxiliar acompañante (" + "; ".join(motivos) + ") y no hay uno libre ese "
                                 "día: asígnelo en «Ajustar».")
         route.auxiliar_id = libre.id
+        route.auxiliares = [libre.id] + [x for x in (route.auxiliares or []) if x != libre.id]
         audit(user, "RUTA_AUXILIAR_AUTOMATICO", "Route", route.id, {"auxiliar": libre.nombre, "motivos": motivos})
     route.estado = "CONFIRMADA"
     for st in route.stops:
         if st.order.estado == "PREPARADA":
             st.order.estado = "PROGRAMADA"
+    tr = route.transportista or {}
+    placa = route.vehicle.placa if route.vehicle else (f"{tr.get('vehiculo', '')} {tr.get('placa', '')}".strip() or "-")
+    quien = route.driver.nombre if route.driver else (tr.get("nombre") or "-")
     alerts.emit("DIST_PROGRAMACION", f"Ruta #{route.id} aprobada ({route.fecha:%d/%m/%Y})",
-                f"Unidad {route.vehicle.placa}; conductor {route.driver.nombre}; {len(route.stops)} paradas.",
+                f"Unidad {placa}; lleva {quien}; {len(route.stops)} paradas.",
                 "Route", route.id, creado_por=user)
-    # TO-BE: alerta al chofer y al auxiliar de las rutas asignadas, y al montacarguista para el traslado a despacho
-    alerts.emit("RUTA_ASIGNADA", f"Ruta #{route.id} asignada: {route.fecha:%d/%m/%Y} · {route.vehicle.placa}",
+    # TO-BE: alerta al chofer y a los auxiliares de las rutas asignadas, y al montacarguista para el traslado a despacho
+    destinatarios = [route.driver.user_id if route.driver else tr.get("user_id")] + list(route.auxiliares or [route.auxiliar_id])
+    alerts.emit("RUTA_ASIGNADA", f"Ruta #{route.id} asignada: {route.fecha:%d/%m/%Y} · {placa}",
                 ", ".join(f"{st.order.numero} ({st.order.customer.nombre})" for st in route.stops), "Route", route.id,
-                extra_users=[x for x in (route.driver.user_id, route.auxiliar_id) if x] or None, creado_por=user)
+                extra_users=[x for x in destinatarios if x] or None, creado_por=user)
     alerts.emit("MONTACARGUISTA_DESPACHO", f"Trasladar mercadería de la ruta #{route.id} a la zona de despacho",
                 ", ".join(st.order.numero for st in route.stops), "Route", route.id, creado_por=user)
     audit(user, "RUTA_CONFIRMADA", "Route", route.id)
@@ -496,6 +513,30 @@ def save_upload(file_storage, upload_dir, prefix):
     name = f"{prefix}_{uuid.uuid4().hex[:10]}{ext}"
     file_storage.save(os.path.join(upload_dir, name))
     return name
+
+
+VIDEO_EXT = (".mp4", ".mov", ".webm", ".3gp", ".m4v")
+
+
+def save_evidences(files, upload_dir, prefix, videos=True, maximo=10):
+    """V22: varias fotos (y videos si videos=True) de evidencia. Devuelve los nombres guardados."""
+    out = []
+    for fs in (files or [])[:maximo]:
+        if fs is None or not getattr(fs, "filename", ""):
+            continue
+        ext = os.path.splitext(fs.filename)[1].lower()
+        if ext in VIDEO_EXT and videos:
+            os.makedirs(upload_dir, exist_ok=True)
+            name = f"{prefix}_{uuid.uuid4().hex[:10]}{ext}"
+            fs.save(os.path.join(upload_dir, name))
+            out.append(name)
+        else:
+            out.append(save_upload(fs, upload_dir, prefix))
+    return [x for x in out if x]
+
+
+def es_video(nombre):
+    return os.path.splitext(nombre or "")[1].lower() in VIDEO_EXT
 
 
 def register_delivery(stop, user, foto_path, guia_path, entregas=None, observacion="", receptor_nombre="", receptor_dni="",
@@ -691,6 +732,11 @@ def register_incident(user, tipo, descripcion, stop=None, order=None, route=None
             o.estado = "DEVUELTA"
             _return_goods(o, user, incident_type_name(tipo))
         _maybe_close_route(stop.route)
+    # V22: lo que vuelve queda por recibir en Almacén (contraste con la guía)
+    if o is not None and (entrega == "PARCIAL" or (stop is not None and stop.estado in ("RECHAZADO", "DEVUELTO", "NO_ENTREGADO"))):
+        from . import devoluciones
+        devoluciones.create_for(o, user, "PARCIAL" if entrega == "PARCIAL" else "TOTAL", inc, stop,
+                                lineas if entrega == "PARCIAL" else None)
     if tipo == "CONDUCTOR_NO_DISPONIBLE" and route is not None and route.driver is not None:
         route.driver.disponible = False
         route.advertencias = (route.advertencias or []) + [f"Conductor {route.driver.nombre} no disponible: reasignar."]

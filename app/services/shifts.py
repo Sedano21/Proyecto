@@ -256,10 +256,11 @@ def schedule_table(d, users=None):
 # ------------------------------------------------------------------ cumplimiento
 def _bosses(role_codes):
     m = param("jefe_por_rol", {}) or {}
+    sin_avisos = set(param("perfiles_solo_alertas_propias", []) or [])  # V22: no reciben avisos de escalamiento
     out = []
     for r in role_codes:
         for j in m.get(r, []):
-            if j not in out:
+            if j not in out and j not in sin_avisos:
                 out.append(j)
     return out
 

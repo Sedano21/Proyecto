@@ -1,0 +1,17 @@
+{% extends "base.html" %}{% from "_m.html" import b, ic %}{% from "_evid.html" import evid %}
+{% block content %}<div class="page-head"><div><h1>Informe de mantenimiento</h1><p class="sub">Trabajos ejecutados del {{ desde|d }} al {{ hasta|d }}</p></div>
+<div class="row noprint"><form method="get" class="row"><div><label>Desde</label><input type="date" name="desde" value="{{ desde.isoformat() }}"></div><div><label>Hasta</label><input type="date" name="hasta" value="{{ hasta.isoformat() }}"></div><div><button class="sec">Ver</button></div></form>
+<a class="btn sec" href="{{ url_for('mant2.report', desde=desde.isoformat(), hasta=hasta.isoformat(), salida='xlsx') }}">{{ ic('download') }} Excel</a><button class="btn sec" type="button" onclick="window.print()">{{ ic('file') }} Imprimir / PDF</button></div></div>
+<div class="kpis"><div class="kpi primary"><b>{{ d.terminados }}</b><span>Terminados</span><small>{{ d.preventivos }} preventivos · {{ d.correctivos }} correctivos programados</small></div>
+<div class="kpi {{ 'warn' if d.pendientes }}"><b>{{ d.pendientes }}</b><span>Pendientes</span><small>{{ d.vencidos }} vencidos</small></div>
+<div class="kpi"><b>{{ d.a_tiempo_pct if d.a_tiempo_pct is not none else '—' }} %</b><span>A tiempo</span></div>
+<div class="kpi"><b>{{ d.duracion_prom_h if d.duracion_prom_h is not none else '—' }} h</b><span>Duración promedio</span></div>
+<div class="kpi"><b>S/ {{ d.costo|n }}</b><span>Costo</span></div></div>
+<div class="grid g2"><section class="card"><h3>Por técnico</h3><table class="small"><tr><th>Técnico</th><th class="r">Asignados</th><th class="r">Terminados</th><th class="r">Horas</th></tr>{% for k, v in d.por_tecnico.items() %}<tr><td>{{ k }}</td><td class="r">{{ v.asignados }}</td><td class="r">{{ v.terminados }}</td><td class="r">{{ '%.1f'|format(v.horas) }}</td></tr>{% endfor %}</table></section>
+<section class="card"><h3>Por zona o máquina</h3><table class="small"><tr><th>Lugar</th><th class="r">Preventivos</th><th class="r">Correctivos</th><th class="r">Costo</th></tr>{% for k, v in d.por_lugar.items() %}<tr><td>{{ k }}</td><td class="r">{{ v.preventivos }}</td><td class="r">{{ v.correctivos }}</td><td class="r">{{ v.costo|n }}</td></tr>{% endfor %}</table></section></div>
+{% if tiempos %}<section class="card"><h3>Tiempos de respuesta a tickets</h3><table class="small"><tr><th>Categoría</th><th class="r">Tickets</th><th class="r">Atención prom. (h)</th><th class="r">Solución prom. (h)</th></tr>{% for t in tiempos %}<tr><td>{{ t.categoria }}</td><td class="r">{{ t.total }}</td><td class="r">{{ t.atencion_h if t.atencion_h is not none else '—' }}</td><td class="r">{{ t.solucion_h if t.solucion_h is not none else '—' }}</td></tr>{% endfor %}</table></section>{% endif %}
+<div class="section-title">Trabajos ejecutados (con fotos antes y después)</div>
+{% for w in d.filas if w.estado == 'TERMINADA' %}<section class="card"><div class="card-head"><h3>#{{ w.id }} · {{ w.titulo }}</h3><span>{{ tipos[w.tipo] }} · {{ lugar(w) }} · {{ w.asignado.nombre if w.asignado }}</span></div>
+<div class="grid g2"><div><p class="small muted">Antes · {{ w.inicio_ts.strftime('%d/%m %H:%M') if w.inicio_ts }}</p>{{ evid(w.fotos_antes) }}</div><div><p class="small muted">Después · {{ w.fin_ts.strftime('%d/%m %H:%M') if w.fin_ts }}</p>{{ evid(w.fotos_despues) }}</div></div>
+{% if w.observacion %}<p class="small">{{ w.observacion }}</p>{% endif %}</section>{% else %}<p class="muted small">Sin trabajos terminados en el periodo.</p>{% endfor %}
+{% endblock %}

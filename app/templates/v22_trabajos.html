@@ -1,0 +1,38 @@
+{% extends "base.html" %}{% from "_m.html" import b, csrf, ic, empty, paginacion %}{% from "_evid.html" import evid %}
+{% block content %}<div class="page-head"><div><h1>{{ 'Trabajos de mantenimiento' if gestiona else 'Mis trabajos' }}</h1><p class="sub">Preventivos y correctivos · foto antes y después de cada trabajo</p></div>
+{% if gestiona %}<div class="row noprint"><button class="btn sec" data-open="dlg-crono">{{ ic('upload') }} Cargar cronograma</button><button class="btn" data-open="dlg-ot">{{ ic('plus') }} Programar trabajo</button></div>{% endif %}</div>
+{% if gestiona %}<form method="get" class="row card noprint"><div><label>Estado</label><select name="estado"><option value="">(todos)</option><option value="ABIERTOS" {{ 'selected' if estado == 'ABIERTOS' }}>Abiertos</option>{% for k, v in estados.items() %}<option value="{{ k }}" {{ 'selected' if estado == k }}>{{ v }}</option>{% endfor %}</select></div>
+<div><label>Tipo</label><select name="tipo"><option value="">(todos)</option>{% for k, v in tipos.items() %}<option value="{{ k }}" {{ 'selected' if tipo == k }}>{{ v }}</option>{% endfor %}</select></div><div><button class="sec">Filtrar</button></div></form>{% endif %}
+<div class="cards">{% for w in rows %}<article class="xcard {{ 'alerta' if w.estado in ['PROGRAMADA','ASIGNADA','EN_PROCESO'] and w.fecha_programada < hoy }}">
+<div class="xcard-head"><b>#{{ w.id }} · {{ w.titulo }}</b><span><span class="b {{ 'info' if w.tipo == 'PREVENTIVO' else 'MEDIA' }}">{{ tipos[w.tipo] }}</span> {{ b(w.estado) }}</span></div>
+<div class="meta small"><span>{{ lugar(w) }}</span><span>{{ w.fecha_programada|d }}</span><span>{{ w.asignado.nombre if w.asignado else 'sin técnico' }}{% if w.asignado %} ({{ 'anticipada' if w.asignacion == 'ANTICIPADA' else 'el día' }}){% endif %}</span>{% if w.con_calidad %}<span class="b info">con Calidad</span>{% endif %}{% if w.origen != 'MANUAL' %}<span>{{ w.origen|lower }}</span>{% endif %}</div>
+{% if w.descripcion %}<p class="small">{{ w.descripcion }}</p>{% endif %}
+{% if w.fotos_antes %}<p class="small muted">Antes {{ w.inicio_ts.strftime('%d/%m %H:%M') if w.inicio_ts }}</p>{{ evid(w.fotos_antes) }}{% endif %}
+{% if w.fotos_despues %}<p class="small muted">Después {{ w.fin_ts.strftime('%d/%m %H:%M') if w.fin_ts }}</p>{{ evid(w.fotos_despues) }}{% endif %}
+{% if w.repuestos %}<p class="small">Repuestos: {% for r in w.repuestos %}{{ r.pieza }} ({{ r.cantidad }}){{ ', ' if not loop.last }}{% endfor %}</p>{% endif %}
+{% if w.observacion %}<p class="small">{{ w.observacion }}</p>{% endif %}
+{% if gestiona and w.estado in ['PROGRAMADA','ASIGNADA'] %}<form method="post" class="row">{{ csrf() }}<input type="hidden" name="id" value="{{ w.id }}"><input type="hidden" name="accion" value="asignar">
+<div><label>Técnico</label><select name="worker_id" required><option value="">—</option>{% for t in tecnicos %}<option value="{{ t.id }}" {{ 'selected' if t.id == w.asignado_worker_id }}>{{ t.nombre }}</option>{% endfor %}</select></div><div><button class="small sec">Asignar</button></div></form>{% endif %}
+{% if w.estado in ['PROGRAMADA','ASIGNADA'] %}<form method="post" enctype="multipart/form-data" class="row">{{ csrf() }}<input type="hidden" name="id" value="{{ w.id }}"><input type="hidden" name="accion" value="inicio">
+<div><label class="req">Foto ANTES</label><input type="file" name="fotos" accept="image/*,video/*" multiple required></div><div><button class="small">Iniciar trabajo</button></div></form>{% endif %}
+{% if w.estado == 'EN_PROCESO' %}<form method="post" enctype="multipart/form-data">{{ csrf() }}<input type="hidden" name="id" value="{{ w.id }}"><input type="hidden" name="accion" value="fin">
+<div class="row"><div><label class="req">Foto DESPUÉS</label><input type="file" name="fotos" accept="image/*,video/*" multiple required></div><div class="grow"><label>Observación</label><input name="observacion"></div><div><label>Costo S/</label><input name="costo" type="number" step="any" min="0" style="width:90px"></div></div>
+<div id="rep-{{ w.id }}"><div class="row dynrow"><div class="grow"><label>Repuesto / pieza</label><input name="pieza"></div><div><label>Cant.</label><input name="pieza_cant" size="4"></div><div><label>Costo</label><input name="pieza_costo" size="6"></div><button type="button" class="ibtn" data-delrow>{{ ic('x') }}</button></div></div>
+<p><button type="button" class="sec small" data-addrow="#rep-{{ w.id }}">{{ ic('plus') }} Repuesto</button> <button class="small">Terminar trabajo</button></p></form>{% endif %}
+{% if gestiona and w.estado in ['PROGRAMADA','ASIGNADA','EN_PROCESO'] %}<details><summary class="small">Cancelar</summary><form method="post" class="row">{{ csrf() }}<input type="hidden" name="id" value="{{ w.id }}"><input type="hidden" name="accion" value="cancelar"><div class="grow"><input name="motivo" placeholder="motivo" required></div><div><button class="small sec">Cancelar trabajo</button></div></form></details>{% endif %}
+</article>{% else %}{{ empty('No hay trabajos.', 'wrench') }}{% endfor %}</div>{{ paginacion(rows, 'trabajos') }}
+{% if gestiona %}<dialog class="modal" id="dlg-ot"><form method="post">{{ csrf() }}<input type="hidden" name="accion" value="nuevo">
+<div class="dlg-head"><h3>Programar trabajo</h3><button class="ibtn" type="button" data-close aria-label="Cerrar">{{ ic('x') }}</button></div><div class="dlg-body">
+<div class="row"><div><label class="req">Tipo</label><select name="tipo">{% for k, v in tipos.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select></div><div><label class="req">Fecha</label><input type="date" name="fecha_programada" value="{{ hoy.isoformat() }}" required></div></div>
+<label class="req">Trabajo</label><input name="titulo" required style="width:100%">
+<div class="row"><div><label>Zona</label><select name="zone_id"><option value="">—</option>{% for z in zonas %}<option value="{{ z.id }}">{{ z.nombre }}</option>{% endfor %}</select></div>
+<div><label>o máquina</label><select name="maquina"><option value="">—</option>{% for c, n in maquinas %}<option value="{{ c }}">{{ n }}</option>{% endfor %}</select></div></div>
+<label>Detalle</label><textarea name="descripcion" rows="2" style="width:100%"></textarea>
+<div class="row"><div><label>Técnico (con anticipación o déjelo vacío y asígnelo el día)</label><select name="asignado_worker_id"><option value="">—</option>{% for t in tecnicos %}<option value="{{ t.id }}">{{ t.nombre }}</option>{% endfor %}</select></div>
+<div><label class="chk"><input type="checkbox" name="con_calidad" value="1"> Fumigación con Calidad</label></div></div>
+</div><div class="dlg-foot"><button type="button" class="sec" data-close>Cancelar</button> <button>Programar</button></div></form></dialog>
+<dialog class="modal" id="dlg-crono"><form method="post" enctype="multipart/form-data">{{ csrf() }}<input type="hidden" name="accion" value="cronograma">
+<div class="dlg-head"><h3>Cargar cronograma de mantenimiento</h3><button class="ibtn" type="button" data-close aria-label="Cerrar">{{ ic('x') }}</button></div><div class="dlg-body">
+<p class="small">Excel con columnas: <b>Fecha</b>, <b>Trabajo</b>, Tipo (Preventivo/Correctivo), Zona o Máquina, Técnico, Detalle. Cada fila crea un trabajo programado; si el técnico está en la lista se asigna con anticipación.</p>
+<input type="file" name="archivo" accept=".xlsx" required></div><div class="dlg-foot"><button type="button" class="sec" data-close>Cancelar</button> <button>Cargar</button></div></form></dialog>{% endif %}
+{% endblock %}

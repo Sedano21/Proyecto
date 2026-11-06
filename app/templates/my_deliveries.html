@@ -2,6 +2,13 @@
 {% block content %}<h1>Mis entregas</h1>
 <p class="small muted">Al llegar, toque «Llegué». Para cerrar cada entrega registre la conformidad: nombre y DNI de quien recibe, su firma en pantalla, la foto de la entrega y la guía firmada.</p>
 {% for r, stops in rutas %}<h2>Ruta #{{ r.id }} · {{ r.fecha|d }} · {{ r.vehicle.placa if r.vehicle else '' }} {{ b(r.estado) }}</h2>
+<p class="row noprint">{% if r.vehicle %}<a class="btn sec small" href="{{ url_for('dist.checklist', rid=r.id) }}">{{ ic('check') }} Checklist vehicular</a>{% endif %}
+<button class="btn sec small" data-open="dlg-pern-{{ r.id }}">{{ ic('truck') }} Pernocte: foto de lo que queda en el vehículo</button>
+{% if r.pernocte %}<span class="small muted">Pernocte registrado {{ r.pernocte[-1].ts|replace('T',' ') }}</span>{% endif %}</p>
+<dialog class="modal" id="dlg-pern-{{ r.id }}"><form method="post" action="{{ url_for('v22.route_action', rid=r.id) }}" enctype="multipart/form-data">{{ csrf() }}<input type="hidden" name="accion" value="pernocte"><input type="hidden" name="volver" value="{{ url_for('dist.my_deliveries') }}">
+<div class="dlg-head"><h3>Pernocte · ruta #{{ r.id }}</h3><button class="ibtn" type="button" data-close aria-label="Cerrar">{{ ic('x') }}</button></div>
+<div class="dlg-body"><label class="req">Foto(s) de lo que queda en el vehículo</label><input type="file" name="fotos" accept="image/*" multiple required capture="environment"><label>Nota</label><input name="nota" style="width:100%"></div>
+<div class="dlg-foot"><button type="button" class="sec" data-close>Cancelar</button> <button>Registrar</button></div></form></dialog>
 <div class="cards">{% for s in stops|sort(attribute='orden') %}<article class="xcard st-{{ s.estado }}"><div class="xcard-head"><b>{{ s.orden }}. {{ s.order.customer.nombre }}</b>{{ b(s.estado) }}</div>
 <div class="meta"><span>OV {{ s.order.numero }}</span><span>{{ s.order.direccion }} · {{ s.order.distrito }}</span>{% if s.order.hora_cita %}<span>cita {{ s.order.hora_cita }}</span>{% endif %}</div>
 {% if r.estado == 'EN_RUTA' %}{% if s.estado == 'EN_CAMINO' %}<form method="post">{{ csrf() }}<input type="hidden" name="stop_id" value="{{ s.id }}"><button class="btn sec small" name="accion" value="llegada">{{ ic('flag') }} Llegué</button></form>{% endif %}

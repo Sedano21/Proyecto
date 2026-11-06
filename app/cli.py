@@ -15,6 +15,7 @@
     python -m app.cli sap-consulta-stock  # crea en SAP la consulta guardada del stock por lote (solo la consulta)
     python -m app.cli clave <usuario> # asigna una contraseña nueva (la pide en pantalla; se cambia en el primer ingreso)
     python -m app.cli muestras <carpeta>   # genera los Excel ficticios de ejemplo
+    python -m app.cli demo-dia        # agrega un día de operación FICTICIO con todas las casuísticas (sobre la demostración)
     python -m app.cli depurar [--aplicar]  # fotos de entrega más antiguas que la retención configurada (sin --aplicar: solo lista)
 """
 import getpass
@@ -61,6 +62,18 @@ def main(argv):
                 ren = _rename_demo_users()
                 s.commit()
                 print(f"Ya existía la demostración; cuentas agregadas: {', '.join(nuevos) or 'ninguna'}; nombres actualizados: {ren}")
+        elif cmd == "demo-dia":
+            from .demo_dia import seed_operation_day
+            from .seed import add_missing_demo_users
+            seed_catalogs()
+            if seed_demo(os.path.join(app.instance_path, "demo_files")) is False:
+                add_missing_demo_users()
+            from .seed import sync_catalogs
+            sync_catalogs()
+            s.commit()
+            r = seed_operation_day(app.config["UPLOAD_DIR"])
+            s.commit()
+            print("Ya estaba cargado el día de operación." if r is None else f"Día de operación ficticio creado: {r}")
         elif cmd == "depurar":
             from .services.retention import purge_photos
             r = purge_photos(app.config["UPLOAD_DIR"], aplicar="--aplicar" in argv)

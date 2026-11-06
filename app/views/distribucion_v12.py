@@ -56,8 +56,27 @@ def checklist(rid):
                                                         if c.nn_fallidos else ""), back)
     lista = list(db().execute(select(VehicleChecklist).where(VehicleChecklist.route_id == rid)
                               .order_by(VehicleChecklist.id.desc())).scalars())
+    from ..catalogs import IMAGENES_CHECKLIST, PARTES_VEHICULO
+    clave = (r.vehicle.imagen_checklist if r.vehicle else "") or _imagen_por_tipo(r.vehicle)
     return render_template("checklist.html", r=r, lista=lista, zonas=vc.zonas(), items=dict((c, i) for c, _, i, _ in vc.items()),
-                           pend_paso2=vc.pending_part2(r), puede_salir=vc.can_depart(r))
+                           pend_paso2=vc.pending_part2(r), puede_salir=vc.can_depart(r),
+                           imagenes=IMAGENES_CHECKLIST.get(clave, (None, []))[1], partes=PARTES_VEHICULO)
+
+
+def _imagen_por_tipo(v):
+    """V22: imagen del checklist según el tipo de unidad cuando no se eligió una en la flota."""
+    if v is None:
+        return ""
+    t = f"{v.tipo_unidad} {v.descripcion}".upper()
+    if "TRACTO" in t or "SEMI" in t:
+        return "TRACTO"
+    if "CAMIONETA" in t or "PICK" in t or "SUV" in t:
+        return "CAMIONETA"
+    if "LIVIAN" in t or "FURG" in t or "PANEL" in t:
+        return "FURGON"
+    if "CAMI" in t or "TN" in t:
+        return "CAMION"
+    return ""
 
 
 # ------------------------------------------------------------------ incidencia: paso 2, flujo y modificaciones

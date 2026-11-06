@@ -1,0 +1,1 @@
+{% macro evid(lista) %}{% if lista %}<div class="ev-list">{% for e in lista %}<a href="{{ url_for('main.evidence', name=e) }}" target="_blank">{% if es_video(e) %}<video src="{{ url_for('main.evidence', name=e) }}" muted></video>{% else %}<img src="{{ url_for('main.evidence', name=e) }}" alt="evidencia" loading="lazy">{% endif %}</a>{% endfor %}</div>{% endif %}{% endmacro %}

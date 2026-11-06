@@ -71,10 +71,19 @@ def parse_marks(raw):
             x, y = float(m.get("x")), float(m.get("y"))
         except (TypeError, ValueError, AttributeError):
             continue
+        parte = str(m.get("parte") or "").strip()[:60]  # V22: parte del vehículo elegida sobre su imagen
         nota = str(m.get("nota") or "").strip()[:160]
-        if not nota:
+        if not nota and not parte:
             raise BusinessError("Describa cada punto marcado en el dibujo del vehículo (qué defecto u observación hay).")
-        out.append({"x": round(x, 1), "y": round(y, 1), "nota": nota})
+        marca = {"x": round(x, 1), "y": round(y, 1), "nota": nota or "falla"}
+        if parte:
+            marca["parte"] = parte
+        if m.get("vista") not in (None, ""):
+            try:
+                marca["vista"] = int(m.get("vista"))
+            except (TypeError, ValueError):
+                pass
+        out.append(marca)
     return out
 
 

@@ -1,0 +1,19 @@
+{% extends "base.html" %}{% from "_m.html" import b, csrf, ic, empty %}
+{% block content %}<div class="page-head"><div><h1>Carga de los vehículos</h1><p class="sub">Peso permitido (tarjeta) frente a la capacidad real y a lo que suele cargar · últimos {{ dias }} días</p></div>
+<form method="get" class="row noprint"><div><label>Días</label><select name="dias">{% for x in [30,60,90,180] %}<option {{ 'selected' if x == dias }}>{{ x }}</option>{% endfor %}</select></div><div><button class="sec">Ver</button></div></form></div>
+<p class="note small">El <b>peso permitido</b> es el de la tarjeta de propiedad; la <b>capacidad real</b> es lo que físicamente puede cargar; la <b>carga habitual</b> es lo que suele llevar (referencia). Si una ruta supera lo permitido, se alerta a Distribución y queda en este análisis. El promedio y el máximo usan el peso real pesado cuando se registró.</p>
+<div class="tw"><table class="small apilable"><tr><th>Vehículo</th><th class="r">Permitido kg</th><th class="r">Capacidad real kg</th><th class="r">Carga habitual kg</th><th class="r">Rutas</th><th class="r">Promedio kg</th><th class="r">Máximo kg</th><th class="r">Uso prom.</th><th class="r">Sobrecargas</th>{% if can('distribucion.flota') %}<th>Editar</th>{% endif %}</tr>
+{% for x in filas %}<tr class="{{ 'alerta' if x.sobrecargas }}"><td data-label="Vehículo"><b>{{ x.v.placa }}</b> <span class="muted">{{ x.v.descripcion or x.v.tipo_unidad }}{{ ' · tercero' if not x.v.propio }}</span></td>
+<td class="r" data-label="Permitido">{{ x.permitido|n }}</td><td class="r" data-label="Real">{{ x.real|n if x.real else '—' }}</td><td class="r" data-label="Habitual">{{ x.habitual|n if x.habitual else '—' }}</td>
+<td class="r" data-label="Rutas">{{ x.rutas }}</td><td class="r" data-label="Promedio">{{ x.promedio|n if x.promedio is not none else '—' }}</td><td class="r" data-label="Máximo">{{ x.maximo|n if x.maximo is not none else '—' }}</td>
+<td class="r" data-label="Uso">{{ (x.uso_prom_pct ~ ' %') if x.uso_prom_pct is not none else '—' }}</td><td class="r" data-label="Sobrecargas">{% if x.sobrecargas %}<b class="err">{{ x.sobrecargas }} ({{ x.pct_sobrecarga }} %)</b>{% else %}0{% endif %}</td>
+{% if can('distribucion.flota') %}<td><button class="ibtn" data-open="dlg-cap-{{ x.v.id }}" title="Editar">{{ ic('edit') }}</button>
+<dialog class="modal" id="dlg-cap-{{ x.v.id }}"><form method="post" action="{{ url_for('v22.vehicle_capacity', vid=x.v.id) }}">{{ csrf() }}<input type="hidden" name="volver" value="{{ request.full_path }}">
+<div class="dlg-head"><h3>{{ x.v.placa }}</h3><button class="ibtn" type="button" data-close aria-label="Cerrar">{{ ic('x') }}</button></div><div class="dlg-body">
+<p class="small muted">Peso permitido (tarjeta): <b>{{ x.permitido|n }} kg</b> (se edita en Flota).</p>
+<div class="row"><div><label>Capacidad real (kg)</label><input name="capacidad_real_kg" type="number" step="any" min="1" value="{{ x.real or '' }}"></div>
+<div><label>Carga habitual (kg)</label><input name="carga_habitual_kg" type="number" step="any" min="1" value="{{ x.habitual or '' }}"></div></div>
+<label>Imagen del checklist vehicular</label><select name="imagen_checklist"><option value="">(dibujo genérico)</option>{% for k, v in imagenes.items() %}<option value="{{ k }}" {{ 'selected' if x.v.imagen_checklist == k }}>{{ v[0] }}</option>{% endfor %}</select>
+</div><div class="dlg-foot"><button type="button" class="sec" data-close>Cancelar</button> <button>Guardar</button></div></form></dialog></td>{% endif %}</tr>
+{% else %}<tr><td colspan="10" class="muted">Sin vehículos.</td></tr>{% endfor %}</table></div>
+{% endblock %}

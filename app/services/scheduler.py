@@ -101,6 +101,10 @@ def _pasos(user, today):
         ("tareas_pendientes_fin_turno", lambda: shifts.check_end_of_shift()),
         ("ov_sin_compromiso", lambda: commitment.check_pending()),
         ("facturas_vencidas", lambda: finance.check_overdue(today)),
+        # V22: devoluciones sin recibir, avisos de preventivos (7/3/0 días) y limpiezas sin marcar
+        ("devoluciones_vencidas", lambda: __import__("app.services.devoluciones", fromlist=["x"]).check_overdue(today)),
+        ("mant_preventivos_proximos", lambda: __import__("app.services.mant_trabajos", fromlist=["x"]).check_alerts(today)),
+        ("limpieza_incumplida", lambda: __import__("app.services.limpieza", fromlist=["x"]).check_unfinished(today)),
         ("correo", lambda: flush_outbox()),
     ]
 

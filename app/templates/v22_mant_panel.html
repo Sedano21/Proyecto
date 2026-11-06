@@ -1,0 +1,22 @@
+{% extends "base.html" %}{% from "_m.html" import b, csrf, ic, empty, bar %}
+{% block content %}<div class="page-head"><div><h1>Mantenimiento de planta</h1><p class="sub">Tickets de las áreas, trabajos, limpieza, máquinas y fumigación · {{ hoy|d }}</p></div>
+<div class="row noprint"><a class="btn sec" href="{{ url_for('mant2.report') }}">{{ ic('chart') }} Informe</a><a class="btn" href="{{ url_for('mant2.works') }}">{{ ic('wrench') }} Trabajos</a></div></div>
+<div class="kpis"><a class="kpi {{ 'alert' if tickets|selectattr('urgente')|list else '' }}" href="{{ url_for('v22.tickets', destino='MANTENIMIENTO') }}"><b>{{ tickets|length }}</b><span>Tickets abiertos</span><small>{{ tickets|selectattr('urgente')|list|length }} urgentes</small></a>
+<a class="kpi primary" href="{{ url_for('mant2.works') }}"><b>{{ hoy_ots|length }}</b><span>Trabajos de hoy y atrasados</span><small>{{ hoy_ots|selectattr('fecha_programada', 'lt', hoy)|list|length }} atrasados</small></a>
+<a class="kpi" href="{{ url_for('mant2.works') }}"><b>{{ proximos|length }}</b><span>Próximos 14 días</span><small>{{ proximos|selectattr('asignado_worker_id', 'none')|list|length }} sin técnico</small></a>
+<a class="kpi {{ 'warn' if prog and hechas < prog }}" href="{{ url_for('mant2.cleaning') }}"><b>{{ hechas }}/{{ prog }}</b><span>Limpieza de hoy</span><small>realizadas / programadas</small></a>
+<a class="kpi" href="{{ url_for('mant2.report') }}"><b>{{ rep.terminados }}</b><span>Terminados en el mes</span><small>{{ rep.a_tiempo_pct if rep.a_tiempo_pct is not none else '—' }} % a tiempo</small></a></div>
+<div class="grid g2">
+<section class="card"><div class="card-head"><h3>Tickets abiertos</h3><a class="small" href="{{ url_for('v22.tickets', destino='MANTENIMIENTO') }}">Ver todos</a></div>
+{% for t in tickets %}<div class="it small"><span class="prio {{ 'ALTA' if t.urgente else 'MEDIA' }}"></span> <a href="{{ url_for('v22.tickets', destino='MANTENIMIENTO') }}">#{{ t.id }} {{ t.categoria }}</a> · {{ t.lugar }} · {{ t.area_origen }} · {{ t.ts.strftime('%d/%m %H:%M') }} {{ b(t.estado) }}</div>{% else %}<p class="small muted">Sin tickets abiertos.</p>{% endfor %}</section>
+<section class="card"><div class="card-head"><h3>Trabajos de hoy y atrasados</h3></div>
+{% for w in hoy_ots %}<div class="it small"><b>#{{ w.id }}</b> {{ w.titulo }} · {{ lugar(w) }} · {{ w.asignado.nombre if w.asignado else 'sin técnico' }} · {{ w.fecha_programada|d }} {{ b(w.estado) }}{% if w.fecha_programada < hoy %} <span class="b ALTA">atrasado</span>{% endif %}</div>{% else %}<p class="small muted">Nada para hoy.</p>{% endfor %}
+<h4>Próximos</h4>{% for w in proximos[:8] %}<div class="it small">{{ w.fecha_programada|d }} · {{ w.titulo }} · {{ lugar(w) }}{% if w.con_calidad %} <span class="b info">con Calidad</span>{% endif %}</div>{% else %}<p class="small muted">Sin trabajos próximos.</p>{% endfor %}</section>
+<section class="card"><div class="card-head"><h3>Máquinas de producción (30 días)</h3><a class="small" href="{{ url_for('mant2.machines') }}">Bitácora</a></div>
+<table class="small"><tr><th>Máquina</th><th>Última calibración</th><th class="r">Paradas</th><th class="r">Por mant./avería</th></tr>{% for m in maquinas %}<tr><td>{{ m.nombre }}</td><td>{{ m.calibracion.ts|d if m.calibracion else '—' }}</td><td class="r">{{ m.paradas_min }} min</td><td class="r {{ 'err' if m.paradas_mant_min >= 240 }}">{{ m.paradas_mant_min }} min</td></tr>{% endfor %}</table></section>
+<section class="card"><div class="card-head"><h3>Limpieza y fumigación por zona</h3><a class="small" href="{{ url_for('mant.home', tab='saneamiento') }}">Bitácora</a></div>
+<table class="small"><tr><th>Zona</th><th>Limpieza</th><th>Fumigación (con Calidad)</th></tr>{% for z, st in zonas %}<tr><td>{{ z.nombre }}</td><td>{{ st.limpieza.ultimo.fecha|d if st.limpieza.ultimo else '—' }}</td><td>{{ st.fumigacion.ultimo.fecha|d if st.fumigacion.ultimo else '—' }}{% if st.fumigacion.vence %} · vence {{ st.fumigacion.vence|d }}{% endif %}</td></tr>{% endfor %}</table></section>
+</div>
+<section class="card"><h3>Configuración de avisos</h3><form method="post" action="{{ url_for('mant2.config') }}" class="row">{{ csrf() }}
+<div><label>Avisarme antes de un preventivo (días, separados por comas; 0 = el mismo día)</label><input name="dias" value="{{ dias|join(', ') }}" size="14"></div><div><button class="sec">Guardar</button></div></form></section>
+{% endblock %}

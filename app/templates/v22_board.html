@@ -1,0 +1,69 @@
+{% extends "base.html" %}{% from "_m.html" import b, csrf, ic, empty %}
+{% block content %}<div class="page-head"><div><h1>Cuadro de despacho</h1><p class="sub">{{ fecha|d }} · por vehículo: quién lo lleva, clientes, OV, guías, peso y valor</p></div>
+<div class="row noprint"><form method="get" class="row"><div><label>Fecha</label><input type="date" name="fecha" value="{{ fecha.isoformat() }}"></div><div><button class="sec">Ver</button></div></form>
+<a class="btn sec" href="{{ url_for('v22.board', fecha=fecha.isoformat(), salida='xlsx') }}">{{ ic('download') }} Excel</a>
+<button class="btn sec" onclick="window.print()" type="button">{{ ic("file") }} Imprimir</button>
+{% if can('distribucion.programar') %}<button class="btn" data-open="dlg-ruta">{{ ic('plus') }} Nueva ruta manual</button>{% endif %}</div></div>
+
+<div class="kpis"><div class="kpi primary"><b>{{ d.tot.rutas }}</b><span>Vehículos / rutas</span><small>{{ d.tot.traslados }} traslado(s)</small></div>
+<div class="kpi"><b>{{ d.tot.clientes }}</b><span>Clientes</span><small>{{ d.tot.ov }} OV</small></div>
+<div class="kpi"><b>{{ d.tot.peso|n }} kg</b><span>Peso total</span></div>
+<div class="kpi"><b>S/ {{ d.tot.valor|n }}</b><span>Valor de lo que sale</span><small>según las OV</small></div>
+<div class="kpi {{ 'alert' if d.tot.sobrecarga else 'ok' }}"><b>{{ d.tot.sobrecarga }}</b><span>Con sobrecarga</span><small>peso sobre lo permitido</small></div></div>
+
+{% for f in d.filas %}<section class="card despacho {{ 'alerta' if f.sobrecarga }}">
+<div class="card-head"><h3><a href="{{ url_for('dist.route_detail', rid=f.r.id) }}">Ruta #{{ f.r.id }}</a> · {{ f.vehiculo }}</h3>
+<span>{{ b(f.r.estado) }}{% if f.r.manual %} <span class="b info">manual</span>{% endif %}{% if f.tipo == 'TRABAJADOR' %} <span class="b warn">lleva otro trabajador</span>{% elif f.tipo == 'TERCERO' or f.r.requiere_externo %} <span class="b MEDIA">tercero</span>{% endif %}</span></div>
+<div class="meta small sep"><span>{{ ic('user') }} <b>{{ f.quien if f.quien != '—' else 'sin chofer asignado' }}</b></span>{% if f.auxiliares %}<span>Auxiliares: {{ f.auxiliares|map(attribute='nombre')|join(', ') }}</span>{% endif %}
+{% if f.r.hora_salida_prog %}<span>Salida {{ f.r.hora_salida_prog }}</span>{% endif %}{% if f.motivo %}<span>Motivo: {{ f.motivo }}</span>{% endif %}</div>
+<div class="carga-bar small"><span>Peso <b>{{ f.peso|n }} kg</b>{% if f.r.peso_real_kg %} (pesado){% endif %}</span>
+{% if f.permitido %}<span>· permitido {{ f.permitido|n }} kg{% if f.real and f.real != f.permitido %} · capacidad real {{ f.real|n }} kg{% endif %}</span>
+<div class="bar {{ 'over' if f.sobrecarga }}" title="{{ f.uso_pct }} %"><i style="width:{{ [f.uso_pct or 0,100]|min }}%"></i></div><b>{{ f.uso_pct }} %</b>{% endif %}
+<span>· Valor <b>S/ {{ f.valor|n }}</b></span></div>
+{% if f.sobrecarga %}<p class="err small"><b>Sobrecarga:</b> {{ f.sobrecarga }}</p>{% endif %}
+<div class="tw"><table class="small apilable"><tr><th>Cliente</th><th>OV</th><th>Guía(s)</th><th>Distrito</th><th class="r">Peso kg</th><th class="r">Valor S/</th><th>Estado</th></tr>
+{% for cli, items in f.clientes.items() %}{% for it in items %}<tr>{% if loop.first %}<td data-label="Cliente" rowspan="{{ items|length }}"><b>{{ cli }}</b></td>{% endif %}
+<td data-label="OV"><a href="{{ url_for('com.order_detail', oid=it.stop.order_id) }}">{{ it.ov }}</a></td><td data-label="Guía">{{ it.guias|join(', ') or '—' }}</td>
+<td data-label="Distrito">{{ it.distrito or '—' }}</td><td class="r" data-label="Peso">{{ it.peso|n }}</td><td class="r" data-label="Valor">{{ it.valor|n }}</td><td data-label="Estado">{{ b(it.estado) }}</td></tr>{% endfor %}{% endfor %}
+{% for rt in f.traslados %}<tr class="traslado"><td data-label="Traslado"><b>Traslado #{{ rt.transfer_id }}</b> {{ rt.transfer.lot.warehouse_code if rt.transfer.lot }} → {{ rt.transfer.destino_code }}</td>
+<td data-label="Producto">{{ rt.transfer.lot.product_code if rt.transfer.lot }}</td><td>—</td><td>—</td><td class="r" data-label="Peso">{{ rt.peso_kg|n }}</td><td class="r">—</td><td>{{ b(rt.transfer.estado) }}</td></tr>{% endfor %}
+{% if not f.clientes and not f.traslados %}<tr><td colspan="7" class="muted">Sin carga.</td></tr>{% endif %}</table></div></section>
+{% else %}{{ empty('No hay rutas para esta fecha. Use «Nueva ruta manual» o genere la programación en «Programación y rutas».', 'truck') }}{% endfor %}
+
+{% if can('distribucion.programar') %}<dialog class="modal wide" id="dlg-ruta"><form method="post">{{ csrf() }}
+<div class="dlg-head"><h3>Nueva ruta manual</h3><button class="ibtn" data-close type="button" aria-label="Cerrar">{{ ic('x') }}</button></div>
+<div class="dlg-body">
+<div class="row"><div><label class="req">Fecha</label><input type="date" name="fecha_ruta" value="{{ fecha.isoformat() }}" required></div>
+<div><label>Hora de salida</label><input name="hora_salida" placeholder="07:30" size="6" pattern="[0-2][0-9]:[0-5][0-9]"></div>
+<div class="grow"><label>Zona / referencia</label><input name="zona" placeholder="p. ej. Lima Este"></div></div>
+<fieldset class="ind-group"><legend>¿Quién lleva la carga?</legend>
+<div class="seg small" role="radiogroup">{% for k, t in [('CHOFER','Chofer de la empresa'),('TRABAJADOR','Otro trabajador (vendedor, etc.)'),('TERCERO','Transporte tercero')] %}<label><input type="radio" name="tipo_transportista" value="{{ k }}" {{ 'checked' if loop.first }} data-tt> {{ t }}</label>{% endfor %}</div>
+<div class="row tt tt-CHOFER tt-TERCERO"><div><label>Vehículo</label><select name="vehicle_id"><option value="">—</option>{% for v in vehicles %}<option value="{{ v.id }}">{{ v.placa }} · {{ v.descripcion or v.tipo_unidad }} · permitido {{ v.capacidad_kg|n }} kg{% if v.capacidad_real_kg %} / real {{ v.capacidad_real_kg|n }}{% endif %}{{ ' · TERCERO' if not v.propio }}</option>{% endfor %}</select></div>
+<div><label>Chofer</label><select name="driver_id"><option value="">—</option>{% for dr in drivers %}<option value="{{ dr.id }}" {{ 'disabled' if dr.id in ausentes }}>{{ dr.nombre }}{{ ' (externo)' if dr.externo }}{% if dr.id in ausentes %} — NO DISPONIBLE: {{ aus_txt[dr.id] }}{% endif %}</option>{% endfor %}</select></div></div>
+<div class="row tt tt-TRABAJADOR" hidden><div><label class="req">Trabajador</label><input name="t_nombre" list="trab-lista" placeholder="Nombre"><datalist id="trab-lista">{% for t in trabajadores %}<option value="{{ t.nombre }}">{{ t.role.nombre }}</option>{% endfor %}</datalist></div>
+<div><label class="req">Área</label><input name="t_area" placeholder="p. ej. Comercial"></div>
+<div><label class="req">Vehículo (marca, tipo)</label><input name="t_vehiculo" placeholder="p. ej. camioneta propia"></div><div><label>Placa</label><input name="t_placa" size="9"></div>
+<div class="grow"><label class="req">Motivo</label><input name="t_motivo" placeholder="p. ej. el cliente queda en su ruta de visitas"></div></div>
+</fieldset>
+<fieldset class="ind-group tt tt-CHOFER tt-TERCERO"><legend>Auxiliares de despacho</legend><div id="aux-filas">
+<div class="row dynrow"><select name="auxiliar"><option value="">— sin auxiliar —</option>{% for a in auxiliares %}<option value="{{ a.id }}">{{ a.nombre }}</option>{% endfor %}</select> <button type="button" class="ibtn" data-delrow aria-label="Quitar">{{ ic('x') }}</button></div></div>
+<button type="button" class="sec small" data-addrow="#aux-filas">{{ ic('plus') }} Agregar auxiliar</button></fieldset>
+<fieldset class="ind-group"><legend>OV a llevar ({{ pend|length }} disponibles) <span class="muted small">— peso y valor se suman al marcar</span></legend>
+<div class="tw" style="max-height:260px;overflow:auto"><table class="small"><tr><th></th><th>OV</th><th>Cliente</th><th>Distrito</th><th>Despacho</th><th class="r">kg</th><th class="r">S/</th><th>Estado</th></tr>
+{% for o in pend %}<tr><td><input type="checkbox" name="ov" value="{{ o.id }}" data-kg="{{ peso(o) }}" data-soles="{{ monto(o) }}"></td><td>{{ o.numero }}{% set pa = prop(o) %}{% if pa %}<br><small class="muted">en propuesta #{{ pa.route_id }}: pasa a esta ruta</small>{% endif %}</td><td>{{ o.customer.nombre }}</td><td>{{ o.distrito or o.customer.distrito }}</td><td>{{ o.fecha_compromiso|d }}</td><td class="r">{{ peso(o)|n }}</td><td class="r">{{ monto(o)|n }}</td><td>{{ b(o.estado) }}</td></tr>
+{% else %}<tr><td colspan="8" class="muted">No hay OV disponibles para despachar en esta fecha.</td></tr>{% endfor %}</table></div></fieldset>
+<fieldset class="ind-group"><legend>Traslados entre almacenes por programar</legend>
+{% for t in traslados %}<label class="chk" style="display:block"><input type="checkbox" name="traslado" value="{{ t.id }}" data-kg="{{ tw(t) }}" data-soles="0"> #{{ t.id }} · {{ t.lot.product_code if t.lot }} {{ t.cantidad|n }} · {{ t.lot.warehouse_code if t.lot }} → {{ t.destino_code }} · {{ tw(t)|n }} kg · {{ b(t.estado) }}</label>
+{% else %}<p class="small muted">No hay traslados autorizados por programar.</p>{% endfor %}</fieldset>
+<p class="note small" id="ruta-suma">Seleccionado: <b data-sum-kg>0</b> kg · S/ <b data-sum-soles>0</b></p>
+</div><div class="dlg-foot"><button type="button" class="sec" data-close>Cancelar</button> <button>{{ ic('check') }} Registrar ruta</button></div></form></dialog>
+<script>
+(function(){
+  var dlg = document.getElementById('dlg-ruta'); if (!dlg) return;
+  function tt(){ var v = (dlg.querySelector('[data-tt]:checked')||{}).value; dlg.querySelectorAll('.tt').forEach(function(e){ e.hidden = !e.classList.contains('tt-' + v); }); }
+  function suma(){ var kg=0, s=0; dlg.querySelectorAll('input[data-kg]:checked').forEach(function(c){ kg += +c.dataset.kg||0; s += +c.dataset.soles||0; });
+    dlg.querySelector('[data-sum-kg]').textContent = kg.toLocaleString('es-PE',{maximumFractionDigits:0}); dlg.querySelector('[data-sum-soles]').textContent = s.toLocaleString('es-PE',{maximumFractionDigits:2}); }
+  dlg.addEventListener('change', function(e){ if (e.target.matches('[data-tt]')) tt(); if (e.target.matches('[data-kg]')) suma(); }); tt();
+})();
+</script>{% endif %}
+{% endblock %}

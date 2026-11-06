@@ -232,12 +232,17 @@ def inbox(user, **filtros):
     return list(rows)
 
 
+def _solo_propias(user):
+    """V22: perfiles que solo ven las alertas dirigidas a ellos (p. ej. Jefe de Administración y Finanzas)."""
+    return user is not None and user.role_code in (param("perfiles_solo_alertas_propias", []) or [])
+
+
 def can_see(user, alert):
     if user is None:
         return False
     if sees_all(user):
         return True
-    roles = roles_of(user)
+    roles = roles_of(user, equivalentes=not _solo_propias(user))
     return (bool(roles & set(alert.roles or [])) or user.id in (alert.usuarios or []) or alert.asignado_a == user.id
             or (alert.asignado_rol and alert.asignado_rol in roles))
 

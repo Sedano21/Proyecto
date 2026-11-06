@@ -1,0 +1,8 @@
+{% extends "base.html" %}{% from "_m.html" import b, ic, empty %}
+{% block content %}<div class="page-head"><div><h1>Sugerencias para mejorar la eficiencia</h1><p class="sub">El sistema revisa la operación y propone acciones con la evidencia de sus propios registros</p></div></div>
+<p class="note small">Las sugerencias no reemplazan la decisión de la Gerencia: señalan patrones (transporte tercero frecuente, sobrecargas, averías repetidas, paradas de máquinas, devoluciones, faltas, limpieza incompleta, trabajos vencidos). Cuando falta un dato para estimar el ahorro, la sugerencia indica qué parámetro registrar.</p>
+{% for s in rows %}<section class="card sug {{ s.impacto }}"><div class="card-head"><h3>{{ s.titulo }}</h3><span><span class="b info">{{ s.area }}</span> <span class="b {{ 'ALTA' if s.impacto == 'ALTO' else 'MEDIA' }}">impacto {{ s.impacto|lower }}</span></span></div>
+<p class="small"><b>Evidencia:</b> {{ s.evidencia }}</p><p class="small"><b>Qué evaluar:</b> {{ s.accion }}</p>
+{% if s.enlace %}{% set u = url_for(s.enlace) %}<a class="small" href="{{ u }}">Ver detalle</a>{% endif %}</section>
+{% else %}{{ empty('Por ahora no hay sugerencias: la operación no muestra patrones que corregir.', 'check') }}{% endfor %}
+{% endblock %}

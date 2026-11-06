@@ -1,0 +1,234 @@
+"""V22 (06-nov-2026): cuadro de despacho y rutas manuales, disponibilidad del personal, recepción de devoluciones, tickets
+(«Reportar avería»), sugerencias de eficiencia, gastos por área y embudo comercial."""
+from datetime import date, timedelta
+
+from flask import Blueprint, Response, abort, current_app, g, render_template, request, url_for
+from sqlalchemy import select
+
+from ..db import db
+from ..models import Absence, Driver, ReturnReceipt, Route, SalesOrder, Ticket, User, Vehicle
+from ..services import ausencias as asv
+from ..services import devoluciones as dev
+from ..services import rutas_manual as rm
+from ..services import tickets as tk
+from ..services.core import BusinessError
+from ..services.distribution import save_evidences
+from .common import act, f_date, f_float, login_required, paginate, perm_required
+
+bp = Blueprint("v22", __name__, url_prefix="/operacion")
+
+
+def _up():
+    return current_app.config["UPLOAD_DIR"]
+
+
+# ------------------------------------------------------------------ cuadro de despacho y ruta manual
+@bp.route("/despacho", methods=["GET", "POST"])
+@perm_required("distribucion.ver")
+def board():
+    fecha = f_date("fecha") or date.today()
+    if request.method == "POST":
+        f = request.form
+        if "distribucion.programar" not in g.perms:
+            abort(403)
+        return act(lambda: rm.create_manual(g.user, f_date("fecha_ruta") or fecha, f, f.getlist("ov"), f.getlist("traslado"),
+                                            f.getlist("auxiliar")),
+                   lambda r: f"Ruta #{r.id} registrada." + (" ¡Atención: sobrecarga!" if rm.overload(r) else ""),
+                   url_for("v22.board", fecha=fecha.isoformat()), redirect_fn=lambda r: url_for("dist.route_detail", rid=r.id))
+    if request.args.get("salida") == "xlsx":
+        return Response(rm.board_excel(fecha), headers={"Content-Disposition": f"attachment; filename=despacho_{fecha:%Y%m%d}.xlsx"},
+                        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    from ..services.distribution import dispatchable_orders, orders_in_active_route
+    usados = orders_in_active_route()
+    pend = [o for o in dispatchable_orders(fecha, require_prepared=False)
+            if o.id not in usados or rm.automatic_proposal(o) is not None]  # las de propuestas automáticas se pueden tomar
+    from ..services.orders import order_amount, order_weight_kg
+    ausentes = asv.unavailable_driver_ids(fecha)
+    drivers = [d for d in db().execute(select(Driver).where(Driver.disponible.is_(True)).order_by(Driver.nombre)).scalars()]
+    vehicles = list(db().execute(select(Vehicle).where(Vehicle.disponible.is_(True)).order_by(Vehicle.capacidad_kg)).scalars())
+    auxiliares = list(db().execute(select(User).where(User.role_code == "AUX_DESPACHO", User.activo.is_(True))
+                                   .order_by(User.nombre)).scalars())
+    trabajadores = list(db().execute(select(User).where(User.activo.is_(True), User.role_code.in_(
+        ("EJECUTIVO_VENTAS", "COORD_VENTAS", "JEFE_VENTAS", "ASIST_VENTAS", "AUX_ALMACEN", "SUPERV_ALMACEN", "LIDER_ALMACEN",
+         "COORD_DISTRIBUCION", "ASIST_DISTRIBUCION", "COMPRAS")))
+        .order_by(User.nombre)).scalars())
+    return render_template("v22_board.html", d=rm.daily_board(fecha), fecha=fecha, pend=pend, peso=lambda o: order_weight_kg(o)[0],
+                           monto=order_amount, prop=rm.automatic_proposal, drivers=drivers, ausentes=ausentes, vehicles=vehicles, auxiliares=auxiliares,
+                           traslados=rm.open_transfers(), tw=rm.transfer_weight, trabajadores=trabajadores,
+                           aus_txt={d: asv.texto(asv.ausencia_de("DRIVER", d, fecha) or asv.ausencia_de(
+                               "USER", db().get(Driver, d).user_id, fecha)) for d in ausentes})
+
+
+@bp.route("/ruta/<int:rid>", methods=["POST"])
+@perm_required("distribucion.programar", "distribucion.seguridad", "distribucion.carga", "distribucion.conformidad")
+def route_action(rid):
+    r = db().get(Route, rid) or abort(404)
+    back = request.form.get("volver") or url_for("dist.route_detail", rid=rid)
+    f = request.form
+    acc = f.get("accion")
+    if acc == "modificar":
+        aux = f.getlist("auxiliar") if f.get("aux_enviado") else None
+        return act(lambda: rm.modify(r, g.user, f.get("motivo", ""), f.getlist("agregar_ov"), f.getlist("quitar_stop"),
+                                     f.getlist("agregar_traslado"), f.getlist("quitar_traslado"), f.get("vehicle_id") or None,
+                                     f.get("driver_id") or None, aux, f),
+                   lambda x: "Ruta modificada." + (" ¡Atención: sobrecarga!" if rm.overload(r) else ""), back)
+    if acc == "peso_real":
+        return act(lambda: rm.set_real_weight(r, g.user, f.get("peso_real_kg")),
+                   lambda m: f"Peso real registrado. {m}" if m else "Peso real registrado: dentro de lo permitido.", back)
+    if acc == "pernocte":
+        return act(lambda: rm.register_overnight(r, g.user, save_evidences(request.files.getlist("fotos"), _up(),
+                                                                           f"pernocte_{r.id}", videos=False), f.get("nota", "")),
+                   "Pernocte registrado con foto.", back)
+    abort(404)
+
+
+@bp.route("/flota/cargas")
+@perm_required("distribucion.ver", "flota.ver")
+def vehicle_loads():
+    dias = int(request.args.get("dias") or 90)
+    from ..catalogs import IMAGENES_CHECKLIST
+    return render_template("v22_cargas.html", filas=rm.vehicle_load_stats(dias), dias=dias, imagenes=IMAGENES_CHECKLIST)
+
+
+@bp.route("/flota/vehiculo/<int:vid>/capacidad", methods=["POST"])
+@perm_required("distribucion.flota")
+def vehicle_capacity(vid):
+    v = db().get(Vehicle, vid) or abort(404)
+
+    def _do():
+        from ..services.core import audit
+        real, hab = f_float("capacidad_real_kg"), f_float("carga_habitual_kg")
+        if real is not None and real <= 0 or hab is not None and hab <= 0:
+            raise BusinessError("Los pesos deben ser mayores que cero.")
+        v.capacidad_real_kg, v.carga_habitual_kg = real, hab
+        img = request.form.get("imagen_checklist", "")
+        from ..catalogs import IMAGENES_CHECKLIST
+        if img and img not in IMAGENES_CHECKLIST:
+            raise BusinessError("Imagen no válida.")
+        v.imagen_checklist = img
+        audit(g.user, "VEHICULO_CAPACIDAD", "Vehicle", v.id, {"real": real, "habitual": hab, "imagen": img})
+    return act(_do, "Capacidades del vehículo guardadas.", request.form.get("volver") or url_for("v22.vehicle_loads"))
+
+
+# ------------------------------------------------------------------ disponibilidad del personal
+@bp.route("/personal/disponibilidad", methods=["GET", "POST"])
+@perm_required("personal.ausencias", "asistencia.todas")
+def absences():
+    back = url_for("v22.absences")
+    if request.method == "POST":
+        f = request.form
+        if f.get("accion") == "anular":
+            a = db().get(Absence, int(f.get("id") or 0)) or abort(404)
+            return act(lambda: asv.cancel(g.user, a, f.get("motivo", "")), "Ausencia anulada.", back)
+
+        def _do():
+            arch = save_evidences(request.files.getlist("archivo"), _up(), "ausencia", videos=False)
+            return asv.register(g.user, f.get("persona"), f.get("tipo"), f_date("desde"), f_date("hasta"), f.get("motivo", ""),
+                                arch[0] if arch else "")
+        return act(_do, lambda a: f"Registrado: {a.nombre} · {asv.texto(a)}.", back)
+    hoy = date.today()
+    desde = f_date("desde") or hoy - timedelta(days=30)
+    hasta = f_date("hasta") or hoy + timedelta(days=30)
+    area = request.args.get("area") or None
+    rows = asv.activas(desde=desde, hasta=hasta, area=area)
+    choferes = []
+    for d in db().execute(select(Driver).order_by(Driver.nombre)).scalars():
+        clientes, proximas = rm.driver_clients(d)
+        a = asv.ausencia_de("DRIVER", d.id, hoy) or (asv.ausencia_de("USER", d.user_id, hoy) if d.user_id else None)
+        choferes.append({"d": d, "clientes": clientes[:6], "proximas": proximas, "ausencia": a})
+    from ..catalogs import AUSENCIA_TIPOS
+    return render_template("v22_ausencias.html", rows=paginate(rows), personas=asv.personas(), tipos=AUSENCIA_TIPOS,
+                           desde=desde, hasta=hasta, area=area or "", choferes=choferes, texto=asv.texto,
+                           resumen=asv.summary(desde, hasta), areas=sorted({x[2] for x in asv.personas() if x[2]}))
+
+
+# ------------------------------------------------------------------ devoluciones
+@bp.route("/devoluciones", methods=["GET", "POST"])
+@perm_required("devoluciones.ver", "devoluciones.recibir")
+def returns():
+    back = url_for("v22.returns", estado=request.args.get("estado", ""))
+    if request.method == "POST":
+        f = request.form
+        r = db().get(ReturnReceipt, int(f.get("id") or 0)) or abort(404)
+        datos = {str(e["line_id"]): {"cantidad": f.get(f"q_{e['line_id']}"), "presentacion_ok": f.get(f"pres_{e['line_id']}", "1"),
+                                     "danado": f.get(f"dan_{e['line_id']}", "0"), "detalle": f.get(f"det_{e['line_id']}", "")}
+                 for e in r.esperado}
+        return act(lambda: dev.receive(g.user, r, datos, save_evidences(request.files.getlist("evidencias"), _up(),
+                                                                         f"devolucion_{r.id}"), f.get("observacion", "")),
+                   lambda difs: ("Recibida con observaciones: " + "; ".join(difs) + ". Se avisó a Logística y Calidad.")
+                   if difs else "Devolución recibida conforme a la guía.", back)
+    estado = request.args.get("estado") or "PENDIENTE"
+    q = select(ReturnReceipt).order_by(ReturnReceipt.plazo.desc() if estado != "PENDIENTE" else ReturnReceipt.plazo,
+                                       ReturnReceipt.id.desc())
+    if estado != "TODAS":
+        q = q.where(ReturnReceipt.estado == estado)
+    rows = list(db().execute(q).scalars())
+    return render_template("v22_devoluciones.html", rows=paginate(rows), estado=estado, hoy=date.today())
+
+
+# ------------------------------------------------------------------ tickets («Reportar avería»)
+@bp.route("/tickets/nuevo", methods=["POST"])
+@login_required
+def ticket_new():
+    f = request.form
+    back = f.get("volver") or request.referrer or url_for("main.dashboard")
+    return act(lambda: tk.create(g.user, f.get("destino"), f.get("categoria"), f.get("descripcion", ""), f.get("lugar", ""),
+                                 f.get("urgente") == "1", save_evidences(request.files.getlist("evidencias"), _up(), "ticket")),
+               lambda t: f"Ticket #{t.id} enviado a {tk.DESTINOS[t.destino]}." + (" Marcado como urgente." if t.urgente else ""),
+               back)
+
+
+@bp.route("/tickets", methods=["GET", "POST"])
+@login_required
+def tickets():
+    back = url_for("v22.tickets", destino=request.args.get("destino", ""), estado=request.args.get("estado", ""))
+    if request.method == "POST":
+        f = request.form
+        t = db().get(Ticket, int(f.get("id") or 0)) or abort(404)
+        if f.get("accion") == "asignar":
+            return act(lambda: tk.assign(g.user, t, f.get("worker_id") or None, f.get("nota", "")), "Ticket asignado.", back)
+        if f.get("accion") == "trabajo":
+            return act(lambda: tk.to_work_order(g.user, t, f_date("fecha") or date.today(), f.get("worker_id") or None),
+                       lambda wo: f"Trabajo correctivo #{wo.id} programado.", back)
+        return act(lambda: tk.set_state(g.user, t, f.get("estado"), f.get("nota", ""),
+                                        save_evidences(request.files.getlist("evidencias"), _up(), f"ticket{t.id}")),
+                   "Ticket actualizado.", back)
+    destino = request.args.get("destino") or None
+    estado = request.args.get("estado") or "ABIERTOS"
+    rows = tk.visible(g.user, destino, None if estado == "TODOS" else estado)
+    from ..services.mant_trabajos import technicians
+    hoy = date.today()
+    return render_template("v22_tickets.html", rows=paginate(rows), destino=destino or "", estado=estado, estados=tk.ESTADOS,
+                           tecnicos=technicians(), atiende=lambda t: tk.can_attend(g.user, t),
+                           tiempos=tk.response_times(hoy - timedelta(days=30), hoy, destino))
+
+
+# ------------------------------------------------------------------ gerencia, finanzas y comercial
+@bp.route("/sugerencias")
+@perm_required("sugerencias.ver")
+def suggestions():
+    from ..services import sugerencias
+    return render_template("v22_sugerencias.html", rows=sugerencias.all_suggestions())
+
+
+@bp.route("/finanzas/gastos-por-area")
+@perm_required("finanzas.gastos_areas")
+def area_spending():
+    from ..services import tablero_gg
+    return render_template("v22_gastos.html", filas=tablero_gg.budget_by_area(), hoy=date.today(),
+                           tarjetas=tablero_gg.area_cards(perms=frozenset(g.perms)))
+
+
+@bp.route("/comercial/embudo")
+@perm_required("informes.comercial", "ov.ver")
+def funnel():
+    from ..services import tablero_gg
+    hoy = date.today()
+    desde = f_date("desde") or hoy.replace(day=1) - timedelta(days=60)
+    hasta = f_date("hasta") or hoy
+    vend = request.args.get("vendedor") or None
+    if g.user.role_code == "EJECUTIVO_VENTAS":
+        vend = g.user.id
+    vendedores = list(db().execute(select(User).where(User.role_code == "EJECUTIVO_VENTAS").order_by(User.nombre)).scalars())
+    return render_template("v22_embudo.html", d=tablero_gg.funnel(desde, hasta, vend), vendedores=vendedores,
+                           vend=str(vend or ""), desde=desde, hasta=hasta)

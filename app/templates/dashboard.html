@@ -10,6 +10,10 @@
 {# 1. Lo que requiere atención: tareas designadas y alertas abiertas, las de prioridad alta primero #}
 {% set criticas = mis_alertas|selectattr('prioridad', 'equalto', 'ALTA')|list %}
 {% set otras = mis_alertas|rejectattr('prioridad', 'equalto', 'ALTA')|list %}
+{% if areas_gg %}<div class="section-title">Indicadores por área <span class="small muted">mes en curso y hoy</span></div>
+<div class="areas-gg">{% for a in areas_gg %}<section class="card"><h3>{{ a.area }}</h3>{% for it in a.tarjetas %}<div class="it {{ it.nivel }}"><span>{% if it.url %}<a href="{{ it.url }}">{{ it.etiqueta }}</a>{% else %}{{ it.etiqueta }}{% endif %}{% if it.sub %}<br><small class="muted">{{ it.sub }}</small>{% endif %}</span><b>{{ it.valor }}</b></div>{% endfor %}</section>{% endfor %}</div>{% endif %}
+{% if sug %}<div class="section-title">Sugerencias de eficiencia <a class="small" href="{{ url_for('v22.suggestions') }}">Ver todas</a></div>
+<div class="grid g2">{% for s in sug %}<section class="card sug {{ s.impacto }}"><b>{{ s.titulo }}</b> <span class="b info">{{ s.area }}</span><p class="small">{{ s.evidencia }}</p><p class="small muted">{{ s.accion }}</p></section>{% endfor %}</div>{% endif %}
 <div class="grid g2" id="live-dash" data-live>
 {% if arrastre.filas %}<section class="card" style="border-left:4px solid var(--warn)" aria-labelledby="t-arrastre"><div class="card-head"><h3 id="t-arrastre">Pendientes de días anteriores</h3><span class="muted small">{% if arrastre.a_tiempo_pct is not none %}Su indicador (30 días): {{ arrastre.a_tiempo_pct }} % atendidas a tiempo · atención promedio {{ arrastre.atencion_prom }}{% endif %}</span></div>
 <table class="small"><tr><th>Tarea</th><th class="r">Abierta hace</th><th>Plazo</th><th></th></tr>{% for x in arrastre.filas %}<tr><td><a href="{{ url_for('main.alert_detail', aid=x.alerta.id) }}">{{ x.alerta.titulo }}</a></td><td class="r">{{ x.horas }} h</td><td>{{ x.plazo }}</td><td>{% if x.vencida %}<span class="b ALTA">VENCIDA</span>{% endif %}</td></tr>{% endfor %}</table></section>{% endif %}

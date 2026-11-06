@@ -927,6 +927,11 @@ class Vehicle(Base):
     modelo: Mapped[str] = mapped_column(String(60), default="", server_default="")
     anio: Mapped[int | None] = mapped_column(Integer, nullable=True)
     tipo_unidad: Mapped[str] = mapped_column(String(30), default="", server_default="")
+    # V22: capacidad_kg = peso permitido (tarjeta); capacidad_real_kg = lo que físicamente puede cargar;
+    # carga_habitual_kg = lo que suele cargar (referencia para el análisis de sobrecarga)
+    capacidad_real_kg: Mapped[float | None] = mapped_column(Float, nullable=True)
+    carga_habitual_kg: Mapped[float | None] = mapped_column(Float, nullable=True)
+    imagen_checklist: Mapped[str] = mapped_column(String(20), default="", server_default="")
 
 
 class Driver(Base):
@@ -937,6 +942,8 @@ class Driver(Base):
     externo: Mapped[bool] = mapped_column(Boolean, default=False)
     disponible: Mapped[bool] = mapped_column(Boolean, default=True)
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    documento: Mapped[str] = mapped_column(String(20), default="", server_default="")
+    telefono: Mapped[str] = mapped_column(String(30), default="", server_default="")
 
 
 class Route(Base):
@@ -983,6 +990,13 @@ class Route(Base):
     costo_estiba: Mapped[float | None] = mapped_column(Float, nullable=True)  # S/ estiba
     # obs. demo v0.7: horas que registra Seguridad {inicio_despacho|partida|retorno: {hora, user, ts}}
     horas_seguridad: Mapped[dict] = mapped_column(JSON, default=dict)
+    # V22: ruta registrada a mano, varios auxiliares, transporte por otro trabajador, peso real y pernocte
+    manual: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    auxiliares: Mapped[list] = mapped_column(JSON, default=list, server_default="[]")  # [user_id]
+    transportista: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}")  # {tipo, nombre, area, placa, vehiculo, motivo, user_id}
+    peso_real_kg: Mapped[float | None] = mapped_column(Float, nullable=True)
+    pernocte: Mapped[list] = mapped_column(JSON, default=list, server_default="[]")  # [{fotos, nota, user, ts}]
+    cambios: Mapped[list] = mapped_column(JSON, default=list, server_default="[]")  # [{campo, de, a, motivo, user, ts}]
     vehicle = relationship("Vehicle")
     driver = relationship("Driver")
     stops = relationship("RouteStop", back_populates="route", order_by="RouteStop.orden",
@@ -1773,6 +1787,10 @@ class Worker(Base):
     externo: Mapped[bool] = mapped_column(Boolean, default=False)
     activo: Mapped[bool] = mapped_column(Boolean, default=True)
     ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    # V22: cuenta del sistema (personal de limpieza o técnico que ve sus tareas) y datos de contacto
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    puesto: Mapped[str] = mapped_column(String(60), default="", server_default="")
+    telefono: Mapped[str] = mapped_column(String(30), default="", server_default="")
 
 
 class Attendance(Base):
@@ -1843,6 +1861,7 @@ class SanitationZone(Base):
     frecuencia_fumigacion_dias: Mapped[int | None] = mapped_column(Integer, nullable=True)
     activo: Mapped[bool] = mapped_column(Boolean, default=True)
     ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    grupo: Mapped[str] = mapped_column(String(60), default="", server_default="")  # V22: p. ej. Almacén PT, Selección
 
 
 class SanitationLog(Base):
@@ -2259,3 +2278,152 @@ class ProcessLiquidation(Base):
     ts: Mapped[datetime] = mapped_column(DateTime, default=now)
     user = relationship("User")
     product = relationship("Product", primaryjoin="foreign(ProcessLiquidation.product_code) == Product.code", viewonly=True)
+
+
+# ---------------------------------------------------------------------------
+# V22 (06-nov-2026): distribución manual, ausencias, devoluciones, mantenimiento, limpieza y tickets
+# ---------------------------------------------------------------------------
+class RouteTransfer(Base):
+    """Traslado entre almacenes (externos) asignado a una ruta programada: viaja en el mismo vehículo."""
+    __tablename__ = "route_transfers"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    route_id: Mapped[int] = mapped_column(ForeignKey("routes.id"), index=True)
+    transfer_id: Mapped[int] = mapped_column(ForeignKey("transfers.id"), index=True)
+    orden: Mapped[int] = mapped_column(Integer, default=99)
+    peso_kg: Mapped[float] = mapped_column(Float, default=0)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    route = relationship("Route")
+    transfer = relationship("Transfer")
+
+
+class Absence(Base):
+    """Disponibilidad del personal: vacaciones, descanso médico (rango de fechas), falta justificada (con motivo) o
+    injustificada. persona_tipo: DRIVER (chofer), USER (cuenta del sistema) o WORKER (personal sin cuenta)."""
+    __tablename__ = "absences"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    persona_tipo: Mapped[str] = mapped_column(String(10))
+    persona_id: Mapped[int] = mapped_column(Integer, index=True)
+    nombre: Mapped[str] = mapped_column(String(160), default="")
+    area: Mapped[str] = mapped_column(String(40), default="")
+    tipo: Mapped[str] = mapped_column(String(25))  # VACACIONES / DESCANSO_MEDICO / FALTA_JUSTIFICADA / FALTA_INJUSTIFICADA / LICENCIA
+    desde: Mapped[date] = mapped_column(Date, index=True)
+    hasta: Mapped[date] = mapped_column(Date, index=True)
+    motivo: Mapped[str] = mapped_column(String(250), default="")
+    archivo: Mapped[str] = mapped_column(String(250), default="")
+    anulada: Mapped[bool] = mapped_column(Boolean, default=False)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+
+class ReturnReceipt(Base):
+    """Recepción en almacén de una devolución total o parcial: se contrasta con la guía (cantidad, presentación, daño) el
+    mismo día o, si llegó fuera de horario, al día siguiente; con observaciones se sube foto o video."""
+    __tablename__ = "return_receipts"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    order_id: Mapped[int] = mapped_column(ForeignKey("sales_orders.id"), index=True)
+    incident_id: Mapped[int | None] = mapped_column(ForeignKey("incidents.id"), nullable=True)
+    route_id: Mapped[int | None] = mapped_column(ForeignKey("routes.id"), nullable=True)
+    tipo: Mapped[str] = mapped_column(String(10), default="TOTAL")  # TOTAL / PARCIAL
+    guia_numero: Mapped[str] = mapped_column(String(40), default="")
+    esperado: Mapped[list] = mapped_column(JSON, default=list)  # [{line_id, producto, descripcion, presentacion, cantidad}]
+    recibido: Mapped[list] = mapped_column(JSON, default=list)  # [{line_id, cantidad, presentacion_ok, danado, detalle}]
+    plazo: Mapped[date] = mapped_column(Date)
+    estado: Mapped[str] = mapped_column(String(12), default="PENDIENTE")  # PENDIENTE / CONFORME / OBSERVADA
+    observacion: Mapped[str] = mapped_column(Text, default="")
+    evidencias: Mapped[list] = mapped_column(JSON, default=list)  # [archivo] fotos o videos
+    recibido_por: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    recibido_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    order = relationship("SalesOrder")
+
+
+class Ticket(Base):
+    """Reporte de avería o solicitud desde cualquier perfil: infraestructura (luz, gasfitería, equipos de planta) para
+    Mantenimiento, o tintas, laptops, celulares, impresoras y red para Sistemas."""
+    __tablename__ = "tickets"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    destino: Mapped[str] = mapped_column(String(15))  # MANTENIMIENTO / SISTEMAS
+    categoria: Mapped[str] = mapped_column(String(40))
+    descripcion: Mapped[str] = mapped_column(Text)
+    lugar: Mapped[str] = mapped_column(String(160), default="")
+    urgente: Mapped[bool] = mapped_column(Boolean, default=False)
+    evidencias: Mapped[list] = mapped_column(JSON, default=list)
+    area_origen: Mapped[str] = mapped_column(String(40), default="")
+    estado: Mapped[str] = mapped_column(String(15), default="ABIERTO")  # ABIERTO / ASIGNADO / EN_PROCESO / RESUELTO / RECHAZADO
+    asignado_worker_id: Mapped[int | None] = mapped_column(ForeignKey("workers.id"), nullable=True)
+    asignado_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    work_order_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    solucion: Mapped[str] = mapped_column(Text, default="")
+    historial: Mapped[list] = mapped_column(JSON, default=list)
+    creado_por: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    atendido_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    resuelto_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    autor = relationship("User", foreign_keys=[creado_por])
+    asignado_worker = relationship("Worker")
+
+
+class WorkOrder(Base):
+    """Trabajo de mantenimiento preventivo o correctivo de una zona o máquina, asignado a un técnico con anticipación
+    o el mismo día; fotos antes y después, tiempos y repuestos."""
+    __tablename__ = "work_orders"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    tipo: Mapped[str] = mapped_column(String(12))  # PREVENTIVO / CORRECTIVO
+    titulo: Mapped[str] = mapped_column(String(160))
+    descripcion: Mapped[str] = mapped_column(Text, default="")
+    zone_id: Mapped[int | None] = mapped_column(ForeignKey("sanitation_zones.id"), nullable=True, index=True)
+    maquina: Mapped[str] = mapped_column(String(60), default="")  # línea o máquina de producción
+    fecha_programada: Mapped[date] = mapped_column(Date, index=True)
+    asignado_worker_id: Mapped[int | None] = mapped_column(ForeignKey("workers.id"), nullable=True)
+    asignacion: Mapped[str] = mapped_column(String(12), default="EL_DIA")  # ANTICIPADA / EL_DIA
+    estado: Mapped[str] = mapped_column(String(12), default="PROGRAMADA")  # PROGRAMADA / ASIGNADA / EN_PROCESO / TERMINADA / CANCELADA
+    origen: Mapped[str] = mapped_column(String(12), default="MANUAL")  # CRONOGRAMA / TICKET / MANUAL
+    ticket_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    fotos_antes: Mapped[list] = mapped_column(JSON, default=list)
+    fotos_despues: Mapped[list] = mapped_column(JSON, default=list)
+    repuestos: Mapped[list] = mapped_column(JSON, default=list)  # [{pieza, cantidad, costo}]
+    costo: Mapped[float | None] = mapped_column(Float, nullable=True)
+    observacion: Mapped[str] = mapped_column(Text, default="")
+    con_calidad: Mapped[bool] = mapped_column(Boolean, default=False)  # fumigación coordinada con Calidad
+    avisos: Mapped[list] = mapped_column(JSON, default=list)  # días de aviso ya enviados
+    inicio_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    fin_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    zone = relationship("SanitationZone")
+    asignado = relationship("Worker")
+
+
+class MachineLog(Base):
+    """Bitácora de máquinas de producción: configuración, calibración, cambio de piezas y ajustes (Mantenimiento)."""
+    __tablename__ = "machine_logs"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    maquina: Mapped[str] = mapped_column(String(60), index=True)
+    tipo: Mapped[str] = mapped_column(String(15))  # CONFIGURACION / CALIBRACION / CAMBIO_PIEZA / AJUSTE
+    detalle: Mapped[str] = mapped_column(Text, default="")
+    parametros: Mapped[dict] = mapped_column(JSON, default=dict)
+    pieza: Mapped[str] = mapped_column(String(120), default="")
+    costo: Mapped[float | None] = mapped_column(Float, nullable=True)
+    evidencias: Mapped[list] = mapped_column(JSON, default=list)
+    proxima: Mapped[date | None] = mapped_column(Date, nullable=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    user = relationship("User")
+
+
+class CleaningAssignment(Base):
+    """Limpieza programada: qué zonas limpia cada persona en su jornada y cuántas veces; cada limpieza se marca."""
+    __tablename__ = "cleaning_assignments"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    fecha: Mapped[date] = mapped_column(Date, index=True)
+    worker_id: Mapped[int] = mapped_column(ForeignKey("workers.id"), index=True)
+    zone_id: Mapped[int] = mapped_column(ForeignKey("sanitation_zones.id"), index=True)
+    veces: Mapped[int] = mapped_column(Integer, default=1)
+    turno: Mapped[str] = mapped_column(String(20), default="")
+    checks: Mapped[list] = mapped_column(JSON, default=list)  # [{ts, user, foto}]
+    nota: Mapped[str] = mapped_column(String(250), default="")
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    worker = relationship("Worker")
+    zone = relationship("SanitationZone")

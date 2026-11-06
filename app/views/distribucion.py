@@ -185,7 +185,23 @@ def route_detail(rid):
                            preguia=dsp.preguia(r), etapas=dsp.ETAPAS_FOTO, certs=certs,
                            faltan=dsp.missing_documents(r) if r.estado == "CONFIRMADA" else [],
                            billing=dsp.billing_status, vb_req=dsp.required_exit_approvals(), vb_label=dsp.VB_LABEL,
-                           horas_seg=dsvc.HORAS_SEGURIDAD)
+                           horas_seg=dsvc.HORAS_SEGURIDAD, v22=_v22_ctx(r, auxiliares))
+
+
+def _v22_ctx(r, auxiliares):
+    """V22: cambios a la ruta, varios auxiliares, traslados, peso permitido y real, pernocte."""
+    from ..services import rutas_manual as rm
+    from ..services.ausencias import unavailable_driver_ids
+    from ..services.orders import order_weight_kg
+    ctx = {"traslados": rm.route_transfers(r), "sobrecarga": rm.overload(r), "permitido": rm.capacidad(r.vehicle)[0],
+           "real": rm.capacidad(r.vehicle)[1], "auxs": [a for a in auxiliares if a.id in (r.auxiliares or [])] or
+           ([r.auxiliar] if r.auxiliar else []), "ausentes": unavailable_driver_ids(r.fecha)}
+    if r.estado in rm.EDITABLES and "distribucion.programar" in g.perms:
+        usados = dsvc.orders_in_active_route()
+        ctx["pend"] = [(o, rm.peso_ov(o)) for o in dsvc.dispatchable_orders(r.fecha, require_prepared=False)
+                       if o.id not in usados or rm.automatic_proposal(o, r) is not None]
+        ctx["libres"] = [(t, rm.transfer_weight(t)) for t in rm.open_transfers()]
+    return ctx
 
 
 def _conformidad(stop, u):

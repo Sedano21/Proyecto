@@ -272,14 +272,15 @@ def start(user, datos, r=None):
     return r
 
 
-def pause(user, r, causa, foto=""):
+def pause(user, r, causa, foto="", evidencias=None):
     _check_line(user, r)
     if r.estado != "EN PROCESO":
         raise BusinessError("Solo se pausa un parte en proceso.")
     if causa not in causes(r.tipo):
         raise BusinessError("Elija la causa de la lista.")
+    evid = [x for x in (evidencias or []) if x]  # V22: una o más fotos o videos de la parada
     r.pausas = list(r.pausas or []) + [{"inicio": now().isoformat(timespec="seconds"), "fin": None, "causa": causa,
-                                        "foto": foto or "", "user": user.nombre}]
+                                        "foto": foto or (evid[0] if evid else ""), "evidencias": evid, "user": user.nombre}]
     r.estado = "PAUSADO"
     audit(user, "PARTE_PAUSADO", "ProductionReport", r.id, {"causa": causa})
     return r

@@ -66,7 +66,7 @@ DEMO_USERS = [
     ("coord.finanzas", "Coordinación de Finanzas", "COORD_FINANZAS"),
     ("jefe.finanzas", "Jefe de Administración y Finanzas", "JEFE_ADMIN_FINANZAS"),
     ("jefe.operaciones", "Jefatura de Operaciones", "JEFE_OPERACIONES"),
-]
+] + list(getattr(C, "DEMO_USERS_V22", []))
 
 
 def seed_catalogs():
@@ -105,6 +105,8 @@ def seed_catalogs():
     for orden, nombre, dias, rec, rol in C.DEMO_IMPORT_PHASES:
         s.add(ImportPhaseTemplate(orden=orden, nombre=nombre, dias_desde_inicio=dias, recordatorio_dias=rec,
                                   responsable_rol=rol, estado_def="DEMO"))
+    s.flush()
+    _sync_zones()
     s.flush()
     return True
 
@@ -163,12 +165,26 @@ def sync_catalogs():
             s.add(Param(key=key, valor={"v": valor}, tipo=tipo, grupo=grupo, descripcion=desc, estado=estado, fuente=fuente))
             n += 1
     s.flush()
+    n += _sync_zones()
     n += _retire_permissions()
     n += _apply_param_changes()
     n += _apply_alert_role_changes()
     n += _rename_roles()
     n += _rename_demo_users()
     n += _merge_roles()
+    return n
+
+
+def _sync_zones():
+    """V22: zonas de la planta indicadas por la empresa (mantenimiento, limpieza y fumigación), si faltan."""
+    from .models import SanitationZone
+    s = db()
+    n = 0
+    existentes = {z.nombre for z in s.execute(select(SanitationZone)).scalars()}
+    for nombre, grupo, area in getattr(C, "ZONAS_PLANTA", []):
+        if nombre not in existentes:
+            s.add(SanitationZone(nombre=nombre, grupo=grupo, area=area))
+            n += 1
     return n
 
 

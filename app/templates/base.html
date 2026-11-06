@@ -25,6 +25,9 @@
       {{ nl(url_for('main.dashboard'), 'home', 'Inicio') }}
       {{ nl(url_for('main.alerts'), 'bell', 'Alertas y tareas', ('<span class="count" aria-label="' ~ alertas_abiertas ~ ' abiertas">' ~ alertas_abiertas ~ '</span>')|safe if alertas_abiertas else '') }}
       {% if ve('alertas.ver') or ve('informes.comercial') or ve('informes.reempaque') or ve('informes.produccion') or ve('informes.distribucion') or ve('informes.almacen') %}{{ nl(url_for('rep.home'), 'chart', 'Informes') }}{% endif %}
+      {% if ve('sugerencias.ver') %}{{ nl(url_for('v22.suggestions'), 'trend', 'Sugerencias de eficiencia') }}{% endif %}
+      {% if ve('finanzas.gastos_areas') %}{{ nl(url_for('v22.area_spending'), 'scale', 'Gastos y desempeño por área') }}{% endif %}
+      {% if ve('asistencia.todas') and not ve('ov.ver') %}{{ nl(url_for('prod.attendance'), 'users', 'Asistencia por área') }}{{ nl(url_for('v22.absences'), 'calendar', 'Disponibilidad del personal') }}{% endif %}
     </div>
     {% if ve('ov.ver') %}<div class="grp" data-grupo="Comercial"><h4><span class="lbl">Comercial</span></h4>
       {{ nl(url_for('com.orders'), 'cart', 'Órdenes de venta') }}
@@ -36,6 +39,7 @@
       {% if ve('precios.ver') %}{{ nl(url_for('com.prices'), 'tag', 'Listas de precios') }}{% endif %}
       {% if ve('costos.ver') %}{{ nl(url_for('com.costs'), 'scale', 'Costos vs mercado') }}{% endif %}
       {% if ve('oportunidades.registrar') or ve('oportunidades.ver_todas') %}{{ nl(url_for('com.opportunities'), 'users', 'Oportunidades') }}{{ nl(url_for('com.quotes'), 'file', 'Cotizaciones') }}{% endif %}
+      {% if ve('informes.comercial') %}{{ nl(url_for('v22.funnel'), 'chart', 'Embudo comercial') }}{% endif %}
       {% if ve('catalogo.ver') or ve('catalogo.fotos') %}{{ nl(url_for('com.catalog'), 'box', 'Catálogo') }}{% endif %}
       {% if ve('objetivos.ver') %}{{ nl(url_for('com.targets'), 'gauge', 'Objetivos de venta') }}{% endif %}
       {% if ve('demanda.cargar') %}{{ nl(url_for('sup.demand'), 'trend', 'Proyección de demanda') }}{% endif %}
@@ -57,6 +61,7 @@
       {% if (ve('preparacion.registrar') or ve('ov.ver')) and user.role.area != 'Producción' %}{{ nl(url_for('com.preparation'), 'clipboard', 'Preparación (picking)') }}{% endif %}{# V12: a Producción no le suma; si lo necesita, lo consulta desde la OV #}
       {% if (ve('picking.asignar') or ve('tareas.ejecutar') or ve('preparacion.registrar')) and user.role.area != 'Producción' %}{{ nl(url_for('alm.picking_schedule'), 'calendar', 'Programación de picking') }}{% endif %}
       {% if ve('traslados.ver') %}{{ nl(url_for('alm.transfers'), 'swap', 'Traslados') }}{% endif %}
+      {% if ve('devoluciones.ver') or ve('devoluciones.recibir') %}{{ nl(url_for('v22.returns'), 'download', 'Devoluciones por recibir') }}{% endif %}
       {% if ve('reempaque.ver') %}{{ nl(url_for('alm.repacks'), 'refresh', 'Reempaque') }}{% endif %}
       {% if ve('stock.conteo') %}{{ nl(url_for('alm.counts'), 'count', 'Conteos físicos') }}{% endif %}
       {% if ve('movimiento.solicitar') or ve('movimiento.ejecutar') or ve('movimiento.ver_todos') %}{{ nl(url_for('sup.moves'), 'swap', 'Movimientos punto a punto') }}{% endif %}
@@ -104,12 +109,15 @@
       {% if ve('guias.estado') %}{{ nl(url_for('dist.guides'), 'file', 'Guías de remisión') }}{% endif %}
       {% if ve('distribucion.conformidad') %}{{ nl(url_for('dist.my_deliveries'), 'check', 'Mis entregas') }}{% endif %}
       {{ nl(url_for('dist.routes'), 'route', 'Programación y rutas') }}
+      {{ nl(url_for('v22.board'), 'clipboard', 'Cuadro de despacho y ruta manual') }}
+      {% if ve('personal.ausencias') %}{{ nl(url_for('v22.absences'), 'calendar', 'Disponibilidad del personal') }}{% endif %}
       {% if ve('checklist.ver') %}{{ nl(url_for('dist.checklists'), 'check', 'Checklists vehiculares') }}{% endif %}
       {{ nl(url_for('dist.incidents'), 'alert', 'Incidencias') }}
       {% if ve('distribucion.rastreo') %}{{ nl(url_for('dist.tracking'), 'route', 'Rastreo GEOSATELITAL') }}{% endif %}
       {% if ve('distribucion.documentos') %}{{ nl(url_for('alm.uploads', area='Distribución'), 'upload', 'Cargas de SAP (despachos)') }}{% endif %}
       {% if ve('distribucion.flota') %}{{ nl(url_for('dist.fleet'), 'truck', 'Flota y conductores') }}{% endif %}
-      {% if ve('flota.ver') or ve('distribucion.flota') %}{{ nl(url_for('dist.fleet_tracking'), 'wrench', 'Seguimiento de flota') }}{% endif %}
+      {% if ve('flota.ver') or ve('distribucion.flota') %}{{ nl(url_for('dist.fleet_tracking'), 'wrench', 'Seguimiento de flota') }}
+      {{ nl(url_for('v22.vehicle_loads'), 'scale', 'Carga de los vehículos') }}{% endif %}
       {% if ve('distribucion.guia_modificar') %}{{ nl(url_for('dist.preguias'), 'file', 'Pre-guías') }}{% endif %}
       {% if ve('terceros.ver') %}{{ nl(url_for('dist.terceros'), 'truck', 'Transporte tercero') }}{% endif %}
       {% if ve('presupuesto.ver') %}{{ nl(url_for('dist.presupuesto'), 'chart', 'Presupuesto') }}{% endif %}
@@ -118,6 +126,15 @@
     {% if not ve('distribucion.ver') and (ve('terceros.ver') or ve('presupuesto.ver')) %}<div class="grp" data-grupo="Distribución"><h4><span class="lbl">Distribución</span></h4>
       {% if ve('terceros.ver') %}{{ nl(url_for('dist.terceros'), 'truck', 'Transporte tercero') }}{% endif %}
       {% if ve('presupuesto.ver') %}{{ nl(url_for('dist.presupuesto'), 'chart', 'Presupuesto') }}{% endif %}</div>{% endif %}
+    {% if ve('mantenimiento.gestionar') or ve('mantenimiento.ejecutar') or ve('limpieza.gestionar') or ve('limpieza.marcar') or ve('maquinas.ver') or ve('tickets.ver_todos') or ve('tickets.sistemas') %}<div class="grp" data-grupo="Planta"><h4><span class="lbl">{{ 'Mantenimiento de planta' if not ve('tickets.sistemas') or ve('mantenimiento.gestionar') else 'Solicitudes' }}</span></h4>
+      {% if ve('mantenimiento.gestionar') or ve('tickets.ver_todos') %}{{ nl(url_for('mant2.panel'), 'gauge', 'Panel de mantenimiento') }}{% endif %}
+      {% if ve('tickets.ver_todos') or ve('tickets.mantenimiento') or ve('tickets.sistemas') %}{{ nl(url_for('v22.tickets', destino='SISTEMAS' if ve('tickets.sistemas') and not ve('tickets.mantenimiento') else ''), 'alert', 'Tickets de averías y solicitudes') }}{% endif %}
+      {% if ve('mantenimiento.gestionar') or ve('mantenimiento.ejecutar') %}{{ nl(url_for('mant2.works'), 'wrench', 'Trabajos' if ve('mantenimiento.gestionar') else 'Mis trabajos') }}{% endif %}
+      {% if ve('mantenimiento.gestionar') %}{{ nl(url_for('mant2.report'), 'chart', 'Informe de mantenimiento') }}{% endif %}
+      {% if ve('maquinas.ver') %}{{ nl(url_for('mant2.machines'), 'settings', 'Máquinas de producción') }}{% endif %}
+      {% if ve('limpieza.gestionar') or ve('limpieza.marcar') %}{{ nl(url_for('mant2.cleaning'), 'check', 'Limpieza' if ve('limpieza.gestionar') else 'Mis zonas de limpieza') }}{% endif %}
+      {% if ve('mantenimiento.gestionar') %}{{ nl(url_for('prod.attendance'), 'users', 'Asistencia de mi personal') }}{{ nl(url_for('v22.absences'), 'calendar', 'Vacaciones, descansos y faltas') }}{% endif %}
+    </div>{% endif %}
     {% if ve('mantenimiento.ver') or ve('mantenimiento.flota') or ve('saneamiento.registrar') %}<div class="grp" data-grupo="Mantenimiento"><h4><span class="lbl">Mantenimiento</span></h4>
       {% if ve('mantenimiento.ver') or ve('mantenimiento.flota') %}{{ nl(url_for('mant.home', tab='flota'), 'wrench', 'Flota: preventivo') }}
       {{ nl(url_for('mant.home', tab='correctivo'), 'alert', 'Flota: correctivo') }}{% endif %}
@@ -154,6 +171,7 @@
       <nav class="crumbs" aria-label="Ubicación"><a href="{{ url_for('main.dashboard') }}">Inicio</a><span class="crumb-rest"></span></nav>
       <div class="top-right noprint">
         <span class="stock-chip" title="{% if stock_info %}Última carga de stock de SAP: {{ stock_info.ts|d }} ({{ stock_info.archivo }}, por {{ stock_info.usuario }}). No es tiempo real.{% else %}Sin carga de stock de SAP registrada.{% endif %}">{{ ic('database') }}<span>{% if stock_info %}Stock SAP <b>{{ stock_info.ts|d }}</b><em class="hide-sm"> · no es tiempo real</em>{% else %}Sin carga SAP{% endif %}</span></span>
+        <button type="button" class="btn sec small" data-open="dlg-averia" title="Reportar una avería o pedir algo a Sistemas (tintas, equipos, red)">{{ ic('wrench') }}<span class="hide-sm"> Reportar avería</span></button>
         <button type="button" class="btn sec small obs-btn" data-obs title="Reportar una observación de esta pantalla">{{ ic('flag') }}<span class="hide-sm"> Reportar observación</span></button>
         <button type="button" class="icon-btn snd-btn" aria-label="Sonido de alertas activado (pulse para silenciar)" title="Sonido de alertas">{{ ic('volume') }}</button>
         <a class="icon-btn bell" href="{{ url_for('main.alerts') }}" aria-label="Alertas: {{ alertas_abiertas }} abiertas">{{ ic('bell') }}{% if alertas_abiertas %}<span class="dot">{{ alertas_abiertas if alertas_abiertas < 100 else '99+' }}</span>{% endif %}</a>
@@ -186,6 +204,18 @@
   <label>Captura de pantalla o foto (opcional)</label><input type="file" name="captura" accept="image/*,.pdf">
   <div class="actions"><button type="button" class="sec" data-obs-close>Cancelar</button> <button>Enviar observación</button></div>
 </form></dialog>
+{% if user %}{% set cats = ticket_categorias() %}<dialog class="modal noprint" id="dlg-averia" aria-labelledby="av-t"><form method="post" action="{{ url_for('v22.ticket_new') }}" enctype="multipart/form-data"><input type="hidden" name="_csrf" value="{{ csrf_token() }}"><input type="hidden" name="volver" value="{{ request.full_path }}">
+<div class="dlg-head"><h3 id="av-t">Reportar avería o pedir a Sistemas</h3><button class="ibtn" type="button" data-close aria-label="Cerrar">{{ ic('x') }}</button></div>
+<div class="dlg-body"><div class="seg small" role="radiogroup"><label><input type="radio" name="destino" value="MANTENIMIENTO" checked data-dest> Avería (Mantenimiento)</label> <label><input type="radio" name="destino" value="SISTEMAS" data-dest> Sistemas: tintas, equipos, red</label></div>
+<label class="req">¿Qué es?</label><select name="categoria" required data-cat>{% for d, lst in cats.items() %}{% for c in lst %}<option value="{{ c }}" data-d="{{ d }}">{{ c }}</option>{% endfor %}{% endfor %}</select>
+<label class="req">Motivo / descripción</label><textarea name="descripcion" rows="2" required minlength="5" style="width:100%" placeholder="p. ej. se quemó el fluorescente del pasillo; la impresora no imprime"></textarea>
+<div class="row"><div class="grow"><label>Lugar</label><input name="lugar" placeholder="p. ej. Almacén PT zona B, oficina de ventas"></div><div><label class="chk"><input type="checkbox" name="urgente" value="1"> Urgente</label></div></div>
+<label>Foto o video</label><input type="file" name="evidencias" accept="image/*,video/*" multiple></div>
+<div class="dlg-foot"><a class="small" href="{{ url_for('v22.tickets') }}">Mis tickets</a> <button type="button" class="sec" data-close>Cancelar</button> <button>Enviar</button></div></form></dialog>
+<script>(function(){var d=document.getElementById('dlg-averia');if(!d)return;var s=d.querySelector('[data-cat]');
+function f(){var v=(d.querySelector('[data-dest]:checked')||{}).value;var first=null;Array.prototype.forEach.call(s.options,function(o){var ok=o.dataset.d===v;o.hidden=!ok;o.disabled=!ok;if(ok&&!first)first=o;});if(s.selectedOptions[0]&&s.selectedOptions[0].disabled&&first)s.value=first.value;
+var l=d.querySelector('[name=lugar]');l.required=(v==='MANTENIMIENTO');}
+d.addEventListener('change',function(e){if(e.target.matches('[data-dest]'))f();});f();})();</script>{% endif %}
 {% else %}
 <main class="public">{% with msgs = get_flashed_messages(with_categories=true) %}{% for c, m in msgs %}<div class="flash {{ c }}" role="alert">{{ m }}</div>{% endfor %}{% endwith %}{% block public %}{% endblock %}</main>
 {% endif %}

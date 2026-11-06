@@ -1,0 +1,17 @@
+{% extends "base.html" %}{% from "_m.html" import ic, empty %}
+{% block content %}<div class="page-head"><div><h1>Embudo comercial</h1><p class="sub">De la oportunidad a la OV entregada · {{ desde|d }} – {{ hasta|d }}</p></div></div>
+<form method="get" class="row card noprint"><div><label>Desde</label><input type="date" name="desde" value="{{ desde.isoformat() }}"></div><div><label>Hasta</label><input type="date" name="hasta" value="{{ hasta.isoformat() }}"></div>
+{% if user.role_code != 'EJECUTIVO_VENTAS' %}<div><label>Ejecutivo</label><select name="vendedor"><option value="">(todos)</option>{% for v in vendedores %}<option value="{{ v.id }}" {{ 'selected' if vend == v.id|string }}>{{ v.nombre }}</option>{% endfor %}</select></div>{% endif %}<div><button class="sec">Ver</button></div></form>
+<div class="grid g2"><section class="card"><h3>Embudo</h3>
+{% set colores = ['#0b6b3a','#14804a','#1f9156','#3aa36a','#5bb47f','#2a6f97','#1d4e89'] %}{% set mx = (d.filas|map(attribute='n')|max) or 1 %}
+<div class="embudo">{% for f in d.filas %}{% if f.conv is not none %}<div class="conv">↓ {{ f.conv }} %</div>{% endif %}
+<div class="et" style="width:{{ [40 + 60 * f.n / mx, 100]|min }}%;background:{{ colores[loop.index0 % 7] }}"><b>{{ f.n }}</b>{{ f.nombre }}{% if f.valor %}<br><small>S/ {{ f.valor|n }}{{ ' al mes (proyectado)' if f.code not in ['OV','ENTREGADAS'] }}</small>{% endif %}</div>{% endfor %}</div>
+<p class="small muted">La conversión es el porcentaje que pasa de la etapa anterior. Las etapas de oportunidad usan la proyección mensual registrada; las de OV, el monto de las OV.</p></section>
+<section class="card"><h3>Resultado</h3><div class="kpis"><div class="kpi primary"><b>{{ d.tasa_cierre if d.tasa_cierre is not none else '—' }}{{ ' %' if d.tasa_cierre is not none }}</b><span>Tasa de cierre</span><small>ganadas / oportunidades</small></div>
+<div class="kpi {{ 'warn' if d.perdidas }}"><b>{{ d.perdidas }}</b><span>Oportunidades perdidas</span></div></div>
+<h4>Motivos de pérdida</h4>{% if d.motivos %}<table class="small">{% for m, n in d.motivos %}<tr><td>{{ m }}</td><td class="r">{{ n }}</td></tr>{% endfor %}</table>{% else %}<p class="small muted">Sin oportunidades perdidas en el periodo.</p>{% endif %}</section></div>
+<div class="section-title">Por ejecutivo</div>
+<div class="tw"><table class="small apilable"><tr><th>Ejecutivo</th><th class="r">Oportunidades</th><th class="r">Ganadas</th><th class="r">Perdidas</th><th class="r">Tasa de cierre</th><th class="r">OV</th><th class="r">Venta S/</th></tr>
+{% for v in d.vendedores %}<tr><td data-label="Ejecutivo">{{ v.nombre }}</td><td class="r" data-label="Oportunidades">{{ v.oportunidades }}</td><td class="r" data-label="Ganadas">{{ v.ganadas }}</td><td class="r" data-label="Perdidas">{{ v.perdidas }}</td><td class="r" data-label="Tasa">{{ (v.tasa ~ ' %') if v.tasa is not none else '—' }}</td><td class="r" data-label="OV">{{ v.ov }}</td><td class="r" data-label="Venta">{{ v.venta|n }}</td></tr>
+{% else %}<tr><td colspan="7" class="muted">Sin datos en el periodo.</td></tr>{% endfor %}</table></div>
+{% endblock %}

@@ -1,0 +1,31 @@
+{% extends "base.html" %}{% from "_m.html" import b, csrf, ic, empty, paginacion %}
+{% block content %}<div class="page-head"><div><h1>Disponibilidad del personal</h1><p class="sub">Vacaciones, descanso médico, faltas justificadas o injustificadas</p></div>
+{% if can('personal.ausencias') %}<button class="btn" data-open="dlg-aus">{{ ic('plus') }} Registrar ausencia</button>{% endif %}</div>
+<p class="note small">Una ausencia impide asignar a la persona en rutas, trabajos o limpieza en esas fechas, avisa a Distribución si ya tenía rutas (con los clientes que lleva) y completa sola la asistencia del colaborador.</p>
+<form method="get" class="row card noprint"><div><label>Desde</label><input type="date" name="desde" value="{{ desde.isoformat() }}"></div><div><label>Hasta</label><input type="date" name="hasta" value="{{ hasta.isoformat() }}"></div>
+<div><label>Área</label><select name="area"><option value="">(todas)</option>{% for a in areas %}<option {{ 'selected' if a == area }}>{{ a }}</option>{% endfor %}</select></div><div><button class="sec">Filtrar</button></div></form>
+{% if resumen %}<div class="kpis">{% for ar, tipos_ in resumen.items() %}<div class="kpi"><b>{{ tipos_.values()|sum }} días</b><span>{{ ar }}</span><small>{% for k, v in tipos_.items() %}{{ tipos[k] }} {{ v }}{{ ' · ' if not loop.last }}{% endfor %}</small></div>{% endfor %}</div>{% endif %}
+<div class="tw"><table class="small apilable"><tr><th>Persona</th><th>Área</th><th>Tipo</th><th>Desde</th><th>Hasta</th><th>Motivo</th><th>Sustento</th><th></th></tr>
+{% for a in rows %}<tr><td data-label="Persona"><b>{{ a.nombre }}</b></td><td data-label="Área">{{ a.area }}</td><td data-label="Tipo"><span class="b {{ 'ALTA' if a.tipo == 'FALTA_INJUSTIFICADA' else ('MEDIA' if a.tipo.startswith('FALTA') else 'info') }}">{{ tipos[a.tipo] }}</span></td>
+<td data-label="Desde">{{ a.desde|d }}</td><td data-label="Hasta">{{ a.hasta|d }}</td><td data-label="Motivo">{{ a.motivo or '—' }}</td>
+<td>{% if a.archivo %}<a href="{{ url_for('main.evidence', name=a.archivo) }}">ver</a>{% endif %}</td>
+<td>{% if can('personal.ausencias') %}<form method="post" class="inline" data-confirm="¿Anular esta ausencia?">{{ csrf() }}<input type="hidden" name="accion" value="anular"><input type="hidden" name="id" value="{{ a.id }}"><button class="small sec">Anular</button></form>{% endif %}</td></tr>
+{% else %}<tr><td colspan="8" class="muted">Sin ausencias en el periodo.</td></tr>{% endfor %}</table></div>{{ paginacion(rows, 'ausencias') }}
+
+<div class="section-title">Choferes: disponibilidad y clientes que llevan</div>
+<div class="cards">{% for c in choferes %}<article class="xcard {{ 'alerta' if c.ausencia }}"><div class="xcard-head"><b>{{ c.d.nombre }}</b>{% if c.ausencia %}<span class="b ALTA">{{ texto(c.ausencia) }}</span>{% elif not c.d.disponible %}<span class="b MEDIA">no disponible</span>{% else %}<span class="b ok">disponible hoy</span>{% endif %}</div>
+<div class="small">{% if c.clientes %}Lleva (90 días): {% for n, k in c.clientes %}{{ n }} ({{ k }}){{ ', ' if not loop.last }}{% endfor %}{% else %}<span class="muted">Sin entregas recientes.</span>{% endif %}</div>
+{% if c.proximas %}<div class="small">Próximas rutas: {% for r in c.proximas %}<a href="{{ url_for('dist.route_detail', rid=r.id) }}">#{{ r.id }} ({{ r.fecha|d }})</a>{{ ', ' if not loop.last }}{% endfor %}</div>{% endif %}</article>{% endfor %}</div>
+
+{% if can('personal.ausencias') %}<dialog class="modal" id="dlg-aus"><form method="post" enctype="multipart/form-data">{{ csrf() }}
+<div class="dlg-head"><h3>Registrar ausencia</h3><button class="ibtn" type="button" data-close aria-label="Cerrar">{{ ic('x') }}</button></div><div class="dlg-body">
+<label class="req">Persona</label><input list="personas-l" id="persona-txt" required placeholder="Escriba el nombre" style="width:100%"><input type="hidden" name="persona" id="persona-id">
+<datalist id="personas-l">{% for k, n, ar in personas %}<option value="{{ n }}" data-k="{{ k }}"></option>{% endfor %}</datalist>
+<div class="row"><div><label class="req">Tipo</label><select name="tipo" required>{% for k, v in tipos.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select></div>
+<div><label class="req">Desde</label><input type="date" name="desde" required value="{{ today.isoformat() }}"></div><div><label>Hasta</label><input type="date" name="hasta"></div></div>
+<label>Motivo <span class="muted small">(obligatorio en falta justificada, p. ej. duelo familiar)</span></label><input name="motivo" style="width:100%">
+<label>Sustento (descanso médico, etc.)</label><input type="file" name="archivo" accept="image/*,application/pdf">
+</div><div class="dlg-foot"><button type="button" class="sec" data-close>Cancelar</button> <button>Registrar</button></div></form></dialog>
+<script>(function(){var t=document.getElementById('persona-txt'),h=document.getElementById('persona-id'),m={};document.querySelectorAll('#personas-l option').forEach(function(o){m[o.value]=o.dataset.k;});
+function f(){h.value=m[t.value]||'';t.setCustomValidity(h.value?'':'Elija a la persona de la lista');}t.addEventListener('input',f);t.addEventListener('change',f);})();</script>{% endif %}
+{% endblock %}

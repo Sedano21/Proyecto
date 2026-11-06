@@ -29,3 +29,13 @@
 {% else %}{% if marcas %}<ol class="small">{% for m in marcas %}<li>{{ m.nota }}</li>{% endfor %}</ol>{% endif %}{% endif %}
 </div>
 {% endmacro %}
+
+{# V22: imágenes del vehículo (las del Excel del checklist) para tocar la parte con falla #}
+{% macro fotos_vehiculo(imagenes, marcas, editable, id, partes=[]) %}<div class="veh-fotos" id="{{ id }}" data-editable="{{ 1 if editable else 0 }}">
+<div class="veh-imgs">{% for img in imagenes %}{% set vi = loop.index0 %}<div class="veh-img" data-vista="{{ vi }}"><img src="{{ url_for('static', filename='img/vehiculos/' ~ img) }}" alt="Vista {{ loop.index }} del vehículo" draggable="false">
+{% for m in marcas if m.vista == vi %}<span class="pin" style="left:{{ m.x }}%;top:{{ m.y }}%">{{ marcas.index(m) + 1 }}</span>{% endfor %}</div>{% endfor %}</div>
+{% if editable %}<input type="hidden" name="marcas" value="{{ marcas|tojson|forceescape }}"><ol class="veh-notas small"></ol>
+<datalist id="{{ id }}-partes">{% for p in partes %}<option value="{{ p }}">{% endfor %}</datalist>
+<p class="small muted">Toque la parte del vehículo que presenta la falla, elija cuál es y describa el problema. Para quitar un punto use ×.</p>
+{% else %}{% if marcas %}<ol class="small">{% for m in marcas %}<li>{% if m.parte %}<b>{{ m.parte }}</b>: {% endif %}{{ m.nota }}</li>{% endfor %}</ol>{% endif %}{% endif %}
+</div>{% endmacro %}

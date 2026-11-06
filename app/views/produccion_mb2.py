@@ -65,9 +65,10 @@ def part_detail(pid):
         acc = f.get("accion")
         if acc == "pausar":
             def _p():
-                from ..services.distribution import save_upload
-                foto = save_upload(request.files.get("foto"), current_app.config["UPLOAD_DIR"], f"parada_{r.id}")
-                return ptsvc.pause(g.user, r, f.get("causa"), foto)
+                from ..services.distribution import save_evidences
+                evid = save_evidences(request.files.getlist("foto") + request.files.getlist("evidencias"),
+                                      current_app.config["UPLOAD_DIR"], f"parada_{r.id}")  # V22: fotos o videos
+                return ptsvc.pause(g.user, r, f.get("causa"), evidencias=evid)
             return act(_p, "Producción pausada.", back)
         if acc == "reanudar":
             return act(lambda: ptsvc.resume(g.user, r, f.get("observacion", "")), "Producción reanudada.", back)
