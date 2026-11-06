@@ -817,6 +817,9 @@ class PurchaseRequest(Base):
     ordenes: Mapped[list] = mapped_column(JSON, default=list)
     motivo: Mapped[str] = mapped_column(Text, default="")
     cotizaciones: Mapped[list] = mapped_column(JSON, default=list)
+    # V24: compras nacionales: para una OV, un cliente o sin ninguno (stock de seguridad, reposición u otro motivo)
+    customer_id: Mapped[int | None] = mapped_column(ForeignKey("customers.id"), nullable=True)
+    motivo_tipo: Mapped[str] = mapped_column(String(20), default="", server_default="")  # STOCK_SEGURIDAD / REPOSICION / OTRO
     creado_por: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     ts: Mapped[datetime] = mapped_column(DateTime, default=now)
     product = relationship("Product")
@@ -1791,6 +1794,7 @@ class Worker(Base):
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     puesto: Mapped[str] = mapped_column(String(60), default="", server_default="")
     telefono: Mapped[str] = mapped_column(String(30), default="", server_default="")
+    canal: Mapped[str] = mapped_column(String(60), default="", server_default="")  # V24: canal del vendedor (Comercial)
 
 
 class Attendance(Base):
@@ -2431,3 +2435,75 @@ class CleaningAssignment(Base):
     ts: Mapped[datetime] = mapped_column(DateTime, default=now)
     worker = relationship("Worker")
     zone = relationship("SanitationZone")
+
+
+
+# ---------------------------------------------------------------------------------------------------------------- V24
+class SupplierQuote(Base):
+    """V24: cotización de proveedor para compras nacionales (manual o con archivo). Se guardan todas: es el histórico de
+    precios por producto que sirve para alertar si una compra está por encima o por debajo de periodos anteriores."""
+    __tablename__ = "supplier_quotes"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    product_code: Mapped[str] = mapped_column(String(40), index=True)
+    request_ids: Mapped[list] = mapped_column(JSON, default=list)  # solicitudes a las que responde
+    origen: Mapped[str] = mapped_column(String(80), default="")  # mercado / zona de origen
+    proveedor: Mapped[str] = mapped_column(String(160))
+    fecha_entrega: Mapped[date | None] = mapped_column(Date, nullable=True)
+    calidad: Mapped[str] = mapped_column(String(160), default="")
+    precio: Mapped[float] = mapped_column(Float)
+    moneda: Mapped[str] = mapped_column(String(5), default="PEN")
+    um: Mapped[str] = mapped_column(String(20), default="KG")
+    cantidad: Mapped[float | None] = mapped_column(Float, nullable=True)
+    archivo: Mapped[str] = mapped_column(String(250), default="")
+    observacion: Mapped[str] = mapped_column(Text, default="")
+    elegida: Mapped[bool] = mapped_column(Boolean, default=False)
+    tipo_cambio: Mapped[float | None] = mapped_column(Float, nullable=True)  # TC del día (si es en USD)
+    fecha: Mapped[date] = mapped_column(Date, default=date.today, index=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    user = relationship("User")
+
+
+class ImportFollowup(Base):
+    """V24: seguimiento de importaciones como el cuadro de Importaciones (código SAP, contrato, proveedor, ítem, país,
+    contenedores, llegada, días libres, retiro, SENASA, BL, almacén), con gastos extra, contrato e incidencias."""
+    __tablename__ = "import_followups"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    codigo_sap: Mapped[str] = mapped_column(String(40), default="")  # puede ser «POR CONFIRMAR»
+    contrato: Mapped[str] = mapped_column(String(60), index=True)
+    proveedor: Mapped[str] = mapped_column(String(160))
+    item: Mapped[str] = mapped_column(String(160))
+    pais_origen: Mapped[str] = mapped_column(String(60), default="")
+    contenedores: Mapped[int] = mapped_column(Integer, default=1)
+    kg: Mapped[float | None] = mapped_column(Float, nullable=True)
+    fecha_llegada: Mapped[date | None] = mapped_column(Date, nullable=True)
+    dias_libres: Mapped[int] = mapped_column(Integer, default=0)
+    status_senasa: Mapped[str] = mapped_column(String(60), default="PENDIENTE")
+    status_bl: Mapped[str] = mapped_column(String(80), default="PENDIENTE DE LIBERACIÓN DE BL")
+    retiro_fecha: Mapped[date | None] = mapped_column(Date, nullable=True)
+    retiro_real: Mapped[bool] = mapped_column(Boolean, default=False)  # False = fecha tentativa
+    almacen_info: Mapped[str] = mapped_column(String(160), default="PENDIENTE")
+    precio: Mapped[float | None] = mapped_column(Float, nullable=True)  # precio de compra por UM
+    moneda: Mapped[str] = mapped_column(String(5), default="USD")
+    um: Mapped[str] = mapped_column(String(20), default="TM")
+    fecha_entrega_contrato: Mapped[date | None] = mapped_column(Date, nullable=True)  # embarque/llegada pactada
+    penalidad_dia: Mapped[float | None] = mapped_column(Float, nullable=True)  # penalidad pactada por día de atraso
+    sobreestadia_dia: Mapped[float | None] = mapped_column(Float, nullable=True)  # costo por contenedor y día
+    contrato_archivo: Mapped[str] = mapped_column(String(250), default="")
+    gastos: Mapped[list] = mapped_column(JSON, default=list)  # [{tipo, monto, moneda, fecha, detalle, archivo, user}]
+    incidencias: Mapped[list] = mapped_column(JSON, default=list)  # [{tipo, detalle, fecha, user}]
+    estado: Mapped[str] = mapped_column(String(15), default="EN_TRANSITO")  # EN_TRANSITO / EN_PUERTO / RETIRADO / CERRADO
+    shipment_id: Mapped[int | None] = mapped_column(ForeignKey("import_shipments.id"), nullable=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+
+class ExchangeRate(Base):
+    """V24: tipo de cambio SUNAT del día (se actualiza solo; si no hay conexión se registra a mano)."""
+    __tablename__ = "exchange_rates"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    fecha: Mapped[date] = mapped_column(Date, unique=True, index=True)
+    compra: Mapped[float] = mapped_column(Float)
+    venta: Mapped[float] = mapped_column(Float)
+    fuente: Mapped[str] = mapped_column(String(40), default="SUNAT")
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)

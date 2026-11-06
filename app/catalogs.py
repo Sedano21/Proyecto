@@ -2724,3 +2724,101 @@ PARAMS += [
      "Kg por viaje de referencia por vehículo propio (si no se registra, se usa su capacidad real o el peso permitido).",
      "PROPUESTO", V23),
 ]
+
+# ----------------------------------------------------------------------------------------------------------------------
+# V24 (06-nov-2026): alta de personal por área, compras nacionales (OV/cliente/motivo, consolidado y cotizaciones),
+# seguimiento de importaciones, perfil de Costos y Presupuestos, tipo de cambio SUNAT y tablero de la empresa
+V24 = "Requerimiento V24 (06-nov-2026)"
+CYP = "COSTOS_PRESUPUESTOS"
+AIM = "ASIST_IMPORTACIONES"
+ROLES += [
+    (CYP, "Costos y Presupuestos", "Finanzas", V24, "Carga el costo de cada SKU y analiza reposición vs costo vs precio de venta."),
+    (AIM, "Asistente de Importaciones", "Importaciones", V24, "Registra el seguimiento, gastos y contratos de las importaciones."),
+]
+_V24_PERMS = [
+    ("compras.cotizar", "Registrar cotizaciones de proveedores (manual o con archivo) para las solicitudes de compra nacional",
+     "Compras", "edicion", ["COMPRAS"]),
+    ("compras.consolidado", "Ver el consolidado de compras nacionales por producto, OV, cliente y stock de seguridad", "Compras",
+     "consulta", ["COMPRAS", "JEFE_LOGISTICA", JOP]),
+    ("importaciones.seguimiento", "Registrar el seguimiento de importaciones (llegada, SENASA, BL, retiro, almacén), gastos "
+     "extra, contratos e incidencias", "Importaciones", "edicion", ["IMPORTACIONES", AIM]),
+    ("importaciones.ver", "Ver el cuadro de seguimiento de importaciones", "Importaciones", "consulta",
+     ["IMPORTACIONES", AIM, "COMPRAS", JOP, JAF, CYP, "JEFE_LOGISTICA"]),
+    ("costos.gestionar", "Cargar el costo de cada SKU y analizar reposición vs costo vs precio de venta", "Finanzas",
+     "edicion", [CYP]),
+    ("costos.analisis", "Ver el análisis de costos, reposición y precios", "Finanzas", "consulta",
+     [CYP, JAF, "GERENTE_COMERCIAL", JOP]),
+    ("tipo_cambio.registrar", "Registrar a mano el tipo de cambio del día si no se pudo obtener de SUNAT", "Finanzas", "edicion",
+     [CYP, JAF, "COORD_FINANZAS", "SISTEMAS"]),
+    ("tablero.empresa", "Ver el tablero «Cómo va la empresa» y el informe consolidado de reposición", "Gerencial", "consulta",
+     [JOP, "JEFE_VENTAS", "GERENTE_COMERCIAL", JAF, CYP]),
+    ("personal.comercial", "Registrar al personal comercial (vendedores) con su canal", "Comercial", "edicion",
+     ["JEFE_VENTAS", "GERENTE_COMERCIAL"]),
+]
+for _code, _n, _m, _t, _roles in _V24_PERMS:
+    if not any(p[0] == _code for p in PERMISSIONS):
+        PERMISSIONS.append((_code, _n, _m, _t))
+    for _r in _roles + ["GERENCIA_GENERAL", GGA]:
+        ROLE_PERMISSIONS.setdefault(_r, [])
+        if not any(p[0] == _code for p in ROLE_PERMISSIONS[_r]):
+            ROLE_PERMISSIONS[_r].append((_code, "DEFINIDO", V24 if _r in _roles else f"{V24}; regla general de Gerencia General"))
+# los perfiles nuevos ven su inicio, sus alertas y exportan
+for _r in (CYP, AIM):
+    for _p in ("dashboard.ver", "alertas.ver", "export.datos"):
+        if any(x[0] == _p for x in PERMISSIONS) and not any(x[0] == _p for x in ROLE_PERMISSIONS[_r]):
+            ROLE_PERMISSIONS[_r].append((_p, "DEFINIDO", V24))
+for _p in ("costos.ver", "costos.cargar", "presupuesto.ver", "compras.ver", "informes.comercial"):
+    if any(x[0] == _p for x in PERMISSIONS) and not any(x[0] == _p for x in ROLE_PERMISSIONS[CYP]):
+        ROLE_PERMISSIONS[CYP].append((_p, "DEFINIDO", f"{V24}: Costos y Presupuestos"))
+for _p in [x[0] for x in ROLE_PERMISSIONS.get("IMPORTACIONES", [])]:
+    if not any(x[0] == _p for x in ROLE_PERMISSIONS[AIM]):
+        ROLE_PERMISSIONS[AIM].append((_p, "DEFINIDO", f"{V24}: el asistente registra lo mismo que el coordinador"))
+_IMP = ["IMPORTACIONES", AIM, GGA]
+ALERT_TYPES += [
+    ("IMPORT_RETIRO_PROXIMO", "Importación: se acerca la fecha máxima de retiro", "Importaciones", "Seguimiento", "ALTA", _IMP,
+     "DEFINIDO", V24, "Faltan pocos días para que venzan los días libres y aún no se retira el contenedor.", True),
+    ("IMPORT_SOBREESTADIA", "Importación: días libres vencidos (sobreestadía)", "Importaciones", "Seguimiento", "ALTA", _IMP,
+     "DEFINIDO", V24, "Pasó la fecha máxima de retiro: corre sobreestadía; se estima el costo por contenedor y día.", True),
+    ("IMPORT_RETRASO", "Importación retrasada o con trámite pendiente", "Importaciones", "Seguimiento", "MEDIA", _IMP,
+     "DEFINIDO", V24, "La carga llegó y SENASA o el BL siguen pendientes, o la llegada se movió después de lo pactado.", True),
+    ("IMPORT_PENALIDAD", "Importación: posible penalidad a favor o en contra", "Importaciones", "Contratos", "ALTA", _IMP,
+     "DEFINIDO", V24, "Atraso del proveedor frente a la fecha del contrato (a favor) o sobreestadía / devolución tardía de "
+     "contenedor (en contra).", True),
+    ("IMPORT_INCIDENCIA", "Importación: inconveniente reportado", "Importaciones", "Seguimiento", "ALTA", _IMP, "DEFINIDO", V24,
+     "Coordinación o asistencia de Importaciones reporta un inconveniente.", True),
+    ("COMPRA_PRECIO_VARIACION", "Compra nacional: precio fuera de lo habitual", "Compras", "Precios", "MEDIA",
+     ["COMPRAS", GGA], "DEFINIDO", V24,
+     "La cotización está por encima o por debajo del promedio del último periodo, trimestre o mismo mes del año anterior.", True),
+    ("COSTO_REPOSICION_ALTO", "Costo de reposición por encima del costo registrado", "Finanzas", "Costos", "ALTA",
+     [CYP, JAF], "DEFINIDO", V24, "Reponer el SKU cuesta más que su costo registrado: revisar costo o precio de venta.", True),
+    ("TIPO_CAMBIO_PENDIENTE", "No se obtuvo el tipo de cambio SUNAT del día", "Finanzas", "Costos", "MEDIA",
+     [CYP, "COORD_FINANZAS", "SISTEMAS"], "DEFINIDO", V24, "Registrarlo a mano.", False),
+]
+PARAMS += [
+    ("alta_personal_por_area", {
+        "Producción": {"campos": ["linea", "sublinea"], "puestos": ["Operario", "Maquinista", "Ayudante", "Supervisor de línea"]},
+        "Mantenimiento": {"campos": [], "puestos": ["Técnico de mantenimiento", "Personal de limpieza"]},
+        "Comercial": {"campos": ["canal"], "puestos": ["Ejecutivo comercial", "Asistente comercial"]},
+        "Logística": {"campos": [], "puestos": ["Auxiliar de almacén", "Auxiliar de despacho", "Montacarguista"]},
+        "Almacén": {"campos": [], "puestos": ["Auxiliar de almacén", "Montacarguista"]},
+        "Distribución": {"campos": [], "puestos": ["Auxiliar de despacho", "Chofer"]},
+    }, "dict", "Personal",
+     "Qué se pide al registrar a un colaborador según el área: línea (Producción), canal (Comercial) o solo el puesto.",
+     "DEFINIDO", f"{V24}: limpieza y mantenimiento sin línea; vendedor con canal; logística auxiliar de almacén o despacho; "
+     "producción línea y maquinista"),
+    ("compras_motivos", ["STOCK_SEGURIDAD", "REPOSICION", "OTRO"], "list", "Compras",
+     "Motivos de una compra nacional sin OV ni cliente.", "DEFINIDO", V24),
+    ("compras_alerta_variacion_pct", 10, "int", "Compras",
+     "Variación del precio cotizado frente al histórico a partir de la cual se alerta.", "PROPUESTO", V24),
+    ("import_alerta_retiro_dias", [5, 2, 0], "list", "Importaciones",
+     "Días antes de la fecha máxima de retiro en que se avisa.", "PROPUESTO", V24),
+    ("import_sobreestadia_usd_dia", 0, "float", "Importaciones",
+     "Costo de referencia por contenedor y día de sobreestadía si el contrato no lo indica (USD).", "PROPUESTO", V24),
+    ("costo_reposicion_tolerancia_pct", 5, "int", "Finanzas",
+     "Diferencia entre costo de reposición y costo registrado a partir de la cual se recomienda revisar costo o precio.",
+     "PROPUESTO", V24),
+    ("tipo_cambio_url", "https://www.sunat.gob.pe/a/txt/tipoCambio.txt", "str", "Finanzas",
+     "Dirección pública de SUNAT de la que se lee el tipo de cambio del día (solo lectura).", "PROPUESTO", V24),
+]
+DEMO_USERS_V24 = [("costos.presupuestos", "Costos y Presupuestos", CYP),
+                  ("asist.importaciones", "Asistente de Importaciones", AIM)]

@@ -48,6 +48,8 @@ def register_views(app):
     app.register_blueprint(planta_v22.bp)
     from . import analisis_v23  # V23: demanda proyectada (cumplimiento, materiales, carga) e informe para el Directorio
     app.register_blueprint(analisis_v23.bp)
+    from . import gestion_v24  # V24: compras nacionales, importaciones, costos, tablero de la empresa y reposición
+    app.register_blueprint(gestion_v24.bp)
 
     @app.after_request
     def _aviso_descarga(resp):

@@ -1,0 +1,24 @@
+{% extends "base.html" %}{% from "_m.html" import csrf, ic, empty %}
+{% block content %}<div class="page-head"><div><h1>Costos, reposición y precios</h1><p class="sub">¿Lo que cuesta reponer cada producto sigue cubierto por su costo registrado y su precio de venta? En S/ por kg, con el tipo de cambio SUNAT del día.</p></div>
+<div class="row noprint"><a class="btn sec" href="?formato=pdf">{{ ic('download') }} PDF</a> <a class="btn sec" href="?formato=xlsx">{{ ic('download') }} Excel</a></div></div>
+
+<div class="kpis"><div class="kpi primary"><b>{{ tc.venta if tc else '—' }}</b><span>Tipo de cambio (venta)</span><small>{{ (tc.fuente ~ ' · ' ~ tc.fecha.strftime('%d/%m/%Y')) if tc else 'sin registrar' }}{% if tc and tc.fecha != hoy %} · <b class="err">no es de hoy</b>{% endif %}</small></div>
+<div class="kpi {{ 'err' if d.sube }}"><b>S/ {{ d.sube|n }}</b><span>Lo que subió reponer</span><small>× kg vendidos en {{ d.dias }} días</small></div>
+<div class="kpi ok"><b>S/ {{ (-d.baja)|n }}</b><span>Lo que bajó (compensa)</span></div>
+<div class="kpi {{ 'err' if d.neto > 0 else 'ok' }}"><b>S/ {{ (d.neto if d.neto > 0 else -d.neto)|n }}</b><span>Neto {{ 'en contra' if d.neto > 0 else 'a favor' }}</span><small>{{ 'falta cubrir con precio o costo' if d.neto > 0 else 'las bajas cubren las subidas' }}</small></div></div>
+<section class="card msg-clave"><h3>Lectura</h3><p>{{ d.resumen }}</p></section>
+
+<div class="tw"><table class="list small"><thead><tr><th>Producto</th><th class="r">Costo registrado</th><th class="r">Costo de reposición</th><th class="r">Var.</th><th class="r">Precio de venta</th><th class="r">Margen con costo</th><th class="r">Margen con reposición</th><th class="r">kg vendidos</th><th class="r">Impacto S/</th><th>Qué hacer</th></tr></thead>
+{% for f in d.filas %}<tr class="niv-{{ f.nivel }}"><td><b>{{ f.code }}</b> {{ f.descripcion }}<br><span class="muted">{{ f.origen }}</span></td><td class="r">{{ f.costo_kg if f.costo_kg is not none else '—' }}</td><td class="r">{{ f.reposicion_kg if f.reposicion_kg is not none else '—' }}</td><td class="r {{ 'err' if f.nivel == 'err' }}">{{ ('%+.1f'|format(f.var_pct) ~ ' %') if f.var_pct is not none else '—' }}</td><td class="r">{{ f.precio_kg if f.precio_kg is not none else '—' }}</td><td class="r">{{ (f.margen_costo ~ ' %') if f.margen_costo is not none else '—' }}</td><td class="r">{{ (f.margen_reposicion ~ ' %') if f.margen_reposicion is not none else '—' }}</td><td class="r">{{ f.kg|n }}</td><td class="r">{{ f.impacto|n }}</td><td>{{ f.lectura }}</td></tr>{% else %}<tr><td colspan="10" class="muted">Sin datos de costos, cotizaciones ni ventas.</td></tr>{% endfor %}</table></div>
+<p class="small muted">Costo de reposición: granel y materia prima, la cotización nacional elegida (o la última) o la importación con sus gastos extra, la menor; producto terminado, sus componentes de la lista de materiales. Se recomienda revisar cuando la diferencia supera {{ d.tolerancia|int }} %.</p>
+
+<div class="grid g2 noprint">
+{% if puede %}<section class="card"><h3>Actualizar el costo de un SKU</h3><form method="post" class="row">{{ csrf() }}<input type="hidden" name="accion" value="costo">
+<div class="grow"><label class="req">Producto</label><select name="product_code" required data-search="Buscar…"><option value="">Elija</option>{% for p in prods %}<option value="{{ p.code }}">{{ p.code }} · {{ p.descripcion }}</option>{% endfor %}</select></div>
+<div><label class="req">Costo S/</label><input name="costo" type="number" step="any" min="0" required style="width:100px"></div><div><label>Por</label><select name="unidad"><option value="KG">kg</option><option value="UND">unidad</option></select></div><div><button>Guardar</button></div></form>
+<p class="small muted">Para cargar muchos a la vez use «Cargas de archivos» (costos). Cada cambio queda en el historial.</p></section>{% endif %}
+<section class="card"><h3>Tipo de cambio SUNAT</h3><p class="small">Se actualiza solo cada día. Si SUNAT no responde, regístrelo a mano.</p>
+<form method="post" class="row">{{ csrf() }}<input type="hidden" name="accion" value="tc_sunat"><button class="sec">Leer de SUNAT ahora</button></form>
+<form method="post" class="row">{{ csrf() }}<input type="hidden" name="accion" value="tc"><div><label>Fecha</label><input type="date" name="fecha" value="{{ hoy.isoformat() }}"></div><div><label>Compra</label><input name="compra" type="number" step="0.001" required style="width:90px"></div><div><label>Venta</label><input name="venta" type="number" step="0.001" required style="width:90px"></div><div><button class="sec">Registrar</button></div></form></section>
+</div>
+{% endblock %}

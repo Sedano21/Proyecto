@@ -387,3 +387,136 @@ def seed_flow(upload_dir=None, hoy=None):
     res["alertas"] = emitidas
     s.flush()
     return res
+
+
+# ---------------------------------------------------------------------------------------------------------------- V24
+def seed_v24(upload_dir=None, hoy=None):
+    """Datos ficticios de V24: tipo de cambio, costos por SKU, compras nacionales por OV / cliente / stock de seguridad
+    (con el caso «OV del mismo cliente» y «OV de otro cliente»), cotizaciones con histórico de 14 meses, seguimiento de
+    importaciones con todos los estados (en tránsito, en puerto con trámites pendientes, retiro próximo, sobreestadía,
+    retirado, penalidad a favor) y colaboradores de cada área."""
+    from .models import ExchangeRate, ImportFollowup, SupplierQuote, Worker
+    from .services import compras_v24, costs, importaciones_v24
+    s = db()
+    hoy = hoy or date.today()
+    if s.execute(select(ImportFollowup).where(ImportFollowup.contrato.like("DEMO-%"))).first():
+        return None
+    rnd = random.Random(24)
+    res = {}
+    # tipo de cambio de los últimos 60 días (ficticio)
+    for i in range(60, -1, -1):
+        d = hoy - timedelta(days=i)
+        if not s.execute(select(ExchangeRate).where(ExchangeRate.fecha == d)).first():
+            v = round(3.70 + 0.05 * ((i % 9) / 9), 3)
+            s.add(ExchangeRate(fecha=d, compra=round(v - 0.007, 3), venta=v, fuente="DEMO"))
+    s.flush()
+    sis = _u("sistemas") or _u("coord.ventas")
+    cyp = _u("costos.presupuestos") or sis
+    compras = _u("compras")
+    gga = _u("gerente.adjunto")
+    imp_u = _u("importaciones")
+    # costos por SKU (algunos por debajo de lo que hoy cuesta reponer)
+    # costo ≈ 80 % del precio de venta realizado del último mes (ficticio), para que los márgenes sean creíbles
+    from .services.costos_v24 import precio_venta_kg
+    items = []
+    for code in ("MP-901", "MP-902", "MP-903", "GR-901", "PT-901", "PT-902", "PT-903", "PT-904", "PT-905", "PT-906"):
+        p = s.get(Product, code)
+        if p is None:
+            continue
+        pv, _kg = precio_venta_kg(p, hoy - timedelta(days=30), hoy)
+        if not pv:
+            continue
+        kg_u = 1.0 if (p.um or "").upper().startswith("K") else float(p.peso_kg or 1)
+        items.append({"product_code": code, "descripcion": p.descripcion, "costo": round(pv * 0.8 * kg_u, 3),
+                      "unidad": "KG" if kg_u == 1.0 and (p.um or "").upper().startswith("K") else "UND"})
+    from .models import User as _User
+    costs.replace_costs(items, cyp if cyp is not None and cyp.role_code == "COSTOS_PRESUPUESTOS" else
+                        s.execute(select(_User).where(_User.role_code == "GERENCIA_GENERAL")).scalars().first(), "Demo V24")
+    # histórico de cotizaciones (14 meses): MP-903 sube en los últimos meses; MP-901 baja
+    for k in range(14, 0, -1):
+        f = hoy - timedelta(days=30 * k)
+        for code, base, tend in (("MP-901", 6.2, -0.02), ("MP-903", 7.6, 0.03), ("GR-901", 8.6, 0.0)):
+            precio = round(base * (1 + tend * (14 - k)) * rnd.uniform(0.97, 1.03), 2)
+            s.add(SupplierQuote(product_code=code, origen=rnd.choice(("Mercado mayorista (demo)", "Productor sierra (demo)")),
+                                proveedor=rnd.choice(("Proveedor Demo A", "Proveedor Demo B", "Proveedor Demo C")),
+                                fecha_entrega=f + timedelta(days=7), calidad="Primera (demo)", precio=precio, moneda="PEN",
+                                um="KG", cantidad=rnd.choice((2000, 5000)), fecha=f, user_id=compras.id if compras else None,
+                                observacion=f"{MARCA}: histórico ficticio"))
+    s.flush()
+    # compras nacionales: el caso de la OV del mismo cliente y el de una OV de otro cliente
+    clientes = [c for c in s.execute(select(Customer).order_by(Customer.id)).scalars() if not c.es_prospecto]
+    c1, c2 = clientes[0], clientes[1]
+    ov_c1 = s.execute(select(SalesOrder).where(SalesOrder.customer_id == c1.id, SalesOrder.numero.like("DF-%"),
+                                               SalesOrder.estado.in_(("EVALUADA", "REGISTRADA")))).scalars().first()
+    ov_c2 = s.execute(select(SalesOrder).where(SalesOrder.customer_id == c2.id, SalesOrder.numero.like("DF-%"),
+                                               SalesOrder.estado.in_(("EVALUADA", "REGISTRADA")))).scalars().first()
+    alm = _u("coord.almacen")
+    nec = hoy + timedelta(days=10)
+    hechas = 0
+    for code, ov, cli, cant, mot, det in (
+            ("MP-903", ov_c1, None, 1000, "", ""), ("MP-903", None, c1, 2000, "", ""),
+            ("MP-903", None, None, 500, "STOCK_SEGURIDAD", "Cubrir dos semanas de ventas (demo)"),
+            ("MP-902", ov_c2, None, 1000, "", ""), ("MP-902", None, c1, 2000, "", ""),
+            ("GR-901", None, None, 3000, "REPOSICION", "")):
+        try:
+            compras_v24.create(alm, code, cant, nec, ov.numero if ov else "", cli.id if cli else None, mot, det)
+            hechas += 1
+        except Exception:  # noqa: BLE001
+            s.rollback()
+    res["compras_nacionales"] = hechas
+    # cotizaciones actuales (una alta para que alerte)
+    quien = gga or compras
+    if quien is not None:
+        for code, prov, precio in (("MP-903", "Proveedor Demo A", 9.4), ("MP-903", "Proveedor Demo B", 8.6),
+                                   ("MP-902", "Proveedor Demo C", 6.4)):
+            reqs = [r for r in compras_v24.consolidado(code)[0]["solicitudes"]] if compras_v24.consolidado(code) else []
+            try:
+                compras_v24.add_quote(quien, code, {"origen": "Mercado mayorista (demo)", "proveedor": prov,
+                                                    "fecha_entrega": (hoy + timedelta(days=8)).isoformat(),
+                                                    "calidad": "Primera (demo)", "precio": precio, "moneda": "PEN", "um": "KG",
+                                                    "cantidad": 3000, "request_ids": reqs})
+            except Exception:  # noqa: BLE001
+                pass
+    # seguimiento de importaciones (contratos y proveedores ficticios)
+    filas = [
+        ("MP-903", "DEMO-C-001", "Exportadora Demo Uno", "FRIJOL CANARIO", "EEUU", 5, -3, 20, "PENDIENTE",
+         "PENDIENTE DE LIBERACIÓN DE BL", 4, False, "PENDIENTE", 2300, None, None),
+        ("MP-902", "DEMO-C-002", "Exportadora Demo Dos", "LENTEJA", "CANADÁ", 2, -18, 15, "APROBADO", "BL LIBERADO", -1,
+         False, "EXT-002", 1700, None, None),
+        ("GR-901", "DEMO-C-003", "Exportadora Demo Tres", "QUINUA GRANEL", "BOLIVIA", 2, 15, 13, "PENDIENTE",
+         "PENDIENTE DE LIBERACIÓN DE BL", 20, False, "PENDIENTE", 2400, None, None),
+        ("MP-901", "DEMO-C-004", "Exportadora Demo Cuatro", "ARVEJA VERDE PARTIDA", "EEUU", 4, -12, 13, "APROBADO",
+         "BL LIBERADO", 9, False, "PENDIENTE", 1250, 150, 6),
+        ("POR CONFIRMAR", "DEMO-C-005", "Exportadora Demo Cinco", "GARBANZO MEDIANO", "MÉXICO", 2, 23, 13, "PENDIENTE",
+         "PENDIENTE DE LIBERACIÓN DE BL", 28, False, "PENDIENTE", None, None, None),
+        ("MP-901", "DEMO-C-006", "Exportadora Demo Seis", "ARVEJA VERDE PARTIDA", "EEUU", 3, -25, 13, "APROBADO",
+         "BL LIBERADO", -15, True, "ALM-001 zona MP", 1230, None, None),
+    ]
+    for (sap, contrato, prov, item, pais, cont, lleg, libres, senasa, bl, ret, real, almacen, precio, pen_dia, atraso) in filas:
+        datos = {"codigo_sap": sap, "contrato": contrato, "proveedor": prov, "item": item, "pais_origen": pais,
+                 "contenedores": cont, "kg": cont * 25000, "fecha_llegada": (hoy + timedelta(days=lleg)).isoformat(),
+                 "dias_libres": libres, "status_senasa": senasa, "status_bl": bl,
+                 "retiro_fecha": (hoy + timedelta(days=ret)).isoformat(), "retiro_real": "1" if real else "",
+                 "almacen_info": almacen, "precio": precio if precio else "", "moneda": "USD", "um": "TM",
+                 "sobreestadia_dia": 120, "penalidad_dia": pen_dia if pen_dia else "",
+                 "fecha_entrega_contrato": (hoy + timedelta(days=lleg - atraso)).isoformat() if atraso else ""}
+        if imp_u is not None:
+            f = importaciones_v24.save(imp_u, datos)
+            if contrato == "DEMO-C-002":
+                importaciones_v24.add_expense(imp_u, f, "Sobreestadía", 480, "USD", "2 contenedores × 2 días (demo)")
+            if contrato == "DEMO-C-003":
+                importaciones_v24.add_incident(imp_u, f, "Retraso", "La naviera reprogramó el zarpe una semana (demo).")
+    importaciones_v24.check_alerts(hoy)
+    res["importaciones"] = len(filas)
+    # colaboradores de cada área (alta según el área)
+    nuevos = [("COLABORADOR DEMO VENDEDOR NORTE", "Comercial", "", "Ejecutivo comercial", "MAYORISTA"),
+              ("COLABORADOR DEMO AUX. DESPACHO", "Logística", "", "Auxiliar de despacho", ""),
+              ("COLABORADOR DEMO AUX. ALMACÉN", "Logística", "", "Auxiliar de almacén", ""),
+              ("COLABORADOR DEMO MAQUINISTA R2", "Producción", "R2", "Maquinista", ""),
+              ("COLABORADOR DEMO LIMPIEZA 3", "Mantenimiento", "", "Personal de limpieza", "")]
+    for nombre, area, linea, puesto, canal in nuevos:
+        if not s.execute(select(Worker).where(Worker.nombre == nombre)).first():
+            s.add(Worker(nombre=nombre, area=area, linea=linea, puesto=puesto, sublinea=puesto, canal=canal))
+    s.flush()
+    res["colaboradores"] = len(nuevos)
+    return res

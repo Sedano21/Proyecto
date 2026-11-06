@@ -19,7 +19,7 @@ from .core import BusinessError, audit, has_perm, param
 
 def _require(user, perm="costos.cargar"):
     if not has_perm(user, perm):
-        raise BusinessError("Solo el Jefe Comercial carga costos y precios de mercado.")
+        raise BusinessError("Cargan costos Costos y Presupuestos o la Jefatura Comercial.")
 
 
 def replace_costs(items, user, origen):

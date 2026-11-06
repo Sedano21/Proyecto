@@ -66,7 +66,7 @@ DEMO_USERS = [
     ("coord.finanzas", "Coordinación de Finanzas", "COORD_FINANZAS"),
     ("jefe.finanzas", "Jefe de Administración y Finanzas", "JEFE_ADMIN_FINANZAS"),
     ("jefe.operaciones", "Jefatura de Operaciones", "JEFE_OPERACIONES"),
-] + list(getattr(C, "DEMO_USERS_V22", []))
+] + list(getattr(C, "DEMO_USERS_V22", [])) + list(getattr(C, "DEMO_USERS_V24", []))
 
 
 def seed_catalogs():

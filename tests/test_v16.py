@@ -73,18 +73,14 @@ def test_jefe_de_administracion_y_finanzas(app, s, U):
     assert perms_coord and all(has_perm(jaf, p) for p in perms_coord)
     a = alerts.emit("CONDICION_PAGO_SOLICITADA", "Condición de pago de prueba", "", "Customer", 1)
     s.commit()
-    # el Jefe la ve y puede atenderla, pero no le suena (va dirigida a la Coordinación)
-    assert alerts.can_see(jaf, a) and not alerts.is_direct(jaf, a) and alerts.is_direct(coord, a)
-    c = app.test_client()
-    login(c, "jefe.finanzas")
-    est = c.get("/alertas/estado.json").get_json()
-    assert all(not r["tarea"] for r in est["recientes"] if r["id"] == a.id)
-    # la Coordinación no la atiende en su plazo: se alerta al Jefe de Administración y Finanzas
+    # V22 (06-nov-2026): el Jefe de Administración y Finanzas solo recibe sus propias alertas (presupuesto superado);
+    # las de la Coordinación de Finanzas ni los avisos de escalamiento le llegan
+    assert not alerts.can_see(jaf, a) and alerts.is_direct(coord, a)
     a.creado_ts = datetime.now() - timedelta(days=3)
     s.commit()
-    assert check_overdue() >= 1
-    av = s.query(Alert).filter_by(type_code="TAREA_INCUMPLIDA", entidad_id=str(a.id)).one()
-    assert JAF in av.roles and alerts.is_direct(jaf, av)
+    check_overdue()
+    av = s.query(Alert).filter_by(type_code="TAREA_INCUMPLIDA", entidad_id=str(a.id)).all()
+    assert all(JAF not in x.roles for x in av)
 
 
 def test_avisos_en_rojo_y_sonidos_por_urgencia(app):

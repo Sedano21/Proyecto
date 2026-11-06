@@ -733,3 +733,35 @@ table.kv td{overflow-wrap:anywhere;word-break:break-word}table.kv td.mono{white-
 .tablero-emb{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px}
 .tablero-emb .card h3{font-size:.95em;color:var(--brand,#1d4e89)}
 .tablero-emb .card p.lectura{font-size:.8em;margin-top:6px}
+/* V24: «Reportar avería» más claro: dos tarjetas de destino */
+.dest-cards{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media (max-width:560px){.dest-cards{grid-template-columns:1fr}}
+.dest-card{display:flex;flex-direction:column;gap:4px;border:2px solid var(--line,#d5d9de);border-radius:10px;padding:10px 12px;cursor:pointer;position:relative}
+.dest-card input{position:absolute;opacity:0;pointer-events:none}
+.dest-card .dc-ic{font-size:1.4em;color:var(--brand,#0b6b3a)}
+.dest-card b{font-size:1.05em}
+.dest-card small{color:var(--muted,#5f6b76);line-height:1.35}
+.dest-card:has(input:checked){border-color:var(--brand,#0b6b3a);background:var(--brand-soft,#e8f4ec);box-shadow:0 0 0 2px rgba(11,107,58,.15)}
+.dest-card:has(input:focus-visible){outline:2px solid var(--brand,#0b6b3a)}
+/* V24: compras nacionales */
+.compra-prod tr.elegida td{background:var(--brand-soft,#e8f4ec)}
+.ok-t{color:var(--ok,#1e7d45)}
+.cot-row{border-bottom:1px dashed var(--line,#d5d9de);padding-bottom:6px;margin-bottom:6px;align-items:flex-end}
+/* V24: cuadro de importaciones */
+.cuadro-imp{border-collapse:collapse;width:100%;font-size:.82em}
+.cuadro-imp th{background:#1f3864;color:#fff;padding:6px;text-align:center}
+.cuadro-imp td{border:1px solid #c9ced6;padding:4px 6px;text-align:center;vertical-align:middle}
+.cuadro-imp tr.sem-err td{background:#fde8ea}
+.cuadro-imp tr.sem-warn td{background:#fff6dc}
+.cuadro-imp tr.sem-ok td{background:#e9f6ee}
+.cuadro-imp td.pend{color:#9a5b00;font-weight:600}
+.cuadro-imp tr.sub td{text-align:left;background:#f7f8fa}
+/* V24: tablero de la empresa y reposición */
+.empresa-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px;margin:12px 0}
+.empresa-cards .ec{border-top:4px solid var(--line,#d5d9de)}
+.empresa-cards .ec.ok{border-top-color:#1e7d45}.empresa-cards .ec.warn{border-top-color:#d39b00}.empresa-cards .ec.err{border-top-color:#c0392b}
+.ec-area{font-size:.72em;text-transform:uppercase;letter-spacing:.04em;color:var(--muted,#5f6b76)}
+.ec h3{margin:2px 0 6px;font-size:.95em}.ec-v{font-size:1.6em;display:block}
+.atencion{list-style:none;padding:0;margin:0}.atencion li{padding:6px 0;border-bottom:1px solid var(--line,#e3e6ea)}
+.repo-g.err{border-left:4px solid #c0392b}.repo-g.warn{border-left:4px solid #d39b00}.repo-g.ok{border-left:4px solid #1e7d45}
+tr.niv-err td{background:#fdf1f2}tr.niv-ok td{background:#f0f8f3}

@@ -1,0 +1,71 @@
+{% extends "base.html" %}{% from "_m.html" import csrf, ic, empty, b %}
+{% macro form_imp(f=None) %}<form method="post" enctype="multipart/form-data" class="row">{{ csrf() }}<input type="hidden" name="accion" value="guardar">{% if f %}<input type="hidden" name="id" value="{{ f.id }}">{% endif %}
+<div><label>Código SAP</label><input name="codigo_sap" value="{{ f.codigo_sap if f else '' }}" placeholder="GR-183 o POR CONFIRMAR" style="width:130px"></div>
+<div><label class="req">Contrato</label><input name="contrato" required value="{{ f.contrato if f else '' }}" style="width:150px"></div>
+<div class="grow"><label class="req">Proveedor</label><input name="proveedor" required value="{{ f.proveedor if f else '' }}"></div>
+<div class="grow"><label class="req">Ítem</label><input name="item" required value="{{ f.item if f else '' }}"></div>
+<div><label>País de origen</label><input name="pais_origen" value="{{ f.pais_origen if f else '' }}" style="width:110px"></div>
+<div><label>Contenedores</label><input name="contenedores" type="number" min="1" value="{{ f.contenedores if f else 1 }}" style="width:80px"></div>
+<div><label>Kg</label><input name="kg" type="number" step="any" value="{{ f.kg if f and f.kg else '' }}" style="width:100px"></div>
+<div><label>Fecha de llegada</label><input type="date" name="fecha_llegada" value="{{ f.fecha_llegada.isoformat() if f and f.fecha_llegada else '' }}"></div>
+<div><label>Días libres</label><input name="dias_libres" type="number" min="0" value="{{ f.dias_libres if f else 0 }}" style="width:70px"></div>
+<div><label>1. SENASA</label><input name="status_senasa" value="{{ f.status_senasa if f else 'PENDIENTE' }}" style="width:120px"></div>
+<div><label>2. Liberación de BL</label><input name="status_bl" value="{{ f.status_bl if f else 'PENDIENTE DE LIBERACIÓN DE BL' }}" style="width:220px"></div>
+<div><label>3. Retiro</label><input type="date" name="retiro_fecha" value="{{ f.retiro_fecha.isoformat() if f and f.retiro_fecha else '' }}"></div>
+<div><label class="chk"><input type="checkbox" name="retiro_real" value="1" {{ 'checked' if f and f.retiro_real }}> Retiro real (no tentativo)</label></div>
+<div class="grow"><label>Almacén de recepción</label><input name="almacen_info" value="{{ f.almacen_info if f else 'PENDIENTE' }}"></div>
+<div style="width:100%" class="small muted">Contrato y precio (para alertar penalidades y comparar con lo nacional):</div>
+<div><label>Precio</label><input name="precio" type="number" step="any" value="{{ f.precio if f and f.precio is not none else '' }}" style="width:90px"></div>
+<div><label>Moneda</label><select name="moneda">{% for m in ['USD', 'PEN'] %}<option {{ 'selected' if f and f.moneda == m }}>{{ m }}</option>{% endfor %}</select></div>
+<div><label>Por</label><select name="um">{% for m in ['TM', 'KG'] %}<option {{ 'selected' if f and f.um == m }}>{{ m }}</option>{% endfor %}</select></div>
+<div><label>Fecha pactada de llegada</label><input type="date" name="fecha_entrega_contrato" value="{{ f.fecha_entrega_contrato.isoformat() if f and f.fecha_entrega_contrato else '' }}"></div>
+<div><label>Penalidad al proveedor por día</label><input name="penalidad_dia" type="number" step="any" value="{{ f.penalidad_dia if f and f.penalidad_dia is not none else '' }}" style="width:100px"></div>
+<div><label>Sobreestadía por contenedor y día</label><input name="sobreestadia_dia" type="number" step="any" value="{{ f.sobreestadia_dia if f and f.sobreestadia_dia is not none else '' }}" style="width:100px"></div>
+<div><label>Contrato (archivo)</label><input type="file" name="contrato_archivo" accept=".pdf,image/*,.docx" data-plain></div>
+<div><button>Guardar</button></div></form>{% endmacro %}
+
+{% block content %}<div class="page-head"><div><h1>Seguimiento de importaciones</h1><p class="sub">Llegada, días libres, SENASA, BL, retiro y almacén de cada contrato · gastos extra, contratos y penalidades.</p></div>
+<div class="row noprint"><a class="btn sec" href="?salida=xlsx">{{ ic('download') }} Excel</a>{% if puede %}<button class="btn" data-open="dlg-imp">{{ ic('plus') }} Nueva importación</button>{% endif %}</div></div>
+
+<div class="kpis"><div class="kpi primary"><b>{{ d.tot.contenedores }}</b><span>Contenedores en seguimiento</span><small>{{ d.tot.por_retirar }} por retirar</small></div>
+<div class="kpi {{ 'warn' if d.tot.en_riesgo }}"><b>{{ d.tot.en_riesgo }}</b><span>En riesgo</span><small>retiro próximo o vencido</small></div>
+<div class="kpi {{ 'err' if d.tot.sobreestadia }}"><b>{{ d.tot.sobreestadia }}</b><span>Con sobreestadía</span><small>riesgo USD {{ d.tot.riesgo_usd|n }}</small></div>
+<div class="kpi"><b>USD {{ d.tot.gastos_usd|n }}</b><span>Gastos extra registrados</span></div>
+<div class="kpi ok"><b>USD {{ d.tot.a_favor_usd|n }}</b><span>Penalidades a favor</span><small>atraso del proveedor según contrato</small></div></div>
+
+{% if d.filas %}<div class="tw"><table class="cuadro-imp">
+<thead><tr><th>Código SAP</th><th>Contrato</th><th>Proveedor</th><th>Ítem</th><th>País</th><th>Cont.</th><th>Llegada</th><th>Días libres</th><th>Máx. retiro</th><th>1 SENASA</th><th>2 BL</th><th>3 Retiro</th><th>Almacén</th><th></th></tr></thead>
+{% for x in d.filas %}{% set f = x.f %}<tr class="sem-{{ x.semaforo }}">
+<td>{{ f.codigo_sap }}</td><td>{{ f.contrato }}{% if f.contrato_archivo %} <a href="{{ url_for('main.evidence', name=f.contrato_archivo) }}" target="_blank" title="Contrato">{{ ic('file') }}</a>{% endif %}</td><td>{{ f.proveedor }}</td><td><b>{{ f.item }}</b></td><td>{{ f.pais_origen }}</td><td class="r">{{ f.contenedores }}</td>
+<td>{{ f.fecha_llegada|d if f.fecha_llegada else '—' }}</td><td class="r">{{ f.dias_libres }}</td>
+<td><b>{{ x.fmax|d if x.fmax else '—' }}</b>{% if x.dias_retiro is not none and not x.retirado %}<br><span class="small {{ 'err' if x.dias_retiro < 0 else '' }}">{{ ('faltan ' ~ x.dias_retiro ~ ' d') if x.dias_retiro >= 0 else ('vencido hace ' ~ (-x.dias_retiro) ~ ' d') }}</span>{% endif %}</td>
+<td class="{{ 'pend' if 'PENDIENTE' in f.status_senasa }}">{{ f.status_senasa }}</td><td class="{{ 'pend' if 'PENDIENTE' in f.status_bl }}">{{ f.status_bl }}</td>
+<td>{{ f.retiro_fecha.strftime('%d-%m') if f.retiro_fecha else '—' }}{% if f.retiro_fecha %}<br><span class="small muted">{{ 'real' if f.retiro_real else 'tentativa' }}</span>{% endif %}</td>
+<td class="{{ 'pend' if 'PENDIENTE' in (f.almacen_info or '').upper() }}">{{ f.almacen_info }}</td>
+<td class="noprint">{% if puede %}<button class="ibtn" data-open="dlg-e{{ f.id }}" title="Editar / gastos / inconveniente">{{ ic('edit') }}</button>{% endif %}</td></tr>
+{% if x.gastos or x.riesgo_sobreestadia or x.penalidad_a_favor or f.incidencias %}<tr class="sub"><td colspan="14" class="small">
+{% if x.riesgo_sobreestadia %}<span class="b ALTA">Sobreestadía {{ x.sobreestadia_dias }} d · USD {{ x.riesgo_sobreestadia|n }}</span> {% endif %}
+{% if x.penalidad_a_favor %}<span class="b ok">Penalidad a favor {{ f.moneda }} {{ x.penalidad_a_favor|n }}</span> {% endif %}
+{% for gx in f.gastos or [] %}<span class="b warn">{{ gx.tipo }} {{ gx.moneda }} {{ gx.monto|n }}</span> {% endfor %}
+{% for i in f.incidencias or [] %}<span class="b info" title="{{ i.user }} {{ i.fecha }}">⚠ {{ i.tipo }}: {{ i.detalle[:60] }}</span> {% endfor %}</td></tr>{% endif %}
+{% endfor %}</table></div>
+<p class="small muted">Fecha máxima de retiro = llegada + días libres. Rojo: venció sin retiro (corre sobreestadía); amarillo: faltan pocos días o el retiro tentativo es posterior; verde: retirado.</p>
+{% else %}{{ empty('No hay importaciones en seguimiento.', 'ship') }}{% endif %}
+
+<div class="grid g2">
+<section class="card"><h3>Importado vs nacional (S/ por kg)</h3>{% if precios.filas %}<table class="small"><tr><th>Producto</th><th class="r">Importado</th><th class="r">Nacional (90 d)</th><th class="r">Dif.</th><th>Conviene</th></tr>
+{% for p in precios.filas %}<tr><td>{{ p.code }} {{ p.descripcion }}</td><td class="r">{{ p.importado_kg if p.importado_kg is not none else '—' }}</td><td class="r">{{ p.nacional_kg if p.nacional_kg is not none else '—' }}</td><td class="r">{{ ('%+.1f'|format(p.dif_pct) ~ ' %') if p.dif_pct is not none else '—' }}</td><td><b>{{ p.conviene }}</b></td></tr>{% endfor %}</table>
+<p class="small muted">Importado = precio del contrato + gastos extra prorrateados por kg, al tipo de cambio SUNAT {{ precios.tc or '—' }}. Nacional = promedio de cotizaciones de los últimos 90 días.</p>{% else %}<p class="small muted">Registre el precio de compra de los contratos y cotizaciones nacionales para comparar.</p>{% endif %}</section>
+{% if puede %}<section class="card"><h3>Cargar el cuadro desde Excel</h3><p class="small muted">Con las columnas: {{ 'CÓDIGO SAP, CONTRATO, PROVEEDOR, ITEM, PAÍS DE ORIGEN, CONTENEDORES, FECHA DE LLEGADA, DÍAS LIBRES, 1 STATUS DE SENASA, 2 STATUS-LIBERACIÓN DE BL, 3 STATUS-RETIRO, INFORMACIÓN DEL ALMACÉN' }}. Si el contrato ya existe se actualiza.</p>
+<form method="post" enctype="multipart/form-data" class="row">{{ csrf() }}<input type="hidden" name="accion" value="excel"><div class="grow"><input type="file" name="archivo" accept=".xlsx" required data-plain></div><div><button class="sec">Cargar</button></div></form></section>{% endif %}
+</div>
+
+{% if puede %}<dialog class="modal" id="dlg-imp"><div class="dlg-head"><h3>Nueva importación</h3><button class="ibtn" type="button" data-close>{{ ic('x') }}</button></div><div class="dlg-body">{{ form_imp() }}</div></dialog>
+{% for x in d.filas %}{% set f = x.f %}<dialog class="modal" id="dlg-e{{ f.id }}"><div class="dlg-head"><h3>{{ f.item }} · {{ f.contrato }}</h3><button class="ibtn" type="button" data-close>{{ ic('x') }}</button></div><div class="dlg-body">
+{{ form_imp(f) }}
+<h4>Gasto extra</h4><form method="post" enctype="multipart/form-data" class="row">{{ csrf() }}<input type="hidden" name="accion" value="gasto"><input type="hidden" name="id" value="{{ f.id }}">
+<div><label>Tipo</label><select name="tipo">{% for t in tipos_gasto %}<option>{{ t }}</option>{% endfor %}</select></div><div><label>Monto</label><input name="monto" type="number" step="any" required style="width:100px"></div><div><label>Moneda</label><select name="moneda"><option>USD</option><option>PEN</option></select></div><div class="grow"><label>Detalle</label><input name="detalle"></div><div><label>Sustento</label><input type="file" name="archivo" data-plain></div><div><button class="sec">Registrar gasto</button></div></form>
+<h4>Reportar inconveniente</h4><form method="post" class="row">{{ csrf() }}<input type="hidden" name="accion" value="incidencia"><input type="hidden" name="id" value="{{ f.id }}">
+<div><label>Tipo</label><select name="tipo"><option>Retraso</option><option>Documentación</option><option>Inspección SENASA</option><option>Naviera / puerto</option><option>Calidad de la carga</option><option>Otro</option></select></div><div class="grow"><label>Qué pasó</label><input name="detalle" required></div><div><button class="sec">Reportar</button></div></form>
+</div></dialog>{% endfor %}{% endif %}
+{% endblock %}

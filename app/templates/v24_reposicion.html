@@ -1,0 +1,10 @@
+{% extends "base.html" %}{% from "_m.html" import ic, empty %}
+{% block content %}<div class="dir-head"><h1>Informe de reposición</h1><p>{{ d.hoy|d }} · qué comprar, cuánto y hasta cuándo</p></div>
+<div class="row noprint" style="justify-content:flex-end"><a class="btn sec" href="?formato=pdf">{{ ic('download') }} PDF</a> <a class="btn sec" href="?formato=xlsx">{{ ic('download') }} Excel</a></div>
+<section class="card msg-clave"><h3>Resumen</h3><p>{{ d.resumen }}</p>
+{% if d.por_tipo %}<table class="small"><tr><th>Tipo</th><th class="r">Productos</th><th class="r">Por comprar</th><th class="r">Cantidad total</th></tr>{% for t, v in d.por_tipo.items() %}<tr><td>{{ t }}</td><td class="r">{{ v.productos }}</td><td class="r">{{ v.comprar }}</td><td class="r">{{ v.cantidad|n }}</td></tr>{% endfor %}</table>{% endif %}</section>
+{% for k, titulo, cls in [('YA', 'Comprar ya', 'err'), ('SEMANA', 'Comprar esta semana', 'warn'), ('PROGRAMAR', 'Programar', ''), ('CUBIERTO', 'Cubierto', 'ok'), ('SIN_DATOS', 'Faltan datos', 'info')] %}{% set lst = d.grupos[k] %}
+{% if lst %}<section class="card repo-g {{ cls }}"><h3>{{ titulo }} <span class="b {{ cls or 'info' }}">{{ lst|length }}</span></h3>
+<table class="small"><tr><th>Producto</th><th>Tipo</th>{% if k in ('YA', 'SEMANA', 'PROGRAMAR') %}<th class="r">Comprar</th><th>Pedir hasta</th>{% endif %}<th>Por qué</th></tr>
+{% for x in lst %}<tr><td><b>{{ x.code }}</b> {{ x.descripcion }}</td><td>{{ x.tipo }}</td>{% if k in ('YA', 'SEMANA', 'PROGRAMAR') %}<td class="r"><b>{{ x.cantidad|n }} {{ x.um }}</b></td><td>{{ x.limite|d if x.limite else 'ya' }}</td>{% endif %}<td>{{ x.frase }}</td></tr>{% endfor %}</table></section>{% endif %}{% endfor %}
+{% endblock %}

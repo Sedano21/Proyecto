@@ -14,6 +14,8 @@ def area_of(user):
     """Área cuyo personal ve y registra el usuario: Producción, o la propia (p. ej. el Jefe de Logística, sección 5)."""
     if has_perm(user, "produccion.asistencia"):
         return "Producción"
+    if has_perm(user, "personal.comercial") and not has_perm(user, "asistencia.area"):
+        return "Comercial"  # V24: Jefatura Comercial registra a sus vendedores con su canal
     from .alerts import user_area
     return user_area(user) if has_perm(user, "asistencia.area") else None
 
@@ -30,7 +32,15 @@ def visible_areas(user):
         out.add("Producción")
     if has_perm(user, "asistencia.area") or has_perm(user, "asistencia.ver_area"):
         out |= set((param("asistencia_areas_por_rol", {}) or {}).get(user.role_code) or [user_area(user)])
+    if has_perm(user, "personal.comercial"):
+        out.add("Comercial")
     return out
+
+
+def alta_config(area):
+    """V24: qué se pide al registrar a un colaborador de esa área (parámetro «alta_personal_por_area»)."""
+    cfg = (param("alta_personal_por_area", {}) or {}).get(area or "") or {}
+    return {"campos": list(cfg.get("campos") or []), "puestos": list(cfg.get("puestos") or [])}
 
 
 def workers_of(user, activos=False, ver=False):
@@ -46,6 +56,8 @@ def workers_of(user, activos=False, ver=False):
 
 
 def can_register(user):
+    if has_perm(user, "personal.comercial") and not has_perm(user, "produccion.asistencia"):
+        return True
     if has_perm(user, "asistencia.area") and not has_perm(user, "produccion.asistencia"):
         return True
     if not has_perm(user, "produccion.asistencia"):
@@ -78,17 +90,33 @@ def save_worker(user, datos, w=None):
         puesto = (datos.get("puesto_otro") or "").strip()
         if not puesto:
             raise BusinessError("Escriba el puesto («Otro»).")
+    area = area_of(user) or "Producción"
+    cfg = alta_config(area)
+    # V24: cada área pide lo suyo: Producción línea y puesto (p. ej. maquinista); Comercial el canal; Limpieza y
+    # Mantenimiento solo el colaborador; Logística el puesto (auxiliar de almacén o de despacho)
+    linea = (datos.get("linea") or "").strip() if "linea" in cfg["campos"] or area == "Producción" else ""
+    canal = (datos.get("canal") or "").strip() if "canal" in cfg["campos"] else ""
+    if "canal" in cfg["campos"] and not canal:
+        raise BusinessError("Indique el canal del vendedor.")
+    if canal:
+        from .prices import canales
+        if canal not in canales():
+            raise BusinessError(f"Canal no válido: {canal}.")
     if w is None:
         w = Worker(nombre=nombre)
         db().add(w)
     w.nombre, w.documento = nombre, doc
-    w.area = area_of(user) or "Producción"
-    w.linea = (datos.get("linea") or "").strip()
-    w.sublinea = (puesto or datos.get("sublinea") or "").strip()[:40]
+    w.area = area
+    w.linea = linea
+    w.canal = canal
+    sub = (datos.get("sublinea") or "").strip() if "sublinea" in cfg["campos"] else ""
+    w.puesto = puesto[:60]
+    w.sublinea = (sub or puesto or "").strip()[:40]
     w.externo = str(datos.get("externo", "")) in ("1", "on", "true")
     w.activo = str(datos.get("activo", "1")) in ("1", "on", "true")
     db().flush()
-    audit(user, "COLABORADOR_GUARDADO", "Worker", w.id, {"nombre": nombre, "linea": w.linea})
+    audit(user, "COLABORADOR_GUARDADO", "Worker", w.id, {"nombre": nombre, "area": area, "linea": w.linea,
+                                                           "puesto": w.puesto, "canal": w.canal})
     return w
 
 
@@ -148,7 +176,11 @@ def summary(desde=None, hasta=None, linea="", area="Producción", areas=False):
 
 def positions(user):
     """V18: puestos para la lista del colaborador: los perfiles de las áreas del usuario (o los configurados en
-    «puestos_por_area»), más «Otro» que se escribe."""
+    «puestos_por_area»), más «Otro» que se escribe. V24: si el área tiene puestos en «alta_personal_por_area», solo
+    esos (p. ej. Logística: auxiliar de almacén o de despacho)."""
+    propios = alta_config(area_of(user)).get("puestos")
+    if propios:
+        return propios
     from sqlalchemy import select as _sel
     from ..models import Role
     areas = visible_areas(user)

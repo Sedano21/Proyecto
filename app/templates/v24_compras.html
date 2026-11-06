@@ -1,0 +1,53 @@
+{% extends "base.html" %}{% from "_m.html" import csrf, ic, empty, b %}
+{% block content %}<div class="page-head"><div><h1>Compras nacionales</h1><p class="sub">Qué se compra, para quién y a qué precio: por OV, por cliente o para stock de seguridad / reposición, con las cotizaciones de cada proveedor.</p></div>
+<div><a class="btn sec" href="{{ url_for('v24.replenishment') }}">{{ ic('file') }} Informe de reposición</a></div></div>
+
+<details class="card" {{ 'open' if not d }}><summary><b>{{ ic('plus') }} Nueva solicitud de compra</b></summary>
+<form method="post" class="row">{{ csrf() }}<input type="hidden" name="accion" value="solicitud">
+<div class="grow"><label class="req">Producto</label><select name="product_code" required data-search="Buscar producto…"><option value="">Elija</option>{% for p in prods %}<option value="{{ p.code }}">{{ p.code }} · {{ p.descripcion }}</option>{% endfor %}</select></div>
+<div><label class="req">Cantidad</label><input name="cantidad" type="number" step="any" min="0" required style="width:110px"></div>
+<div><label>Fecha de necesidad</label><input type="date" name="fecha_necesidad"></div>
+<div style="width:100%" class="small muted">¿Para qué es? Indique la OV <b>o</b> el cliente; si no es para ninguno, deje ambos en blanco y elija el motivo.</div>
+<div><label>OV</label><input name="ov" placeholder="p. ej. OV-000565" style="width:140px"></div>
+<div class="grow"><label>Cliente</label><select name="customer_id" data-search="Buscar cliente…"><option value="">(ninguno)</option>{% for c in clientes %}<option value="{{ c.id }}">{{ c.nombre }}</option>{% endfor %}</select></div>
+<div><label>Motivo (sin OV ni cliente)</label><select name="motivo_tipo"><option value="">—</option>{% for k, t in motivos.items() %}<option value="{{ k }}">{{ t }}</option>{% endfor %}</select></div>
+<div class="grow"><label>Especifique</label><input name="motivo" placeholder="p. ej. campaña de diciembre"></div>
+<div><button>Registrar</button></div></form></details>
+
+<form method="get" class="row noprint"><div class="grow"><label>Ver un producto</label><select name="producto" onchange="this.form.submit()"><option value="">(todos con solicitudes abiertas)</option>{% for p in prods %}<option value="{{ p.code }}" {{ 'selected' if prod == p.code }}>{{ p.code }} · {{ p.descripcion }}</option>{% endfor %}</select></div></form>
+
+{% for p in d %}<section class="card compra-prod">
+<div class="card-head"><h3>{{ p.code }} · {{ p.descripcion }}</h3><span class="b info">Total a comprar: {{ p.total|n }} {{ p.um|lower }}</span></div>
+<div>
+<table class="small"><thead><tr><th>Para</th><th>Detalle</th><th class="r">Cantidad</th></tr></thead>
+{% for c in p.clientes %}<tr><td><b>{{ c.cliente }}</b></td><td>{% for o in c.ovs %}OV {{ o.ov }}: {{ o.cantidad|n }}{{ '; ' if not loop.last }}{% endfor %}{% if c.directo %}{{ ' · ' if c.ovs }}pedido para el cliente: {{ c.directo|n }}{% endif %}{% if c.nota %}<br><span class="small ok-t">✓ {{ c.nota }}</span>{% endif %}</td><td class="r"><b>{{ c.cantidad|n }}</b></td></tr>{% endfor %}
+{% for m in p.motivos %}<tr><td><b>{{ m.motivo }}</b></td><td class="muted">{{ m.detalle }}</td><td class="r"><b>{{ m.cantidad|n }}</b></td></tr>{% endfor %}
+<tr><th colspan="2">Total a comprar</th><th class="r">{{ p.total|n }}</th></tr>
+{% if p.duplicado > 0.0001 %}<tr><td colspan="3" class="small muted">Se pidió {{ p.pedido_bruto|n }} en total; {{ p.duplicado|n }} se repetía entre la OV y su cliente.</td></tr>{% endif %}</table>
+<p class="small muted">Solicitudes: {% for r in p.solicitudes %}<a href="{{ url_for('buy.purchase_detail', pid=r) }}">#{{ r }}</a>{{ ', ' if not loop.last }}{% endfor %}</p>
+{% if historial[p.code] %}<p class="small">Histórico ({{ p.n_historico }} cotizaciones) · precio promedio por mes en S/: {% for m, v in historial[p.code][-8:] %}{{ m[5:] }}/{{ m[2:4] }} <b>{{ v }}</b>{{ ' · ' if not loop.last }}{% endfor %}</p>{% endif %}
+</div><div>
+<h4 class="small">Cotizaciones vigentes (de estas solicitudes o de los últimos 30 días)</h4>
+{% if p.cotizaciones %}<div class="tw"><table class="small cot-tab"><thead><tr><th>Proveedor</th><th>Origen</th><th class="r">Precio</th><th>Entrega</th><th>Calidad</th><th>vs histórico</th><th></th></tr></thead>
+{% for q in p.cotizaciones %}{% set c = comps[q.id] %}<tr class="{{ 'elegida' if q.elegida }}"><td>{{ q.proveedor }}{% if q.archivo %} <a href="{{ url_for('main.evidence', name=q.archivo) }}" target="_blank">archivo</a>{% endif %}<br><span class="muted">{{ q.fecha|d }}</span></td><td>{{ q.origen }}</td><td class="r">{{ q.precio }} {{ q.moneda }}/{{ q.um }}{% if q.moneda != 'PEN' and c.precio_soles %}<br><span class="muted">S/ {{ c.precio_soles }}</span>{% endif %}</td><td>{{ q.fecha_entrega|d if q.fecha_entrega else '—' }}</td><td>{{ q.calidad }}</td>
+<td>{% for x in c.comparaciones if x.var_pct is not none %}<span class="b {{ 'ALTA' if x.var_pct > 0 else 'ok' }}" title="{{ x.tramo }}: S/ {{ x.promedio }}">{{ '%+.0f'|format(x.var_pct) }} % {{ x.tramo|lower|replace('últimos ', '')|replace('último ', '')|replace('mismo mes del año anterior', 'año ant.') }}</span> {% else %}<span class="muted">sin histórico</span>{% endfor %}</td>
+<td>{% if q.elegida %}<span class="b ok">elegida</span>{% elif puede_cotizar %}<form method="post">{{ csrf() }}<input type="hidden" name="accion" value="elegir"><input type="hidden" name="quote_id" value="{{ q.id }}"><button class="sec small">Elegir</button></form>{% endif %}</td></tr>{% endfor %}</table></div>
+{% else %}<p class="small muted">Sin cotizaciones aún.</p>{% endif %}
+{% if puede_cotizar %}<details class="small"><summary>{{ ic('plus') }} Registrar cotizaciones (a mano o con archivo)</summary>
+<form method="post" enctype="multipart/form-data">{{ csrf() }}<input type="hidden" name="accion" value="cotizaciones"><input type="hidden" name="product_code" value="{{ p.code }}">{% for r in p.solicitudes %}<input type="hidden" name="request_ids" value="{{ r }}">{% endfor %}
+<div id="cot-{{ loop.index }}">{% for _ in [1] %}<div class="dynrow row cot-row">
+<div><label>Origen / mercado</label><input name="origen" placeholder="p. ej. Mercado X" style="width:120px"></div>
+<div><label class="req">Proveedor</label><input name="proveedor" placeholder="p. ej. María" style="width:130px"></div>
+<div><label>Entrega estimada</label><input type="date" name="fecha_entrega"></div>
+<div><label>Calidad</label><input name="calidad" style="width:110px"></div>
+<div><label class="req">Precio</label><input name="precio" type="number" step="any" min="0" style="width:90px"></div>
+<div><label>Moneda</label><select name="moneda"><option>PEN</option><option>USD</option></select></div>
+<div><label>UM</label><select name="um"><option>KG</option><option>TM</option><option>SACO</option><option>UND</option></select></div>
+<div><label>Cantidad</label><input name="cantidad" type="number" step="any" min="0" style="width:90px"></div>
+<div><label>Archivo</label><input type="file" name="archivo" accept=".pdf,image/*,.xlsx,.docx" data-plain></div>
+<button type="button" class="ibtn" data-delrow title="Quitar">{{ ic('x') }}</button></div>{% endfor %}</div>
+<div class="row"><button type="button" class="sec small" data-addrow="#cot-{{ loop.index }}">{{ ic('plus') }} Otro proveedor</button><button>Guardar cotizaciones</button></div>
+<p class="muted">Cada cotización se compara con el promedio de los últimos 30 días, el último trimestre y el mismo mes del año anterior; si se aparta mucho, se alerta a Compras y al Gerente General Adjunto.</p></form></details>{% endif %}
+</div></section>
+{% else %}{{ empty('No hay solicitudes de compra nacional abiertas.', 'cart') }}{% endfor %}
+{% endblock %}

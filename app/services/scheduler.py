@@ -105,8 +105,21 @@ def _pasos(user, today):
         ("devoluciones_vencidas", lambda: __import__("app.services.devoluciones", fromlist=["x"]).check_overdue(today)),
         ("mant_preventivos_proximos", lambda: __import__("app.services.mant_trabajos", fromlist=["x"]).check_alerts(today)),
         ("limpieza_incumplida", lambda: __import__("app.services.limpieza", fromlist=["x"]).check_unfinished(today)),
+        # V24: tipo de cambio SUNAT, seguimiento de importaciones (retiro, sobreestadía, penalidades) y costo de reposición
+        ("tipo_cambio_sunat", lambda: _tipo_cambio(today)),
+        ("importaciones_seguimiento", lambda: __import__("app.services.importaciones_v24", fromlist=["x"]).check_alerts(today)),
+        ("costo_reposicion", lambda: __import__("app.services.costos_v24", fromlist=["x"]).check_alerts(today)),
         ("correo", lambda: flush_outbox()),
     ]
+
+
+def _tipo_cambio(today):
+    """En pruebas no se sale a internet."""
+    from flask import current_app
+    if current_app and current_app.config.get("TESTING"):
+        return "omitido en pruebas"
+    r = __import__("app.services.tipo_cambio", fromlist=["x"]).actualizar(hoy=today)
+    return f"{r.fecha} {r.venta}" if r else "sin conexión: registrar a mano"
 
 
 def run_checks(user=None, today=None):

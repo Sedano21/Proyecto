@@ -28,6 +28,10 @@
       {% if ve('alertas.ver') or ve('informes.comercial') or ve('informes.reempaque') or ve('informes.produccion') or ve('informes.distribucion') or ve('informes.almacen') %}{{ nl(url_for('rep.home'), 'chart', 'Informes') }}{% endif %}
       {% if ve('sugerencias.ver') %}{{ nl(url_for('v22.suggestions'), 'trend', 'Sugerencias de eficiencia') }}{% endif %}
       {% if ve('demanda.analisis') %}{{ nl(url_for('v23.demand'), 'gauge', 'Demanda proyectada') }}{% endif %}
+      {% if ve('tablero.empresa') %}{{ nl(url_for('v24.company'), 'trend', 'Cómo va la empresa') }}{{ nl(url_for('v24.replenishment'), 'cart', 'Informe de reposición') }}{% endif %}
+      {% if ve('compras.consolidado') or ve('compras.cotizar') %}{{ nl(url_for('v24.purchases'), 'cart', 'Compras nacionales (consolidado)') }}{% endif %}
+      {% if ve('importaciones.ver') or ve('importaciones.seguimiento') %}{{ nl(url_for('v24.imports'), 'ship', 'Seguimiento de importaciones') }}{% endif %}
+      {% if ve('costos.gestionar') or ve('costos.analisis') %}{{ nl(url_for('v24.costs'), 'scale', 'Costos y reposición') }}{% endif %}
       {% if ve('finanzas.gastos_areas') %}{{ nl(url_for('v22.area_spending'), 'scale', 'Gastos y desempeño por área') }}{% endif %}
       {% if ve('asistencia.todas') and not ve('ov.ver') %}{{ nl(url_for('prod.attendance'), 'users', 'Asistencia por área') }}{{ nl(url_for('v22.absences'), 'calendar', 'Disponibilidad del personal') }}{% endif %}
     </div>
@@ -207,8 +211,13 @@
   <div class="actions"><button type="button" class="sec" data-obs-close>Cancelar</button> <button>Enviar observación</button></div>
 </form></dialog>
 {% if user %}{% set cats = ticket_categorias() %}<dialog class="modal noprint" id="dlg-averia" aria-labelledby="av-t"><form method="post" action="{{ url_for('v22.ticket_new') }}" enctype="multipart/form-data"><input type="hidden" name="_csrf" value="{{ csrf_token() }}"><input type="hidden" name="volver" value="{{ request.full_path }}">
-<div class="dlg-head"><h3 id="av-t">Reportar avería o pedir a Sistemas</h3><button class="ibtn" type="button" data-close aria-label="Cerrar">{{ ic('x') }}</button></div>
-<div class="dlg-body"><div class="seg small" role="radiogroup"><label><input type="radio" name="destino" value="MANTENIMIENTO" checked data-dest> Avería (Mantenimiento)</label> <label><input type="radio" name="destino" value="SISTEMAS" data-dest> Sistemas: tintas, equipos, red</label></div>
+<div class="dlg-head"><h3 id="av-t">Reportar una avería o pedir ayuda</h3><button class="ibtn" type="button" data-close aria-label="Cerrar">{{ ic('x') }}</button></div>
+<div class="dlg-body"><p class="small"><b>1. ¿A quién va dirigido?</b> Toque la opción que corresponde:</p>
+<div class="dest-cards" role="radiogroup" aria-label="Destino del reporte">
+<label class="dest-card"><input type="radio" name="destino" value="MANTENIMIENTO" checked data-dest><span class="dc-ic">{{ ic('wrench') }}</span><b>Mantenimiento</b><small>Algo de la planta o del local se malogró: luz, enchufes, agua o desagüe, puertas, techos, pisos, máquinas de producción, montacargas, aire o ventilación.</small></label>
+<label class="dest-card"><input type="radio" name="destino" value="SISTEMAS" data-dest><span class="dc-ic">{{ ic('database') }}</span><b>Sistemas</b><small>Equipos y tecnología: laptop o PC, celular, impresora, tintas o tóner, internet o red, accesos y contraseñas del sistema.</small></label>
+</div>
+<p class="small" style="margin-top:10px"><b>2. Cuéntenos qué pasa</b></p>
 <label class="req">¿Qué es?</label><select name="categoria" required data-cat>{% for d, lst in cats.items() %}{% for c in lst %}<option value="{{ c }}" data-d="{{ d }}">{{ c }}</option>{% endfor %}{% endfor %}</select>
 <label class="req">Motivo / descripción</label><textarea name="descripcion" rows="2" required minlength="5" style="width:100%" placeholder="p. ej. se quemó el fluorescente del pasillo; la impresora no imprime"></textarea>
 <div class="row"><div class="grow"><label>Lugar</label><input name="lugar" placeholder="p. ej. Almacén PT zona B, oficina de ventas"></div><div><label class="chk"><input type="checkbox" name="urgente" value="1"> Urgente</label></div></div>

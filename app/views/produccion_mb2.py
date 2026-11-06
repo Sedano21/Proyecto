@@ -163,7 +163,8 @@ def control():
 
 
 @bp.route("/asistencia", methods=["GET", "POST"])
-@perm_required("produccion.ver", "produccion.asistencia", "asistencia.area", "asistencia.ver_area", "asistencia.todas")
+@perm_required("produccion.ver", "produccion.asistencia", "asistencia.area", "asistencia.ver_area", "asistencia.todas",
+               "personal.comercial")
 def attendance():
     fecha = f_date("fecha") or date.today()
     back = url_for("prod.attendance", fecha=fecha.isoformat())
@@ -193,7 +194,8 @@ def attendance():
     return render_template("attendance.html", fecha=fecha, workers=asvc.workers_of(g.user, ver=True),
                            dia=asvc.day(fecha), estados=asvc.states(), puede=asvc.can_register(g.user), area=area,
                            resumen=asvc.summary(fecha - timedelta(days=29), fecha, areas=visibles), lineas=PRODUCTION_LINES,
-                           puestos=asvc.positions(g.user))
+                           puestos=asvc.positions(g.user), alta=asvc.alta_config(asvc.area_of(g.user)),
+                           canales=__import__("app.services.prices", fromlist=["x"]).canales())
 
 
 @bp.route("/productividad")

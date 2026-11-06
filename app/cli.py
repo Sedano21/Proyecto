@@ -79,6 +79,10 @@ def main(argv):
             f = seed_flow(app.config["UPLOAD_DIR"])
             s.commit()
             print("Ya estaba cargado el flujo completo." if f is None else f"Flujo completo ficticio creado: {f}")
+            from .demo_flujo import seed_v24  # V24: compras nacionales, importaciones, costos y tipo de cambio
+            v = seed_v24(app.config["UPLOAD_DIR"])
+            s.commit()
+            print("Ya estaban cargados los datos V24." if v is None else f"Datos V24 ficticios creados: {v}")
         elif cmd == "depurar":
             from .services.retention import purge_photos
             r = purge_photos(app.config["UPLOAD_DIR"], aplicar="--aplicar" in argv)
