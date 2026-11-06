@@ -1,6 +1,6 @@
 {% extends "base.html" %}{% from "_m.html" import b, csrf, ic, empty, paginacion %}
 {% block content %}<div class="page-head"><div><h1>Tickets de averías y solicitudes</h1><p class="sub">Reportados desde el botón «Reportar avería» de cualquier perfil</p></div>
-<button class="btn" data-open="dlg-ticket">{{ ic('plus') }} Reportar avería o solicitud</button></div>
+<button class="btn" data-open="dlg-averia">{{ ic('plus') }} Reportar avería o solicitud</button></div>
 <form method="get" class="row card noprint"><div><label>Para</label><select name="destino"><option value="">(todos)</option><option value="MANTENIMIENTO" {{ 'selected' if destino == 'MANTENIMIENTO' }}>Mantenimiento</option><option value="SISTEMAS" {{ 'selected' if destino == 'SISTEMAS' }}>Sistemas</option></select></div>
 <div><label>Estado</label><select name="estado"><option value="ABIERTOS">Abiertos</option>{% for k, v in estados.items() %}<option value="{{ k }}" {{ 'selected' if estado == k }}>{{ v }}</option>{% endfor %}<option value="TODOS" {{ 'selected' if estado == 'TODOS' }}>Todos</option></select></div><div><button class="sec">Filtrar</button></div></form>
 {% if tiempos %}<details class="card"><summary><b>Tiempos de respuesta (30 días)</b></summary><table class="small"><tr><th>Para</th><th>Categoría</th><th class="r">Tickets</th><th class="r">Urgentes</th><th class="r">Resueltos</th><th class="r">Atención prom. (h)</th><th class="r">Solución prom. (h)</th></tr>

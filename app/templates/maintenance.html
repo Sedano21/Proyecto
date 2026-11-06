@@ -37,7 +37,7 @@
 
 {% elif tab == 'correctivo' %}
 <div class="card-head"><p class="small muted" style="flex:1">Averías: reportada → programada → en reparación → cerrada. Una avería grave saca la unidad de servicio hasta cerrarla.</p>
-{% if can('mantenimiento.flota') %}<button class="btn" data-open="dlg-averia">{{ ic('alert') }} Reportar avería</button>{% endif %}</div>
+{% if can('mantenimiento.flota') %}<button class="btn" data-open="dlg-averia-flota">{{ ic('alert') }} Reportar avería de la unidad</button>{% endif %}</div>
 {% if d.averias %}<div class="cards">{% for a in d.averias %}<article class="xcard {{ 'alerta' if a.severidad == 'ALTA' and a.estado != 'CERRADA' else ('st-LIQUIDADO' if a.estado == 'CERRADA' else 'st-PENDIENTE') }}">
 <div class="xcard-head"><b>{{ a.vehicle.placa }}</b>{{ b(a.estado) }}{{ b(a.severidad) }}
 {% if can('mantenimiento.flota') and a.estado != 'CERRADA' %}<button class="ibtn" data-open="dlg-av-{{ a.id }}" aria-label="Actualizar estado" title="Actualizar">{{ ic('edit') }}</button>{% endif %}</div>
@@ -51,7 +51,7 @@
 <label>Nota (al cerrar: reparación realizada)</label><input name="nota" style="width:100%"></div>
 <div class="dlg-foot"><button class="btn sec" data-close>Cancelar</button><button class="btn">Guardar</button></div></form></dialog>{% endif %}</article>{% endfor %}</div>
 {% else %}{{ empty('Sin averías reportadas.', 'wrench') }}{% endif %}
-{% if can('mantenimiento.flota') %}<dialog class="modal" id="dlg-averia"><form method="post" enctype="multipart/form-data">{{ csrf() }}<input type="hidden" name="accion" value="averia">
+{% if can('mantenimiento.flota') %}<dialog class="modal" id="dlg-averia-flota"><form method="post" enctype="multipart/form-data">{{ csrf() }}<input type="hidden" name="accion" value="averia">
 <div class="dlg-head"><h3>Reportar avería</h3><button class="ibtn" data-close aria-label="Cerrar">{{ ic('x') }}</button></div>
 <div class="dlg-body"><label class="req">Unidad</label><select name="vehicle_id" required>{% for v in d.vehiculos %}<option value="{{ v.id }}">{{ v.placa }} · {{ v.descripcion }}</option>{% endfor %}</select>
 <label class="req">Descripción</label><input name="descripcion" required style="width:100%">

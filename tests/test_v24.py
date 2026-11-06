@@ -292,3 +292,14 @@ def test_quince_dias_de_operacion(s, app, tmp_path):
     assert seed_quincena(str(tmp_path)) is None
     cl = _cliente(app, "coord.distribucion")
     assert cl.get(f"/distribucion/ruta/{c.route_id}/checklist").status_code == 200
+
+
+def test_stock_sin_rotacion_valor_a_precio_minimo_y_maximo(s, app):
+    from app.services import supply
+    d = supply.rotation_ranking(1)
+    con = [f for f in d["por_tiempo"] if f["valor_venta"]]
+    assert con, "debe haber productos con precio de lista"
+    f = con[0]
+    assert f["valor_max"] >= f["valor_venta"] and d["max_total"] >= d["venta_total"] > 0
+    h = _cliente(app, "jefe.logistica").get("/suministro/rotacion?dias=1").get_data(as_text=True)
+    assert "precio mínimo" in h and "Al máximo" in h

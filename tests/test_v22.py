@@ -357,7 +357,7 @@ def test_boton_reportar_averia_en_todas_las_pantallas(app, s):
     from app.models import Ticket
     c = _cliente(app, "montacarguista")
     html = c.get("/").get_data(as_text=True)
-    assert 'id="dlg-averia"' in html and "Reportar avería" in html
+    assert 'id="dlg-averia' in html and "Reportar avería" in html
     tok = html.split('name="csrf" content="')[1].split('"')[0]
     r = c.post("/operacion/tickets/nuevo", data={"_csrf": tok, "destino": "MANTENIMIENTO", "categoria": "Luz / eléctrico",
                                                   "descripcion": "Foco quemado en rack", "lugar": "Zona A", "urgente": "1"})

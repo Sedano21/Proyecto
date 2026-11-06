@@ -90,7 +90,7 @@
       {{ nl(url_for('prod.oee_dashboard'), 'gauge', 'Tablero OEE') }}
       {% if user.role.area != 'Calidad' %}{{ nl(url_for('prod.productivity'), 'chart', 'Productividad por persona') }}{% endif %}{% endif %}
       {% if user.role.area != 'Calidad' %}{{ nl(url_for('prod.attendance'), 'users', 'Asistencia') }}{% endif %}{# V13: Calidad no ve productividad ni asistencia #}
-      {% if ve('produccion.lote_nuevo') %}{{ nl(url_for('cal.new_record', formato='LOTE_PRODUCIDO'), 'plus', 'Ingreso de nuevo lote') }}{% endif %}
+      {% if can('produccion.lote_nuevo') %}{{ nl(url_for('cal.new_record', formato='LOTE_PRODUCIDO'), 'plus', 'Ingreso de nuevo lote') }}{% endif %}
       {% if ve('produccion.liquidar') and not ve('calidad.ver') %}{{ nl(url_for('cal.line'), 'shield', 'Observaciones de Calidad y reproceso') }}{% endif %}
       {% if ve('produccion.configurar') %}{{ nl(url_for('prod.prod_config'), 'layers', 'Configuración de Producción') }}{% endif %}
       {% if ve('produccion.bom_cargar') or ve('produccion.liquidar') %}{{ nl(url_for('alm.uploads', area='Producción'), 'upload', 'Cargas de archivos') }}{% endif %}

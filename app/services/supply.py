@@ -631,6 +631,7 @@ def rotation_ranking(dias=None, hoy=None, top=20, almacen=None):
         venc = min([l.fecha_venc for l in ls if l.fecha_venc] or [None])
         dias_venc = (venc - hoy).days if venc else None
         c = cost_per_kg(p) if p else None
+        pmin, pmax = _rango_precio(p, kg_u) if p else (None, None)
         quienes = sorted(compradores.get(x["code"], {}).items(), key=lambda t: -t[1])[:3]
         if dias_venc is not None and dias_venc <= 60:
             reco = f"Vence en {dias_venc} días: liquidar con precio especial o promoción por volumen esta semana."
@@ -642,7 +643,11 @@ def rotation_ranking(dias=None, hoy=None, top=20, almacen=None):
             reco = "Incluirlo en la próxima campaña y revisar el precio frente al mercado."
         filas.append(dict(x, dias_sin=dias_sin, duracion=_duracion(dias_sin), kg=kg, vence=venc, dias_venc=dias_venc,
                           valor=round(kg * c, 2) if c and kg else None, compradores=quienes, recomendacion=reco,
-                          ingreso=ingreso))
+                          ingreso=ingreso,
+                          # V24: valor a precio de venta (el mínimo de las listas vigentes) y al máximo del SKU
+                          valor_venta=round(kg * pmin, 2) if pmin and kg else None,
+                          valor_max=round(kg * pmax, 2) if pmax and kg else None,
+                          precio_min_kg=round(pmin, 3) if pmin else None, precio_max_kg=round(pmax, 3) if pmax else None))
     por_tiempo = sorted(filas, key=lambda f: -(f["dias_sin"] if f["dias_sin"] is not None else 10 ** 6))[:top]
     # A01: la «cantidad» se mide en S/ cuando hay costo cargado; si no, en kg
     por_cantidad = sorted(filas, key=lambda f: (f["valor"] is None, -(f["valor"] if f["valor"] is not None else (f["kg"] or f["stock"]))))[:top]
@@ -652,4 +657,22 @@ def rotation_ranking(dias=None, hoy=None, top=20, almacen=None):
         f["rank_cantidad"] = i
     return {"dias": base["dias"], "total": len(filas), "por_tiempo": por_tiempo, "por_cantidad": por_cantidad,
             "kg_total": round(sum(f["kg"] for f in filas), 1),
-            "valor_total": round(sum(f["valor"] or 0 for f in filas), 2), "almacen": almacen or ""}
+            "valor_total": round(sum(f["valor"] or 0 for f in filas), 2), "almacen": almacen or "",
+            "venta_total": round(sum(f["valor_venta"] or 0 for f in filas), 2),
+            "max_total": round(sum(f["valor_max"] or 0 for f in filas), 2)}
+
+
+def _rango_precio(p, kg_u):
+    """V24: (precio mínimo, precio máximo) por kg del SKU en las listas de precios vigentes (todos los canales y la
+    lista granel). El mínimo es lo menos a lo que se puede vender; el máximo, el mejor precio de lista del SKU."""
+    from ..models import PriceItem
+    vals = []
+    for it in db().execute(select(PriceItem).where(PriceItem.product_code == p.code, PriceItem.vigente.is_(True))).scalars():
+        if it.precio and kg_u:
+            vals.append(it.precio / kg_u)
+        if it.precio_kg:
+            vals.append(it.precio_kg)
+        if it.precio_saco and it.kg_saco:
+            vals.append(it.precio_saco / it.kg_saco)
+    vals = [v for v in vals if v and v > 0]
+    return (min(vals), max(vals)) if vals else (None, None)
