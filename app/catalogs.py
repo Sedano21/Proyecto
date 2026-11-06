@@ -2822,7 +2822,9 @@ PARAMS += [
      "Diferencia entre costo de reposición y costo registrado a partir de la cual se recomienda revisar costo o precio.",
      "PROPUESTO", V24),
     ("tipo_cambio_url", "https://www.sunat.gob.pe/a/txt/tipoCambio.txt", "str", "Finanzas",
-     "Dirección pública de SUNAT de la que se lee el tipo de cambio del día (solo lectura).", "PROPUESTO", V24),
+     "Dirección pública de SUNAT de la que se lee el tipo de cambio del día (solo lectura).", "PROPUESTO", V24),    ("mb_objetivo_por_canal", {}, "dict", "Finanzas",
+     "% de margen bruto objetivo por canal (p. ej. {\"MODERNO\": 25}) para la proyección del informe de margen bruto; "
+     "sin valor, el informe no calcula el precio por kg necesario.", "PROPUESTO", f"{V24}: metodología de los cierres MB"),
 ]
 DEMO_USERS_V24 = [("costos.presupuestos", "Costos y Presupuestos", CYP),
                   ("asist.importaciones", "Asistente de Importaciones", AIM)]

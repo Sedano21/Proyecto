@@ -225,3 +225,27 @@ def expenses():
     return render_template("v24_rendiciones.html", gastos=cc.gastos(desde, hasta), centros=cc.lista(), tipos=cc.TIPOS_GASTO,
                            resumen=cc.resumen_por_centro(desde, hasta), desde=desde, hasta=hasta, etiqueta=cc.etiqueta,
                            puede="compras.rendiciones" in g.perms, carga="centros_costo.cargar" in g.perms)
+
+
+# ------------------------------------------------------------------ margen bruto (metodología de los cierres MB)
+@bp.route("/margen-bruto")
+@perm_required("costos.analisis", "costos.gestionar", "costos.ver")
+def gross_margin():
+    from ..services import charts
+    from ..services import margen_bruto as mb
+    hoy = date.today()
+    desde = f_date("desde") or hoy.replace(day=1)
+    hasta = f_date("hasta") or hoy
+    canal = request.args.get("canal", "")
+    d = mb.calcular(desde, hasta, canal)
+    ev = mb.evolucion(hasta=hasta)
+    if request.args.get("salida") == "xlsx":
+        return Response(mb.excel(d, ev), mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        headers={"Content-Disposition": f"attachment; filename=margen_bruto_{desde:%Y%m%d}_{hasta:%Y%m%d}.xlsx"})
+    series = [(f["canal"], [(n, v) for n, t, v in zip(ev["columnas"], ev["tipos"], f["valores"]) if t == "S" and v is not None])
+              for f in ev["filas"]]
+    graf = {"canal": charts.bars([(c["nombre"], c["margen"]) for c in d["canal"]], "S/", title="Margen bruto por canal"),
+            "ev": charts.line([s for s in series if s[1]], "%", title="% MB semanal por canal") if any(s[1] for s in series) else ""}
+    html = render_template("v24_margen.html", d=d, ev=ev, proy=mb.proyeccion(d), graf=graf,
+                           canales=sorted({c["nombre"] for c in mb.calcular(desde, hasta)["canal"]}))
+    return _descarga(html, "Margen bruto", "margen_bruto")

@@ -303,3 +303,45 @@ def test_stock_sin_rotacion_valor_a_precio_minimo_y_maximo(s, app):
     assert f["valor_max"] >= f["valor_venta"] and d["max_total"] >= d["venta_total"] > 0
     h = _cliente(app, "jefe.logistica").get("/suministro/rotacion?dias=1").get_data(as_text=True)
     assert "precio mínimo" in h and "Al máximo" in h
+
+
+# ------------------------------------------------------------------ margen bruto (metodología de los cierres MB)
+def test_margen_bruto_por_canal_producto_y_rebate(app, s, U, new_order, today):
+    from datetime import datetime
+    from io import BytesIO
+
+    from openpyxl import load_workbook
+
+    from app.models import CustomerInvoice, ProductCost
+    from app.services import costos_v24 as cos
+    from app.services import margen_bruto as mb
+    s.query(ProductCost).delete()
+    cos.guardar_costo(U("costos.presupuestos"), "PT-901", 6.0, "UND")
+    a = new_order([("PT-901", 10)], dias=1, precio=10.0)
+    b = new_order([("PT-901", 10)], dias=1, precio=10.0)
+    a.salida_ts = b.salida_ts = datetime.combine(today, datetime.min.time())
+    a.lines[0].despachado, b.lines[0].despachado = 10, 4  # b despachó parcial: solo cuenta lo despachado
+    a.lines[0].um_venta = b.lines[0].um_venta = "UND"
+    s.add(CustomerInvoice(customer_id=a.customer_id, tipo="NOTA_CREDITO", numero="NC-T1", fecha=today, monto=7.0, saldo=7.0))
+    s.commit()
+    d = mb.calcular(today, today)
+    t = d["total"]
+    assert t["venta"] == 140 - 7 and t["costo"] == 14 * 6 and t["margen"] == 133 - 84 and t["sin_costo"] == 0
+    assert t["mb_pct"] == round(100 * 49 / 133, 1) and t["cv_pct"] == round(100 * 84 / 133, 1)
+    reb = [r for r in d["subfamilia"] if r["nombre"].startswith("REBATE")]
+    assert reb and reb[0]["venta"] == -7 and reb[0]["costo"] == 0
+    assert any(r["nombre"].startswith("PT-901") and r["venta"] == 140 for r in d["producto"])
+    # sin costo cargado no se inventa: la línea se cuenta como sin costo
+    s.query(ProductCost).delete()
+    s.commit()
+    assert mb.calcular(today, today)["total"]["sin_costo"] == 2
+    cos.guardar_costo(U("costos.presupuestos"), "PT-901", 6.0, "UND")
+    ev = mb.evolucion(hasta=today)
+    assert ev["filas"] and any(c.startswith("C. ") for c in ev["columnas"])
+    wb = load_workbook(BytesIO(mb.excel(mb.calcular(today, today), ev)))
+    assert wb.sheetnames == ["RESULTADOS", "EV-MB"] and wb["RESULTADOS"]["A2"].value == "CANAL"
+    c = _cliente(app, "costos.presupuestos")
+    h = c.get("/gestion/margen-bruto").get_data(as_text=True)
+    assert "Margen bruto" in h and "Proyección por canal" in h
+    assert c.get("/gestion/margen-bruto?salida=xlsx").status_code == 200
+    assert _cliente(app, "aux.almacen").get("/gestion/margen-bruto").status_code in (302, 403)

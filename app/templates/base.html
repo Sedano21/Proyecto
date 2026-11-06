@@ -33,6 +33,7 @@
       {% if ve('compras.rendiciones') or ve('centros_costo.cargar') %}{{ nl(url_for('v24.expenses'), 'file', 'Rendiciones, movilidad y centros de costo') }}{% endif %}
       {% if ve('importaciones.ver') or ve('importaciones.seguimiento') %}{{ nl(url_for('v24.imports'), 'ship', 'Seguimiento de importaciones') }}{% endif %}
       {% if ve('costos.gestionar') or ve('costos.analisis') %}{{ nl(url_for('v24.costs'), 'scale', 'Costos y reposición') }}{% endif %}
+      {% if ve('costos.analisis') or ve('costos.gestionar') or ve('costos.ver') %}{{ nl(url_for('v24.gross_margin'), 'trend', 'Margen bruto') }}{% endif %}
       {% if ve('finanzas.gastos_areas') %}{{ nl(url_for('v22.area_spending'), 'scale', 'Gastos y desempeño por área') }}{% endif %}
       {% if ve('asistencia.todas') and not ve('ov.ver') %}{{ nl(url_for('prod.attendance'), 'users', 'Asistencia por área') }}{{ nl(url_for('v22.absences'), 'calendar', 'Disponibilidad del personal') }}{% endif %}
     </div>

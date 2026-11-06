@@ -404,6 +404,13 @@ def seed_v24(upload_dir=None, hoy=None):
         return None
     rnd = random.Random(24)
     res = {}
+    # familia y subfamilia ficticias para los cortes del informe de margen bruto (si el catálogo no las trae)
+    from .models import Product
+    for p in s.execute(select(Product).where(Product.code.like("PT-%"))).scalars():
+        if not p.familia:
+            p.familia = "PRODUCTO TERMINADO"
+        if not p.subfamilia:
+            p.subfamilia = "GRANOS ANDINOS" if "QUINUA" in (p.descripcion or "") else "MENESTRAS"
     # tipo de cambio de los últimos 60 días (ficticio)
     for i in range(60, -1, -1):
         d = hoy - timedelta(days=i)

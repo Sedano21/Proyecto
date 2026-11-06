@@ -72,3 +72,25 @@ Contraseña de la demo: la de siempre. También están en «Ver todos los usuari
 | Revisar que cada botón funcione | Recorrido automático con navegador por el menú de 16 perfiles, abriendo cada ventana (botones «Nuevo…», «Reportar avería», etc.) y registrando errores de página o de JavaScript. Resultado en el informe de la ronda. |
 
 Los Excel de costo empresa y de centro de costos que compartieron se usaron solo como modelo de formato: sus datos no se copiaron al repositorio. En la demostración hay centros de costo ficticios.
+| Stock sin movimiento: valor al precio de venta y al máximo | Cada producto muestra, además del valor al costo, el valor al precio de lista vigente más bajo y al más alto de su SKU. |
+
+## 7. Margen bruto con la metodología de los cierres MB (07-nov-2026)
+
+Se tomaron como modelo de formato los tres cierres del último trimestre que compartieron (sus cifras no se copiaron al repositorio). Nueva pantalla **Gestión → Margen bruto** (`/gestion/margen-bruto`, `app/services/margen_bruto.py`), para Costos y Presupuestos, Jefatura de Administración y Finanzas, Gerencia Comercial, Jefatura de Operaciones y gerencias (permisos `costos.analisis`, `costos.gestionar` o `costos.ver`).
+
+| Hoja del Excel | En el sistema |
+|---|---|
+| RESULTADOS (canal, subfamilia, sub-subfamilia, cliente, producto) | Los cinco cortes con venta, costo de venta, margen, kilos, % MB y % CV, más el total. Filtro por fechas y canal. |
+| Rebates con venta negativa y costo 0 | Las notas de crédito del periodo entran como venta negativa sin costo, en «REBATE / NOTA DE CRÉDITO». |
+| EV-MB (% MB semanal por canal con cierre de cada mes) | Tabla y gráfico: SEM nn por canal y la columna «C. MES» con el cierre mensual. |
+| PROYECCIÓN (PV/kg, CV/kg, kilos, margen, objetivo) | Por canal: PV/kg y CV/kg reales, kilos, margen, % MB, objetivo y el PV/kg necesario para llegar al objetivo (y la brecha). |
+| Descarga | Excel con las hojas RESULTADOS (cortes lado a lado) y EV-MB, y PDF. |
+
+Reglas de cálculo:
+- **Venta** = cantidad despachada × precio de la línea de la OV, menos el descuento de la línea en proporción a lo despachado (fecha = salida de la OV).
+- **Costo de venta** = cantidad despachada × costo empresa vigente del SKU (lo carga Costos y Presupuestos). Si un SKU no tiene costo, su costo no se inventa: cuenta como 0 y se muestra cuántas líneas están sin costo.
+- **% MB** = margen ÷ venta; **% CV** = costo ÷ venta; **kilos** = cantidad × peso del SKU.
+- **Sub-subfamilia**: el catálogo de productos no tiene ese campo; se usa el **producto base** (p. ej. ARVEJA VERDE PARTIDA), que es el nivel más cercano. Si la empresa usa otra clasificación, se agrega el campo y se carga con el catálogo.
+- **Objetivo % MB por canal**: parámetro `mb_objetivo_por_canal` (vacío por defecto: lo define la gerencia). Sin él no se calcula el PV/kg necesario.
+
+Diferencia con el informe «Margen por canal» que ya existía: aquél parte de las facturas y sigue la cascada hasta utilidad neta; éste replica el cierre MB (lo despachado, con kilos y cortes por producto).

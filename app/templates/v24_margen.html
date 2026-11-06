@@ -1,0 +1,29 @@
+{% extends "base.html" %}{% from "_m.html" import ic %}
+{% block content %}<div class="page-head"><div><h1>Margen bruto</h1><p class="sub">Con la metodología de los cierres de margen: venta despachada − costo de venta (costo empresa del SKU), por canal, subfamilia, sub-subfamilia, cliente y producto. Del {{ d.desde.strftime('%d/%m/%Y') }} al {{ d.hasta.strftime('%d/%m/%Y') }}{% if d.filtro_canal %} · canal {{ d.filtro_canal }}{% endif %}.</p></div>
+<div class="row noprint"><a class="btn sec" href="?desde={{ d.desde.isoformat() }}&hasta={{ d.hasta.isoformat() }}&canal={{ d.filtro_canal }}&salida=xlsx">{{ ic('download') }} Excel (formato cierre)</a> <a class="btn sec" href="?desde={{ d.desde.isoformat() }}&hasta={{ d.hasta.isoformat() }}&canal={{ d.filtro_canal }}&formato=pdf">{{ ic('download') }} PDF</a></div></div>
+<form class="row noprint" method="get"><div><label>Desde</label><input type="date" name="desde" value="{{ d.desde.isoformat() }}"></div><div><label>Hasta</label><input type="date" name="hasta" value="{{ d.hasta.isoformat() }}"></div>
+<div><label>Canal</label><select name="canal"><option value="">Todos</option>{% for c in canales %}<option {{ 'selected' if c == d.filtro_canal }}>{{ c }}</option>{% endfor %}</select></div><div><button class="sec">Ver</button></div></form>
+{% set t = d.total %}
+<div class="kpis"><div class="kpi primary"><b>S/ {{ t.venta|n }}</b><span>Venta</span><small>{{ t.kilos|n }} kg</small></div>
+<div class="kpi"><b>S/ {{ t.costo|n }}</b><span>Costo de venta</span><small>% CV {{ t.cv_pct if t.cv_pct is not none else '—' }}</small></div>
+<div class="kpi {{ 'ok' if t.margen > 0 else 'err' }}"><b>S/ {{ t.margen|n }}</b><span>Margen bruto</span><small>% MB {{ t.mb_pct if t.mb_pct is not none else '—' }}</small></div>
+<div class="kpi {{ 'err' if t.sin_costo }}"><b>{{ t.sin_costo }}</b><span>Líneas sin costo cargado</span><small>{{ 'su costo cuenta como 0: cargue el costo empresa' if t.sin_costo else 'todas valorizadas' }}</small></div></div>
+<div class="grid g2">{% if graf.canal %}<section class="card">{{ graf.canal|safe }}</section>{% endif %}{% if graf.ev %}<section class="card">{{ graf.ev|safe }}</section>{% endif %}</div>
+
+<h2>Proyección por canal</h2>
+<div class="tw"><table class="list small"><thead><tr><th>Canal</th><th class="r">PV/kg</th><th class="r">CV/kg</th><th class="r">Kilos</th><th class="r">Margen S/</th><th class="r">% MB</th><th class="r">Objetivo %</th><th class="r">PV/kg para el objetivo</th><th class="r">Brecha PV/kg</th></tr></thead>
+{% for c in proy %}<tr><td><b>{{ c.nombre }}</b></td><td class="r">{{ c.pv_kg if c.pv_kg is not none else '—' }}</td><td class="r">{{ c.cv_kg if c.cv_kg is not none else '—' }}</td><td class="r">{{ c.kilos|n }}</td><td class="r">{{ c.margen|n }}</td><td class="r">{{ c.mb_pct if c.mb_pct is not none else '—' }}</td><td class="r">{{ c.objetivo if c.objetivo is not none else '—' }}</td><td class="r">{{ c.pv_kg_objetivo if c.pv_kg_objetivo is not none else '—' }}</td><td class="r {{ 'err' if c.brecha_pv_kg and c.brecha_pv_kg > 0 }}">{{ ('%+.3f'|format(c.brecha_pv_kg)) if c.brecha_pv_kg is not none else '—' }}</td></tr>{% else %}<tr><td colspan="9" class="muted">Sin despachos en el periodo.</td></tr>{% endfor %}</table></div>
+<p class="small muted">El objetivo de % MB por canal se configura en el parámetro «mb_objetivo_por_canal»; sin él, no se calcula el precio necesario.</p>
+
+{% for k, titulo in [('canal','Canal'), ('subfamilia','Subfamilia'), ('subsubfamilia','Sub-subfamilia (producto base)'), ('cliente','Cliente'), ('producto','Producto')] %}
+<h2>Por {{ titulo|lower }}</h2>
+<div class="tw"><table class="list small"><thead><tr><th>{{ titulo }}</th><th class="r">Venta</th><th class="r">Costo venta</th><th class="r">Margen</th><th class="r">Kilos</th><th class="r">% MB</th><th class="r">% CV</th></tr></thead>
+{% for r in d[k] %}<tr class="{{ 'niv-err' if r.margen < 0 }}"><td>{{ r.nombre }}{% if r.sin_costo %} <span class="muted">({{ r.sin_costo }} sin costo)</span>{% endif %}</td><td class="r">{{ r.venta|n }}</td><td class="r">{{ r.costo|n }}</td><td class="r">{{ r.margen|n }}</td><td class="r">{{ r.kilos|n }}</td><td class="r">{{ r.mb_pct if r.mb_pct is not none else '—' }}</td><td class="r">{{ r.cv_pct if r.cv_pct is not none else '—' }}</td></tr>{% endfor %}
+<tr><th>TOTAL</th><th class="r">{{ t.venta|n }}</th><th class="r">{{ t.costo|n }}</th><th class="r">{{ t.margen|n }}</th><th class="r">{{ t.kilos|n }}</th><th class="r">{{ t.mb_pct if t.mb_pct is not none else '—' }}</th><th class="r">{{ t.cv_pct if t.cv_pct is not none else '—' }}</th></tr></table></div>
+{% endfor %}
+
+<h2>Evolución semanal del % MB por canal ({{ ev.anio }})</h2>
+<div class="tw"><table class="list small"><thead><tr><th>Canal</th>{% for c in ev.columnas %}<th class="r">{{ c }}</th>{% endfor %}</tr></thead>
+{% for f in ev.filas %}<tr><td><b>{{ f.canal }}</b></td>{% for v in f.valores %}<td class="r{{ ' strong' if ev.tipos[loop.index0] == 'M' }}">{% if ev.tipos[loop.index0] == 'M' %}<b>{% endif %}{{ v if v is not none else '' }}{% if ev.tipos[loop.index0] == 'M' %}</b>{% endif %}</td>{% endfor %}</tr>{% else %}<tr><td class="muted">Sin datos con costo en el año.</td></tr>{% endfor %}</table></div>
+<p class="small muted">Base: OV despachadas (fecha de salida); venta = cantidad despachada × precio de la línea, menos su descuento proporcional; costo = cantidad × costo empresa vigente; rebates y notas de crédito del periodo como venta negativa sin costo; kilos = cantidad × peso del SKU.</p>
+{% endblock %}
