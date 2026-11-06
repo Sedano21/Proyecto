@@ -38,6 +38,8 @@ def app():
         SessionLocal().commit()
         yield app
         SessionLocal.remove()
+    import shutil
+    shutil.rmtree(d, ignore_errors=True)  # V22: cada prueba borra su base y archivos temporales (evita llenar el disco)
 
 
 @pytest.fixture()
