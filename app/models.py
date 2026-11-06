@@ -820,6 +820,7 @@ class PurchaseRequest(Base):
     # V24: compras nacionales: para una OV, un cliente o sin ninguno (stock de seguridad, reposición u otro motivo)
     customer_id: Mapped[int | None] = mapped_column(ForeignKey("customers.id"), nullable=True)
     motivo_tipo: Mapped[str] = mapped_column(String(20), default="", server_default="")  # STOCK_SEGURIDAD / REPOSICION / OTRO
+    centro_costo: Mapped[str] = mapped_column(String(20), default="", server_default="")  # V24: opcional
     creado_por: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     ts: Mapped[datetime] = mapped_column(DateTime, default=now)
     product = relationship("Product")
@@ -2506,4 +2507,39 @@ class ExchangeRate(Base):
     compra: Mapped[float] = mapped_column(Float)
     venta: Mapped[float] = mapped_column(Float)
     fuente: Mapped[str] = mapped_column(String(40), default="SUNAT")
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+
+class CostCenter(Base):
+    """V24 (07-nov): centro de costos de la empresa (grupo → área → centro → subcentro). Se carga desde el Excel de
+    centros de costo; se usa (opcional) en las OC de compras nacionales, rendiciones de facturas y planillas de movilidad."""
+    __tablename__ = "cost_centers"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    codigo: Mapped[str] = mapped_column(String(20), unique=True, index=True)  # subcentro (o centro si no tiene)
+    descripcion: Mapped[str] = mapped_column(String(160))
+    grupo: Mapped[str] = mapped_column(String(80), default="")
+    area_codigo: Mapped[str] = mapped_column(String(20), default="")
+    area: Mapped[str] = mapped_column(String(120), default="")
+    centro_codigo: Mapped[str] = mapped_column(String(20), default="")
+    centro: Mapped[str] = mapped_column(String(120), default="")
+    activo: Mapped[bool] = mapped_column(Boolean, default=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+
+class ExpenseReport(Base):
+    """V24 (07-nov): rendición de facturas o planilla de movilidad registrada por Compras nacionales."""
+    __tablename__ = "expense_reports"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    tipo: Mapped[str] = mapped_column(String(15))  # RENDICION / MOVILIDAD
+    fecha: Mapped[date] = mapped_column(Date, index=True)
+    responsable: Mapped[str] = mapped_column(String(160))
+    concepto: Mapped[str] = mapped_column(String(250))
+    comprobante: Mapped[str] = mapped_column(String(60), default="")  # factura / boleta / sin comprobante
+    proveedor: Mapped[str] = mapped_column(String(160), default="")
+    monto: Mapped[float] = mapped_column(Float)
+    moneda: Mapped[str] = mapped_column(String(5), default="PEN")
+    centro_costo: Mapped[str] = mapped_column(String(20), default="")
+    archivo: Mapped[str] = mapped_column(String(250), default="")
+    estado: Mapped[str] = mapped_column(String(15), default="REGISTRADA")
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     ts: Mapped[datetime] = mapped_column(DateTime, default=now)

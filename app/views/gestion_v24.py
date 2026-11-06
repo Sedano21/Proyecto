@@ -56,7 +56,7 @@ def purchases():
         if acc == "solicitud":
             return act(lambda: cv.create(g.user, (f.get("product_code") or "").strip().upper(), f_float("cantidad", True),
                                          f_date("fecha_necesidad"), f.get("ov", "").strip(), f.get("customer_id") or None,
-                                         f.get("motivo_tipo", ""), f.get("motivo", "")),
+                                         f.get("motivo_tipo", ""), f.get("motivo", ""), f.get("centro_costo", "")),
                        lambda r: f"Solicitud #{r.id} registrada.", back)
         if acc == "cotizaciones":
             code = (f.get("product_code") or "").strip().upper()
@@ -150,6 +150,18 @@ def costs():
                 abort(403)
             return act(lambda: cos.guardar_costo(g.user, f.get("product_code"), f_float("costo", True), f.get("unidad", "KG")),
                        "Costo actualizado.", back)
+        if acc == "excel":
+            if "costos.gestionar" not in g.perms:
+                abort(403)
+
+            def _cargar():
+                ruta = _archivo("archivo", "costo_empresa")
+                if not ruta:
+                    raise BusinessError("Adjunte el Excel de costos.")
+                return cos.import_excel(g.user, os.path.join(_up(), ruta))
+            return act(_cargar, lambda r: f"Costos leídos: {r['leidos']} ({r['costos_nuevos']} nuevos, {r['costos_modificados']} "
+                       "cambiaron)." + (f" Códigos que no existen en el catálogo: {', '.join(r['omitidos'][:10])}"
+                                        + ("…" if len(r['omitidos']) > 10 else "") + "." if r["omitidos"] else ""), back)
         if acc == "tc":
             return act(lambda: tcs.manual(g.user, f_date("fecha") or date.today(), f_float("compra", True), f_float("venta", True)),
                        "Tipo de cambio registrado.", back)
@@ -187,3 +199,29 @@ def company():
 def replenishment():
     html = render_template("v24_reposicion.html", d=emp.reposicion())
     return _descarga(html, "Informe de reposición", "informe_reposicion")
+
+
+# ------------------------------------------------------------------ rendiciones, movilidad y centros de costo
+@bp.route("/rendiciones", methods=["GET", "POST"])
+@perm_required("compras.rendiciones", "centros_costo.cargar", "finanzas.gastos_areas")
+def expenses():
+    from ..services import centros_costo as cc
+    back = url_for("v24.expenses")
+    if request.method == "POST":
+        f = request.form
+        if f.get("accion") == "gasto":
+            return act(lambda: cc.registrar_gasto(g.user, f, _archivo("archivo", "rendicion")),
+                       lambda e: f"{cc.TIPOS_GASTO[e.tipo]} registrada (S/ {e.monto:,.2f}).", back)
+        if f.get("accion") == "centros":
+            def _cargar():
+                ruta = _archivo("archivo", "centros_costo")
+                if not ruta:
+                    raise BusinessError("Adjunte el Excel de centros de costo.")
+                return cc.import_excel(g.user, os.path.join(_up(), ruta))
+            return act(_cargar, lambda r: f"Centros de costo: {r[0]} nuevos, {r[1]} actualizados.", back)
+        abort(400)
+    desde = f_date("desde") or date.today().replace(day=1)
+    hasta = f_date("hasta") or date.today()
+    return render_template("v24_rendiciones.html", gastos=cc.gastos(desde, hasta), centros=cc.lista(), tipos=cc.TIPOS_GASTO,
+                           resumen=cc.resumen_por_centro(desde, hasta), desde=desde, hasta=hasta, etiqueta=cc.etiqueta,
+                           puede="compras.rendiciones" in g.perms, carga="centros_costo.cargar" in g.perms)

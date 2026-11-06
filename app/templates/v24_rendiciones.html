@@ -1,0 +1,23 @@
+{% extends "base.html" %}{% from "_m.html" import csrf, ic, empty %}
+{% block content %}<div class="page-head"><div><h1>Rendiciones, movilidad y centros de costo</h1><p class="sub">Rendiciones de facturas y planillas de movilidad de Compras nacionales. El centro de costo es opcional.</p></div></div>
+{% if puede %}<section class="card"><h3>Registrar</h3><form method="post" enctype="multipart/form-data" class="row">{{ csrf() }}<input type="hidden" name="accion" value="gasto">
+<div><label class="req">Tipo</label><select name="tipo" required>{% for k, t in tipos.items() %}<option value="{{ k }}">{{ t }}</option>{% endfor %}</select></div>
+<div><label>Fecha</label><input type="date" name="fecha" value="{{ hasta.isoformat() }}"></div>
+<div class="grow"><label class="req">Concepto</label><input name="concepto" required placeholder="p. ej. compra de sacos en mercado / taxi a proveedor"></div>
+<div><label>Responsable</label><input name="responsable" value="{{ user.nombre }}"></div>
+<div><label>Comprobante</label><input name="comprobante" placeholder="F001-123 / boleta / sin comprobante" style="width:170px"></div>
+<div><label>Proveedor</label><input name="proveedor"></div>
+<div><label class="req">Monto</label><input name="monto" type="number" step="0.01" min="0" required style="width:100px"></div>
+<div><label>Moneda</label><select name="moneda"><option>PEN</option><option>USD</option></select></div>
+<div class="grow"><label>Centro de costo <span class="muted small">(opcional)</span></label><select name="centro_costo" data-search="Buscar centro…"><option value="">—</option>{% for c in centros %}<option value="{{ c.codigo }}">{{ c.codigo }} · {{ c.area }} / {{ c.centro }} / {{ c.descripcion }}</option>{% endfor %}</select></div>
+<div><label>Sustento</label><input type="file" name="archivo" accept=".pdf,image/*" data-plain></div>
+<div><button>Registrar</button></div></form></section>{% endif %}
+<form method="get" class="row noprint"><div><label>Desde</label><input type="date" name="desde" value="{{ desde.isoformat() }}"></div><div><label>Hasta</label><input type="date" name="hasta" value="{{ hasta.isoformat() }}"></div><div><button class="sec">Ver</button></div></form>
+<div class="grid g2"><section class="card"><h3>Por centro de costo (S/)</h3>{% if resumen %}<table class="small"><tr><th>Centro</th><th class="r">Rendiciones</th><th class="r">Movilidad</th><th class="r">Compras con OC</th></tr>
+{% for k, et, v in resumen %}<tr><td>{{ et }}</td><td class="r">{{ v.rendicion|n }}</td><td class="r">{{ v.movilidad|n }}</td><td class="r">{{ v.compras|n }}</td></tr>{% endfor %}</table>{% else %}<p class="small muted">Sin movimientos en el periodo.</p>{% endif %}</section>
+<section class="card"><h3>Centros de costo</h3><p class="small">{{ centros|length }} cargados.{% if not centros %} Cargue el Excel con las columnas GRUPO | ÁREA | CENTRO DE COSTO | SUB-CENTRO DE COSTO.{% endif %}</p>
+{% if carga %}<form method="post" enctype="multipart/form-data" class="row">{{ csrf() }}<input type="hidden" name="accion" value="centros"><div class="grow"><input type="file" name="archivo" accept=".xlsx" required data-plain></div><div><button class="sec">Cargar / actualizar</button></div></form>{% endif %}
+{% if centros %}<details class="small"><summary>Ver catálogo</summary><table class="small">{% for c in centros %}<tr><td class="mono">{{ c.codigo }}</td><td>{{ c.grupo }}</td><td>{{ c.area }}</td><td>{{ c.centro }}</td><td>{{ c.descripcion }}</td></tr>{% endfor %}</table></details>{% endif %}</section></div>
+<section class="card"><h3>Registros del periodo</h3>{% if gastos %}<div class="tw"><table class="list small"><thead><tr><th>Fecha</th><th>Tipo</th><th>Concepto</th><th>Responsable</th><th>Comprobante</th><th class="r">Monto</th><th>Centro de costo</th><th></th></tr></thead>
+{% for e in gastos %}<tr><td>{{ e.fecha|d }}</td><td>{{ tipos[e.tipo] }}</td><td>{{ e.concepto }}{% if e.proveedor %}<br><span class="muted">{{ e.proveedor }}</span>{% endif %}</td><td>{{ e.responsable }}</td><td>{{ e.comprobante }}</td><td class="r">{{ e.moneda }} {{ e.monto|n }}</td><td>{{ etiqueta(e.centro_costo) or '—' }}</td><td>{% if e.archivo %}<a href="{{ url_for('main.evidence', name=e.archivo) }}" target="_blank">sustento</a>{% endif %}</td></tr>{% endfor %}</table></div>{% else %}{{ empty('Sin rendiciones ni planillas en el periodo.', 'file') }}{% endif %}</section>
+{% endblock %}

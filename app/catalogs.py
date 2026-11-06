@@ -2754,6 +2754,10 @@ _V24_PERMS = [
      [JOP, "JEFE_VENTAS", "GERENTE_COMERCIAL", JAF, CYP]),
     ("personal.comercial", "Registrar al personal comercial (vendedores) con su canal", "Comercial", "edicion",
      ["JEFE_VENTAS", "GERENTE_COMERCIAL"]),
+    ("compras.rendiciones", "Registrar rendiciones de facturas y planillas de movilidad (con centro de costo opcional)",
+     "Compras", "edicion", ["COMPRAS"]),
+    ("centros_costo.cargar", "Cargar el catálogo de centros de costo (Excel)", "Finanzas", "edicion",
+     ["COMPRAS", CYP, JAF]),
 ]
 for _code, _n, _m, _t, _roles in _V24_PERMS:
     if not any(p[0] == _code for p in PERMISSIONS):

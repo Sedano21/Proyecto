@@ -176,3 +176,46 @@ def guardar_costo(user, code, costo, unidad="KG"):
         raise BusinessError("Producto no existe.")
     return replace_costs([{"product_code": p.code, "descripcion": p.descripcion, "costo": costo, "unidad": unidad}], user,
                          "Costos y Presupuestos (manual)")
+
+
+def import_excel(user, path):
+    """V24 (07-nov): carga el costo por SKU con el formato que usa Costos y Presupuestos: uno o varios bloques lado a lado
+    con las columnas SKU | DESCRIPCIÓN | COSTO EMPRESA. Granel y materia prima (GR-, MP-) se toman por kg; producto
+    terminado y maquila (PT-, MQ-), por unidad. Solo se versionan los costos que cambian."""
+    from openpyxl import load_workbook
+    from .core import BusinessError
+    from .costs import replace_costs
+    ws = load_workbook(path, data_only=True).active
+    filas = [list(r) for r in ws.iter_rows(values_only=True)]
+    bloques = []  # (fila_cabecera, col_sku, col_desc, col_costo)
+    for i, r in enumerate(filas[:15]):
+        for j, c in enumerate(r):
+            if str(c or "").strip().upper() == "SKU":
+                resto = [str(x or "").strip().upper() for x in r[j + 1:j + 4]]
+                k_desc = next((j + 1 + n for n, x in enumerate(resto) if x.startswith("DESCRIP")), None)
+                k_cost = next((j + 1 + n for n, x in enumerate(resto) if "COSTO" in x), None)
+                if k_cost is not None:
+                    bloques.append((i, j, k_desc, k_cost))
+    if not bloques:
+        raise BusinessError("No se encontró la cabecera SKU | DESCRIPCIÓN | COSTO EMPRESA.")
+    items, omitidos = [], []
+    for i, js, jd, jc in bloques:
+        for r in filas[i + 1:]:
+            if js >= len(r) or not r[js]:
+                continue
+            code = str(r[js]).strip().upper()
+            try:
+                costo = float(r[jc]) if jc < len(r) and r[jc] not in (None, "") else None
+            except (TypeError, ValueError):
+                costo = None
+            if costo is None or costo <= 0:
+                continue
+            if db().get(Product, code) is None:
+                omitidos.append(code)
+                continue
+            items.append({"product_code": code, "descripcion": str(r[jd] or "")[:250] if jd is not None and jd < len(r) else "",
+                          "costo": costo, "unidad": "KG" if code.startswith(("GR", "MP")) else "UND"})
+    res = replace_costs(items, user, "Excel de costo empresa")
+    res["omitidos"] = sorted(set(omitidos))
+    res["leidos"] = len(items)
+    return res

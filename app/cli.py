@@ -83,6 +83,10 @@ def main(argv):
             v = seed_v24(app.config["UPLOAD_DIR"])
             s.commit()
             print("Ya estaban cargados los datos V24." if v is None else f"Datos V24 ficticios creados: {v}")
+            from .demo_quincena import seed_quincena  # 15 días en que todas las áreas ya registraron
+            q = seed_quincena(app.config["UPLOAD_DIR"])
+            s.commit()
+            print("Ya estaban cargados los 15 días de operación." if q is None else f"15 días de operación ficticios: {q}")
         elif cmd == "depurar":
             from .services.retention import purge_photos
             r = purge_photos(app.config["UPLOAD_DIR"], aplicar="--aplicar" in argv)

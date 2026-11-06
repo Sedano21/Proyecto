@@ -57,3 +57,18 @@ Contraseña de la demo: la de siempre. También están en «Ver todos los usuari
 - La comparación importado vs nacional necesita el precio del contrato y los kg de la importación para prorratear los gastos.
 - Si el servidor no tiene salida a internet, el tipo de cambio se registra a mano (la alerta lo recuerda cada día).
 - El cuadro de importaciones que compartieron se usó solo como modelo: sus contratos y proveedores reales no se copiaron al sistema ni al repositorio.
+
+## 6. Ajustes del 07-nov-2026
+
+| Pedido | Implementación |
+|---|---|
+| Ruta manual: quién lleva la carga en lista desplegable, con «otro» | Si la lleva otro trabajador se elige de la lista (con su área, que se completa sola) o «Otro (escribir)». El chofer y el vehículo ya eran listas. |
+| Hora de salida en lista o escrita | Lista de horas cada 30 min (05:00 a 20:30) que también acepta escribir; se normaliza (730, 7.30 o 7:30 → 07:30). |
+| Transporte externo con su costo | Al elegir «Transporte tercero» se pide el costo (S/, obligatorio) y la empresa; se ve en el cuadro de despacho. |
+| Ver el sistema como si llevara 15 días | `demo-dia` agrega **15 días hábiles de operación** (`app/demo_quincena.py`). Comercial: ~130 OV en esos días, con OTIF ~84 % (a tiempo, tarde, parciales, anuladas). Almacén: picking con lote, bultos y foto. Distribución: rutas cerradas con guías, receptor y hora de entrega, transporte externo con costo e incidencias. Chofer y Seguridad: **checklist vehicular completo de salida y retorno** con puntos marcados en el dibujo, validado. Calidad: registros diarios y certificados. Saneamiento, asistencia de todos, pagos confirmados, oportunidades y cotizaciones. |
+| Modelo de Costos y Presupuestos (Excel «costo empresa») | En «Costos y reposición» se carga el Excel con bloques **SKU, DESCRIPCIÓN, COSTO EMPRESA** (uno o varios lado a lado): GR y MP por kg, PT y MQ por unidad; solo se versionan los que cambian e informa los códigos que no existen. |
+| Centro de costos (opcional) en compras nacionales | Catálogo cargado desde el Excel de centros de costo (grupo → área → centro → subcentro). Se elige, sin ser obligatorio, en la solicitud de compra nacional, al generar la OC y en las **rendiciones de facturas y planillas de movilidad** (pantalla nueva «Rendiciones, movilidad y centros de costo», con resumen por centro). |
+| «Activar» notificaciones no hacía nada | El resultado ahora se muestra en la misma barra (antes salía en ventanas emergentes que algunos navegadores bloquean). Se explica cada caso: sitio sin https, sistema abierto dentro de otra aplicación, permiso bloqueado o rechazado, servidor sin clave. **Para que funcione, el sistema debe abrirse con https** (el navegador no permite notificaciones sin conexión segura). |
+| Revisar que cada botón funcione | Recorrido automático con navegador por el menú de 16 perfiles, abriendo cada ventana (botones «Nuevo…», «Reportar avería», etc.) y registrando errores de página o de JavaScript. Resultado en el informe de la ronda. |
+
+Los Excel de costo empresa y de centro de costos que compartieron se usaron solo como modelo de formato: sus datos no se copiaron al repositorio. En la demostración hay centros de costo ficticios.

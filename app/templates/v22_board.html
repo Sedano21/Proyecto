@@ -16,7 +16,7 @@
 <div class="card-head"><h3><a href="{{ url_for('dist.route_detail', rid=f.r.id) }}">Ruta #{{ f.r.id }}</a> · {{ f.vehiculo }}</h3>
 <span>{{ b(f.r.estado) }}{% if f.r.manual %} <span class="b info">manual</span>{% endif %}{% if f.tipo == 'TRABAJADOR' %} <span class="b warn">lleva otro trabajador</span>{% elif f.tipo == 'TERCERO' or f.r.requiere_externo %} <span class="b MEDIA">tercero</span>{% endif %}</span></div>
 <div class="meta small sep"><span>{{ ic('user') }} <b>{{ f.quien if f.quien != '—' else 'sin chofer asignado' }}</b></span>{% if f.auxiliares %}<span>Auxiliares: {{ f.auxiliares|map(attribute='nombre')|join(', ') }}</span>{% endif %}
-{% if f.r.hora_salida_prog %}<span>Salida {{ f.r.hora_salida_prog }}</span>{% endif %}{% if f.motivo %}<span>Motivo: {{ f.motivo }}</span>{% endif %}</div>
+{% if f.r.hora_salida_prog %}<span>Salida {{ f.r.hora_salida_prog }}</span>{% endif %}{% if f.motivo %}<span>Motivo: {{ f.motivo }}</span>{% endif %}{% if (f.r.transportista or {}).get('costo') %}<span>Costo del transporte externo <b>S/ {{ f.r.transportista.costo|n }}</b>{{ (' · ' ~ f.r.transportista.proveedor) if f.r.transportista.proveedor }}</span>{% endif %}</div>
 <div class="carga-bar small"><span>Peso <b>{{ f.peso|n }} kg</b>{% if f.r.peso_real_kg %} (pesado){% endif %}</span>
 {% if f.permitido %}<span>· permitido {{ f.permitido|n }} kg{% if f.real and f.real != f.permitido %} · capacidad real {{ f.real|n }} kg{% endif %}</span>
 <div class="bar {{ 'over' if f.sobrecarga }}" title="{{ f.uso_pct }} %"><i style="width:{{ [f.uso_pct or 0,100]|min }}%"></i></div><b>{{ f.uso_pct }} %</b>{% endif %}
@@ -35,17 +35,19 @@
 <div class="dlg-head"><h3>Nueva ruta manual</h3><button class="ibtn" data-close type="button" aria-label="Cerrar">{{ ic('x') }}</button></div>
 <div class="dlg-body">
 <div class="row"><div><label class="req">Fecha</label><input type="date" name="fecha_ruta" value="{{ fecha.isoformat() }}" required></div>
-<div><label>Hora de salida</label><input name="hora_salida" placeholder="07:30" size="6" pattern="[0-2][0-9]:[0-5][0-9]"></div>
+<div><label>Hora de salida</label><input name="hora_salida" list="horas-ruta" placeholder="Elija o escriba (07:30)" size="12" autocomplete="off"><datalist id="horas-ruta">{% for h in range(5, 21) %}<option value="{{ '%02d' % h }}:00"><option value="{{ '%02d' % h }}:30">{% endfor %}</datalist></div>
 <div class="grow"><label>Zona / referencia</label><input name="zona" placeholder="p. ej. Lima Este"></div></div>
 <fieldset class="ind-group"><legend>¿Quién lleva la carga?</legend>
 <div class="seg small" role="radiogroup">{% for k, t in [('CHOFER','Chofer de la empresa'),('TRABAJADOR','Otro trabajador (vendedor, etc.)'),('TERCERO','Transporte tercero')] %}<label><input type="radio" name="tipo_transportista" value="{{ k }}" {{ 'checked' if loop.first }} data-tt> {{ t }}</label>{% endfor %}</div>
 <div class="row tt tt-CHOFER tt-TERCERO"><div><label>Vehículo</label><select name="vehicle_id"><option value="">—</option>{% for v in vehicles %}<option value="{{ v.id }}">{{ v.placa }} · {{ v.descripcion or v.tipo_unidad }} · permitido {{ v.capacidad_kg|n }} kg{% if v.capacidad_real_kg %} / real {{ v.capacidad_real_kg|n }}{% endif %}{{ ' · TERCERO' if not v.propio }}</option>{% endfor %}</select></div>
 <div><label>Chofer</label><select name="driver_id"><option value="">—</option>{% for dr in drivers %}<option value="{{ dr.id }}" {{ 'disabled' if dr.id in ausentes }}>{{ dr.nombre }}{{ ' (externo)' if dr.externo }}{% if dr.id in ausentes %} — NO DISPONIBLE: {{ aus_txt[dr.id] }}{% endif %}</option>{% endfor %}</select></div></div>
-<div class="row tt tt-TRABAJADOR" hidden><div><label class="req">Trabajador</label><input name="t_nombre" list="trab-lista" placeholder="Nombre"><datalist id="trab-lista">{% for t in trabajadores %}<option value="{{ t.nombre }}">{{ t.role.nombre }}</option>{% endfor %}</datalist></div>
-<div><label class="req">Área</label><input name="t_area" placeholder="p. ej. Comercial"></div>
+<div class="row tt tt-TRABAJADOR" hidden><div><label class="req">Trabajador</label><select name="t_user_id" data-trab><option value="">Elija</option>{% for t in trabajadores %}<option value="{{ t.id }}" data-area="{{ t.role.area if t.role else '' }}">{{ t.nombre }} · {{ t.role.nombre }}</option>{% endfor %}<option value="__OTRO__">Otro (escribir)…</option></select>
+<input name="t_nombre" placeholder="Nombre del trabajador" hidden data-trab-otro aria-label="Nombre del trabajador"></div>
+<div><label class="req">Área</label><input name="t_area" placeholder="p. ej. Comercial" data-trab-area></div>
 <div><label class="req">Vehículo (marca, tipo)</label><input name="t_vehiculo" placeholder="p. ej. camioneta propia"></div><div><label>Placa</label><input name="t_placa" size="9"></div>
 <div class="grow"><label class="req">Motivo</label><input name="t_motivo" placeholder="p. ej. el cliente queda en su ruta de visitas"></div></div>
 </fieldset>
+<div class="row tt tt-TERCERO" hidden><div><label class="req">Costo del transporte externo (S/)</label><input name="costo_tercero" type="number" step="0.01" min="0" placeholder="p. ej. 350"></div><div class="grow"><label>Empresa de transporte</label><input name="proveedor_tercero" placeholder="p. ej. Transportes Demo"></div></div>
 <fieldset class="ind-group tt tt-CHOFER tt-TERCERO"><legend>Auxiliares de despacho</legend><div id="aux-filas">
 <div class="row dynrow"><select name="auxiliar"><option value="">— sin auxiliar —</option>{% for a in auxiliares %}<option value="{{ a.id }}">{{ a.nombre }}</option>{% endfor %}</select> <button type="button" class="ibtn" data-delrow aria-label="Quitar">{{ ic('x') }}</button></div></div>
 <button type="button" class="sec small" data-addrow="#aux-filas">{{ ic('plus') }} Agregar auxiliar</button></fieldset>
@@ -61,7 +63,12 @@
 <script>
 (function(){
   var dlg = document.getElementById('dlg-ruta'); if (!dlg) return;
-  function tt(){ var v = (dlg.querySelector('[data-tt]:checked')||{}).value; dlg.querySelectorAll('.tt').forEach(function(e){ e.hidden = !e.classList.contains('tt-' + v); }); }
+  function tt(){ var v = (dlg.querySelector('[data-tt]:checked')||{}).value; dlg.querySelectorAll('.tt').forEach(function(e){ e.hidden = !e.classList.contains('tt-' + v); });
+    var c = dlg.querySelector('[name=costo_tercero]'); if (c) c.required = v === 'TERCERO'; }
+  var ts = dlg.querySelector('[data-trab]');
+  if (ts) ts.addEventListener('change', function(){ var o = ts.selectedOptions[0]; var otro = ts.value === '__OTRO__';
+    var n = dlg.querySelector('[data-trab-otro]'); n.hidden = !otro; n.required = otro; if (!otro) n.value = '';
+    var a = dlg.querySelector('[data-trab-area]'); if (o && o.dataset.area && !otro) a.value = o.dataset.area; });
   function suma(){ var kg=0, s=0; dlg.querySelectorAll('input[data-kg]:checked').forEach(function(c){ kg += +c.dataset.kg||0; s += +c.dataset.soles||0; });
     dlg.querySelector('[data-sum-kg]').textContent = kg.toLocaleString('es-PE',{maximumFractionDigits:0}); dlg.querySelector('[data-sum-soles]').textContent = s.toLocaleString('es-PE',{maximumFractionDigits:2}); }
   dlg.addEventListener('change', function(e){ if (e.target.matches('[data-tt]')) tt(); if (e.target.matches('[data-kg]')) suma(); }); tt();

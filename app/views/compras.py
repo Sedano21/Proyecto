@@ -46,13 +46,18 @@ def purchase_detail(pid):
             "pedir_go": lambda: psvc.request_go_approval(r, u),
             "aprobar_go": lambda: psvc.approve_go(r, u, True, f.get("comentario", "")),
             "rechazar_go": lambda: psvc.approve_go(r, u, False, f.get("comentario", "")),
-            "orden": lambda: psvc.generate_order(r, u, "", f_date("fecha_prevista", True), f.get("warehouse_code")),
+            "orden": lambda: (_centro(r, f.get("centro_costo")), psvc.generate_order(r, u, "", f_date("fecha_prevista", True),
+                                                                                     f.get("warehouse_code")))[1],
             "fecha": lambda: psvc.change_date(r, u, f_date("nueva_fecha", True), f.get("motivo", "")),
             "recibir": lambda: psvc.receive(r, u, f_float("cantidad", True), f.get("lote", "").strip(), f_date("fecha_venc"), f.get("diferencias", "")),
             "bajo_observacion": lambda: psvc.authorize_under_observation(r, u, f.get("observaciones", "")),
             "subsanar": lambda: psvc.register_rectification(r, u, f.get("detalle", "")),
             "cerrar": lambda: psvc.close(r, u),
         }
+        def _centro(req, codigo):
+            from ..services.centros_costo import validar
+            req.centro_costo = validar(codigo)  # V24: opcional
+
         def _archivo():
             from flask import current_app
             from ..services.distribution import save_upload

@@ -1,6 +1,6 @@
 {% extends "base.html" %}{% from "_m.html" import csrf, ic, empty, b %}
 {% block content %}<div class="page-head"><div><h1>Compras nacionales</h1><p class="sub">Qué se compra, para quién y a qué precio: por OV, por cliente o para stock de seguridad / reposición, con las cotizaciones de cada proveedor.</p></div>
-<div><a class="btn sec" href="{{ url_for('v24.replenishment') }}">{{ ic('file') }} Informe de reposición</a></div></div>
+<div><a class="btn sec" href="{{ url_for('v24.replenishment') }}">{{ ic('file') }} Informe de reposición</a> <a class="btn sec" href="{{ url_for('v24.expenses') }}">{{ ic('file') }} Rendiciones y movilidad</a></div></div>
 
 <details class="card" {{ 'open' if not d }}><summary><b>{{ ic('plus') }} Nueva solicitud de compra</b></summary>
 <form method="post" class="row">{{ csrf() }}<input type="hidden" name="accion" value="solicitud">
@@ -12,6 +12,7 @@
 <div class="grow"><label>Cliente</label><select name="customer_id" data-search="Buscar cliente…"><option value="">(ninguno)</option>{% for c in clientes %}<option value="{{ c.id }}">{{ c.nombre }}</option>{% endfor %}</select></div>
 <div><label>Motivo (sin OV ni cliente)</label><select name="motivo_tipo"><option value="">—</option>{% for k, t in motivos.items() %}<option value="{{ k }}">{{ t }}</option>{% endfor %}</select></div>
 <div class="grow"><label>Especifique</label><input name="motivo" placeholder="p. ej. campaña de diciembre"></div>
+{% set ccs = centros_costo() %}{% if ccs %}<div class="grow"><label>Centro de costo <span class="muted small">(opcional)</span></label><select name="centro_costo" data-search="Buscar centro…"><option value="">—</option>{% for c in ccs %}<option value="{{ c.codigo }}">{{ c.codigo }} · {{ c.area }} / {{ c.centro }} / {{ c.descripcion }}</option>{% endfor %}</select></div>{% endif %}
 <div><button>Registrar</button></div></form></details>
 
 <form method="get" class="row noprint"><div class="grow"><label>Ver un producto</label><select name="producto" onchange="this.form.submit()"><option value="">(todos con solicitudes abiertas)</option>{% for p in prods %}<option value="{{ p.code }}" {{ 'selected' if prod == p.code }}>{{ p.code }} · {{ p.descripcion }}</option>{% endfor %}</select></div></form>

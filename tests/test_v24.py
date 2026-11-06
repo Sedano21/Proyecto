@@ -203,3 +203,92 @@ def test_flujo_v24_demo_y_pantallas(s, app, tmp_path):
     h = _cliente(app, "gerente.general").get("/gestion/empresa").get_data(as_text=True)
     assert "A qué prestarle atención" in h and "Importaciones" in h
     assert _cliente(app, "aux.almacen").get("/gestion/empresa").status_code == 403
+
+
+# ------------------------------------------------------------------ V24b: ruta manual, costos Excel, centros de costo
+def test_ruta_manual_tercero_exige_costo_y_hora_flexible(s, U, new_order):
+    from app.services import rutas_manual as rm
+    from app.models import Vehicle
+    o = new_order([("PT-901", 5)], dias=1)
+    s.commit()
+    ter = s.query(Vehicle).filter_by(propio=False).first()
+    datos = {"tipo_transportista": "TERCERO", "vehicle_id": ter.id, "hora_salida": "730"}
+    with pytest.raises(BusinessError, match="costo"):
+        rm.create_manual(U("coord.distribucion"), o.fecha_compromiso, datos, [o.id])
+    datos["costo_tercero"] = "350"
+    r = rm.create_manual(U("coord.distribucion"), o.fecha_compromiso, datos, [o.id])
+    assert r.transportista["costo"] == 350 and r.hora_salida_prog == "07:30"
+    assert rm._hora("7.5") == "07:05" or rm._hora("07:45") == "07:45"
+
+
+def test_ruta_manual_trabajador_de_la_lista(s, U, new_order):
+    from app.services import rutas_manual as rm
+    o = new_order([("PT-901", 5)], dias=1)
+    s.commit()
+    v = U("vendedor1")
+    r = rm.create_manual(U("coord.distribucion"), o.fecha_compromiso,
+                         {"tipo_transportista": "TRABAJADOR", "t_user_id": str(v.id), "t_vehiculo": "camioneta",
+                          "t_motivo": "queda en su ruta"}, [o.id])
+    assert r.transportista["nombre"] == v.nombre and r.transportista["area"]
+
+
+def test_costos_desde_excel_formato_empresa(s, U, tmp_path):
+    from openpyxl import Workbook
+    from app.services import costos_v24 as cos
+    from app.services.costs import current_cost
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["1. COSTO EMPRESA", None, None, None, "2. COSTO EMPRESA"])
+    ws.append(["SKU", "DESCRIPCIÓN", "COSTO EMPRESA", None, "SKU", "DESCRIPCIÓN", "COSTO EMPRESA"])
+    ws.append(["MP-901", "ARVEJA", 3.2, None, "PT-901", "ARVEJA 500 G", 1.9])
+    ws.append(["XX-999", "NO EXISTE", 1.0, None, None, None, None])
+    p = tmp_path / "c.xlsx"
+    wb.save(p)
+    r = cos.import_excel(U("costos.presupuestos"), str(p))
+    s.commit()
+    assert r["leidos"] == 2 and r["omitidos"] == ["XX-999"]
+    assert current_cost("MP-901")["KG"].costo == 3.2 and current_cost("PT-901")["UND"].costo == 1.9
+
+
+def test_centros_de_costo_y_rendiciones(s, U, tmp_path, app):
+    from openpyxl import Workbook
+    from app.services import centros_costo as cc
+    wb = Workbook()
+    ws = wb.active
+    ws.append([None, "CENTRO DE COSTOS (demo)"])
+    ws.append([None, "GRUPO", "AREA", None, "CENTRO DE COSTO", None, "SUB-CENTRO DE COSTO"])
+    ws.append([None, None, "NUMERO", "DESCRIPCION", "NUMERO", "DESCRIPCION", "NUMERO", "DESCRIPCION"])
+    ws.append([None, "ADMIN DEMO", 11, "ADMINISTRACION DEMO", 1101, "GERENCIAS DEMO", 110101, "GERENCIA DEMO"])
+    ws.append([None, None, None, None, None, None, 110102, "ADJUNTA DEMO"])
+    ws.append([None, None, None, None, 1102, "LIMPIEZA DEMO", None, None])
+    p = tmp_path / "cc.xlsx"
+    wb.save(p)
+    assert cc.import_excel(U("compras"), str(p)) == (3, 0)
+    s.commit()
+    c = {x.codigo: x for x in cc.lista()}
+    assert c["110102"].centro == "GERENCIAS DEMO" and c["1102"].descripcion == "LIMPIEZA DEMO"
+    e = cc.registrar_gasto(U("compras"), {"tipo": "MOVILIDAD", "concepto": "Taxi demo", "monto": "25.5"})
+    assert e.centro_costo == ""  # el centro de costo no es obligatorio
+    with pytest.raises(BusinessError):
+        cc.registrar_gasto(U("compras"), {"tipo": "RENDICION", "concepto": "x", "monto": 10, "centro_costo": "999"})
+    cc.registrar_gasto(U("compras"), {"tipo": "RENDICION", "concepto": "Sacos", "monto": 100, "centro_costo": "110101"})
+    s.commit()
+    assert any(k == "110101" for k, _e, _v in cc.resumen_por_centro())
+    assert "Rendiciones" in _cliente(app, "compras").get("/gestion/rendiciones").get_data(as_text=True)
+
+
+def test_quince_dias_de_operacion(s, app, tmp_path):
+    from app.demo_flujo import seed_flow, seed_v24
+    from app.demo_quincena import seed_quincena
+    from app.models import VehicleChecklist
+    from app.services.vehicle_checklist import items
+    seed_flow(str(tmp_path))
+    seed_v24(str(tmp_path))
+    r = seed_quincena(str(tmp_path))
+    s.commit()
+    assert r["rutas"] > 10 and r["paradas"] >= 80 and r["checklists"] == 2 * r["rutas"] and r["picking"] == r["paradas"]
+    c = s.query(VehicleChecklist).first()
+    assert set(c.items) == {code for code, *_ in items()} and c.validado_por  # checklist completo y validado
+    assert seed_quincena(str(tmp_path)) is None
+    cl = _cliente(app, "coord.distribucion")
+    assert cl.get(f"/distribucion/ruta/{c.route_id}/checklist").status_code == 200

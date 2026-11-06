@@ -765,3 +765,4 @@ table.kv td{overflow-wrap:anywhere;word-break:break-word}table.kv td.mono{white-
 .atencion{list-style:none;padding:0;margin:0}.atencion li{padding:6px 0;border-bottom:1px solid var(--line,#e3e6ea)}
 .repo-g.err{border-left:4px solid #c0392b}.repo-g.warn{border-left:4px solid #d39b00}.repo-g.ok{border-left:4px solid #1e7d45}
 tr.niv-err td{background:#fdf1f2}tr.niv-ok td{background:#f0f8f3}
+.push-msg{display:block;margin-top:4px;font-weight:600}.push-msg.err{color:#b3261e}.push-msg.ok{color:#0b6b3a}

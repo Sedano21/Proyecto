@@ -155,7 +155,8 @@ def seed_flow(upload_dir=None, hoy=None):
     hist = {"ok": 0, "tarde": 0, "parcial": 0, "anulada": 0, "renegociada": 0}
     facturas = 0
     for d in _habiles(hoy - timedelta(days=75), hoy - timedelta(days=1)):
-        for _ in range(rnd.randint(3, 6)):
+        # las dos últimas semanas con más movimiento (≈ 8 OV por día hábil) para revisar la operación de 15 días
+        for _ in range(rnd.randint(7, 9) if d >= hoy - timedelta(days=17) else rnd.randint(3, 6)):
             c = rnd.choice(clientes)
             if c.id in dejaron and d > hoy - timedelta(days=40):
                 c = clientes[0]

@@ -198,12 +198,50 @@ def _auxiliares(ids, fecha):
 TIPOS_TRANSPORTISTA = ("CHOFER", "TRABAJADOR", "TERCERO")
 
 
+def _hora(v):
+    """V24: la hora se elige de la lista o se escribe (7:30, 0730, 7.30 → 07:30)."""
+    t = (v or "").strip().replace(".", ":").replace("h", ":").rstrip(":")
+    if not t:
+        return ""
+    if ":" not in t and t.isdigit() and len(t) in (3, 4):
+        t = t[:-2] + ":" + t[-2:]
+    if ":" not in t and t.isdigit():
+        t += ":00"
+    try:
+        hh, mm = (int(x) for x in t.split(":")[:2])
+    except ValueError:
+        raise BusinessError("Hora de salida no válida (use HH:MM).") from None
+    if not (0 <= hh <= 23 and 0 <= mm <= 59):
+        raise BusinessError("Hora de salida no válida (use HH:MM).")
+    return f"{hh:02d}:{mm:02d}"
+
+
 def _transportista(datos):
     tipo = (datos.get("tipo_transportista") or "CHOFER").upper()
     if tipo not in TIPOS_TRANSPORTISTA:
         raise BusinessError("Tipo de transportista no válido.")
+    if tipo == "TERCERO":
+        # V24 (07-nov): si es transporte externo se ingresa su costo
+        try:
+            costo = float(str(datos.get("costo_tercero") or "").replace(",", "."))
+        except ValueError:
+            costo = 0
+        if costo <= 0:
+            raise BusinessError("Indique el costo del transporte externo (S/).")
+        return {"tipo": tipo, "costo": round(costo, 2), "proveedor": (datos.get("proveedor_tercero") or "").strip()[:120]}
     if tipo != "TRABAJADOR":
         return {"tipo": tipo}
+    # V24: el trabajador se elige de la lista (con su área) o «Otro» se escribe
+    if datos.get("t_user_id") and str(datos.get("t_user_id")) != "__OTRO__":
+        from ..models import User
+        u = db().get(User, int(datos["t_user_id"]))
+        if u is not None:
+            datos = dict(datos)
+            datos["t_nombre"] = u.nombre
+            datos["t_area"] = datos.get("t_area") or (u.role.area if u.role else "")
+    elif str(datos.get("t_user_id") or "") == "__OTRO__":
+        datos = dict(datos)
+        datos["t_user_id"] = ""
     t = {"tipo": tipo, "nombre": (datos.get("t_nombre") or "").strip(), "area": (datos.get("t_area") or "").strip(),
          "placa": (datos.get("t_placa") or "").strip().upper(), "vehiculo": (datos.get("t_vehiculo") or "").strip(),
          "motivo": (datos.get("t_motivo") or "").strip(), "user_id": int(datos["t_user_id"]) if datos.get("t_user_id") else None}
@@ -247,7 +285,7 @@ def create_manual(user, fecha, datos, orden_ids=(), traslado_ids=(), auxiliar_id
     r = Route(fecha=fecha, vehicle_id=vehicle.id if vehicle else None, driver_id=driver.id if driver else None,
               requiere_externo=bool(vehicle is not None and not vehicle.propio), zona=(datos.get("zona") or "").strip()[:120],
               estado="PROPUESTA", manual=True, auxiliares=auxs, auxiliar_id=auxs[0] if auxs else None, transportista=trans,
-              hora_salida_prog=(datos.get("hora_salida") or "").strip()[:5], creado_por=user.id, advertencias=[])
+              hora_salida_prog=_hora(datos.get("hora_salida")), creado_por=user.id, advertencias=[])
     db().add(r)
     db().flush()
     for o in ordenes:

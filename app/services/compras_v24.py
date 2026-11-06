@@ -43,7 +43,8 @@ def _orden(numero):
     return db().execute(select(SalesOrder).where(SalesOrder.numero == numero.strip())).scalars().first()
 
 
-def create(user, product_code, cantidad, fecha_necesidad=None, ov="", customer_id=None, motivo_tipo="", motivo=""):
+def create(user, product_code, cantidad, fecha_necesidad=None, ov="", customer_id=None, motivo_tipo="", motivo="",
+           centro_costo=""):
     """Solicitud de compra nacional con su destino: OV, cliente o motivo."""
     from .purchasing import create_request
     o = _orden(ov) if ov else None
@@ -60,6 +61,8 @@ def create(user, product_code, cantidad, fecha_necesidad=None, ov="", customer_i
         if motivo_tipo == "OTRO" and not motivo:
             raise BusinessError("Especifique el motivo («Otro»).")
     origen = "OV" if o is not None else ("CLIENTE" if c is not None else motivo_tipo[:20])
+    from .centros_costo import validar
+    centro_costo = validar(centro_costo)
     previos = None
     r = create_request(user, product_code, cantidad, fecha_necesidad, "OV" if o is not None else "ALMACEN", o)
     an = dict(r.analisis or {})
@@ -77,6 +80,8 @@ def create(user, product_code, cantidad, fecha_necesidad=None, ov="", customer_i
                 "cliente": (o.customer.nombre if o is not None else (c.nombre if c else "")), "cantidad": float(cantidad),
                 "motivo": motivo, "user": user.nombre, "fecha": date.today().isoformat()})
     an["destinos"] = det
+    if centro_costo and not r.centro_costo:
+        r.centro_costo = centro_costo
     r.analisis = an
     audit(user, "COMPRA_NACIONAL_DESTINO", "PurchaseRequest", r.id, det[-1])
     return r

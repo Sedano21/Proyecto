@@ -193,7 +193,7 @@ def seed_operation_day(upload_dir, hoy=None):
     r3 = ruta({"tipo_transportista": "TRABAJADOR", "t_nombre": vend.nombre, "t_area": "Comercial",
                "t_vehiculo": "Camioneta del ejecutivo (demo)", "t_placa": "DEM-VEN", "t_user_id": str(vend.id),
                "t_motivo": "El cliente está en su ruta de visitas de hoy"}, [o.id for o in usables[4:5]])
-    r4 = ruta({"tipo_transportista": "TERCERO", "vehicle_id": veh["TER-2T"].id, "driver_id": drivers["Chofer externo"].id,
+    r4 = ruta({"tipo_transportista": "TERCERO", "costo_tercero": 380, "proveedor_tercero": "Transportes Demo SAC", "vehicle_id": veh["TER-2T"].id, "driver_id": drivers["Chofer externo"].id,
                "hora_salida": "09:00", "zona": "Traslado a ALM-001 y Comas"}, [o.id for o in usables[5:6]],
               [t.id for t in trs[:1]])
     from .services.distribution import propose_routes
