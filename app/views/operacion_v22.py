@@ -35,6 +35,11 @@ def board():
                                             f.getlist("auxiliar")),
                    lambda r: f"Ruta #{r.id} registrada." + (" ¡Atención: sobrecarga!" if rm.overload(r) else ""),
                    url_for("v22.board", fecha=fecha.isoformat()), redirect_fn=lambda r: url_for("dist.route_detail", rid=r.id))
+    if request.args.get("salida") == "cuadro_xlsx":  # V23: formato del Excel de rutas de la empresa
+        return Response(rm.cuadro_empresa_excel(fecha), headers={"Content-Disposition": f"attachment; filename=rutas_{fecha:%Y%m%d}.xlsx"},
+                        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    if request.args.get("vista") == "cuadro":
+        return render_template("v23_cuadro.html", d=rm.cuadro_empresa(fecha), fecha=fecha)
     if request.args.get("salida") == "xlsx":
         return Response(rm.board_excel(fecha), headers={"Content-Disposition": f"attachment; filename=despacho_{fecha:%Y%m%d}.xlsx"},
                         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
@@ -143,8 +148,8 @@ def absences():
 
 
 # ------------------------------------------------------------------ devoluciones
+@bp.route("/devoluciones", methods=["GET", "POST"])
 @perm_required("devoluciones.ver", "devoluciones.recibir", "devoluciones.dejar_en_vehiculo")
-@perm_required("devoluciones.ver", "devoluciones.recibir")
 def returns():
     back = url_for("v22.returns", estado=request.args.get("estado", ""))
     if request.method == "POST":
@@ -236,5 +241,15 @@ def funnel():
     if g.user.role_code == "EJECUTIVO_VENTAS":
         vend = g.user.id
     vendedores = list(db().execute(select(User).where(User.role_code == "EJECUTIVO_VENTAS").order_by(User.nombre)).scalars())
-    return render_template("v22_embudo.html", d=tablero_gg.funnel(desde, hasta, vend), vendedores=vendedores,
+    d = tablero_gg.funnel(desde, hasta, vend)
+    from ..services import charts
+    t = d["tablero"]
+    graf = {"producto": charts.donut_parts(t["por_producto"], "oportunidades"),
+            "etapas": charts.funnel_shape([(f["nombre"], f["n"]) for f in d["filas"] if f["code"] not in ("OV", "ENTREGADAS")]),
+            "ejecutivo": charts.columns(t["por_ejecutivo"]["labels"], t["por_ejecutivo"]["series"], "", width=420, height=260,
+                                        title="Oportunidades por ejecutivo y etapa"),
+            "canal": charts.donut_parts(t["canales"], "clientes"), "tipo": charts.donut_parts(t["tipos"], "oportunidades"),
+            "cierre": charts.bars(t["cierres"], "", width=420, title="Motivo de cierre", color=6),
+            "dia": charts.line(t["por_dia"], "", title="Oportunidades por día y ejecutivo") if t["por_dia"] else None}
+    return render_template("v22_embudo.html", d=d, graf=graf, vendedores=vendedores,
                            vend=str(vend or ""), desde=desde, hasta=hasta)

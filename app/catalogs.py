@@ -2718,6 +2718,8 @@ PARAMS += [
      "Horas de una jornada normal por línea (para estimar horas extra frente a la demanda proyectada).", "PROPUESTO", V23),
     ("demanda_horas_extra_max_dia", 2, "float", "Producción",
      "Horas extra por día y línea que se pueden programar antes de recomendar un tercero.", "PROPUESTO", V23),
+    ("distribucion_kg_viaje_tercero", 2000, "float", "Distribución",
+     "Kg por viaje de transporte tercero de referencia para estimar cuántos viajes hacen falta.", "PROPUESTO", V23),
     ("distribucion_kg_viaje_ref", {}, "dict", "Distribución",
      "Kg por viaje de referencia por vehículo propio (si no se registra, se usa su capacidad real o el peso permitido).",
      "PROPUESTO", V23),

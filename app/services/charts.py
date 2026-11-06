@@ -151,3 +151,51 @@ def donut(pct, etiqueta="", size=150, colors=None):
                   f'<circle cx="{c}" cy="{c}" r="{r}" fill="none" stroke="{pal[0]}" stroke-width="16" stroke-dasharray="{hecho:.1f} {largo:.1f}"'
                   f' transform="rotate(-90 {c} {c})"/><text x="{c}" y="{c + 2}" text-anchor="middle" class="donut-v">{pct:g}%</text>'
                   f'<text x="{c}" y="{c + 20}" text-anchor="middle" class="ax">{escape(etiqueta)}</text></svg>')
+
+
+def donut_parts(items, etiqueta="Total", size=170, max_items=8):
+    """V23: anillo por partes [(nombre, valor)] con el total al centro y leyenda con % (tablero del embudo)."""
+    import math
+    items = [(n, v) for n, v in items if v][:max_items]
+    total = sum(v for _, v in items)
+    if not total:
+        return Markup('<p class="muted small">Sin datos para el periodo.</p>')
+    r, c = 58, size / 2
+    largo = 2 * math.pi * r
+    out = [f'<div class="donut-parts"><svg class="chart donut" viewBox="0 0 {size} {size}" width="{size}" role="img" '
+           f'aria-label="{escape(etiqueta)}: {_fmt(total, 0)}">']
+    acum = 0.0
+    for i, (n, v) in enumerate(items):
+        seg = largo * v / total
+        out.append(f'<circle cx="{c}" cy="{c}" r="{r}" fill="none" stroke="{SERIES[i % len(SERIES)]}" stroke-width="20" '
+                   f'stroke-dasharray="{seg:.2f} {largo:.2f}" stroke-dashoffset="{-acum:.2f}" transform="rotate(-90 {c} {c})">'
+                   f'<title>{escape(str(n))}: {_fmt(v, 0)} ({100 * v / total:.0f} %)</title></circle>')
+        acum += seg
+    out.append(f'<text x="{c}" y="{c + 4}" text-anchor="middle" class="donut-v">{_fmt(total, 0)}</text>'
+               f'<text x="{c}" y="{c + 22}" text-anchor="middle" class="ax">{escape(etiqueta)}</text></svg><ul class="legend-v">')
+    for i, (n, v) in enumerate(items):
+        out.append(f'<li><i style="background:{SERIES[i % len(SERIES)]}"></i>{escape(str(n))} <b>{_fmt(v, 0)}</b> '
+                   f'<span class="muted">{100 * v / total:.0f} %</span></li>')
+    out.append("</ul></div>")
+    return Markup("".join(out))
+
+
+def funnel_shape(stages, width=360):
+    """V23: embudo dibujado (trapecios) [(nombre, n)], como el tablero de prospectos."""
+    stages = [(n, v) for n, v in stages]
+    if not stages or not any(v for _, v in stages):
+        return Markup('<p class="muted small">Sin datos para el periodo.</p>')
+    alto = 34
+    h = alto * len(stages) + 10
+    out = [f'<svg class="chart" viewBox="0 0 {width} {h}" role="img" aria-label="Embudo">']
+    for i, (n, v) in enumerate(stages):
+        w1 = width * (1 - 0.7 * i / len(stages))
+        w2 = width * (1 - 0.7 * (i + 1) / len(stages))
+        y = 5 + i * alto
+        x1, x2 = (width - w1) / 2, (width - w2) / 2
+        out.append(f'<polygon points="{x1:.1f},{y} {x1 + w1:.1f},{y} {x2 + w2:.1f},{y + alto - 3} {x2:.1f},{y + alto - 3}" '
+                   f'fill="{SERIES[i % len(SERIES)]}"><title>{escape(str(n))}: {v}</title></polygon>'
+                   f'<text x="{width / 2}" y="{y + alto / 2 + 2}" text-anchor="middle" fill="#fff" font-size="12" '
+                   f'font-weight="700">{escape(str(n))}: {v}</text>')
+    out.append("</svg>")
+    return Markup("".join(out))

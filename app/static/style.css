@@ -714,3 +714,22 @@ table.kv td{overflow-wrap:anywhere;word-break:break-word}table.kv td.mono{white-
 .cons-areas details{border-bottom:1px solid var(--line,#e3e6ea);padding:6px 0}
 .cons-areas summary{cursor:pointer;display:flex;gap:8px;align-items:center}
 .cons-areas table{margin-top:6px}
+/* V23: informe de demanda (estilo informe para Gerencia) */
+.dir-head{background:#1f3864;color:#fff;border-radius:8px;padding:16px 20px;margin-bottom:12px}
+.dir-head h1{color:#fff;margin:0 0 4px}.dir-head p{margin:0;opacity:.85;font-size:.9em}
+.msg-clave{border-left:4px solid #1f3864;background:var(--soft,#eef2f7)}
+/* V23: cuadro de rutas en el formato de Distribución */
+.cuadro-rutas{border-collapse:collapse;width:100%;font-size:.85em;background:#fff;color:#111}
+.cuadro-rutas th,.cuadro-rutas td{border:1px solid #9aa0a6;padding:4px 6px;text-align:center}
+.cuadro-rutas thead th{background:#7dce8c;font-weight:700}
+.cuadro-rutas td.tr{background:#e7e9ec;font-weight:700;width:130px}
+.cuadro-rutas td.cita{background:#fbe3a1}
+.cuadro-rutas tr.sub td{font-weight:700;background:#f4f6f8}
+.cuadro-rutas tbody.bloque{border-top:3px solid #555}
+.donut-parts{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+.legend-v{list-style:none;margin:0;padding:0;font-size:.82em}
+.legend-v li{display:flex;gap:6px;align-items:center;margin:2px 0}
+.legend-v i{width:10px;height:10px;border-radius:50%;display:inline-block}
+.tablero-emb{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px}
+.tablero-emb .card h3{font-size:.95em;color:var(--brand,#1d4e89)}
+.tablero-emb .card p.lectura{font-size:.8em;margin-top:6px}

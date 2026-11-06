@@ -2,6 +2,22 @@
 {% block content %}<div class="page-head"><div><h1>Embudo comercial</h1><p class="sub">De la oportunidad a la OV entregada · {{ desde|d }} – {{ hasta|d }}</p></div></div>
 <form method="get" class="row card noprint"><div><label>Desde</label><input type="date" name="desde" value="{{ desde.isoformat() }}"></div><div><label>Hasta</label><input type="date" name="hasta" value="{{ hasta.isoformat() }}"></div>
 {% if user.role_code != 'EJECUTIVO_VENTAS' %}<div><label>Ejecutivo</label><select name="vendedor"><option value="">(todos)</option>{% for v in vendedores %}<option value="{{ v.id }}" {{ 'selected' if vend == v.id|string }}>{{ v.nombre }}</option>{% endfor %}</select></div>{% endif %}<div><button class="sec">Ver</button></div></form>
+{% set t = d.tablero %}
+<div class="kpis"><div class="kpi primary"><b>{{ t.kpis.oportunidades }}</b><span>Oportunidades (prospectos)</span><small>{{ t.kpis.abiertas }} abiertas</small></div>
+<div class="kpi"><b>{{ t.kpis.por_dia }}</b><span>Por día</span></div>
+<div class="kpi"><b>S/ {{ t.kpis.proyectado|n }}</b><span>Proyectado al mes</span><small>de las oportunidades</small></div>
+<div class="kpi"><b>{{ t.kpis.cotizaciones }}</b><span>Cotizaciones</span></div>
+<div class="kpi ok"><b>{{ t.kpis.ganadas }}</b><span>Ganadas</span><small>cierre {{ d.tasa_cierre if d.tasa_cierre is not none else '—' }} %</small></div></div>
+<div class="tablero-emb">
+<section class="card"><h3>Oportunidad por producto{% if t.sin_producto %} <span class="b ALTA" title="sin producto registrado">⚠ {{ t.sin_producto }}</span>{% endif %}</h3>{{ graf.producto }}<p class="lectura muted">{{ t.lectura_producto }}</p></section>
+<section class="card"><h3>Etapas</h3>{{ graf.etapas }}{% set f0 = d.filas|first %}{% set fg = d.filas|selectattr('code', 'equalto', 'GANADAS')|first %}<p class="lectura muted">De {{ f0.n }} oportunidades se ganaron {{ fg.n if fg else 0 }}; las OV del periodo se ven en el detalle.</p></section>
+<section class="card"><h3>Oportunidades por ejecutivo</h3>{{ graf.ejecutivo }}<p class="lectura muted">{{ t.lectura_ejecutivo }}</p></section>
+<section class="card"><h3>Tipo de cliente (canal)</h3>{{ graf.canal }}<p class="lectura muted">{{ t.lectura_canal }}</p></section>
+<section class="card"><h3>Cliente nuevo o venta adicional</h3>{{ graf.tipo }}</section>
+<section class="card"><h3>Motivo de cierre</h3>{{ graf.cierre }}<p class="lectura muted">{{ t.lectura_cierre }}</p></section>
+</div>
+{% if graf.dia %}<section class="card"><h3>Oportunidades por día y ejecutivo</h3>{{ graf.dia }}</section>{% endif %}
+<div class="section-title">Detalle del embudo y conversión</div>
 <div class="grid g2"><section class="card"><h3>Embudo</h3>
 {% set colores = ['#0b6b3a','#14804a','#1f9156','#3aa36a','#5bb47f','#2a6f97','#1d4e89'] %}{% set mx = (d.filas|map(attribute='n')|max) or 1 %}
 <div class="embudo">{% for f in d.filas %}{% if f.conv is not none %}<div class="conv">↓ {{ f.conv }} %</div>{% endif %}

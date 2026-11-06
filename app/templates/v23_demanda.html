@@ -1,0 +1,57 @@
+{% extends "base.html" %}{% from "_m.html" import b, ic, empty %}
+{% block content %}{% set c = d.comparativo %}{% set cu = d.cumplimiento %}{% set rq = d.requerimiento %}{% set pr = d.produccion %}{% set ds = d.distribucion %}
+<div class="dir-head"><h1>Demanda proyectada y requerimiento · {{ d.mes }}</h1><p>Operaciones · Informe para Gerencia y Directorio · {{ d.hoy|d }} · Base: proyección de Comercial, lista de materiales, stock, OV e historial de ventas del sistema</p></div>
+<form method="get" class="card row noprint"><div><label>Mes</label><select name="mes">{% for m in meses %}<option {{ 'selected' if m == d.mes }}>{{ m }}</option>{% endfor %}</select></div>
+<div><label>Cumplimiento por</label><select name="gran">{% for k, t in [('SEMANA','Semana'),('DIA','Día'),('MES','Mes')] %}<option value="{{ k }}" {{ 'selected' if gran == k }}>{{ t }}</option>{% endfor %}</select></div>
+<div><button class="sec">Ver</button></div><div class="grow"></div><div><a class="btn sec" href="?mes={{ d.mes }}&gran={{ gran }}&formato=pdf">{{ ic('download') }} PDF</a> <a class="btn sec" href="?mes={{ d.mes }}&gran={{ gran }}&formato=xlsx">{{ ic('download') }} Excel</a></div></form>
+
+<div class="kpis">
+<div class="kpi"><b>{{ c.total_kg|n }} kg</b><span>Proyección de Comercial</span><small>{{ c.sku }} SKU</small></div>
+<div class="kpi {{ 'warn' if c.var_prom3 and c.var_prom3 > 15 }}"><b>{{ '%+.0f'|format(c.var_prom3) ~ ' %' if c.var_prom3 is not none else '—' }}</b><span>vs prom. 3 meses</span><small>prom. {{ c.prom3_kg|n }} kg/mes</small></div>
+<div class="kpi"><b>{{ '%+.0f'|format(c.var_anio) ~ ' %' if c.var_anio is not none else '—' }}</b><span>vs mismo mes año anterior</span><small>{{ c.anio_ant_kg|n }} kg</small></div>
+<div class="kpi {{ '' if cu.total.cumplimiento is none else ('ok' if cu.total.cumplimiento >= 90 else 'warn') }}"><b>{{ cu.total.cumplimiento if cu.total.cumplimiento is not none else '—' }}{{ ' %' if cu.total.cumplimiento is not none }}</b><span>Cumplimiento a la fecha</span><small>despachado ÷ proyectado hasta hoy</small></div>
+<div class="kpi {{ 'err' if pr.kg_sin_capacidad }}"><b>{{ pr.kg_sin_capacidad|n }} kg</b><span>Sin capacidad de producción</span><small>de {{ pr.kg_a_producir|n }} kg a producir</small></div>
+<div class="kpi {{ 'err' if ds.faltante_kg }}"><b>{{ ds.uso_pct if ds.uso_pct is not none else '—' }} %</b><span>Uso de la flota propia</span><small>{{ ds.kg_por_despachar|n }} kg por despachar</small></div>
+</div>
+
+<section class="card msg-clave"><h3>Mensaje clave</h3><ul>{% for m in d.mensajes %}<li>{{ m }}</li>{% endfor %}</ul></section>
+
+<h2 class="sec-title">1. Qué proyecta Comercial</h2>
+<div class="grid g2"><div class="card"><div class="tw"><table class="list small"><thead><tr><th>Tipo</th><th class="r">SKU</th><th class="r">kg {{ d.mes }}</th><th class="r">%</th><th class="r">Prom. 3M</th><th class="r">Var.</th><th class="r">Año ant.</th></tr></thead>
+{% for f in c.filas %}<tr><td>{{ f.segmento }}</td><td class="r">{{ f.sku }}</td><td class="r">{{ f.proyectado_kg|n }}</td><td class="r">{{ f.pct }} %</td><td class="r">{{ f.prom3_kg|n }}</td><td class="r {{ 'err' if f.var_prom3 and f.var_prom3 >= 50 }}">{{ '%+.0f'|format(f.var_prom3) ~ ' %' if f.var_prom3 is not none else '—' }}</td><td class="r">{{ f.anio_ant_kg|n }}</td></tr>{% else %}<tr><td colspan="7" class="muted">Sin proyección cargada para el mes.</td></tr>{% endfor %}
+<tr><th>Total</th><th class="r">{{ c.sku }}</th><th class="r">{{ c.total_kg|n }}</th><th class="r">100 %</th><th class="r">{{ c.prom3_kg|n }}</th><th class="r">{{ '%+.0f'|format(c.var_prom3) ~ ' %' if c.var_prom3 is not none else '—' }}</th><th class="r">{{ c.anio_ant_kg|n }}</th></tr></table></div>
+{% if c.max_mes %}<p class="small muted">Mes más alto de los últimos 12: {{ c.max_mes }} con {{ c.max_kg|n }} kg.</p>{% endif %}</div>
+<div class="card"><h3>Principales SKU proyectados</h3><table class="small">{% for t in c.top %}<tr><td><b>{{ t.code }}</b></td><td>{{ t.descripcion }}</td><td class="muted">{{ t.segmento }}</td><td class="r">{{ t.kg|n }} kg</td></tr>{% endfor %}</table></div></div>
+
+<h2 class="sec-title">2. Cumplimiento de la demanda por {{ {'SEMANA':'semana','DIA':'día','MES':'mes'}[gran] }}</h2>
+<div class="card">{{ graf }}
+<div class="tw"><table class="list small"><thead><tr><th>Periodo</th><th>Estado</th><th class="r">Proyectado kg</th><th class="r">Pedido kg</th><th class="r">Despachado kg</th><th class="r">Avance del pedido</th><th class="r">Cumplimiento</th></tr></thead>
+{% for f in cu.filas %}<tr><td>{{ f.periodo }}</td><td>{{ f.estado }}</td><td class="r">{{ f.proyectado_kg|n }}</td><td class="r">{{ f.pedido_kg|n }}</td><td class="r">{{ f.despachado_kg|n }}</td><td class="r">{{ f.avance_pedido if f.avance_pedido is not none else '—' }} %</td><td class="r {{ 'err' if f.cumplimiento is not none and f.cumplimiento < 80 }}">{{ (f.cumplimiento ~ ' %') if f.cumplimiento is not none else '—' }}</td></tr>{% endfor %}
+<tr><th colspan="2">Total</th><th class="r">{{ cu.total.proyectado_kg|n }}</th><th class="r">{{ cu.total.pedido_kg|n }}</th><th class="r">{{ cu.total.despachado_kg|n }}</th><th class="r">{{ cu.total.avance_pedido or 0 }} %</th><th class="r">{{ cu.total.cumplimiento if cu.total.cumplimiento is not none else '—' }} % a hoy</th></tr></table></div>
+<p class="small muted">Proyectado del periodo = proyección del mes × días del periodo ÷ días del mes. Cumplimiento = despachado ÷ proyectado hasta hoy (los periodos por venir solo muestran el avance de los pedidos).</p></div>
+<div class="card"><h3>Productos con menor cumplimiento</h3><div class="tw"><table class="list small"><thead><tr><th>Producto</th><th>Tipo</th><th class="r">Proyectado</th><th class="r">Pedido</th><th class="r">Despachado</th><th class="r">Cumplimiento</th><th class="r">Brecha</th></tr></thead>
+{% for p in cu.productos[:15] %}<tr><td><b>{{ p.code }}</b> {{ p.descripcion }}</td><td>{{ p.segmento }}</td><td class="r">{{ p.proyectado|n }}</td><td class="r">{{ p.pedido|n }}</td><td class="r">{{ p.despachado|n }}</td><td class="r">{{ (p.cumplimiento ~ ' %') if p.cumplimiento is not none else '—' }}</td><td class="r">{{ p.brecha|n }}</td></tr>{% endfor %}</table></div></div>
+
+<h2 class="sec-title">3. Qué necesitamos tener (materia prima, granel e insumos)</h2>
+<div class="grid g2"><div class="card"><p class="small muted">Explosión de la lista de materiales (PT → materia prima, granel, envases y etiquetas) con el stock disponible, lo que llega en el mes y una reserva de {{ rq.analisis.reserva_dias|int }} días.</p>
+<table class="list small"><thead><tr><th>Tipo de ítem</th><th class="r">Ítems por comprar</th><th class="r">Requerido</th><th class="r">Falta comprar</th></tr></thead>{% for g in rq.por_tipo %}<tr><td>{{ g.tipo }}</td><td class="r">{{ g.items }}</td><td class="r">{{ g.requerido|n }}</td><td class="r err">{{ g.faltante|n }}</td></tr>{% else %}<tr><td colspan="4" class="muted">El stock y lo que llega cubren lo requerido.</td></tr>{% endfor %}</table>
+<p class="small">Unidades de producto terminado a producir: <b>{{ rq.unidades_a_producir|n }}</b>.</p></div>
+<div class="card"><h3>Mayores faltantes y fecha máxima de pedido</h3><div class="tw"><table class="list small"><thead><tr><th>Ítem</th><th class="r">Requerido</th><th class="r">Disponible</th><th class="r">Falta</th><th>Pedir hasta</th></tr></thead>
+{% for x in rq.faltantes %}<tr><td><b>{{ x.code }}</b> {{ x.descripcion }}</td><td class="r">{{ x.requerido|n }}</td><td class="r">{{ x.disponible|n }}</td><td class="r err">{{ x.faltante|n }}</td><td class="{{ 'err' if x.vencida }}">{{ x.fecha_maxima|d if x.fecha_maxima else 'sin plazo' }}{{ ' · VENCIDA' if x.vencida }}</td></tr>{% else %}<tr><td colspan="5" class="muted">Sin faltantes.</td></tr>{% endfor %}</table></div></div></div>
+
+<h2 class="sec-title">4. Cómo debe organizarse Producción</h2>
+<div class="card"><p class="small muted">{{ pr.kg_a_producir|n }} kg a producir en {{ pr.dias_habiles }} días hábiles · jornada {{ pr.jornada|int }} h · máximo {{ pr.max_extra }} h extra por día antes de recomendar un tercero.</p>
+<div class="tw"><table class="list small"><thead><tr><th>Línea</th><th class="r">kg/día</th><th class="r">kg asignados</th><th class="r">Uso del mes</th><th class="r">kg sin capacidad</th><th class="r">Horas extra (total / día)</th><th>Recomendación</th></tr></thead>
+{% for l in pr.lineas %}<tr><td>{{ l.linea }}</td><td class="r">{{ l.kg_dia|n }}</td><td class="r">{{ l.kg_asignado|n }}</td><td class="r {{ 'err' if l.uso_pct and l.uso_pct >= 100 }}">{{ l.uso_pct }} %</td><td class="r {{ 'err' if l.kg_sin_capacidad }}">{{ l.kg_sin_capacidad|n }}</td><td class="r">{{ l.horas_extra }} / {{ l.horas_extra_dia }}</td><td>{{ l.recomendacion }}</td></tr>{% else %}<tr><td colspan="7" class="muted">Nada por producir en el mes.</td></tr>{% endfor %}</table></div>
+{% if pr.deficit %}<p class="small">Sin línea o sin capacidad: {% for x in pr.deficit[:8] %}{{ x.code }} ({{ x.kg|n }} kg, {{ x.motivo }}){{ '; ' if not loop.last }}{% endfor %}</p>{% endif %}</div>
+
+<h2 class="sec-title">5. Carga de Distribución</h2>
+<div class="card"><div class="kpis"><div class="kpi"><b>{{ ds.kg_por_despachar|n }} kg</b><span>Por despachar</span><small>proyección restante {{ ds.kg_proyeccion_restante|n }} · OV abiertas {{ ds.kg_ov_abiertas|n }}</small></div>
+<div class="kpi"><b>{{ ds.capacidad_periodo|n }} kg</b><span>Capacidad de la flota propia</span><small>{{ ds.capacidad_dia|n }} kg/día × {{ ds.dias_habiles }} días</small></div>
+<div class="kpi {{ 'err' if ds.faltante_kg else 'ok' }}"><b>{{ ds.faltante_kg|n }} kg</b><span>Falta capacidad</span><small>{{ ds.recomendacion }}</small></div></div>
+<p class="small muted">Flota propia considerada: {% for p, c2 in ds.flota %}{{ p }} ({{ c2|n }} kg){{ ', ' if not loop.last }}{% endfor %}. Un viaje diario por unidad.</p></div>
+
+<h2 class="sec-title">6. Puntos a validar y próximos pasos</h2>
+<div class="card"><table class="small">{% for t, x in d.validar %}<tr><td class="err"><b>{{ t }}</b></td><td>{{ x }}</td></tr>{% else %}<tr><td class="muted">Sin observaciones.</td></tr>{% endfor %}</table>
+<ol class="small">{% for p in d.pasos %}<li>{{ p }}</li>{% endfor %}</ol></div>
+{% endblock %}

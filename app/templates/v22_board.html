@@ -1,6 +1,7 @@
 {% extends "base.html" %}{% from "_m.html" import b, csrf, ic, empty %}
 {% block content %}<div class="page-head"><div><h1>Cuadro de despacho</h1><p class="sub">{{ fecha|d }} · por vehículo: quién lo lleva, clientes, OV, guías, peso y valor</p></div>
 <div class="row noprint"><form method="get" class="row"><div><label>Fecha</label><input type="date" name="fecha" value="{{ fecha.isoformat() }}"></div><div><button class="sec">Ver</button></div></form>
+<a class="btn sec" href="{{ url_for('v22.board', fecha=fecha.isoformat(), vista='cuadro') }}">{{ ic('layers') }} Formato cuadro de rutas</a>
 <a class="btn sec" href="{{ url_for('v22.board', fecha=fecha.isoformat(), salida='xlsx') }}">{{ ic('download') }} Excel</a>
 <button class="btn sec" onclick="window.print()" type="button">{{ ic("file") }} Imprimir</button>
 {% if can('distribucion.programar') %}<button class="btn" data-open="dlg-ruta">{{ ic('plus') }} Nueva ruta manual</button>{% endif %}</div></div>

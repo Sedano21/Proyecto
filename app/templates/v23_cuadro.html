@@ -1,0 +1,15 @@
+{% extends "base.html" %}{% from "_m.html" import ic, empty %}
+{% block content %}<div class="page-head noprint"><div><h1>Cuadro de rutas</h1><p class="sub">Formato del cuadro diario de Distribución: por transporte, cliente, peso, dirección con el número de viaje y hora de cita; con guía y valor según la OV.</p></div>
+<div class="row"><form method="get" class="row"><input type="hidden" name="vista" value="cuadro"><div><label>Fecha</label><input type="date" name="fecha" value="{{ fecha.isoformat() }}"></div><div><button class="sec">Ver</button></div></form>
+<a class="btn sec" href="{{ url_for('v22.board', fecha=fecha.isoformat()) }}">Vista detallada</a>
+<a class="btn sec" href="{{ url_for('v22.board', fecha=fecha.isoformat(), salida='cuadro_xlsx') }}">{{ ic('download') }} Excel</a>
+<button class="btn sec" type="button" onclick="window.print()">{{ ic('file') }} Imprimir</button></div></div>
+{% if d.grupos %}<div class="tw"><table class="cuadro-rutas">
+<thead><tr><th rowspan="3" class="tr">TRANSPORTE</th><th colspan="7">{{ d.dia }}</th></tr><tr><th colspan="7">{{ fecha.strftime('%d/%m/%Y') }}</th></tr>
+<tr><th>CLIENTE</th><th>PESO</th><th>DIRECCIÓN</th><th>HR CITA</th><th>GUÍA</th><th>OV</th><th>VALOR S/</th></tr></thead>
+{% for g in d.grupos %}<tbody class="bloque">{% for x in g.filas %}<tr>{% if loop.first %}<td class="tr" rowspan="{{ g.filas|length + 1 }}">{{ g.transporte }}<br><small>{{ g.viajes|length }} viaje(s)</small></td>{% endif %}
+<td>{{ x.cliente }}</td><td class="r">{{ x.peso|n }}</td><td>{{ x.direccion }}</td><td class="cita">{{ x.cita }}</td><td>{{ x.guias|join(', ') }}</td><td>{% if x.ov %}<a href="{{ url_for('dist.route_detail', rid=x.ruta) }}">{{ x.ov }}</a>{% endif %}</td><td class="r">{{ x.valor|n if x.valor else '' }}</td></tr>{% endfor %}
+<tr class="sub"><td>Total del transporte</td><td class="r">{{ g.peso|n }}</td><td colspan="4"></td><td class="r">{{ g.valor|n }}</td></tr></tbody>{% endfor %}
+<tfoot><tr><th colspan="2">TOTAL DEL DÍA · {{ d.tot.rutas }} ruta(s) · {{ d.tot.clientes }} cliente(s)</th><th class="r">{{ d.tot.peso|n }}</th><th colspan="4"></th><th class="r">{{ d.tot.valor|n }}</th></tr></tfoot></table></div>
+{% else %}{{ empty('No hay rutas programadas para el día.', 'route') }}{% endif %}
+{% endblock %}

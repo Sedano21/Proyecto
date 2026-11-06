@@ -46,6 +46,8 @@ def register_views(app):
     from . import operacion_v22, planta_v22  # V22: rutas manuales, personal, devoluciones, tickets, mantenimiento y limpieza
     app.register_blueprint(operacion_v22.bp)
     app.register_blueprint(planta_v22.bp)
+    from . import analisis_v23  # V23: demanda proyectada (cumplimiento, materiales, carga) e informe para el Directorio
+    app.register_blueprint(analisis_v23.bp)
 
     @app.after_request
     def _aviso_descarga(resp):
@@ -353,6 +355,8 @@ def alerts():
 def alerts_management():
     """V23: bandeja agrupada de las gerencias (entidades máximas): prioritarias de sus áreas, las que deben accionar y
     las informativas consolidadas por área y tipo."""
+    if not alert_svc.es_gerencia_consolidada(g.user):
+        return redirect(url_for("main.alerts"))
     return render_template("alerts_gerencia.html", d=alert_svc.gerencia_bandeja(g.user))
 
 

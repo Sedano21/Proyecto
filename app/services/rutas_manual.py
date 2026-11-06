@@ -494,3 +494,99 @@ def open_transfers():
         Route.estado.in_(("PROPUESTA", "CONFIRMADA", "EN_RUTA")))).scalars()}
     return [t for t in db().execute(select(Transfer).where(Transfer.estado.in_(("AUTORIZADO", "SOLICITADO")))
                                     .order_by(Transfer.id)).scalars() if t.id not in en_ruta]
+
+
+# ------------------------------------------------------------------ V23: cuadro en el formato de la empresa
+DIAS_SEMANA = ["LUNES", "MARTES", "MIÉRCOLES", "JUEVES", "VIERNES", "SÁBADO", "DOMINGO"]
+ORDINAL_VIAJE = {1: "1ER VIAJE", 2: "2DO VIAJE", 3: "3ER VIAJE", 4: "4TO VIAJE", 5: "5TO VIAJE"}
+
+
+def cuadro_empresa(fecha):
+    """V23 (06-nov-2026): el cuadro diario de rutas en el formato del Excel de Distribución: un bloque por TRANSPORTE
+    (unidad propia, otro trabajador o EXTERNO) con CLIENTE, PESO, DIRECCIÓN (con el número de viaje) y HR CITA; además la
+    guía y el valor según la OV. Varias rutas de la misma unidad en el día son 1er, 2do y 3er viaje."""
+    d = daily_board(fecha)
+    grupos = {}
+    for f in sorted(d["filas"], key=lambda x: (x["r"].hora_salida_prog or "99:99", x["r"].id)):
+        r, t = f["r"], f["r"].transportista or {}
+        if t.get("tipo") == "TERCERO" or (r.requiere_externo and r.vehicle is None) or (r.vehicle is not None and not r.vehicle.propio):
+            clave = "EXTERNO"
+        elif t.get("tipo") == "TRABAJADOR":
+            clave = f"{(t.get('vehiculo') or 'VEHÍCULO').upper()} {t.get('placa') or ''}".strip() + f" · {t.get('nombre', '')}"
+        elif r.vehicle is not None:
+            clave = f"{(r.vehicle.marca or r.vehicle.descripcion or '').upper()[:18]} {r.vehicle.placa}".strip()
+        else:
+            clave = "POR ASIGNAR"
+        g = grupos.setdefault(clave, {"transporte": clave, "viajes": [], "filas": [], "peso": 0.0, "valor": 0.0})
+        n = len(g["viajes"]) + 1
+        g["viajes"].append(r.id)
+        viaje = ORDINAL_VIAJE.get(n, f"{n}° VIAJE")
+        for cli, items in f["clientes"].items():
+            for it in items:
+                o = it["stop"].order
+                direc = (o.lugar_entrega or o.direccion or "").strip()
+                dist = (it["distrito"] or "").upper()
+                texto = f"{dist}{' – ' + direc if direc and dist not in direc.upper() else ''}".strip(" –") or "POR DEFINIR"
+                g["filas"].append({"cliente": cli, "peso": round(it["peso"] or 0, 1), "direccion": f"{texto} ({viaje})",
+                                   "cita": (o.hora_cita or "") + (" ✓" if o.cita_confirmada else ""), "guias": it["guias"],
+                                   "ov": it["ov"], "valor": it["valor"], "ruta": r.id, "viaje": viaje, "estado": it["estado"]})
+                g["peso"] += it["peso"] or 0
+                g["valor"] += it["valor"] or 0
+        for tr in f["traslados"]:
+            peso = tr.peso_kg or 0
+            dest = tr.transfer.destino_code if getattr(tr, "transfer", None) is not None else ""
+            g["filas"].append({"cliente": f"TRASLADO ENTRE ALMACENES → {dest}",
+                               "peso": round(peso or 0, 1), "direccion": f"{dest} ({viaje})", "cita": "",
+                               "guias": [], "ov": "", "valor": 0.0, "ruta": r.id, "viaje": viaje, "estado": ""})
+            g["peso"] += peso or 0
+    orden = sorted(grupos.values(), key=lambda g: (g["transporte"] == "EXTERNO", g["transporte"] == "POR ASIGNAR", g["transporte"]))
+    return {"fecha": fecha, "dia": DIAS_SEMANA[fecha.weekday()], "grupos": orden, "tot": d["tot"]}
+
+
+def cuadro_empresa_excel(fecha):
+    """Excel con el mismo formato: encabezado verde con el día, transporte combinado por bloque y HR CITA en amarillo."""
+    from io import BytesIO
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    d = cuadro_empresa(fecha)
+    wb = Workbook()
+    ws = wb.active
+    ws.title = f"{fecha:%d-%m}"
+    verde = PatternFill("solid", fgColor="7DCE8C")
+    amarillo = PatternFill("solid", fgColor="FBE3A1")
+    gris = PatternFill("solid", fgColor="E7E9EC")
+    fino = Side(style="thin", color="999999")
+    borde = Border(left=fino, right=fino, top=fino, bottom=fino)
+    cab = ["TRANSPORTE", "CLIENTE", "PESO", "DIRECCIÓN", "HR CITA", "GUÍA", "OV", "VALOR S/"]
+    ws.merge_cells("A1:H1")
+    ws["A1"] = d["dia"]
+    ws.merge_cells("A2:H2")
+    ws["A2"] = f"{fecha:%d/%m/%Y}"
+    ws.append(cab)
+    for row in (1, 2, 3):
+        for c in ws[row]:
+            c.fill, c.font, c.border = verde, Font(bold=True), borde
+            c.alignment = Alignment(horizontal="center", vertical="center")
+    fila = 4
+    for g in d["grupos"]:
+        ini = fila
+        for x in g["filas"] or [{"cliente": "", "peso": "", "direccion": "", "cita": "", "guias": [], "ov": "", "valor": ""}]:
+            ws.append(["", x["cliente"], x["peso"], x["direccion"], x["cita"], ", ".join(x["guias"]), x["ov"], x["valor"]])
+            for c in ws[fila]:
+                c.border = borde
+                c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+            ws.cell(fila, 5).fill = amarillo
+            fila += 1
+        ws.append(["", "Total del transporte", round(g["peso"], 1), "", "", "", "", round(g["valor"], 2)])
+        for c in ws[fila]:
+            c.font, c.border = Font(bold=True), borde
+        fila += 1
+        ws.merge_cells(start_row=ini, start_column=1, end_row=fila - 1, end_column=1)
+        a = ws.cell(ini, 1)
+        a.value, a.fill, a.font = g["transporte"], gris, Font(bold=True)
+        a.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    for col, w in zip("ABCDEFGH", (18, 34, 10, 48, 12, 18, 14, 12)):
+        ws.column_dimensions[col].width = w
+    out = BytesIO()
+    wb.save(out)
+    return out.getvalue()

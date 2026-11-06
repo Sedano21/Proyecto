@@ -181,4 +181,71 @@ def funnel(desde, hasta, vendedor_id=None):
             for k, v in sorted(por_vend.items(), key=lambda x: -x[1]["venta"])]
     tasa = round(100 * len(etapa["GANADAS"]) / len(opps), 1) if opps else None
     return {"filas": filas, "perdidas": len(perdidas), "motivos": motivos, "vendedores": vend, "tasa_cierre": tasa,
-            "desde": desde, "hasta": hasta}
+            "desde": desde, "hasta": hasta, "tablero": _tablero_embudo(opps, desde, hasta, vendedor_id)}
+
+
+def _tablero_embudo(opps, desde, hasta, vendedor_id=None):
+    """V23: datos del tablero del embudo (adaptado del tablero de prospectos que compartió la empresa): oportunidades
+    por producto, por etapa, por ejecutivo, por tipo de cliente (canal), motivo de cierre y oportunidades por día y
+    ejecutivo; cada bloque con su lectura («mayor …»)."""
+    from .prices import channel_of
+    dias = max((hasta - desde).days + 1, 1)
+    qq = select(Quote).where(Quote.fecha >= desde, Quote.fecha <= hasta)
+    cot = list(db().execute(qq).scalars())
+    if vendedor_id:
+        ids = {o.id for o in opps}
+        cot = [q for q in cot if q.opportunity_id in ids]
+    prods = Counter()
+    sin_prod = 0
+    for o in opps:
+        cods = [x.get("product_code") for x in (o.detalle_productos or []) if x.get("product_code")]
+        if not cods and (o.productos or "").strip():
+            cods = [t.strip()[:30] for t in o.productos.split(",") if t.strip()]
+        if not cods:
+            sin_prod += 1
+        for c in cods:
+            prods[c] += 1
+    nombres = {}
+    from ..models import Product
+    for c in prods:
+        p = db().get(Product, c)
+        nombres[c] = f"{c} {p.descripcion[:22]}" if p else c
+    por_producto = [(nombres[c], n) for c, n in prods.most_common(8)]
+    estados = ["ABIERTA", "COTIZADA", "NEGOCIACION", "GANADA", "PERDIDA"]
+    por_ej = defaultdict(Counter)
+    for o in opps:
+        por_ej[o.vendedor.nombre if o.vendedor else "Sin ejecutivo"][o.estado] += 1
+    ejecutivos = sorted(por_ej)
+    canales = Counter((channel_of(o.customer) if o.customer else "") or "Sin canal" for o in opps)
+    tipos = Counter({"NUEVO": "Cliente nuevo", "ADICIONAL": "Venta adicional"}.get(o.tipo, o.tipo or "—") for o in opps)
+    cierres = Counter()
+    for o in opps:
+        if o.estado in ("GANADA", "PERDIDA"):
+            cierres[("Ganada: " if o.estado == "GANADA" else "Perdida: ") + ((o.motivo_cierre or "sin motivo").strip()[:40])] += 1
+    serie_dias = [desde + timedelta(days=i) for i in range(dias)] if dias <= 62 else []
+    por_dia = defaultdict(Counter)
+    for o in opps:
+        por_dia[o.vendedor.nombre if o.vendedor else "Sin ejecutivo"][o.creado_ts.date()] += 1
+
+    def mayor(cnt, total, que):
+        if not cnt or not total:
+            return ""
+        k, v = max(cnt, key=lambda x: x[1]) if isinstance(cnt, list) else cnt.most_common(1)[0]
+        return f"Mayor {que}: {k} con {v} ({100 * v / total:.1f} % de {total})."
+    total = len(opps)
+    return {
+        "kpis": {"oportunidades": total, "por_dia": round(total / dias, 1),
+                 "proyectado": round(sum(o.proyeccion_mensual or 0 for o in opps), 2), "cotizaciones": len(cot),
+                 "ganadas": sum(1 for o in opps if o.estado == "GANADA"),
+                 "abiertas": sum(1 for o in opps if o.estado in ("ABIERTA", "COTIZADA", "NEGOCIACION"))},
+        "por_producto": por_producto, "sin_producto": sin_prod,
+        "lectura_producto": mayor(por_producto, sum(prods.values()), "producto") +
+        (f" Alerta: {sin_prod} oportunidad(es) sin producto registrado no se cuentan." if sin_prod else ""),
+        "por_ejecutivo": {"labels": ejecutivos, "series": [(e.title(), [por_ej[v][e] for v in ejecutivos]) for e in estados
+                                                           if any(por_ej[v][e] for v in ejecutivos)]},
+        "lectura_ejecutivo": mayor(Counter({v: sum(c.values()) for v, c in por_ej.items()}), total, "ejecutivo"),
+        "canales": canales.most_common(8), "lectura_canal": mayor(canales, total, "tipo de cliente"),
+        "tipos": tipos.most_common(), "cierres": cierres.most_common(8),
+        "lectura_cierre": mayor(cierres, sum(cierres.values()), "motivo"),
+        "por_dia": [(v, [(f"{d:%d}", c[d]) for d in serie_dias]) for v, c in sorted(por_dia.items())] if serie_dias else [],
+    }

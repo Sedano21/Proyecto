@@ -27,6 +27,7 @@
       {{ nl(url_for('main.alerts'), 'bell', 'Alertas y tareas', ('<span class="count" aria-label="' ~ alertas_abiertas ~ ' abiertas">' ~ alertas_abiertas ~ '</span>')|safe if alertas_abiertas else '') }}
       {% if ve('alertas.ver') or ve('informes.comercial') or ve('informes.reempaque') or ve('informes.produccion') or ve('informes.distribucion') or ve('informes.almacen') %}{{ nl(url_for('rep.home'), 'chart', 'Informes') }}{% endif %}
       {% if ve('sugerencias.ver') %}{{ nl(url_for('v22.suggestions'), 'trend', 'Sugerencias de eficiencia') }}{% endif %}
+      {% if ve('demanda.analisis') %}{{ nl(url_for('v23.demand'), 'gauge', 'Demanda proyectada') }}{% endif %}
       {% if ve('finanzas.gastos_areas') %}{{ nl(url_for('v22.area_spending'), 'scale', 'Gastos y desempeño por área') }}{% endif %}
       {% if ve('asistencia.todas') and not ve('ov.ver') %}{{ nl(url_for('prod.attendance'), 'users', 'Asistencia por área') }}{{ nl(url_for('v22.absences'), 'calendar', 'Disponibilidad del personal') }}{% endif %}
     </div>

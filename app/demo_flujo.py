@@ -147,6 +147,9 @@ def seed_flow(upload_dir=None, hoy=None):
         s.flush()
     no_compraba = {c.id: pts[i % len(pts)].code for i, c in enumerate(clientes)}
     dejaron = {c.id for c in clientes[-2:]}  # dos clientes que dejaron de comprar hace más de un mes (recompra)
+    for o in s.execute(select(SalesOrder).where(SalesOrder.customer_id.in_(dejaron),
+                                                SalesOrder.fecha_emision >= hoy - timedelta(days=40))).scalars():
+        o.customer_id = clientes[0].id  # sus OV recientes del día de operación pasan a otro cliente
 
     # ---------------------------------------------------------------- historial (~75 días) con todos los desenlaces
     hist = {"ok": 0, "tarde": 0, "parcial": 0, "anulada": 0, "renegociada": 0}
@@ -284,7 +287,8 @@ def seed_flow(upload_dir=None, hoy=None):
             SalesOrder.fecha_compromiso >= hoy - timedelta(days=30))).scalars())
         vendido[p.code] = q
     n_proy = 0
-    for k, factor in ((-2, 1.0), (-1, 1.05), (0, 1.25), (1, 1.3)):
+    # el mes siguiente se proyecta muy por encima (campaña) para revisar el caso de horas extra, tercero y compras
+    for k, factor in ((-2, 1.0), (-1, 1.05), (0, 1.25), (1, 12.0)):
         m = mes_rel(k)
         if s.execute(select(DemandForecast).where(DemandForecast.mes == m)).first():
             continue
@@ -347,6 +351,16 @@ def seed_flow(upload_dir=None, hoy=None):
                               proveedor=f"Proveedor nacional demo {i + 1}", fecha_prevista=hoy + timedelta(days=5 + 3 * i),
                               warehouse_code="EXT-002", creado_por=ga.id if ga else None))
     s.flush()
+
+    # ---------------------------------------------------------------- oportunidades con su producto (tablero del embudo)
+    from .models import Opportunity
+    for i, op in enumerate(s.execute(select(Opportunity).order_by(Opportunity.id)).scalars()):
+        if not op.detalle_productos:
+            p = pts[i % len(pts)] if i % 4 else graneles[i % len(graneles)]
+            op.detalle_productos = [{"product_code": p.code, "kg_mes": 500 + 250 * (i % 5),
+                                     "soles_mes": round((op.proyeccion_mensual or 3000) * 0.8, 2)}]
+            if i % 3 == 0:
+                op.tipo = "ADICIONAL"
 
     # ---------------------------------------------------------------- alertas para revisar la bandeja de gerencia
     from .services import alerts

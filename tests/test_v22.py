@@ -168,7 +168,8 @@ def test_devolucion_se_recibe_contra_la_guia_con_evidencia(s, U, new_order, monk
     monkeypatch.setattr(devoluciones, "now", lambda: datetime.combine(date.today(), datetime.min.time()).replace(hour=19))
     r = devoluciones.create_for(o, U("coord.distribucion"), "PARCIAL", lineas=[{"line_id": l.id, "devuelto": 4}])
     s.commit()
-    assert r.plazo > date.today() and alerts_of(s, "DEVOLUCION_POR_RECIBIR", r.id)  # llegó fuera de horario: al día siguiente
+    # V23: sin hora de corte (aunque llegue a las 19:00, se recibe cuando llega)
+    assert r.plazo == date.today() and alerts_of(s, "DEVOLUCION_POR_RECIBIR", r.id)
     datos = {str(l.id): {"cantidad": 3, "presentacion_ok": "1", "danado": "1", "detalle": "saco roto"}}
     with pytest.raises(BusinessError, match="foto o video"):
         devoluciones.receive(U("coord.almacen"), r, datos)
@@ -179,12 +180,13 @@ def test_devolucion_se_recibe_contra_la_guia_con_evidencia(s, U, new_order, monk
     assert r.estado == "OBSERVADA" and len(difs) == 2 and alerts_of(s, "DEVOLUCION_OBSERVADA", r.id)
 
 
-def test_devolucion_vencida_alerta(s, U, new_order):
+def test_devolucion_sin_plazo_no_vence(s, U, new_order):
+    """V23: ya no hay hora de corte ni vencimiento; si no hay personal se reporta y queda en el vehículo (test_v23)."""
     from app.services import devoluciones
     o = new_order([("PT-901", 10)])
     r = devoluciones.create_for(o, U("coord.distribucion"), "PARCIAL", lineas=[{"line_id": o.lines[0].id, "devuelto": 2}])
-    r.plazo = date.today() - timedelta(days=1)
-    assert devoluciones.check_overdue() == 1 and alerts_of(s, "DEVOLUCION_VENCIDA", r.id)
+    r.plazo = date.today() - timedelta(days=3)
+    assert devoluciones.check_overdue() == 0 and not alerts_of(s, "DEVOLUCION_VENCIDA", r.id)
 
 
 # ------------------------------------------------------------------ tickets
