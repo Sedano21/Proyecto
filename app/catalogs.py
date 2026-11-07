@@ -2828,3 +2828,19 @@ PARAMS += [
 ]
 DEMO_USERS_V24 = [("costos.presupuestos", "Costos y Presupuestos", CYP),
                   ("asist.importaciones", "Asistente de Importaciones", AIM)]
+
+# ----------------------------------------------------------------------------------------------------------------------
+# Simulación integral de operaciones (07-nov-2026): solo ENTORNO DE PRUEBAS
+SIMV = "Simulación integral de operaciones (07-nov-2026)"
+for _code, _n, _t, _roles in [
+    ("simulacion.gestionar", "Generar, validar y limpiar la simulación de 14 días (solo entorno de pruebas)", "administracion",
+     ["SISTEMAS"]),
+    ("simulacion.ver", "Ver el escenario simulado, su validación y el informe (solo entorno de pruebas)", "consulta",
+     ["SISTEMAS", "JEFE_OPERACIONES", "JEFE_LOGISTICA"]),
+]:
+    if not any(p[0] == _code for p in PERMISSIONS):
+        PERMISSIONS.append((_code, _n, "Sistemas", _t))
+    for _r in _roles + ["GERENCIA_GENERAL", GGA]:
+        ROLE_PERMISSIONS.setdefault(_r, [])
+        if not any(p[0] == _code for p in ROLE_PERMISSIONS[_r]):
+            ROLE_PERMISSIONS[_r].append((_code, "DEFINIDO", SIMV))

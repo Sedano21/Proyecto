@@ -1,0 +1,46 @@
+{% extends "base.html" %}{% from "_m.html" import csrf, ic %}
+{% block content %}
+<div class="sim-head"><b>{{ ic('alert') }} ENTORNO DE PRUEBAS</b> · Simulación integral de operaciones: transacciones ficticias de 14 días procesadas por los mismos servicios del sistema. Clientes «CLIENTE SIMULADO», productos «SIM-PT», OV «SIM-OV», vehículos «SIM-0xx». Mientras esté cargada no se envían notificaciones ni correos, ni se conecta a SAP. La limpieza borra solo lo creado por la simulación y devuelve a su valor previo cualquier registro existente que haya cambiado.</div>
+<div class="page-head"><div><h1>Simulación de operación</h1><p class="sub">Generar, consultar, validar y limpiar el escenario de prueba.</p></div></div>
+{% if motivo %}<section class="card"><p class="err">{{ motivo }}</p></section>{% endif %}
+{% if puede and not motivo %}<section class="card noprint"><div class="row">
+{% if not run or run.estado == 'LIMPIADA' %}<form method="post" class="row">{{ csrf() }}<input type="hidden" name="accion" value="generar"><div><label>Días</label><input type="number" name="dias" value="14" min="5" max="30" style="width:80px"></div><div><button>Generar simulación</button></div></form>
+{% else %}<form method="post">{{ csrf() }}<input type="hidden" name="accion" value="validar"><button class="sec">Volver a validar</button></form>
+<form method="post" onsubmit="return confirm('¿Borrar los datos de la simulación y generarla de nuevo?')">{{ csrf() }}<input type="hidden" name="accion" value="regenerar"><button class="sec">Volver a ejecutar</button></form>
+<form method="post" onsubmit="return confirm('Se eliminarán SOLO los registros creados por la simulación. ¿Continuar?')">{{ csrf() }}<input type="hidden" name="accion" value="limpiar"><button class="danger">Limpiar datos de prueba</button></form>{% endif %}
+</div><p class="small muted">La generación tarda alrededor de un minuto.</p></section>{% endif %}
+
+{% if run %}{% set r = run.resumen or {} %}{% set c = r.get('conteos', {}) %}
+<h2>Corrida #{{ run.id }} · {{ run.estado }}</h2>
+<p class="small">Del {{ run.desde.strftime('%d/%m/%Y') if run.desde }} al {{ run.hasta.strftime('%d/%m/%Y') if run.hasta }} · generada {{ run.inicio_ts.strftime('%d/%m %H:%M') }}{% if run.limpiado_ts %} · limpiada {{ run.limpiado_ts.strftime('%d/%m %H:%M') }}{% endif %}</p>
+<div class="kpis">
+<div class="kpi primary"><b>{{ c.get('ov', 0) }}</b><span>OV registradas</span><small>{{ c.get('ov_pequeno', 0) }} pequeñas · {{ c.get('ov_mediano', 0) }} medianas · {{ c.get('ov_grande', 0) }} grandes</small></div>
+<div class="kpi"><b>{{ c.get('rutas_salieron', 0) }}</b><span>Salidas de vehículos</span><small>{{ c.get('entregas_completas', 0) }} entregas · {{ c.get('entregas_parciales', 0) }} parciales · {{ c.get('entregas_fallidas', 0) }} fallidas</small></div>
+<div class="kpi"><b>{{ c.get('producido_und', 0)|n }}</b><span>Unidades producidas</span><small>planificado {{ c.get('planificado_und', 0)|n }}</small></div>
+<div class="kpi {{ 'err' if r.get('fallas_total') }}"><b>{{ r.get('fallas_total', 0) }}</b><span>Fallas de programa</span><small>{{ r.get('rechazos_total', 0) }} pasos rechazados por reglas del sistema</small></div></div>
+
+{% set v = run.validacion or {} %}
+{% if v.get('controles') %}<h2>Validación integral</h2>
+<div class="tw"><table class="list small"><thead><tr><th>Área</th><th>Control</th><th class="r">Revisados</th><th class="r">Con error</th><th>Ejemplos / nota</th></tr></thead>
+{% for x in v.controles %}<tr class="{{ 'niv-err' if not x.ok }}"><td>{{ x.area }}</td><td>{{ '✔' if x.ok else '✖' }} {{ x.control }}</td><td class="r">{{ x.total }}</td><td class="r">{{ x.errores }}</td><td>{{ x.ejemplos|join('; ') }}{% if x.detalle %} <span class="muted">{{ x.detalle }}</span>{% endif %}</td></tr>{% endfor %}</table></div>
+<h2>Indicadores calculados por el sistema</h2>
+<div class="tw"><table class="list small">{% for k, x in v.indicadores.items() %}<tr><td>{{ k }}</td><td class="r"><b>{{ x if x is not none else 'no se calcula' }}</b></td></tr>{% endfor %}</table></div>
+<h3>Evolución diaria del OTIF (función del sistema, OV que correspondía despachar cada día)</h3>
+<div class="tw"><table class="list small"><thead><tr><th>Día</th>{% for e in v.evolucion %}<th class="r">{{ e.fecha[8:10] }}/{{ e.fecha[5:7] }}</th>{% endfor %}</tr></thead>
+<tr><td>OV del día</td>{% for e in v.evolucion %}<td class="r">{{ e.universo or 0 }}</td>{% endfor %}</tr>
+<tr><td>OTIF %</td>{% for e in v.evolucion %}<td class="r">{{ e.otif if e.otif is not none else '—' }}</td>{% endfor %}</tr>
+<tr><td>On time %</td>{% for e in v.evolucion %}<td class="r">{{ e.on_time if e.on_time is not none else '—' }}</td>{% endfor %}</tr>
+<tr><td>In full %</td>{% for e in v.evolucion %}<td class="r">{{ e.in_full if e.in_full is not none else '—' }}</td>{% endfor %}</tr></table></div>
+{% if v.hallazgos %}<h3>Hallazgos de la validación</h3><ul>{% for h in v.hallazgos %}<li>{{ h }}</li>{% endfor %}</ul>{% endif %}
+{% if v.pantallas %}<details><summary>Pantallas revisadas ({{ v.pantallas|length }})</summary><table class="list small">{% for p in v.pantallas %}<tr><td>{{ '✔' if p.ok else '✖' }}</td><td>{% if p.ok %}<a href="{{ p.ruta }}">{{ p.ruta }}</a>{% else %}{{ p.ruta }}{% endif %}</td><td>{{ p.resultado }}</td><td class="muted">{{ p.usuario }}</td></tr>{% endfor %}</table></details>{% endif %}
+<p class="small">Registros existentes modificados y que la limpieza restaura: {{ v.modificados_reales or 'ninguno' }}.</p>{% endif %}
+
+{% if r.get('no_implementado') %}<h2>No se pudo simular (falta en el sistema o en la configuración)</h2><ul>{% for x in r.no_implementado %}<li>{{ x }}</li>{% endfor %}</ul>{% endif %}
+{% if r.get('notas') %}<ul class="small">{% for x in r.notas %}<li>{{ x }}</li>{% endfor %}</ul>{% endif %}
+{% if rechazos %}<details><summary>Pasos que el sistema rechazó por sus reglas ({{ r.get('rechazos_total', 0) }})</summary><table class="list small"><thead><tr><th>Paso</th><th>Motivo</th><th class="r">Veces</th></tr></thead>{% for (p, d), n in rechazos %}<tr><td>{{ p }}</td><td>{{ d }}</td><td class="r">{{ n }}</td></tr>{% endfor %}</table></details>{% endif %}
+{% if r.get('fallas') %}<h3 class="err">Fallas de programa</h3><table class="list small">{% for f in r.fallas %}<tr><td>{{ f.paso }}</td><td>{{ f.dia }}</td><td>{{ f.detalle }}</td></tr>{% endfor %}</table>{% endif %}
+<details><summary>Pasos ejecutados por los servicios</summary><table class="list small">{% for p, n in (r.get('pasos') or {}).items() %}<tr><td>{{ p }}</td><td class="r">{{ n }}</td></tr>{% endfor %}</table></details>
+{% if tablas %}<details><summary>Registros de la simulación por tabla</summary><table class="list small"><thead><tr><th>Tabla</th><th class="r">Creados</th><th class="r">Existentes modificados</th></tr></thead>{% for t, x in tablas.items() %}<tr><td>{{ t }}</td><td class="r">{{ x.get('CREADO', 0) }}</td><td class="r">{{ x.get('MODIFICADO', 0) }}</td></tr>{% endfor %}</table></details>{% endif %}
+{% endif %}
+{% if corridas|length > 1 %}<h3>Corridas anteriores</h3><table class="list small">{% for x in corridas %}<tr><td>#{{ x.id }}</td><td>{{ x.estado }}</td><td>{{ x.inicio_ts.strftime('%d/%m/%Y %H:%M') }}</td><td>{{ (x.resumen or {}).get('conteos', {}).get('ov', 0) }} OV</td></tr>{% endfor %}</table>{% endif %}
+{% endblock %}

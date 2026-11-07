@@ -566,6 +566,10 @@ class Escenario:
                 continue
             v, dr = libres[0]
             self.paso("Vehículo y conductor asignados", dist.update_route, r, coord, vehicle_id=v.id, driver_id=dr.id)
+            if r.vehicle_id not in {x.id for x in self.vehiculos} or r.driver_id not in {x.id for x in self.conductores}:
+                # nunca sale una ruta simulada con un vehículo o conductor real
+                self.r["notas"].append(f"Ruta #{r.id}: no se pudo asignar unidad simulada; queda propuesta.")
+                continue
             if self.rnd.random() < 0.08 and not ultimo:
                 r.advertencias = (r.advertencias or []) + ["Salida postergada: unidad en mantenimiento (simulación)."]
                 self.r["conteos"]["rutas_postergadas"] += 1
@@ -725,6 +729,12 @@ class Escenario:
             self.paso("Parte iniciado (línea trabajando ahora)", pt.start, asis, {
                 "peso_entrada_kg": 1200 + 300 * k, "lote_pt": f"{900 + k}", "maquinista": "Operario simulado",
                 "turno": "MAÑANA"}, r)
+            if r.estado == "EN PROCESO":  # avance registrado durante la mañana (pallets en la línea)
+                kg_pallet = 180
+                for h in (9, 11, 13):
+                    sim.fijar_hora(d, h, 10 + k * 5)
+                    paq = int(kg_pallet / ((p.peso_kg or 1) * (r.und_paquete or 1)))
+                    self.paso("Avance de producción (pallet en línea)", pt.add_progress, asis, r, "ALMACÉN PT", max(paq, 1))
 
     # ---------------------------------------------------------- ejecución
     def ejecutar(self, progreso=None):

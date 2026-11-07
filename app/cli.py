@@ -17,6 +17,9 @@
     python -m app.cli muestras <carpeta>   # genera los Excel ficticios de ejemplo
     python -m app.cli demo-dia        # agrega un día de operación FICTICIO con todas las casuísticas y el flujo completo
                                       # (historial de OV, OV en cada estado, producción, proyección; sobre la demostración)
+    python -m app.cli simulacion generar|validar|estado|limpiar|regenerar [usuario]
+                                      # ENTORNO DE PRUEBAS: 14 días de operación ficticia por los servicios del sistema,
+                                      # validación integral y limpieza de SOLO lo simulado
     python -m app.cli depurar [--aplicar]  # fotos de entrega más antiguas que la retención configurada (sin --aplicar: solo lista)
 """
 import getpass
@@ -225,6 +228,36 @@ def main(argv):
             from .services import sap_sl
             for linea in sap_sl.diagnostics():
                 print(linea)
+        elif cmd == "simulacion":
+            # ENTORNO DE PRUEBAS: simulación integral de 14 días (generar | validar | estado | limpiar | regenerar)
+            from sqlalchemy import select
+            from .models import User
+            from .services import simulacion as simsvc
+            sub = argv[1] if len(argv) > 1 else "estado"
+            usuario = s.execute(select(User).where(User.username == (argv[2] if len(argv) > 2 else "sistemas"))).scalars().first()
+            up = app.config["UPLOAD_DIR"]
+            if sub in ("limpiar", "regenerar"):
+                print("Limpieza:", simsvc.limpiar(usuario, up))
+                s.commit()
+            if sub in ("generar", "regenerar"):
+                from .simulacion_escenario import generar
+                run = generar(usuario, up, progreso=lambda i, n, d: print(f"  día {i}/{n}: {d:%d/%m/%Y}", flush=True))
+                print(f"Simulación #{run.id} {run.estado}: {run.resumen.get('conteos')}")
+                print(f"Pasos rechazados por reglas: {run.resumen.get('rechazos_total')} · fallas: {run.resumen.get('fallas_total')}")
+                sub = "validar"
+            if sub == "validar":
+                from .services import simulacion_validacion as sv
+                run = simsvc.ultima()
+                v = sv.guardar(run, app)
+                s.commit()
+                for c in v.get("controles", []):
+                    print(("OK  " if c["ok"] else "ERR ") + f"{c['area']}: {c['control']} ({c['errores']}/{c['total']})")
+                for h in v.get("hallazgos", []):
+                    print("Hallazgo:", h)
+            if sub == "estado":
+                run = simsvc.ultima()
+                print("Sin simulaciones." if run is None else f"Simulación #{run.id}: {run.estado} ({run.desde} a {run.hasta})")
+                print("Entorno:", simsvc.habilitada(app) or "habilitado para simular")
         elif cmd == "muestras":
             from .demo_data import write_all
             print(write_all(argv[1] if len(argv) > 1 else "sample_data"))

@@ -767,3 +767,8 @@ table.kv td{overflow-wrap:anywhere;word-break:break-word}table.kv td.mono{white-
 tr.niv-err td{background:#fdf1f2}tr.niv-ok td{background:#f0f8f3}
 .push-msg{display:block;margin-top:4px;font-weight:600}.push-msg.err{color:#b3261e}.push-msg.ok{color:#0b6b3a}
 .valores{display:flex;flex-wrap:wrap;gap:10px;margin:6px 0;padding:6px 8px;background:var(--soft,#f3f5f8);border-radius:6px}
+/* Simulación integral: aviso de ENTORNO DE PRUEBAS */
+.sim-strip{color:#8a1c1c;background:#fdecec;border-color:#f3b8b8}
+.sim-strip a{color:#8a1c1c;text-decoration:underline;margin-left:4px}
+.sim-head{border:2px dashed #c0392b;border-radius:var(--r);padding:10px 14px;background:#fff6f5;margin-bottom:14px}
+.sim-head b{color:#a32020}

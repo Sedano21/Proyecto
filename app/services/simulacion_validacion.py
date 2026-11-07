@@ -28,7 +28,7 @@ PANTALLAS = [  # (ruta, permiso que la abre, texto de la simulación que debe ap
     ("/produccion/monitoreo", "produccion.ver", "SIM-PT-"),
     ("/produccion/partes", "produccion.ver", None),
     ("/produccion/plan", "produccion.ver", None),
-    ("/produccion/liquidaciones", "produccion.ver", "SIM-LIQ-"),
+    ("/produccion/liquidaciones", "produccion.ver", None),
     ("/produccion/tablero", "produccion.ver", None),
     ("/distribucion/", "distribucion.ver", None),
     ("/distribucion/checklists", "distribucion.ver", "SIM-0"),
@@ -240,6 +240,10 @@ def _pantallas(app, ovs=(), rutas=(), partes=()):
         if r.driver_id:
             lista.append((f"/distribucion/checklists?conductor={r.driver_id}&desde={r.fecha.isoformat()}", "checklist.ver",
                           r.vehicle.placa if r.vehicle else None))
+    liq = db().execute(select(Liquidation).where(Liquidation.numero_documento.like("SIM-LIQ-%"))
+                       .order_by(Liquidation.id.desc())).scalars().first()
+    if liq is not None:
+        lista.append((f"/produccion/liquidaciones?desde={liq.fecha.isoformat()}", "produccion.ver", liq.numero_documento))
     p = next((x for x in partes if x.estado in ("EN PROCESO", "PAUSADO")), None)
     if p is not None:
         lista.append((f"/produccion/parte/{p.id}", "produccion.ver", p.product_code))

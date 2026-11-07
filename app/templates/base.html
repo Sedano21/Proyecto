@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">{% if user %}<meta name="csrf" content="{{ csrf_token() }}">{% endif %}
 <title>{% block title %}Módulo de Operaciones{% endblock %} · Corporación Productiva</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23007a3d'/%3E%3Cpath d='M10 23V9h6.5a4.5 4.5 0 0 1 0 9H10' fill='none' stroke='%23fff' stroke-width='3'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=1.2.0">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=1.2.1">
 <script>try{if(localStorage.getItem('cp-nav')==='min')document.documentElement.classList.add('nav-min')}catch(e){}</script>
 </head>
 <body{% if user %} data-alertas="{{ url_for('main.alerts_status') }}"{% endif %}>
@@ -34,6 +34,7 @@
       {% if ve('importaciones.ver') or ve('importaciones.seguimiento') %}{{ nl(url_for('v24.imports'), 'ship', 'Seguimiento de importaciones') }}{% endif %}
       {% if ve('costos.gestionar') or ve('costos.analisis') %}{{ nl(url_for('v24.costs'), 'scale', 'Costos y reposición') }}{% endif %}
       {% if ve('costos.analisis') or ve('costos.gestionar') or ve('costos.ver') %}{{ nl(url_for('v24.gross_margin'), 'trend', 'Margen bruto') }}{% endif %}
+      {% if ve('simulacion.ver') or ve('simulacion.gestionar') %}{{ nl(url_for('sim.home'), 'alert', 'Simulación (entorno de pruebas)') }}{% endif %}
       {% if ve('finanzas.gastos_areas') %}{{ nl(url_for('v22.area_spending'), 'scale', 'Gastos y desempeño por área') }}{% endif %}
       {% if ve('asistencia.todas') and not ve('ov.ver') %}{{ nl(url_for('prod.attendance'), 'users', 'Asistencia por área') }}{{ nl(url_for('v22.absences'), 'calendar', 'Disponibilidad del personal') }}{% endif %}
     </div>
@@ -195,6 +196,7 @@
     <main class="content" id="contenido" tabindex="-1">
       {% if contingencia %}<div class="flash warn noprint" role="status">{{ ic('alert') }}<span><b>Registro en contingencia activo</b> desde {{ (contingencia.desde or '')[:16]|replace('T', ' ') }} ({{ contingencia.motivo }}): todo lo que registre queda marcado como «registrado en contingencia».</span></div>{% endif %}
       {% set _sap = sap_estado() if user and (can('ov.crear') or can('ov.modificar') or can('config.editar') or can('guias.estado')) else none %}{% if _sap %}<div class="flash error noprint" role="alert">SAP sin conexión desde {{ (_sap.desde or '')|replace('T', ' ') }}: lo que registre (OV, guías) queda guardado en cola y se envía solo cuando vuelva la conexión.</div>{% endif %}
+      {% if g.user and sim_cargada() %}<div class="demo-strip sim-strip noprint">{{ ic('alert') }} <span><b>ENTORNO DE PRUEBAS</b> · Hay una simulación de operación cargada (registros «SIM-», clientes simulados): no son datos reales y no se envían notificaciones ni se conecta a SAP.{% if ve('simulacion.ver') or ve('simulacion.gestionar') %} <a href="{{ url_for('sim.home') }}">Ver la simulación</a>{% endif %}</span></div>{% endif %}
       {% if demo_mode %}<div class="demo-strip noprint">{{ ic('info') }} Entorno de demostración con datos ficticios. No conectado a SAP ni a sistemas productivos.</div>{% endif %}
       <div id="aviso-push" class="flash info noprint aviso-push" hidden role="status">{{ ic('bell') }}<span><b>¿Recibir las alertas en este dispositivo?</b> Le llegarán como notificación aunque la pantalla esté apagada.<br><small data-push-msg hidden></small></span><span class="aviso-push-acc"><button type="button" class="small" data-push-activar>Activar</button> <button type="button" class="small sec" data-push-cerrar>Ahora no</button></span></div>
       {% with msgs = get_flashed_messages(with_categories=true) %}{% for c, m in msgs %}{% if c == 'fallo' %}{% set p = m.split('|', 1) %}{{ fallo_modal(p[0], p[1] if p|length > 1 else '') }}{% else %}<div class="flash {{ c }}" role="{{ 'alert' if c == 'error' else 'status' }}">{{ ic('x' if c == 'error' else ('check' if c == 'ok' else 'info')) }}<span>{{ m }}</span></div>{% endif %}{% endfor %}{% endwith %}

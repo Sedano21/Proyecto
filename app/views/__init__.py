@@ -50,6 +50,8 @@ def register_views(app):
     app.register_blueprint(analisis_v23.bp)
     from . import gestion_v24  # V24: compras nacionales, importaciones, costos, tablero de la empresa y reposición
     app.register_blueprint(gestion_v24.bp)
+    from . import simulacion  # simulación integral de operaciones (solo entorno de pruebas)
+    app.register_blueprint(simulacion.bp)
 
     @app.after_request
     def _aviso_descarga(resp):
