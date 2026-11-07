@@ -1,0 +1,10 @@
+# Rotación de los registros del Módulo de Operaciones. Se copia a /etc/logrotate.d/operaciones.
+/var/log/operaciones-actualizar.log /var/log/operaciones-respaldo-s3.log {
+    weekly
+    rotate 12
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+}

@@ -34,6 +34,14 @@ echo ">> Complete /etc/operaciones/operaciones.env (SECRET_KEY, DATABASE_URL, SA
 echo "   sudo -u operaciones bash -c 'set -a; . /etc/operaciones/operaciones.env; cd /opt/operaciones; .venv/bin/alembic upgrade head; .venv/bin/python -m app.cli init'"
 
 install -m 644 /opt/operaciones/deploy/operaciones.service /etc/systemd/system/operaciones.service
+# Actualización automática desde GitHub: se instala, pero se ACTIVA a mano (docs/43 §8)
+install -m 644 /opt/operaciones/deploy/operaciones-actualizar.service /etc/systemd/system/operaciones-actualizar.service
+install -m 644 /opt/operaciones/deploy/operaciones-actualizar.timer /etc/systemd/system/operaciones-actualizar.timer
+# PostgreSQL ajustado al plan de 16 GB y rotación de registros
+PGVER=$(ls /etc/postgresql | sort -V | tail -1)
+install -m 644 /opt/operaciones/deploy/postgresql-operaciones.conf "/etc/postgresql/$PGVER/main/conf.d/operaciones.conf"
+systemctl restart postgresql
+install -m 644 /opt/operaciones/deploy/logrotate-operaciones /etc/logrotate.d/operaciones
 sed "s/DOMINIO/$DOMINIO/" /opt/operaciones/deploy/Caddyfile > /etc/caddy/Caddyfile
 systemctl daemon-reload
 systemctl enable operaciones caddy
@@ -44,3 +52,4 @@ cat > /etc/cron.d/operaciones-respaldo <<CRON
 15 3 * * * root tar czf /var/backups/operaciones/archivos_\$(date +\%F).tgz -C /var/lib/operaciones archivos && find /var/backups/operaciones -mtime +14 -delete
 CRON
 echo "Listo. Inicie el servicio con: systemctl start operaciones"
+echo "Luego verifique todo con: sudo bash /opt/operaciones/deploy/verificar_servidor.sh $DOMINIO"
