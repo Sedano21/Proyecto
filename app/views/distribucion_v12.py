@@ -34,8 +34,17 @@ def checklists():
     q = select(VehicleChecklist).where(VehicleChecklist.fecha >= desde).order_by(VehicleChecklist.id.desc())
     if request.args.get("estado"):
         q = q.where(VehicleChecklist.estado == request.args["estado"])
+    # simulación integral (07-nov-2026): el registro de cada conductor y de cada vehículo
+    if request.args.get("conductor"):
+        q = q.where(VehicleChecklist.driver_id == int(request.args["conductor"]))
+    if request.args.get("vehiculo"):
+        q = q.where(VehicleChecklist.vehicle_id == int(request.args["vehiculo"]))
+    from ..models import Driver, Vehicle
+    conductores = list(db().execute(select(Driver).order_by(Driver.nombre)).scalars())
+    vehiculos = list(db().execute(select(Vehicle).order_by(Vehicle.placa)).scalars())
     return render_template("checklists.html", lista=paginate(q, 20), desde=desde,
-                           items=dict((c, i) for c, _, i, _ in vc.items()), f=request.args)
+                           items=dict((c, i) for c, _, i, _ in vc.items()), f=request.args, conductores=conductores,
+                           vehiculos=vehiculos)
 
 
 @bp.route("/ruta/<int:rid>/checklist", methods=["GET", "POST"])

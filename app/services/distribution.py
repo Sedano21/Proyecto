@@ -763,6 +763,12 @@ def _return_lines(order, user, lineas, motivo):
             ref = lotes[0].lot
             add_or_increase_lot(l.product_code, ref.warehouse_code, ref.lote, dev, "PENDIENTE_REVISION", ref.fecha_venc,
                                 ref.fecha_fab, origen=f"RETORNO-{order.numero}")
+    # Simulación integral (07-nov-2026): las líneas que no se devolvieron se recibieron completas (antes quedaban con
+    # «entregado» en 0: ni entregadas ni de vuelta en el almacén)
+    devueltas = {int(x["line_id"]) for x in lineas}
+    for l in order.lines:
+        if l.activa and l.id not in devueltas and (l.despachado or 0) > 0:
+            l.entregado = l.despachado
     if order.estado not in ("ENTREGADA", "ENTREGA_PARCIAL"):
         order.estado = "ENTREGA_PARCIAL"
     alerts.emit("STOCK_PENDIENTE_REVISION", f"Rechazo parcial de OV {order.numero}: {motivo}",

@@ -353,17 +353,22 @@ def limpiar(user=None, upload_dir=None, run_id=None):
                 setattr(obj, k, _desde_json(v))
             res["restaurados"] += 1
         s.flush()
-        # 2) filas creadas: se borran en orden inverso a su creación (primero los hijos)
+        # 2) filas creadas: se borran tabla por tabla en el orden inverso de sus dependencias (primero los hijos) y,
+        #    dentro de cada tabla, de la más nueva a la más antigua
+        from ..db import Base
+        por_tabla = {}
         for r in recs:
-            if r.accion != "CREADO":
-                continue
-            m = modelos.get(r.tabla)
-            obj = s.get(m, json.loads(r.clave)) if m else None
-            if obj is None:
-                continue
-            s.delete(obj)
+            if r.accion == "CREADO":
+                por_tabla.setdefault(r.tabla, []).append(r)
+        for t in reversed(Base.metadata.sorted_tables):
+            m = modelos.get(t.name)
+            for r in sorted(por_tabla.get(t.name, []), key=lambda r: -r.id):
+                obj = s.get(m, json.loads(r.clave)) if m else None
+                if obj is None:
+                    continue
+                s.delete(obj)
+                res["eliminados"] += 1
             s.flush()
-            res["eliminados"] += 1
         # 3) filas existentes que la simulación eliminó: se vuelven a crear
         for r in recs:
             if r.accion == "ELIMINADO" and modelos.get(r.tabla) is not None:

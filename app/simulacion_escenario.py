@@ -708,6 +708,24 @@ class Escenario:
                                                                "hora_inicio": "07:00", "hora_fin": "15:00", "turno": "MAÑANA",
                                                                "of": f"SIM-OF-{f:%m%d}-{k + 1}"})
 
+    def lineas_hoy(self, d):
+        """Hoy: partes programados e iniciados en las líneas de envasado (lo que se ve en el monitoreo)."""
+        from .services import parte as pt
+        asis = self.actor("produccion.liquidar")
+        for k, linea in enumerate(self.lineas_env[:3]):
+            p = self.productos[(k + 2) % len(self.productos)]
+            sim.fijar_hora(d, 6, 40)
+            r = self.paso("Parte programado para hoy", pt.program, asis, {
+                "linea": linea, "product_code": p.code, "fecha": d, "peso_entrada_kg": 1200 + 300 * k,
+                "presentacion_kg": p.peso_kg, "hora_inicio": "07:00", "hora_fin": "16:00", "turno": "MAÑANA",
+                "of": f"SIM-OF-{d:%m%d}-H{k + 1}"})
+            if r is None:
+                continue
+            sim.fijar_hora(d, 7, 5 + k * 10)
+            self.paso("Parte iniciado (línea trabajando ahora)", pt.start, asis, {
+                "peso_entrada_kg": 1200 + 300 * k, "lote_pt": f"{900 + k}", "maquinista": "Operario simulado",
+                "turno": "MAÑANA"}, r)
+
     # ---------------------------------------------------------- ejecución
     def ejecutar(self, progreso=None):
         from .services import stock as stk
@@ -736,6 +754,7 @@ class Escenario:
             self.entregar(d, ultimo)
             self.inventario(d, i)
             if ultimo and self.lineas_env:
+                self.lineas_hoy(d)
                 self.programar_partes(d)
             s.commit()
             if progreso:
