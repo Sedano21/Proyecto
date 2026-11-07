@@ -250,7 +250,7 @@ def update_route(route, user, vehicle_id=None, driver_id=None, auxiliar_id=None)
             raise BusinessError("La unidad ya está asignada a otra ruta ese día.")
         if route.vehicle_id != v.id:
             route.externo_validacion = {}
-        route.vehicle_id = v.id
+        route.vehicle = v  # la relación, no solo la columna: así no queda cargado el vehículo anterior en la sesión
         route.requiere_externo = not v.propio
     if driver_id:
         d = db().get(Driver, int(driver_id))
@@ -266,7 +266,7 @@ def update_route(route, user, vehicle_id=None, driver_id=None, auxiliar_id=None)
             raise BusinessError("El conductor ya está asignado a otra ruta ese día.")
         if route.driver_id != d.id:
             route.carga_chofer = {}
-        route.driver_id = d.id
+        route.driver = d
     if auxiliar_id is not None:
         from ..models import User
         if auxiliar_id == "":
