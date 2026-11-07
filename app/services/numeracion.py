@@ -16,7 +16,8 @@ PREFIJOS = {"OV": "OV-", "OC": "OC-", "GUIA": "GS-"}
 
 
 def prefijo(tipo):
-    return (param("numeracion_prefijos", PREFIJOS) or PREFIJOS).get(tipo, PREFIJOS[tipo])
+    from .simulacion import prefijo as _sim  # simulación: «SIM-» para no consumir los correlativos reales
+    return _sim() + (param("numeracion_prefijos", PREFIJOS) or PREFIJOS).get(tipo, PREFIJOS[tipo])
 
 
 def _siguiente(tipo, columna, ancho=6):

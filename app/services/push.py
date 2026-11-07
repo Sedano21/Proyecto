@@ -108,6 +108,9 @@ def encolar(alert, user_ids, url=None):
     """Prepara la notificación de una alerta; se envía cuando la transacción se confirma."""
     if not user_ids or not disponible():
         return 0
+    from .simulacion import bloqueo_externo
+    if bloqueo_externo():  # entorno de pruebas con simulación: no salen notificaciones
+        return 0
     s = db()
     subs = list(s.execute(select(PushSubscription).where(PushSubscription.user_id.in_(list(user_ids)))).scalars())
     if not subs:

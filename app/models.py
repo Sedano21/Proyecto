@@ -2543,3 +2543,36 @@ class ExpenseReport(Base):
     estado: Mapped[str] = mapped_column(String(15), default="REGISTRADA")
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+
+# ---------------------------------------------------------------------------
+# Simulación integral (ENTORNO DE PRUEBAS, 07-nov-2026)
+# ---------------------------------------------------------------------------
+class SimRun(Base):
+    """Una corrida de la simulación de operación (solo entorno de pruebas). Todo lo que crea o modifica queda en
+    SimRecord para poder limpiarlo sin tocar los registros reales."""
+    __tablename__ = "sim_runs"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    estado: Mapped[str] = mapped_column(String(15), default="GENERANDO")  # GENERANDO / GENERADA / FALLIDA / LIMPIADA
+    dias: Mapped[int] = mapped_column(Integer, default=14)
+    semilla: Mapped[int] = mapped_column(Integer, default=0)
+    desde: Mapped[date | None] = mapped_column(Date, nullable=True)
+    hasta: Mapped[date | None] = mapped_column(Date, nullable=True)
+    resumen: Mapped[dict] = mapped_column(JSON, default=dict)  # conteos, pasos con error, funciones no implementadas
+    validacion: Mapped[dict] = mapped_column(JSON, default=dict)  # resultado de la validación integral
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    inicio_ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    fin_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    limpiado_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class SimRecord(Base):
+    """Fila creada (CREADO) o fila existente modificada/eliminada (MODIFICADO / ELIMINADO, con sus valores previos) por
+    una corrida de la simulación."""
+    __tablename__ = "sim_records"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    run_id: Mapped[int] = mapped_column(ForeignKey("sim_runs.id"), index=True)
+    tabla: Mapped[str] = mapped_column(String(60), index=True)
+    clave: Mapped[str] = mapped_column(String(120))  # clave primaria en JSON
+    accion: Mapped[str] = mapped_column(String(12))
+    previos: Mapped[dict] = mapped_column(JSON, default=dict)

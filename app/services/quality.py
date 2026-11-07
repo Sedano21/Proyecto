@@ -415,7 +415,8 @@ def release_lot(lot, user, aprobar, motivo, estado_rechazo="NO_UTILIZABLE"):
 # ------------------------------ certificados -------------------------------
 def _next_number(serie):
     anio = date.today().year
-    prefijo = f"CP{anio}-{serie}"
+    from .simulacion import prefijo as _sim  # simulación: numeración aparte
+    prefijo = f"{_sim()}CP{anio}-{serie}"
     n = db().execute(select(func.count(Certificate.id)).where(Certificate.numero.like(f"{prefijo}%"))).scalar() or 0
     return f"{prefijo}{n + 1:04d}"
 

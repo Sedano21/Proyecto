@@ -70,6 +70,7 @@ class ServiceLayer:
         if not (self.cfg["url"] and self.cfg["company"] and self.cfg["user"] and self.cfg["password"]):
             raise BusinessError("La conexión con SAP no está configurada en el servidor (SAP_SL_URL, SAP_SL_COMPANY, "
                                 "SAP_SL_USER, SAP_SL_PASSWORD).")
+        self._opener = opener
         self._manual_cookie = opener is not None  # con el opener propio, la sesión la lleva el CookieJar (incluye ROUTEID)
         if opener is not None:
             self._open = opener
@@ -84,6 +85,11 @@ class ServiceLayer:
         self.session = None
 
     def _req(self, method, path, body=None, headers=None):
+        if self._opener is None:  # conexión real (las pruebas inyectan su propio «opener»)
+            from .simulacion import bloqueo_externo
+            motivo = bloqueo_externo()
+            if motivo:
+                raise SapConnectionError(motivo)
         url = path if path.startswith("http") else f"{self.cfg['url']}/{path.lstrip('/')}"
         data = json.dumps(body).encode() if body is not None else None
         req = urllib.request.Request(url, data=data, method=method,

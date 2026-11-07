@@ -178,6 +178,9 @@ def _queue_emails(alert, t, roles, usuarios):
                                                              GGAlertPreference.type_code == t.code)).scalars().first()
             if not (pref and pref.recibir_directo):
                 destinatarios.pop(u.id)
+    from .simulacion import bloqueo_externo
+    if bloqueo_externo():  # entorno de pruebas con simulación: no se envían correos
+        return
     for u in destinatarios.values():
         if not u.email:
             continue
