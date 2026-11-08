@@ -15,8 +15,9 @@ cat > /etc/ssh/sshd_config.d/tunel.conf <<CONF
 # Túnel SAP: si la VM se desconecta, el puerto se libera en menos de un minuto para que el reintento lo vuelva a abrir
 ClientAliveInterval 15
 ClientAliveCountMax 3
+# AllowTcpForwarding remote: solo -R (publicar en el servidor); no permite -L hacia otros destinos
 Match User tunelsap
-    AllowTcpForwarding remote   # solo -R (publicar en el servidor); no permite -L hacia otros destinos
+    AllowTcpForwarding remote
     GatewayPorts no
     X11Forwarding no
     AllowAgentForwarding no
