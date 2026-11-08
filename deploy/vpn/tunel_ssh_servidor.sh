@@ -9,14 +9,14 @@ PUERTO="${2:-50000}"
 case "$LLAVE" in ssh-ed25519\ *|ssh-rsa\ *|ecdsa-sha2-*) ;; *) echo "No parece una llave pública SSH"; exit 1;; esac
 id tunelsap >/dev/null 2>&1 || useradd --system --create-home --home-dir /var/lib/tunelsap --shell /usr/sbin/nologin tunelsap
 install -d -m 700 -o tunelsap -g tunelsap /var/lib/tunelsap/.ssh
-echo "restrict,port-forwarding,permitlisten=\"127.0.0.1:${PUERTO}\",permitopen=\"none\" ${LLAVE}" > /var/lib/tunelsap/.ssh/authorized_keys
+echo "restrict,port-forwarding,permitlisten=\"127.0.0.1:${PUERTO}\" ${LLAVE}" > /var/lib/tunelsap/.ssh/authorized_keys
 chown tunelsap:tunelsap /var/lib/tunelsap/.ssh/authorized_keys; chmod 600 /var/lib/tunelsap/.ssh/authorized_keys
 cat > /etc/ssh/sshd_config.d/tunel.conf <<CONF
 # Túnel SAP: si la VM se desconecta, el puerto se libera en menos de un minuto para que el reintento lo vuelva a abrir
 ClientAliveInterval 15
 ClientAliveCountMax 3
 Match User tunelsap
-    AllowTcpForwarding remote
+    AllowTcpForwarding remote   # solo -R (publicar en el servidor); no permite -L hacia otros destinos
     GatewayPorts no
     X11Forwarding no
     AllowAgentForwarding no
