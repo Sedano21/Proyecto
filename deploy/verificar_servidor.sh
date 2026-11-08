@@ -134,7 +134,9 @@ if command -v wg >/dev/null && ip link show wg0 >/dev/null 2>&1; then
   HS=$(wg show wg0 latest-handshakes | awk '{print $2}' | sort -n | tail -1)
   [ -n "$HS" ] && [ "$HS" -gt 0 ] && [ $(( $(date +%s) - HS )) -lt 300 ] && ok "VPN WireGuard conectada (último saludo hace $(( $(date +%s) - HS )) s)" || falla "VPN wg0 sin saludo reciente (¿equipo de la empresa apagado?)"
   systemctl is-enabled -q wg-quick@wg0 && ok "VPN arranca sola" || falla "wg-quick@wg0 no habilitado"
-else aviso "Sin VPN WireGuard (si SAP se alcanza por otro medio, ignore este aviso)"; fi
+elif ss -ltnp 2>/dev/null | grep -q '127.0.0.1:50000 .*sshd'; then
+  aviso "SAP por túnel SSH de respaldo (activo ahora). Depende de la sesión abierta en la VM: pida la conexión definitiva (docs/46)"
+else aviso "Sin VPN WireGuard ni túnel SAP (si SAP se alcanza por otro medio, ignore este aviso)"; fi
 if [ "$PROBAR_SAP" = --sap ]; then
   R=$(app ".venv/bin/python -m app.cli sap-probar"); echo "$R" | tail -3 | sed 's/^/         /'
   echo "$R" | grep -q "'version'" && ok "Inicio de sesión en SAP correcto" || falla "La prueba con SAP falló (vea el mensaje arriba)"
