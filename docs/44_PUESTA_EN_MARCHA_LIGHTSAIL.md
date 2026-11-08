@@ -127,8 +127,30 @@ $ dig A operaciones.corporacionproductiva.com @8.8.8.8 +short
 ```
 **No continúe con el paso 4 hasta que responda la IP fija:** el certificado HTTPS se emite con ese registro.
 
-Si marketing no tiene acceso al panel DNS, como solución temporal se puede usar el subdominio de DuckDNS. Más
-adelante se cambia al dominio de la empresa repitiendo solo el paso 4.3.
+### 3.4 Si nadie tiene acceso al DNS de la empresa: DuckDNS ahora, el dominio después
+
+El registro `operaciones` solo lo puede crear quien administra el DNS de `corporacionproductiva.com`. Ni AWS ni
+Lightsail lo evitan: para usar su DNS (Route 53 o la zona DNS de Lightsail) igual hay que cambiar los servidores NS en
+el registrador del dominio, que también necesita ese acceso. Mientras se recupera, use **DuckDNS** (gratis):
+
+1. En https://www.duckdns.org, con la cuenta donde está el subdominio (p. ej. `coprod-one`), escriba la **IP fija** de
+   Lightsail en *current ip* y pulse *update ip*. Verifique: `dig A coprod-one.duckdns.org +short` → la IP fija.
+2. En Lightsail → Networking, el firewall de la instancia debe permitir **80 y 443** (Let's Encrypt usa el 80).
+3. Cambie el nombre en Caddy y en las variables, y reinicie (reemplace `coprod-one` si su subdominio es otro):
+   ```bash
+   $ NUEVO=coprod-one.duckdns.org
+   $ sudo sed -i "s/^operaciones\.corporacionproductiva\.com {/$NUEVO {/" /etc/caddy/Caddyfile
+   $ sudo sed -i "s#^M365_REDIRECT_URI=.*#M365_REDIRECT_URI=https://$NUEVO/auth/microsoft/callback#" /etc/operaciones/operaciones.env
+   $ sudo caddy validate --config /etc/caddy/Caddyfile && sudo systemctl reload caddy && sudo systemctl restart operaciones
+   $ sudo journalctl -u caddy -n 30 --no-pager | grep -i "certificate obtained\|error"
+   $ curl -s -o /dev/null -w '%{http_code}\n' https://$NUEVO/login        # 200
+   ```
+4. **Cambio futuro al dominio de la empresa:** cuando alguien recupere el acceso al DNS, se crea el registro A del
+   paso 3.2 y se repite el punto 3 con `NUEVO=operaciones.corporacionproductiva.com` (en el `sed` del Caddyfile cambie
+   el nombre de origen por el de DuckDNS). Los datos no se tocan. Los celulares deben volver a «Activar» las
+   notificaciones y los usuarios entran con la dirección nueva. Para recuperar el acceso: el dominio `.com` lo administra
+   el registrador donde se compró (lo muestra `whois corporacionproductiva.com`); el titular de la empresa puede
+   pedir allí el acceso con los documentos de la empresa, sin depender de la persona que ya no está.
 
 ---
 
@@ -205,8 +227,8 @@ $ sudo stat -c '%a %U' /etc/operaciones/operaciones.env          # 600 root
 ## Paso 6. Crear la base (nueva) y la cuenta de Sistemas
 
 ```bash
-$ app() { sudo -u operaciones bash -c "set -a; . /etc/operaciones/operaciones.env; cd /opt/operaciones; $*"; }
-$ app ".venv/bin/alembic upgrade head"                 # crea todas las tablas (versión 0037)
+$ app() { sudo bash /opt/operaciones/deploy/app.sh "$*"; }   # lee las variables (600 root) y ejecuta como «operaciones»
+$ app ".venv/bin/alembic upgrade head"                 # crea todas las tablas (última versión)
 $ app ".venv/bin/python -m app.cli init"               # catálogos, perfiles, permisos y parámetros; sin datos de demostración
 $ app ".venv/bin/python -m app.cli esquema"            # «La base coincide con el código.»
 $ app ".venv/bin/python -m app.cli crear-usuario sistemas SISTEMAS 'Administrador de Sistemas' <correo>@corporacionproductiva.com"

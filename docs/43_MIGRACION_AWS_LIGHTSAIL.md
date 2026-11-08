@@ -269,7 +269,7 @@ $ sudo grep -c 'CLAVE_BD\|cambiar-por' /etc/operaciones/operaciones.env   # 0
 
 Atajo para ejecutar comandos de la aplicación con sus variables:
 ```bash
-$ app() { sudo -u operaciones bash -c "set -a; . /etc/operaciones/operaciones.env; cd /opt/operaciones; $*"; }
+$ app() { sudo bash /opt/operaciones/deploy/app.sh "$*"; }   # lee las variables (600 root) y ejecuta como «operaciones»
 ```
 
 ### 7.A Si NO hay datos que migrar (base nueva)

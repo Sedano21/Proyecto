@@ -31,7 +31,7 @@ if ! sudo -u postgres psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='operacion
 fi
 [ -f /etc/operaciones/operaciones.env ] || install -m 600 /opt/operaciones/deploy/operaciones.env.example /etc/operaciones/operaciones.env
 echo ">> Complete /etc/operaciones/operaciones.env (SECRET_KEY, DATABASE_URL, SAP, M365) y vuelva a ejecutar los pasos finales:"
-echo "   sudo -u operaciones bash -c 'set -a; . /etc/operaciones/operaciones.env; cd /opt/operaciones; .venv/bin/alembic upgrade head; .venv/bin/python -m app.cli init'"
+echo "   sudo bash /opt/operaciones/deploy/app.sh '.venv/bin/alembic upgrade head && .venv/bin/python -m app.cli init'"
 
 install -m 644 /opt/operaciones/deploy/operaciones.service /etc/systemd/system/operaciones.service
 # Actualización automática desde GitHub: se instala, pero se ACTIVA a mano (docs/43 §8)

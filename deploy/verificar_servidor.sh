@@ -96,7 +96,7 @@ cd "$DIR" || exit 2
 RAMA=$(runuser -u operaciones -- git rev-parse --abbrev-ref HEAD 2>/dev/null); COMMIT=$(runuser -u operaciones -- git rev-parse --short HEAD 2>/dev/null)
 ok "Código: rama $RAMA, versión $COMMIT"
 [ -z "$(runuser -u operaciones -- git status --porcelain --untracked-files=no 2>/dev/null)" ] && ok "Sin cambios locales en el código" || falla "Hay cambios locales en $DIR (impiden la actualización automática)"
-app() { runuser -u operaciones -- bash -c "set -a; . $ENVF; cd $DIR; $*" 2>&1; }
+app() { bash "$DIR/deploy/app.sh" "$*" 2>&1; }
 ACT=$(app ".venv/bin/alembic current" | grep -Eo '^[0-9a-z_]+' | tail -1)
 CAB=$(app ".venv/bin/alembic heads" | grep -Eo '^[0-9a-z_]+' | tail -1)
 if [ -z "$ACT" ]; then falla "La base no tiene versión de Alembic (ver guía §7, anexo de docs/25)"

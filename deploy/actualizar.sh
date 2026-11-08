@@ -10,7 +10,7 @@ RAMA="${RAMA:-claude/automatizacion-corporativa-app-1cu2g5}"
 LOG=/var/log/operaciones-actualizar.log
 exec >>"$LOG" 2>&1
 como() { runuser -u operaciones -- "$@"; }
-app() { runuser -u operaciones -- bash -c "set -a; . $ENVF; cd $DIR; $*"; }
+app() { bash "$DIR/deploy/app.sh" "$*"; }  # lee las variables como root y ejecuta como «operaciones»
 
 cd "$DIR"
 como git fetch -q origin "$RAMA"
