@@ -56,4 +56,4 @@ Todo con **datos ficticios**. No se conectó nada a SAP ni a producción. Migrac
   - checklist del chofer;
   - recomendaciones.
 - La prueba de migraciones aplica 0001 → 0038 y compara con el modelo.
-- Suite completa: ver el informe de la ronda.
+- Suite completa: **571 pruebas, todas pasan**.
