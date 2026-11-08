@@ -84,6 +84,17 @@ sudo bash /opt/operaciones/deploy/verificar_servidor.sh coprod-one.duckdns.org -
 ```
 Confirme la huella del certificado con el partner antes de dar por buena la conexión.
 
+**Si la prueba dice «certificate has expired» (o no coincide el nombre):** el certificado propio del Service Layer
+venció. Lo correcto a mediano plazo es que el partner lo renueve. Mientras tanto, se fija ese certificado exacto por su
+huella: la conexión solo se acepta si SAP presenta ese mismo certificado, aunque esté vencido. No es lo mismo que
+desactivar la verificación (`SAP_SL_VERIFY=0`), que no se recomienda.
+```bash
+H=$(openssl x509 -in /etc/operaciones/sap_ca.pem -noout -fingerprint -sha256 | cut -d= -f2); echo "$H"
+grep -q '^SAP_SL_HUELLA=' /etc/operaciones/operaciones.env && sudo sed -i "s#^SAP_SL_HUELLA=.*#SAP_SL_HUELLA=$H#" /etc/operaciones/operaciones.env || echo "SAP_SL_HUELLA=$H" | sudo tee -a /etc/operaciones/operaciones.env
+sudo systemctl restart operaciones
+```
+Cuando el partner renueve el certificado, repita la lectura del certificado y de la huella.
+
 **Si el túnel se cae:**
 - El sistema **no pierde nada**: lo que se registra para SAP queda en cola.
 - Sistemas recibe la alerta «SAP sin conexión (túnel o red)», que se cierra sola al volver la conexión.

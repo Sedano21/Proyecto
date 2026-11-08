@@ -50,7 +50,40 @@ def config():
     return {"url": _base_url(os.environ.get("SAP_SL_URL", "")), "company": os.environ.get("SAP_SL_COMPANY", "").strip(),
             "user": os.environ.get("SAP_SL_USER", "").strip(), "password": os.environ.get("SAP_SL_PASSWORD", ""),
             "ca": os.environ.get("SAP_SL_CA", "").strip(), "verify": os.environ.get("SAP_SL_VERIFY", "1") != "0",
+            "huella": _huella(os.environ.get("SAP_SL_HUELLA", "")),
             "timeout": float(os.environ.get("SAP_SL_TIMEOUT", "60") or 60)}
+
+
+def _huella(v):
+    """SHA-256 del certificado del Service Layer (se aceptan «AB:CD:…», con o sin «sha256 Fingerprint=»)."""
+    v = (v or "").strip().split("=")[-1].replace(":", "").replace(" ", "").lower()
+    return v if len(v) == 64 and all(c in "0123456789abcdef" for c in v) else ""
+
+
+def _opener_con_huella(huella):
+    """08-nov-2026: el certificado propio del Service Layer suele estar vencido o emitido a otro nombre. En lugar de
+    desactivar la verificación (SAP_SL_VERIFY=0), se FIJA el certificado: la conexión solo se acepta si el certificado
+    presentado es exactamente ese (huella SHA-256), aunque esté vencido o el nombre no coincida."""
+    import hashlib
+    import http.client
+
+    class _Conn(http.client.HTTPSConnection):
+        def connect(self):
+            super().connect()
+            der = self.sock.getpeercert(binary_form=True) or b""
+            if hashlib.sha256(der).hexdigest() != huella:
+                self.sock.close()
+                raise ssl.SSLError("El certificado de SAP no coincide con SAP_SL_HUELLA (¿cambió el certificado o no es el servidor SAP?)")
+
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE  # la validez la da la huella fijada (comprobada en cada conexión)
+
+    class _Handler(urllib.request.HTTPSHandler):
+        def https_open(self, req):
+            return self.do_open(_Conn, req, context=ctx)
+
+    return urllib.request.build_opener(urllib.request.HTTPCookieProcessor(CookieJar()), _Handler())
 
 
 def configured():
@@ -74,6 +107,9 @@ class ServiceLayer:
         self._manual_cookie = opener is not None  # con el opener propio, la sesión la lleva el CookieJar (incluye ROUTEID)
         if opener is not None:
             self._open = opener
+        elif self.cfg.get("huella"):
+            od = _opener_con_huella(self.cfg["huella"])
+            self._open = lambda req, timeout: od.open(req, timeout=timeout)
         else:
             ctx = ssl.create_default_context(cafile=self.cfg["ca"] or None)
             if not self.cfg["verify"]:

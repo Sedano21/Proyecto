@@ -69,7 +69,7 @@ titulo "6. Variables del servidor ($ENVF) — no se muestran valores"
 if [ ! -f "$ENVF" ]; then falla "No existe $ENVF"; else
   P=$(stat -c '%a %U' "$ENVF"); [ "$P" = "600 root" ] && ok "Permisos 600, dueño root" || falla "Permisos $P (deben ser 600 root: chmod 600, chown root)"
   # se leen en un subproceso; solo se informa si están y cómo son
-  eval "$(set -a; . "$ENVF" >/dev/null 2>&1; for v in SECRET_KEY DATABASE_URL UPLOAD_DIR SESSION_COOKIE_SECURE DEMO_MODE SCHEMA_AUTO_CREATE SIMULACION_HABILITADA APP_TZ SAP_SL_URL SAP_SL_COMPANY SAP_SL_USER SAP_SL_PASSWORD SAP_SL_CA SAP_SL_VERIFY M365_TENANT_ID M365_CLIENT_ID M365_CLIENT_SECRET M365_REDIRECT_URI VAPID_SUB RESPALDO_S3; do printf 'E_%s=%q\n' "$v" "${!v:-}"; done)"
+  eval "$(set -a; . "$ENVF" >/dev/null 2>&1; for v in SECRET_KEY DATABASE_URL UPLOAD_DIR SESSION_COOKIE_SECURE DEMO_MODE SCHEMA_AUTO_CREATE SIMULACION_HABILITADA APP_TZ SAP_SL_URL SAP_SL_COMPANY SAP_SL_USER SAP_SL_PASSWORD SAP_SL_CA SAP_SL_HUELLA SAP_SL_VERIFY M365_TENANT_ID M365_CLIENT_ID M365_CLIENT_SECRET M365_REDIRECT_URI VAPID_SUB RESPALDO_S3; do printf 'E_%s=%q\n' "$v" "${!v:-}"; done)"
   [ ${#E_SECRET_KEY} -ge 32 ] && [ "$E_SECRET_KEY" != cambiar-por-un-valor-aleatorio-largo ] && ok "SECRET_KEY definida (${#E_SECRET_KEY} caracteres)" || falla "SECRET_KEY vacía, corta o de ejemplo (openssl rand -hex 32)"
   [[ "$E_DATABASE_URL" == postgresql* ]] && ok "DATABASE_URL apunta a PostgreSQL" || falla "DATABASE_URL no es PostgreSQL"
   [[ "$E_DATABASE_URL" == *CLAVE_BD* ]] && falla "DATABASE_URL todavía tiene CLAVE_BD de ejemplo"
@@ -84,7 +84,8 @@ if [ ! -f "$ENVF" ]; then falla "No existe $ENVF"; else
   if [ -n "$E_SAP_SL_URL" ]; then
     [ -n "$E_SAP_SL_COMPANY" ] && [ -n "$E_SAP_SL_USER" ] && [ -n "$E_SAP_SL_PASSWORD" ] && ok "SAP configurado (base $E_SAP_SL_COMPANY)" || falla "SAP incompleto (COMPANY/USER/PASSWORD)"
     [ "${E_SAP_SL_USER,,}" = manager ] && falla "SAP_SL_USER es manager: use el usuario de integración"
-    if [ "$E_SAP_SL_VERIFY" = 0 ]; then aviso "SAP_SL_VERIFY=0: no se verifica el certificado de SAP (usar SAP_SL_CA)"
+    if [ -n "$E_SAP_SL_HUELLA" ]; then ok "Certificado de SAP fijado por huella (SAP_SL_HUELLA)"
+    elif [ "$E_SAP_SL_VERIFY" = 0 ]; then aviso "SAP_SL_VERIFY=0: no se verifica el certificado de SAP (usar SAP_SL_CA)"
     elif [ -n "$E_SAP_SL_CA" ] && [ -f "$E_SAP_SL_CA" ]; then ok "Certificado de SAP: $E_SAP_SL_CA"
     else aviso "SAP_SL_CA no existe ($E_SAP_SL_CA)"; fi
   else aviso "SAP sin configurar (SAP_SL_URL vacío)"; fi
