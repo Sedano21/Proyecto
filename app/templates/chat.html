@@ -1,0 +1,25 @@
+{% extends "base.html" %}{% from "_m.html" import csrf, empty, ic %}
+{% block content %}<div class="page-head"><div><h1>Mensajes</h1><p class="sub">Escriba a una persona del equipo para coordinar o apurar un pendiente. Le llega el aviso en el sistema y, si las activó, como notificación en el celular.</p></div></div>
+<div class="chat-wrap">
+<aside class="card chat-list"><div class="card-head"><h3>Conversaciones</h3></div>
+<form method="get" class="chat-new"><label class="sr" for="chat-con">Escribir a</label>
+<select id="chat-con" name="con" onchange="this.form.submit()"><option value="">Escribir a…</option>
+{% for u in contactos %}<option value="{{ u.id }}" {% if otro and otro.id == u.id %}selected{% endif %}>{{ u.nombre }} · {{ u.role.nombre }}</option>{% endfor %}</select>
+{% if ref_url %}<input type="hidden" name="ref_url" value="{{ ref_url }}"><input type="hidden" name="ref_titulo" value="{{ ref_titulo }}">{% endif %}
+<noscript><button class="small">Abrir</button></noscript></form>
+{% for c in convs %}<a class="chat-item{% if otro and otro.id == c.user.id %} on{% endif %}" href="{{ url_for('chat.home', con=c.user.id) }}"><b>{{ c.user.nombre }}</b>{% if c.no_leidos %}<span class="count">{{ c.no_leidos }}</span>{% endif %}<small>{{ c.ultimo.texto[:60] }}</small></a>
+{% else %}<p class="muted small">Aún no tiene conversaciones.</p>{% endfor %}
+</aside>
+<section class="card chat-main">{% if otro %}
+<div class="card-head"><h3>{{ otro.nombre }}</h3><small class="muted">{{ otro.role.nombre }}</small></div>
+<div class="chat-msgs" id="chat-msgs">{% for m in msgs %}<div class="chat-msg {{ 'mio' if m.de_id == user.id else 'suyo' }}"><p>{{ m.texto }}</p>
+{% if m.ref_url %}<a class="small" href="{{ m.ref_url }}">{{ ic('eye') }} {{ m.ref_titulo or 'Ver la pantalla' }}</a>{% endif %}
+<small>{{ m.ts|d }}{% if m.de_id == user.id %} · {{ 'Leído' if m.leido_ts else 'Enviado' }}{% endif %}</small></div>
+{% else %}{{ empty('Sin mensajes todavía. Escriba el primero.') }}{% endfor %}</div>
+<form method="post" class="chat-send">{{ csrf() }}<input type="hidden" name="para_id" value="{{ otro.id }}">
+{% if ref_url %}<input type="hidden" name="ref_url" value="{{ ref_url }}"><input type="hidden" name="ref_titulo" value="{{ ref_titulo }}"><p class="small muted">Se adjunta el enlace a: <b>{{ ref_titulo or ref_url }}</b></p>{% endif %}
+<label class="sr" for="chat-txt">Mensaje</label><textarea id="chat-txt" name="texto" rows="2" maxlength="2000" required placeholder="Escriba su mensaje…"></textarea>
+<button>{{ ic('chat') }} Enviar</button></form>
+<script>(function(){var b=document.getElementById('chat-msgs');if(b)b.scrollTop=b.scrollHeight;})();</script>
+{% else %}{{ empty('Elija una conversación o a quién escribir.') }}{% endif %}</section>
+</div>{% endblock %}

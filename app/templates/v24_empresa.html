@@ -1,8 +1,32 @@
-{% extends "base.html" %}{% from "_m.html" import ic, empty %}
+{% extends "base.html" %}{% from "_m.html" import ic, empty, csrf %}
 {% block content %}<div class="dir-head"><h1>Cómo va la empresa</h1><p>{{ d.hoy|d }} · lo principal de cada área y a qué prestarle atención</p></div>
 <div class="row noprint" style="justify-content:flex-end"><a class="btn sec" href="?formato=pdf">{{ ic('download') }} PDF</a></div>
 <section class="card msg-clave"><h3>A qué prestarle atención</h3>{% if d.atencion %}<ul class="atencion">{% for n, area, t in d.atencion %}<li class="{{ n }}"><span class="b {{ n }}">{{ {'ALTA': 'Urgente', 'MEDIA': 'Atención', 'INFO': 'Seguimiento'}[n] }}</span> <b>{{ area }}:</b> {{ t }}</li>{% endfor %}</ul>{% else %}<p>Nada fuera de lo normal: todos los indicadores están dentro de lo esperado.</p>{% endif %}</section>
 <div class="empresa-cards">{% for c in d.cards %}<section class="card ec {{ c.nivel }}"><span class="ec-area">{{ c.area }}</span><h3>{{ c.titulo }}</h3><b class="ec-v">{{ c.valor }}</b><p class="small">{{ c.frase }}</p></section>{% endfor %}</div>
+{% set m = d.meta_mes %}<section class="card"><h3>Venta del mes vs la meta</h3>
+{% if m.meta %}<div class="row" style="align-items:center;gap:18px"><div><b style="font-size:26px">S/ {{ m.venta|n }}</b><br><span class="small muted">de S/ {{ m.meta|n }} de meta</span></div>
+<div class="grow"><div style="background:var(--line,#e5e7eb);border-radius:6px;height:16px;position:relative;overflow:hidden"><div style="width:{{ [m.avance or 0, 100]|min }}%;height:100%;background:{{ 'var(--err)' if m.atrasada else 'var(--ok)' }}"></div>
+{% if m.esperado %}<div title="Avance esperado a la fecha" style="position:absolute;top:-2px;bottom:-2px;left:{{ [m.esperado, 100]|min }}%;border-left:2px dashed #333"></div>{% endif %}</div>
+<p class="small">{{ m.avance }} % de la meta · a la fecha debería ir {{ m.esperado }} %{% if m.falta %} · faltan <b>S/ {{ m.falta|n }}</b>{% endif %}</p></div></div>
+{% else %}<p class="small muted">Venta del mes: S/ {{ m.venta|n }}. No hay meta general cargada para este mes (Comercial → Objetivos).</p>{% endif %}</section>
+
+<section class="card"><h3>Lo que necesita ingresar la empresa cada semana</h3>
+<p class="small muted">Lo registra Administración y Finanzas; Comercial lo ve aquí junto a la meta y a la venta real. Si difiere de la meta, se registra el motivo.</p>
+<div class="tw"><table class="list small"><thead><tr><th>Semana</th><th class="r">Venta</th><th class="r">Necesita la empresa</th><th class="r">Avance</th><th class="r">Meta</th><th class="r">Venta vs necesidad</th><th class="r">Venta vs meta</th><th>Variación registrada</th></tr></thead>
+{% for x in semanas %}<tr class="{{ 'niv-err' if x.vs_necesidad is not none and x.vs_necesidad < 0 and not x.en_curso }}"><td>{{ x.semana.strftime('%d/%m') }}–{{ x.fin.strftime('%d/%m') }}{% if x.en_curso %} <span class="b info">en curso</span>{% endif %}</td>
+<td class="r">{{ x.venta|n }}</td><td class="r">{{ x.necesidad|n if x.necesidad is not none else '—' }}</td><td class="r">{{ (x.avance_necesidad ~ ' %') if x.avance_necesidad is not none else '—' }}</td>
+<td class="r">{{ x.meta|n if x.meta is not none else '—' }}</td><td class="r {{ 'err' if x.vs_necesidad is not none and x.vs_necesidad < 0 }}">{{ ('%+.0f'|format(x.vs_necesidad)) if x.vs_necesidad is not none else '—' }}</td>
+<td class="r {{ 'err' if x.vs_meta is not none and x.vs_meta < 0 }}">{{ ('%+.0f'|format(x.vs_meta)) if x.vs_meta is not none else '—' }}</td><td>{{ x.variacion_motivo or '' }}{% if x.nota %} <span class="muted">{{ x.nota }}</span>{% endif %}</td></tr>{% endfor %}</table></div>
+{{ graf.semanal }}
+{% if puede_nec %}<form method="post" class="row noprint">{{ csrf() }}<div><label class="req">Semana (cualquier día)</label><input type="date" name="semana" value="{{ lunes.isoformat() }}" required></div>
+<div><label class="req">Necesita ingresar S/</label><input name="monto" type="number" step="any" min="0" required style="width:130px"></div>
+<div class="grow"><label>Motivo de la variación vs la meta (obligatorio si difiere)</label><input name="motivo"></div><div class="grow"><label>Nota</label><input name="nota"></div><div><button>Registrar</button></div></form>{% endif %}</section>
+
+{% if d.rot and d.rot.productos %}<section class="card"><h3>Stock sin rotación <a class="small" href="{{ url_for('sup.rotation') }}">Ver detalle</a></h3>
+<div class="kpis"><div class="kpi warn"><b>{{ d.rot.productos }}</b><span>Productos</span><small>sin salida en {{ d.rot.dias }} días</small></div><div class="kpi"><b>{{ d.rot.kg|n }} kg</b><span>Inmovilizados</span></div>
+{% if ver_costos %}<div class="kpi"><b>S/ {{ d.rot.valor_costo|n }}</b><span>Valor al costo</span></div>{% endif %}
+<div class="kpi"><b>S/ {{ d.rot.valor_min|n }}</b><span>Valor de venta (precio mínimo)</span></div><div class="kpi ok"><b>S/ {{ d.rot.valor_max|n }}</b><span>Valor de venta (precio máximo)</span></div></div></section>{% endif %}
+
 <div class="grid g2"><section class="card"><h3>Venta por semana</h3>{{ graf.venta }}</section><section class="card"><h3>OTIF por semana</h3>{{ graf.otif }}</section></div>
 <section class="card"><h3>Deuda vencida por antigüedad</h3>{{ graf.cobranza }}</section>
 {% endblock %}

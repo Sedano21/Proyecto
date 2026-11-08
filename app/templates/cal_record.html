@@ -3,6 +3,7 @@
 <div class="doc">{{ encabezado_registro(fdef[1], enc, fdef[0]) }}
 <table class="kv box" style="margin-top:8px"><tr><td style="width:35%">Fecha</td><td>{{ r.fecha|d }}</td></tr><tr><td>Producto / lote</td><td>{{ r.product_code or '' }} {{ r.lote }}</td></tr>
 {% for key, label, tipo in fdef[2] %}<tr><td>{{ label }}</td><td>{% set v = r.datos.get(key) %}{% if v is sameas true %}√{% elif v is sameas false %}X{% else %}{{ v if v is not none else '' }}{% endif %}</td></tr>{% endfor %}
+{% if r.datos.get('lineas') %}<tr><td>Productos y lotes fumigados</td><td><table class="small"><tr><th>Producto</th><th>Lote</th><th class="r">Cantidad</th></tr>{% for x in r.datos.lineas %}<tr><td>{{ x.product_code }} {{ pd(x.product_code) }}</td><td>{{ x.lote }}</td><td class="r">{{ x.cantidad|n if x.cantidad is not none else '—' }}</td></tr>{% endfor %}</table></td></tr>{% endif %}
 {% for p, m in (r.datos.get('marcas') or {}).items() %}<tr><td>{{ p }}</td><td>{{ 'C' if m == 'C' else 'N/C' }}{{ ' · ' ~ r.datos.observaciones[p] if r.datos.observaciones and r.datos.observaciones.get(p) }}</td></tr>{% endfor %}
 {% if r.adjuntos %}<tr><td>Fotos / adjuntos</td><td>{{ galeria(r.adjuntos) }}</td></tr>{% endif %}
 <tr><td>Resultado</td><td><b>{{ r.resultado or '-' }}</b></td></tr><tr><td>Observaciones y/o acciones correctivas</td><td>{{ r.observaciones }}</td></tr><tr><td>Registrado por</td><td>{{ r.user.nombre if r.user }}</td></tr></table>

@@ -34,7 +34,7 @@
 
 <div class="section-title">Solicitudes de reempaque</div>
 <div class="card">{% if reempaques %}<div class="tw"><table class="small"><thead><tr><th>#</th><th>Tipo</th><th>Lote origen</th><th>FV</th><th class="r">Cantidad</th><th>Destino</th><th>Marca</th><th>Presentación</th><th>Nueva FV</th><th>Estado</th></tr></thead><tbody>
-{% for r in reempaques %}{% set x = rep[r.id] %}<tr><td><a href="{{ url_for('alm.repack_detail', rid=r.id) }}">{{ r.id }}</a></td><td>{{ r.tipo|replace('_',' ') }}</td><td>{{ r.lot.product_code if r.lot }} · {{ r.lot.lote if r.lot }}</td><td>{{ x.fv|d if x.fv else '—' }}</td><td class="r">{{ r.cantidad|n }}</td>
+{% for r in reempaques %}{% set x = rep[r.id] %}<tr><td><a href="{{ url_for('alm.repack_detail', rid=r.id) }}">{{ r.id }}</a></td><td>{{ r.tipo|replace('_',' ') }}</td><td>{{ r.lot.product_code if r.lot }} {{ pd(r.lot.product_code) if r.lot }} · {{ r.lot.lote if r.lot }}</td><td>{{ x.fv|d if x.fv else '—' }}</td><td class="r">{{ r.cantidad|n }}</td>
 <td>{{ r.producto_destino or '—' }} {{ x.destino.descripcion if x.destino }}</td><td>{{ x.marca or '—' }}</td><td>{{ x.presentacion or '—' }}</td><td>{{ x.nueva_fv|d if x.nueva_fv else '—' }}</td><td>{{ b(r.estado) }}</td></tr>{% endfor %}</tbody></table></div>
 {% else %}{{ empty('Sin reempaques en curso.') }}{% endif %}</div>
 {% endblock %}

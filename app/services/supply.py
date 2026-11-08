@@ -281,6 +281,28 @@ def no_rotation(dias=None, hoy=None):
     return {"dias": dias, "filas": out}
 
 
+_RES_ROT = {}
+
+
+def rotation_summary(hoy=None):
+    """V25: resumen del stock sin rotación para el inicio y el tablero de la empresa (se recalcula como máximo cada 10 min):
+    productos, kg, valor al costo y valor de venta al precio mínimo y máximo de lista."""
+    import time as _t
+    from ..db import db as _db
+    clave = (id(_db().get_bind()), hoy or date.today())
+    r = _RES_ROT.get(clave)
+    if r is not None and _t.time() - r[0] < 600:
+        return r[1]
+    d = rotation_ranking(hoy=hoy, top=10000)
+    res = {"dias": d["dias"], "productos": d["total"], "kg": d["kg_total"], "valor_costo": d["valor_total"],
+           "valor_min": d["venta_total"], "valor_max": d["max_total"],
+           "top": [{"code": f["code"], "descripcion": f.get("descripcion", ""), "kg": f["kg"], "dias": f.get("dias_sin")}
+                   for f in d["por_cantidad"][:5]]}
+    _RES_ROT.clear()
+    _RES_ROT[clave] = (_t.time(), res)
+    return res
+
+
 def check_no_rotation(hoy=None):
     """Aviso mensual (una vez por mes) a Comercial, Almacén y Gerencia."""
     hoy = hoy or date.today()

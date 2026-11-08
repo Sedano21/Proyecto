@@ -109,6 +109,7 @@ def _pasos(user, today):
         ("tipo_cambio_sunat", lambda: _tipo_cambio(today)),
         ("importaciones_seguimiento", lambda: __import__("app.services.importaciones_v24", fromlist=["x"]).check_alerts(today)),
         ("costo_reposicion", lambda: __import__("app.services.costos_v24", fromlist=["x"]).check_alerts(today)),
+        ("ingreso_semanal", lambda: __import__("app.services.ingresos_semana", fromlist=["x"]).revisar_semana_cerrada(today)),
         ("correo", lambda: flush_outbox()),
     ]
 

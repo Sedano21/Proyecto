@@ -10,6 +10,10 @@
 {# 1. Lo que requiere atención: tareas designadas y alertas abiertas, las de prioridad alta primero #}
 {% set criticas = mis_alertas|selectattr('prioridad', 'equalto', 'ALTA')|list %}
 {% set otras = mis_alertas|rejectattr('prioridad', 'equalto', 'ALTA')|list %}
+{% if rot and rot.productos %}<a class="card rot-aviso" href="{{ url_for('sup.rotation') }}" style="display:flex;gap:14px;align-items:center;border-left:4px solid var(--warn);text-decoration:none;color:inherit;margin-bottom:14px">
+<span style="font-size:28px;font-weight:700;color:var(--warn)">{{ rot.productos }}</span>
+<span><b>Productos sin rotación</b> (sin salida en {{ rot.dias }} días) · {{ rot.kg|n }} kg inmovilizados{% if ver_costos and rot.valor_costo %} · S/ {{ rot.valor_costo|n }} al costo{% endif %}{% if rot.valor_min %} · venta S/ {{ rot.valor_min|n }}{% if rot.valor_max %} a S/ {{ rot.valor_max|n }}{% endif %}{% endif %}<br>
+<span class="small muted">Mayor volumen: {% for t in rot.top[:3] %}{{ t.code }} {{ t.descripcion[:30] }} ({{ t.kg|n }} kg){{ ', ' if not loop.last }}{% endfor %} · <u>Ver stock sin rotación</u></span></span></a>{% endif %}
 {% if areas_gg %}<div class="section-title">Indicadores por área <span class="small muted">mes en curso y hoy</span></div>
 <div class="areas-gg">{% for a in areas_gg %}<section class="card"><h3>{{ a.area }}</h3>{% for it in a.tarjetas %}<div class="it {{ it.nivel }}"><span>{% if it.url %}<a href="{{ it.url }}">{{ it.etiqueta }}</a>{% else %}{{ it.etiqueta }}{% endif %}{% if it.sub %}<br><small class="muted">{{ it.sub }}</small>{% endif %}</span><b>{{ it.valor }}</b></div>{% endfor %}</section>{% endfor %}</div>{% endif %}
 {% if sug %}<div class="section-title">Sugerencias de eficiencia <a class="small" href="{{ url_for('v22.suggestions') }}">Ver todas</a></div>
@@ -126,7 +130,7 @@
 {% for code, x in hp.pendientes[:12] %}<tr><td>{{ code }} <span class="muted">{{ pd(code) }}</span></td><td class="r">{{ x.cantidad|n }}</td><td class="r">{{ x.kg|n }}</td><td>{% if x.requerida %}{{ x.requerida|d }}{% if x.vencidas %} <b class="err">vencida</b>{% endif %}{% else %}—{% endif %}</td><td class="r">{{ x.n }}</td></tr>{% else %}<tr><td colspan="5" class="muted">Sin solicitudes pendientes</td></tr>{% endfor %}</tbody></table></div>{% endif %}
 {% if vi('PROD_REEMPAQUES') %}<div class="card"><div class="card-head"><h3>Reempaques aprobados por Calidad</h3><a class="small" href="{{ url_for('alm.repacks') }}">Reempaques</a></div>
 <table class="small"><thead><tr><th>#</th><th>Tipo</th><th>Lote → destino</th><th class="r">Cantidad</th><th>Estado</th></tr></thead><tbody>
-{% for r in hp.reempaques[:12] %}<tr><td><a href="{{ url_for('alm.repack_detail', rid=r.id) }}">{{ r.id }}</a></td><td>{{ r.tipo|replace('_',' ')|lower }}</td><td>{{ r.lot.lote }} → {{ r.producto_destino or r.lot.product_code }}</td><td class="r">{{ r.cantidad|n }}</td><td>{{ b(r.estado) }}</td></tr>{% else %}<tr><td colspan="5" class="muted">Sin reempaques por ejecutar</td></tr>{% endfor %}</tbody></table></div>{% endif %}
+{% for r in hp.reempaques[:12] %}<tr><td><a href="{{ url_for('alm.repack_detail', rid=r.id) }}">{{ r.id }}</a></td><td>{{ r.tipo|replace('_',' ')|lower }}</td><td>{{ r.lot.product_code }} {{ pd(r.lot.product_code) }} · {{ r.lot.lote }} → {{ r.producto_destino or r.lot.product_code }} {{ pd(r.producto_destino) if r.producto_destino and r.producto_destino != r.lot.product_code }}</td><td class="r">{{ r.cantidad|n }}</td><td>{{ b(r.estado) }}</td></tr>{% else %}<tr><td colspan="5" class="muted">Sin reempaques por ejecutar</td></tr>{% endfor %}</tbody></table></div>{% endif %}
 </div>
 {% endif %}
 

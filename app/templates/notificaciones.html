@@ -3,6 +3,23 @@
 <div class="card"><div class="card-head"><h3>Este dispositivo</h3><b data-push-estado>Revisando…</b></div>
 {% if not disponible %}<p class="flash error">El servidor aún no tiene instaladas las notificaciones (se instalan con la próxima actualización).</p>{% endif %}
 <p><button type="button" data-push-activar-btn>{{ ic('bell') }} Activar notificaciones en este dispositivo</button></p>
+<div class="note info small"><b>Sonido con la pantalla apagada:</b> cuando el celular apaga la pantalla, la página deja de funcionar y no puede sonar. Lo que suena es la <b>notificación del celular</b> (con el sonido y la vibración del teléfono). Por eso hay que activar las notificaciones aquí; las urgentes quedan en pantalla hasta que se toquen.</div>
+<h4>Diagnóstico de este dispositivo</h4>
+<ol class="push-diag small" data-push-diag><li>Revisando…</li></ol>
+<script>(function(){var ol=document.querySelector('[data-push-diag]');if(!ol)return;var items=[];
+function p(ok,t,ayuda){items.push('<li class="'+(ok?'ok':'err')+'">'+(ok?'✔ ':'✖ ')+t+(ok||!ayuda?'':' — <span class="muted">'+ayuda+'</span>')+'</li>');}
+function fin(){ol.innerHTML=items.join('');}
+p(window.isSecureContext,'Conexión segura (https)','Abra el sistema con https://; sin https el navegador no permite notificaciones.');
+var top=true;try{top=window.top===window.self;}catch(e){top=false;}p(top,'Abierto en una pestaña propia','Ábralo directamente en el navegador, no dentro de otra aplicación.');
+var sop='serviceWorker' in navigator&&'PushManager' in window&&'Notification' in window;
+var ios=/iPhone|iPad/.test(navigator.userAgent),pwa=window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches;
+p(sop,'El navegador admite notificaciones',ios&&!pwa?'En iPhone: Compartir → «Agregar a pantalla de inicio» y abrir desde ese ícono.':'Use Chrome, Edge o Firefox actualizados.');
+if(!sop){fin();return;}
+p(Notification.permission==='granted','Permiso del sitio concedido',Notification.permission==='denied'?'Está bloqueado: candado de la barra de direcciones → Notificaciones → Permitir.':'Pulse «Activar notificaciones» y elija Permitir.');
+fetch('/push/clave',{credentials:'same-origin'}).then(function(r){return r.json();}).then(function(d){p(!!d.clave,'El servidor tiene las notificaciones activas',d.error||'Avise a Sistemas.');})
+.catch(function(){p(false,'El servidor tiene las notificaciones activas','No respondió.');})
+.then(function(){return navigator.serviceWorker.getRegistration('/');}).then(function(r){if(!r){p(false,'Suscripción guardada en este dispositivo','Pulse «Activar notificaciones».');return;}
+return r.pushManager.getSubscription().then(function(s){p(!!s,'Suscripción guardada en este dispositivo','Pulse «Activar notificaciones».');});}).then(fin,fin);})();</script>
 <details class="small"><summary>¿No le llegan? Revise según su equipo</summary><ul>
 <li><b>Android (Chrome):</b> permita las notificaciones del sitio y quite la «optimización de batería» de Chrome para que lleguen con la pantalla apagada.</li>
 <li><b>Brave:</b> en Configuración → Privacidad y seguridad, active «Usar los servicios de Google para mensajería push»; sin eso Brave no recibe notificaciones.</li>

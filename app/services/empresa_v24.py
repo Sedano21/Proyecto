@@ -137,7 +137,22 @@ def tablero(hoy=None, ver_costos=False):
             atencion.append(("MEDIA", "Costos", ca["resumen"]))
     orden = {"ALTA": 0, "MEDIA": 1, "INFO": 2}
     atencion.sort(key=lambda x: orden.get(x[0], 9))
-    return {"hoy": hoy, "cards": cards, "atencion": atencion, "graficos": _series(hoy, cb)}
+    # V25: venta vs meta (mes) y stock sin rotación valorizado
+    meta_mes = {"venta": round(v_mes, 2), "meta": gen["meta_soles"] if gen else None,
+                "avance": gen["avance_soles"] if gen else None, "esperado": metas.get("esperado"),
+                "falta": gen["falta_soles"] if gen else None, "atrasada": bool(gen and gen["atrasada"])}
+    from .supply import rotation_summary
+    try:
+        rot = rotation_summary(hoy)
+    except Exception:  # noqa: BLE001
+        rot = None
+    if rot and rot["productos"]:
+        cards.append(_card("Almacén", "Stock sin rotación", f"{rot['productos']} productos",
+                           f"{rot['kg']:,.0f} kg sin salida en {rot['dias']} días" +
+                           (f"; S/ {rot['valor_costo']:,.0f} al costo" if ver_costos and rot["valor_costo"] else "") +
+                           (f"; venta S/ {rot['valor_min']:,.0f} a S/ {rot['valor_max']:,.0f}" if rot["valor_min"] else ""),
+                           "warn", url="/suministro/rotacion"))
+    return {"hoy": hoy, "cards": cards, "atencion": atencion, "graficos": _series(hoy, cb), "meta_mes": meta_mes, "rot": rot}
 
 
 def _series(hoy, cb):

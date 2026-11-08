@@ -52,6 +52,8 @@ def register_views(app):
     app.register_blueprint(gestion_v24.bp)
     from . import simulacion  # simulación integral de operaciones (solo entorno de pruebas)
     app.register_blueprint(simulacion.bp)
+    from . import chat  # V25: chat interno uno a uno
+    app.register_blueprint(chat.bp)
 
     @app.after_request
     def _aviso_descarga(resp):
@@ -314,7 +316,12 @@ def dashboard():
         sug = all_suggestions()[:4]
     # V23: las gerencias ven sus alertas agrupadas (prioritarias, por accionar e informativas consolidadas por área)
     bandeja = alert_svc.gerencia_bandeja(g.user) if alert_svc.es_gerencia_consolidada(g.user) else None
-    return render_template("dashboard.html", k=k, prod=prod, hp=hoy_prod, mis_alertas=mis, tareas=tareas, desde=desde or "", hasta=hasta or "",
+    # V25: indicador de stock sin rotación en el inicio de quien puede verlo (lleva a la pestaña de stock sin rotación)
+    rot = None
+    if "rotacion.ver" in p:
+        from ..services.supply import rotation_summary
+        rot = rotation_summary()
+    return render_template("dashboard.html", rot=rot, ver_costos=("costos.ver" in p or "costos.analisis" in p), k=k, prod=prod, hp=hoy_prod, mis_alertas=mis, tareas=tareas, desde=desde or "", hasta=hasta or "",
                            areas_gg=areas_gg, sug=sug, bandeja=bandeja,
                            estado_txt=alert_svc.ESTADO_TXT, arrastre=pending_carryover(g.user), com=com, det=det,
                            mis_ov=mis_ov, nivel=nivel, despachos=despachos)

@@ -2844,3 +2844,39 @@ for _code, _n, _t, _roles in [
         ROLE_PERMISSIONS.setdefault(_r, [])
         if not any(p[0] == _code for p in ROLE_PERMISSIONS[_r]):
             ROLE_PERMISSIONS[_r].append((_code, "DEFINIDO", SIMV))
+
+# ----------------------------------------------------------------------------------------------------------------------
+# V25 (08-nov-2026): informe de recepción de importaciones por Calidad, documentos de importación, necesidad semanal de
+# ingresos, chat entre usuarios y preprogramación de rutas con recomendaciones
+V25 = "Requerimiento V25 (08-nov-2026)"
+ALERT_TYPES += [
+    ("IMPORT_INFORME_CALIDAD", "Importación: informe de recepción de Calidad", "Importaciones", "Seguimiento", "MEDIA",
+     _IMP + [GGA], "DEFINIDO", V25, "Calidad sube o genera (REG-CAL-005) el informe de recepción de la importación.", False),
+    ("CHAT_MENSAJE", "Mensaje de chat", "Sistemas", "Chat", "MEDIA", [], "DEFINIDO", V25,
+     "Un usuario le escribió por el chat interno (llega solo a quien se le escribió).", False),
+    ("INGRESO_SEMANAL_VARIACION", "Ingresos de la semana por debajo de lo que necesita la empresa", "Comercial", "Indicadores",
+     "ALTA", ["JEFE_VENTAS", "GERENTE_COMERCIAL", JAF], "DEFINIDO", V25,
+     "La venta de la semana no alcanza la necesidad de ingresos registrada por Administración y Finanzas.", False),
+]
+for _code, _n, _m, _t, _roles in [
+    ("importaciones.calidad", "Ver el seguimiento de importaciones y registrar el informe de recepción (Calidad)", "Calidad",
+     "edicion", _CAL + ["ASIST_CALIDAD"]),
+    ("finanzas.necesidad_semanal", "Registrar cuánto necesita ingresar la empresa cada semana y sus variaciones", "Finanzas",
+     "edicion", [JAF]),
+    ("chat.usar", "Usar el chat interno con otros usuarios", "General", "edicion", []),
+]:
+    if not any(p[0] == _code for p in PERMISSIONS):
+        PERMISSIONS.append((_code, _n, _m, _t))
+    for _r in _roles + ["GERENCIA_GENERAL", GGA]:
+        ROLE_PERMISSIONS.setdefault(_r, [])
+        if not any(p[0] == _code for p in ROLE_PERMISSIONS[_r]):
+            ROLE_PERMISSIONS[_r].append((_code, "DEFINIDO", V25 if _r in _roles else f"{V25}; regla general de Gerencia General"))
+# el chat lo usan todos los perfiles
+for _r in list(ROLE_PERMISSIONS):
+    if not any(p[0] == "chat.usar" for p in ROLE_PERMISSIONS[_r]):
+        ROLE_PERMISSIONS[_r].append(("chat.usar", "DEFINIDO", V25))
+PARAMS += [
+    ("ingreso_semanal_tolerancia_pct", 5, "float", "Finanzas",
+     "Diferencia (%) entre lo que necesita ingresar la empresa en la semana y la meta comercial a partir de la cual se exige "
+     "registrar el motivo de la variación.", "PROPUESTO", V25),
+]

@@ -2493,6 +2493,9 @@ class ImportFollowup(Base):
     contrato_archivo: Mapped[str] = mapped_column(String(250), default="")
     gastos: Mapped[list] = mapped_column(JSON, default=list)  # [{tipo, monto, moneda, fecha, detalle, archivo, user}]
     incidencias: Mapped[list] = mapped_column(JSON, default=list)  # [{tipo, detalle, fecha, user}]
+    # V25: documentos de la importación [{tipo, archivo, nombre, nota, fecha, user}] e informe de recepción de Calidad
+    documentos: Mapped[list] = mapped_column(JSON, default=list, server_default="[]")
+    informe_calidad: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}")  # {modo PDF/GENERADO, archivo, record_id, user, ts}
     estado: Mapped[str] = mapped_column(String(15), default="EN_TRANSITO")  # EN_TRANSITO / EN_PUERTO / RETIRADO / CERRADO
     shipment_id: Mapped[int | None] = mapped_column(ForeignKey("import_shipments.id"), nullable=True)
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
@@ -2576,3 +2579,33 @@ class SimRecord(Base):
     clave: Mapped[str] = mapped_column(String(120))  # clave primaria en JSON
     accion: Mapped[str] = mapped_column(String(12))
     previos: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
+class WeeklyRevenueNeed(Base):
+    """V25 (08-nov-2026): cuánto necesita ingresar la empresa cada semana (lo registra Administración y Finanzas) para que
+    Comercial lo vea junto a la meta; si difiere de la meta se registra el motivo de la variación."""
+    __tablename__ = "weekly_revenue_needs"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    semana: Mapped[date] = mapped_column(Date, unique=True, index=True)  # lunes de la semana
+    monto: Mapped[float] = mapped_column(Float)
+    nota: Mapped[str] = mapped_column(Text, default="")
+    variacion_motivo: Mapped[str] = mapped_column(Text, default="")
+    historial: Mapped[list] = mapped_column(JSON, default=list)  # cambios [{monto, motivo, user, ts}]
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+
+class ChatMessage(Base):
+    """V25 (08-nov-2026): chat interno uno a uno entre usuarios (p. ej. para apurar un pendiente). ref: pantalla de la que se
+    escribe (enlace interno) para que quien recibe vaya directo a «eso»."""
+    __tablename__ = "chat_messages"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    de_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    para_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    texto: Mapped[str] = mapped_column(Text)
+    ref_url: Mapped[str] = mapped_column(String(300), default="")
+    ref_titulo: Mapped[str] = mapped_column(String(160), default="")
+    leido_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)
+    de = relationship("User", foreign_keys=[de_id])
+    para = relationship("User", foreign_keys=[para_id])

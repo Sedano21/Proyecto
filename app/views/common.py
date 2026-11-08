@@ -250,7 +250,15 @@ def install(app):
                 abiertas = open_count(u)
             except Exception:  # noqa: BLE001
                 abiertas = 0
-        return {"csrf_token": csrf_token, "user": u, "perms": g.get("perms", set()), "can": lambda p: p in g.get("perms", set()),
+        chat_n = 0
+        if u is not None and "chat.usar" in g.get("perms", set()):
+            try:
+                from ..services.chat import no_leidos
+                chat_n = no_leidos(u)
+            except Exception:  # noqa: BLE001  (antes de migrar la base la tabla aún no existe)
+                db().rollback()
+                chat_n = 0
+        return {"chat_no_leidos": chat_n, "csrf_token": csrf_token, "user": u, "perms": g.get("perms", set()), "can": lambda p: p in g.get("perms", set()),
                 "ve": lambda p: p in g.get("perms", set()) or "vista.total" in g.get("perms", set()),
                 "logo_url": _logo_url(), "vi": _vi, "sap_estado": _sap_estado,
                 "fmt_date": fmt_date, "fmt_num": fmt_num, "stock_info": stock_freshness() if u else None,

@@ -203,7 +203,19 @@
     return ctx;
   }
   ['click', 'keydown', 'touchstart'].forEach(function (ev) { document.addEventListener(ev, function () { audio(); }, { once: true, passive: true }); });
-  if (btn) btn.addEventListener('click', function () { lset('cp-sound', silenciado() ? 'on' : 'off'); pintarBoton(); if (!silenciado()) sonar('MEDIA'); });
+  if (btn) btn.addEventListener('click', function () {
+    lset('cp-sound', silenciado() ? 'on' : 'off'); pintarBoton();
+    if (!silenciado()) {
+      sonar('MEDIA');
+      // V25: con la pantalla apagada la página no puede sonar: suena la notificación del celular (web push)
+      var sw = 'serviceWorker' in navigator && 'PushManager' in window && window.isSecureContext;
+      var mostrar = function () { toast('<b>Sonido activado en esta pantalla</b><small>Con la pantalla apagada suena la notificación del celular. ' +
+        '<a href="/notificaciones">Activar y probar notificaciones</a></small>', false); };
+      if (!sw) { mostrar(); return; }
+      navigator.serviceWorker.getRegistration('/').then(function (r) { return r ? r.pushManager.getSubscription() : null; })
+        .then(function (s) { if (!s) mostrar(); }).catch(mostrar);
+    }
+  });
   pintarBoton();
   /* V16 (02-nov-2026): sonidos por urgencia, estridentes y cambiantes para que el oído no se acostumbre.
      - ALTA (urgente): sirena aguda de ≈4 s en la zona de 2–4 kHz (la más sensible del oído), onda cuadrada o en diente de

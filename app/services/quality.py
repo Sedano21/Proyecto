@@ -311,7 +311,38 @@ def parse_form(formato, form):
             datos[key] = f"Otro: {donde}"
         else:
             datos[key] = raw
+    if formato == "FUMIGACION":  # V25: varios productos, lotes y cantidades en un mismo registro de fumigación
+        datos["lineas"] = fumigation_lines(form)
     return datos
+
+
+def fumigation_lines(form):
+    """Líneas de la fumigación: [{lot_id, product_code, lote, cantidad}] (lote de stock o escrito)."""
+    getl = (lambda k: form.getlist(k)) if hasattr(form, "getlist") else (lambda k: form.get(k) or [])
+    lots, prods, lotes, cants = getl("fum_lot_id"), getl("fum_producto"), getl("fum_lote"), getl("fum_cantidad")
+    out = []
+    for i in range(max(len(lots), len(prods), len(lotes), len(cants))):
+        lid = (lots[i] if i < len(lots) else "") or ""
+        prod = ((prods[i] if i < len(prods) else "") or "").strip().upper().split(" ")[0]
+        lote = ((lotes[i] if i < len(lotes) else "") or "").strip()
+        cant = ((cants[i] if i < len(cants) else "") or "").strip().replace(",", ".")
+        if lid:
+            lot = db().get(StockLot, int(lid))
+            if lot is None:
+                raise BusinessError("Lote no encontrado.")
+            prod, lote = lot.product_code, lot.lote
+        if not (prod or lote or cant):
+            continue
+        if not (prod and lote):
+            raise BusinessError(f"Línea {i + 1} de la fumigación: indique el producto y el lote.")
+        try:
+            q = float(cant) if cant else None
+        except ValueError:
+            raise BusinessError(f"Línea {i + 1} de la fumigación: cantidad inválida.") from None
+        if q is not None and q <= 0:
+            raise BusinessError(f"Línea {i + 1} de la fumigación: la cantidad debe ser mayor que cero.")
+        out.append({"lot_id": int(lid) if lid else None, "product_code": prod, "lote": lote, "cantidad": q})
+    return out
 
 
 def register(user, formato, datos, product_code=None, lote="", lot_id=None, resultado=None, observaciones="",
@@ -324,6 +355,9 @@ def register(user, formato, datos, product_code=None, lote="", lot_id=None, resu
         raise BusinessError("Su rol no registra este formato.")
     if formato == "VEHICULO_SEGURIDAD" and datos.get("vehiculo_en_orden") is False and not (datos.get("detalle") or "").strip():
         raise BusinessError("Indique qué debe subsanarse del vehículo.")
+    if formato == "FUMIGACION" and datos.get("lineas") and not (product_code or lote or lot_id):
+        primera = datos["lineas"][0]
+        product_code, lote, lot_id = primera["product_code"], primera["lote"], primera["lot_id"]
     product = db().get(Product, product_code) if product_code else None
     if lot_id:
         lot = db().get(StockLot, int(lot_id))
@@ -348,10 +382,18 @@ def register(user, formato, datos, product_code=None, lote="", lot_id=None, resu
                     f"Chofer {datos.get('chofer') or '-'}. {datos.get('detalle') or ''}", "QualityRecord", rec.id, creado_por=user)
     if formato == "LOTE_PRODUCIDO" and lote:
         _contrastar_lote(rec, user)
-    if formato == "FUMIGACION" and rec.lot_id:
-        _apply_fumigation(rec, user)
+    if formato == "FUMIGACION":
+        ids = [x["lot_id"] for x in (datos.get("lineas") or []) if x.get("lot_id")]
+        for lid in dict.fromkeys(([rec.lot_id] if rec.lot_id else []) + ids):
+            _apply_fumigation(rec, user, lid)
     if formato == "ANALISIS_LOTE" and lote:
         refresh_draft_certificates(lote, user)
+    if referencia_tipo == "ImportFollowup" and referencia_id:  # V25: informe de recepción de una importación
+        from ..models import ImportFollowup
+        from .importaciones_v24 import link_quality_record
+        imp = db().get(ImportFollowup, int(referencia_id))
+        if imp is not None:
+            link_quality_record(imp, rec, user)
     if formato == "MUESTREO" and referencia_tipo == "COMPRA" and referencia_id and resultado:
         # V14: la ficha de muestreo (CP-FOR-CAL-10) de la compra nacional aprueba o rechaza su muestra
         from ..models import PurchaseRequest
@@ -376,9 +418,11 @@ def _contrastar_lote(rec, user):
                         "Liquidation", liq.id, dedup_key=f"CAL_LIQ:{liq.id}", creado_por=user)
 
 
-def _apply_fumigation(rec, user):
+def _apply_fumigation(rec, user, lot_id=None):
     from .stock import change_lot_state
-    lot = db().get(StockLot, rec.lot_id)
+    lot = db().get(StockLot, lot_id or rec.lot_id)
+    if lot is None:
+        return
     if rec.datos.get("fin_fecha"):
         if lot.estado == "EN_FUMIGACION":
             change_lot_state(lot, "PENDIENTE_REVISION", user, f"Fin de fumigación (registro #{rec.id}); requiere liberación")

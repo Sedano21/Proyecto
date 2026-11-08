@@ -157,6 +157,64 @@ def add_incident(user, f, tipo, detalle):
     return f
 
 
+TIPOS_DOC = {"CERTIFICADO_ORIGEN": "Certificado de origen", "FITOSANITARIO": "Certificado fitosanitario",
+             "PACKING_LIST": "Packing list", "CALIDAD": "Certificado de calidad", "FUMIGACION": "Certificado de fumigación",
+             "OTRO": "Otro"}
+
+
+def add_document(user, f, tipo, archivo, nombre="", nota=""):
+    """V25: Importaciones sube los documentos de la importación (uno o varios por tipo)."""
+    _req(user)
+    if tipo not in TIPOS_DOC:
+        raise BusinessError("Tipo de documento no válido.")
+    if not archivo:
+        raise BusinessError("Adjunte el documento.")
+    if tipo == "OTRO" and not (nombre or "").strip():
+        raise BusinessError("Indique qué documento es.")
+    docs = list(f.documentos or [])
+    docs.append({"tipo": tipo, "archivo": archivo, "nombre": (nombre or "").strip() or TIPOS_DOC[tipo],
+                 "nota": (nota or "").strip(), "fecha": date.today().isoformat(), "user": user.nombre})
+    f.documentos = docs
+    audit(user, "IMPORTACION_DOCUMENTO", "ImportFollowup", f.id, docs[-1])
+    return f
+
+
+def missing_documents(f):
+    """Documentos obligatorios que aún no se suben (todos menos «Otro»)."""
+    tiene = {d.get("tipo") for d in (f.documentos or [])}
+    return [n for k, n in TIPOS_DOC.items() if k != "OTRO" and k not in tiene]
+
+
+def upload_quality_report(user, f, archivo, nota=""):
+    """V25: Calidad sube el informe de recepción de la importación en PDF (la otra opción es generarlo con REG-CAL-005)."""
+    from .core import has_perm
+    if not has_perm(user, "calidad.registrar"):
+        raise BusinessError("El informe de recepción lo registra Calidad.")
+    if not archivo:
+        raise BusinessError("Adjunte el informe en PDF.")
+    if not archivo.lower().endswith(".pdf"):
+        raise BusinessError("El informe debe ser un PDF.")
+    f.informe_calidad = {"modo": "PDF", "archivo": archivo, "nota": (nota or "").strip(), "user": user.nombre,
+                         "ts": datetime.now().isoformat(timespec="minutes")}
+    _avisar_informe(f, user)
+    audit(user, "IMPORTACION_INFORME_CALIDAD", "ImportFollowup", f.id, f.informe_calidad)
+    return f
+
+
+def link_quality_record(f, rec, user):
+    """V25: el informe generado con el formato REG-CAL-005 queda vinculado a la importación."""
+    f.informe_calidad = {"modo": "GENERADO", "record_id": rec.id, "resultado": rec.resultado, "user": user.nombre,
+                         "ts": datetime.now().isoformat(timespec="minutes")}
+    _avisar_informe(f, user)
+
+
+def _avisar_informe(f, user):
+    alerts.emit("IMPORT_INFORME_CALIDAD", f"Informe de recepción de Calidad: {f.item} ({f.contrato})",
+                ("Resultado: " + f.informe_calidad.get("resultado") + ". ") if f.informe_calidad.get("resultado") else
+                "Informe en PDF subido por Calidad.", "ImportFollowup", f.id, dedup_key=f"IMPINF:{f.id}:{f.informe_calidad.get('ts')}",
+                creado_por=user)
+
+
 def total_gastos(f, tc=None):
     """Gastos extra en USD (los en S/ se convierten con el TC)."""
     from .tipo_cambio import rate

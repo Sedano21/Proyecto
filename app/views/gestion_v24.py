@@ -98,7 +98,7 @@ def purchases():
 
 # ------------------------------------------------------------------ importaciones
 @bp.route("/importaciones", methods=["GET", "POST"])
-@perm_required("importaciones.ver", "importaciones.seguimiento")
+@perm_required("importaciones.ver", "importaciones.seguimiento", "importaciones.calidad")
 def imports():
     back = url_for("v24.imports")
     if request.method == "POST":
@@ -121,6 +121,18 @@ def imports():
         if acc == "incidencia":
             return act(lambda: imp.add_incident(g.user, fila, f.get("tipo", ""), f.get("detalle", "")),
                        "Inconveniente reportado: se avisó a Gerencia Adjunta e Importaciones.", back)
+        if acc == "documento":  # V25: certificados, packing list y otros documentos de la importación
+            if fila is None:
+                abort(404)
+            return act(lambda: imp.add_document(g.user, fila, f.get("tipo"), _archivo("archivo", f"doc_imp_{fila.id}"),
+                                                f.get("nombre", ""), f.get("nota", "")),
+                       "Documento guardado.", back)
+        if acc == "informe_pdf":  # V25: Calidad sube el informe de recepción en PDF
+            if fila is None:
+                abort(404)
+            return act(lambda: imp.upload_quality_report(g.user, fila, _archivo("archivo", f"informe_recepcion_{fila.id}"),
+                                                         f.get("nota", "")),
+                       "Informe de recepción guardado; se avisó a Importaciones.", back)
         if acc == "excel":
             def _cargar():
                 ruta = _archivo("archivo", "seguimiento_importaciones")
@@ -134,7 +146,10 @@ def imports():
                         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     return render_template("v24_importaciones.html", d=imp.board(incluir_cerradas=request.args.get("todas") == "1"),
                            precios=imp.precios_importado_vs_nacional(), tipos_gasto=imp.TIPOS_GASTO, estados=imp.ESTADOS,
-                           puede=("importaciones.seguimiento" in g.perms), hoy=date.today())
+                           puede=("importaciones.seguimiento" in g.perms), hoy=date.today(), tipos_doc=imp.TIPOS_DOC,
+                           faltan=imp.missing_documents,
+                           calidad=("calidad.registrar" in g.perms and ("importaciones.calidad" in g.perms
+                                                                       or "importaciones.seguimiento" in g.perms)))
 
 
 # ------------------------------------------------------------------ costos y presupuestos
@@ -181,16 +196,26 @@ def costs():
 
 
 # ------------------------------------------------------------------ tablero de la empresa
-@bp.route("/empresa")
-@perm_required("tablero.empresa")
+@bp.route("/empresa", methods=["GET", "POST"])
+@perm_required("tablero.empresa", "finanzas.necesidad_semanal")
 def company():
     from ..services import charts
+    from ..services import ingresos_semana as ing
+    if request.method == "POST":  # V25: Administración y Finanzas registra lo que necesita ingresar la empresa en la semana
+        f = request.form
+        return act(lambda: ing.registrar(g.user, f_date("semana"), f.get("monto"), f.get("nota", ""), f.get("motivo", "")),
+                   lambda r: f"Necesidad de la semana del {r.semana:%d/%m} registrada: S/ {r.monto:,.0f}.", url_for("v24.company"))
     d = emp.tablero(ver_costos="costos.analisis" in g.perms or "costos.ver" in g.perms)
     sem = d["graficos"]["semanas"]
     graf = {"venta": charts.columns([x[0] for x in sem], [("Venta S/", [x[1] for x in sem])], "S/", title="Venta por semana"),
             "otif": charts.line([("OTIF %", [(x[0], x[2]) for x in sem])], "%", title="OTIF por semana"),
             "cobranza": charts.bars(d["graficos"]["cobranza"], "S/", title="Deuda vencida por antigüedad (días)", color=7)}
-    html = render_template("v24_empresa.html", d=d, graf=graf)
+    sem = ing.semanas()
+    graf["semanal"] = charts.columns([f"{x['semana']:%d/%m}" for x in sem],
+                                     [("Venta S/", [x["venta"] for x in sem]), ("Necesita S/", [x["necesidad"] or 0 for x in sem]),
+                                      ("Meta S/", [x["meta"] or 0 for x in sem])], "S/", title="Venta vs lo que necesita la empresa y la meta")
+    html = render_template("v24_empresa.html", d=d, graf=graf, semanas=sem, puede_nec="finanzas.necesidad_semanal" in g.perms,
+                           lunes=ing.lunes(date.today()), ver_costos=("costos.ver" in g.perms or "costos.analisis" in g.perms))
     return _descarga(html, "Cómo va la empresa", "como_va_la_empresa")
 
 

@@ -1,5 +1,6 @@
 """Vistas de Calidad: liberación, formatos REG-*, certificados."""
 import os
+from datetime import date
 
 from flask import Blueprint, abort, current_app, flash, g, redirect, render_template, request, send_file, url_for
 from sqlalchemy import select
@@ -134,6 +135,14 @@ def new_record(formato):
     if formato == "FUMIGACION" and lot_sel is not None and lot_sel.fumigacion:
         fu = lot_sel.fumigacion
         pre = {"inicio_fecha": fu.get("inicio", ""), "fin_fecha": fu.get("liberacion", ""), "zona": fu.get("zona", "")}
+    if request.args.get("referencia_tipo") == "ImportFollowup" and (request.args.get("referencia_id") or "").isdigit():
+        from ..models import ImportFollowup
+        imp = db().get(ImportFollowup, int(request.args["referencia_id"]))
+        if imp is not None:  # V25: el informe de recepción de la importación sale con los datos del contrato
+            pre = {"referencia": f"Contrato {imp.contrato}" + (f" · {imp.codigo_sap}" if imp.codigo_sap else ""),
+                   "proveedor": imp.proveedor, "procedencia": imp.pais_origen,
+                   "fecha_ingreso": (imp.retiro_fecha or imp.fecha_llegada or date.today()).isoformat(),
+                   "revision_documentaria": "; ".join(d.get("nombre", "") for d in (imp.documentos or [])) or ""}
     zonas = [z.nombre for z in db().execute(select(SanitationZone).where(SanitationZone.activo.is_(True))
                                             .order_by(SanitationZone.nombre)).scalars()]
     return render_template("cal_form.html", formato=formato, fdef=qsvc.FORMATOS[formato], lots=lots, pcc1=PCC1_HUMEDAD,

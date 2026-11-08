@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">{% if user %}<meta name="csrf" content="{{ csrf_token() }}">{% endif %}
 <title>{% block title %}Módulo de Operaciones{% endblock %} · Corporación Productiva</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23007a3d'/%3E%3Cpath d='M10 23V9h6.5a4.5 4.5 0 0 1 0 9H10' fill='none' stroke='%23fff' stroke-width='3'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=1.2.1">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=1.2.2">
 <script>try{if(localStorage.getItem('cp-nav')==='min')document.documentElement.classList.add('nav-min')}catch(e){}</script>
 </head>
 <body{% if user %} data-alertas="{{ url_for('main.alerts_status') }}"{% endif %}>
@@ -31,7 +31,7 @@
       {% if ve('tablero.empresa') %}{{ nl(url_for('v24.company'), 'trend', 'Cómo va la empresa') }}{{ nl(url_for('v24.replenishment'), 'cart', 'Informe de reposición') }}{% endif %}
       {% if ve('compras.consolidado') or ve('compras.cotizar') %}{{ nl(url_for('v24.purchases'), 'cart', 'Compras nacionales (consolidado)') }}{% endif %}
       {% if ve('compras.rendiciones') or ve('centros_costo.cargar') %}{{ nl(url_for('v24.expenses'), 'file', 'Rendiciones, movilidad y centros de costo') }}{% endif %}
-      {% if ve('importaciones.ver') or ve('importaciones.seguimiento') %}{{ nl(url_for('v24.imports'), 'ship', 'Seguimiento de importaciones') }}{% endif %}
+      {% if ve('importaciones.ver') or ve('importaciones.seguimiento') or ve('importaciones.calidad') %}{{ nl(url_for('v24.imports'), 'ship', 'Seguimiento de importaciones') }}{% endif %}
       {% if ve('costos.gestionar') or ve('costos.analisis') %}{{ nl(url_for('v24.costs'), 'scale', 'Costos y reposición') }}{% endif %}
       {% if ve('costos.analisis') or ve('costos.gestionar') or ve('costos.ver') %}{{ nl(url_for('v24.gross_margin'), 'trend', 'Margen bruto') }}{% endif %}
       {% if ve('simulacion.ver') or ve('simulacion.gestionar') %}{{ nl(url_for('sim.home'), 'alert', 'Simulación (entorno de pruebas)') }}{% endif %}
@@ -183,12 +183,14 @@
         <button type="button" class="btn sec small" data-open="dlg-averia" title="Reportar una avería o pedir algo a Sistemas (tintas, equipos, red)">{{ ic('wrench') }}<span class="hide-sm"> Reportar avería</span></button>
         <button type="button" class="btn sec small obs-btn" data-obs title="Reportar una observación de esta pantalla">{{ ic('flag') }}<span class="hide-sm"> Reportar observación</span></button>
         <button type="button" class="icon-btn snd-btn" aria-label="Sonido de alertas activado (pulse para silenciar)" title="Sonido de alertas">{{ ic('volume') }}</button>
+        {% if can('chat.usar') %}<a class="icon-btn chat-btn" href="{{ url_for('chat.home') }}" aria-label="Mensajes: {{ chat_no_leidos }} sin leer" title="Mensajes">{{ ic('chat') }}{% if chat_no_leidos %}<span class="dot">{{ chat_no_leidos if chat_no_leidos < 100 else '99+' }}</span>{% endif %}</a>{% endif %}
         <a class="icon-btn bell" href="{{ url_for('main.alerts') }}" aria-label="Alertas: {{ alertas_abiertas }} abiertas">{{ ic('bell') }}{% if alertas_abiertas %}<span class="dot">{{ alertas_abiertas if alertas_abiertas < 100 else '99+' }}</span>{% endif %}</a>
         <details class="usermenu"><summary aria-label="Menú de usuario"><span class="avatar" aria-hidden="true">{{ user.nombre[:1] }}</span><span class="who hide-sm"><b>{{ user.nombre }}</b><small>{{ user.role.nombre }}</small></span></summary>
           <div class="menu-pop"><div class="menu-head"><b>{{ user.nombre }}</b><small>{{ user.role.nombre }}</small></div>
             <a href="{{ url_for('main.help') }}">{{ ic('help') }} Manual de usuario</a>
             <a href="{{ url_for('main.change_password') }}">{{ ic('key') }} Cambiar contraseña</a>
             <a href="{{ url_for('main.notifications') }}">{{ ic('bell') }} Notificaciones en el celular</a>
+            {% if can('chat.usar') %}<a href="{{ url_for('chat.home', ref_url=request.full_path.rstrip('?')) }}">{{ ic('chat') }} Enviar esta pantalla por mensaje</a>{% endif %}
             <a href="{{ url_for('mb.observations', propias=1) }}">{{ ic('flag') }} Mis observaciones</a>
             <a href="{{ url_for('main.logout') }}">{{ ic('logout') }} Salir</a></div></details>
       </div>
@@ -290,7 +292,7 @@ d.addEventListener('change',function(e){if(e.target.matches('[data-dest]'))f();}
     var b = e.submitter; if (b) setTimeout(function(){ b.disabled = true; b.classList.add('busy'); setTimeout(function(){ b.disabled = false; b.classList.remove('busy'); }, 8000); }, 0); }); });
 })();
 </script>
-<script src="{{ url_for('static', filename='app.js') }}?v=1.0.0-mb"></script>
+<script src="{{ url_for('static', filename='app.js') }}?v=1.0.1"></script>
 <script src="{{ url_for('static', filename='ux.js') }}?v=1.1.0"></script>
 <script src="{{ url_for('static', filename='v14.js') }}?v=1.0"></script>
 <script src="{{ url_for('static', filename='v18.js') }}?v=1.0"></script>
