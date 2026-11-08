@@ -794,3 +794,10 @@ tr.niv-err td{background:#fdf1f2}tr.niv-ok td{background:#f0f8f3}
 .chat-send textarea{flex:1 1 240px}
 .icon-btn.chat-btn{position:relative}
 @media (max-width:720px){.chat-wrap{grid-template-columns:1fr}.chat-msg{max-width:92%}}
+/* V25: recomendaciones de la preprogramación */
+.rec-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:.5rem}
+.rec-list li{padding:.5rem .7rem;border-left:4px solid var(--line,#dde3ea);background:var(--soft,#f6f8fb);border-radius:6px}
+.rec-list li.rec-alta{border-left-color:var(--err,#c62828)}
+.rec-list li.rec-media{border-left-color:var(--warn,#e0a100)}
+/* V25: los campos que no corresponden a «¿Quién lleva la carga?» se ocultan aunque la fila sea flex */
+.tt[hidden],.row[hidden],fieldset[hidden]{display:none!important}

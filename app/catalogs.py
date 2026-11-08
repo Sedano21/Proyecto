@@ -2879,4 +2879,13 @@ PARAMS += [
     ("ingreso_semanal_tolerancia_pct", 5, "float", "Finanzas",
      "Diferencia (%) entre lo que necesita ingresar la empresa en la semana y la meta comercial a partir de la cual se exige "
      "registrar el motivo de la variación.", "PROPUESTO", V25),
+    ("ruta_ocupacion_minima_pct", 60, "float", "Distribución",
+     "Ocupación (% de la capacidad de la unidad) bajo la cual la preprogramación recomienda consolidar la ruta con otra.",
+     "PROPUESTO", V25),
+    ("minutos_minimos_entre_citas", 45, "float", "Distribución",
+     "Minutos mínimos entre dos citas de una misma ruta; si hay menos, la preprogramación recomienda modificar la cita.",
+     "PROPUESTO", V25),
+    ("consolidar_entre_zonas", False, "bool", "Distribución",
+     "La preprogramación también recomienda juntar rutas de zonas distintas (por defecto solo de la misma zona).",
+     "PROPUESTO", V25),
 ]

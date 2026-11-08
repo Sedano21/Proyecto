@@ -4,7 +4,7 @@
 <div class="note {{ 'warn' if puede_salir else '' }}">{% if puede_salir %}<b>No puede salir:</b> {{ puede_salir }}{% else %}Checklist de salida validado por Seguridad: el vehículo puede salir.{% endif %}
 Los puntos <b>NN (no negociables)</b> en mal estado impiden la salida hasta corregirlos.</div>
 {% if pend_paso2 %}<div class="note warn">Antes del checklist de <b>retorno</b> complete el paso 2 de: {% for i in pend_paso2 %}<a href="{{ url_for('dist.incident_detail', iid=i.id) }}">incidencia #{{ i.id }}</a>{{ ', ' if not loop.last }}{% endfor %}.</div>{% endif %}
-{% if can('distribucion.checklist') %}<form method="post" class="card">{{ csrf() }}
+{% if can('distribucion.checklist') %}<form method="post" class="card" id="nuevo">{{ csrf() }}
 <div class="row"><div><label class="req">Momento</label><select name="momento"><option value="SALIDA">Salida</option><option value="RETORNO" {{ 'selected' if r.estado in ['EN_RUTA','CERRADA'] }}>Retorno</option></select></div>
 <div><label class="req">Kilometraje</label><input name="km" type="number" step="any" min="0" required value="{{ r.vehicle.km_actual or '' }}" style="width:130px"></div>
 <div class="grow"><label>Observaciones de choques o raspaduras</label><input name="observaciones"></div></div>

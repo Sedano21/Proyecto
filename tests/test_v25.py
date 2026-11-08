@@ -111,3 +111,72 @@ def test_chat_entre_usuarios(s, U, app):
     assert chat.conversaciones(a)[0]["user"].id == b.id
     c = _cliente(app, "jefe.logistica")
     assert "¿Me apoyas con la OV demo?" in c.get(f"/chat/?con={a.id}").get_data(as_text=True)
+
+
+# ------------------------------------------------------------------ distribución
+def test_ruta_manual_sin_ov_con_carga_escrita(s, U):
+    from app.models import Driver, Vehicle
+    from app.services import rutas_manual as rm
+    v = s.query(Vehicle).filter_by(propio=True, disponible=True).first()
+    d = s.query(Driver).filter_by(disponible=True).first()
+    base = {"tipo_transportista": "CHOFER", "vehicle_id": v.id, "driver_id": d.id}
+    with pytest.raises(BusinessError, match="al menos"):
+        rm.create_manual(U("coord.distribucion"), date.today(), base)
+    with pytest.raises(BusinessError, match="qué se lleva"):
+        rm.create_manual(U("coord.distribucion"), date.today(), {**base, "libre_desc": [""], "libre_destino": ["ALM-2"],
+                                                                 "libre_kg": ["10"]})
+    r = rm.create_manual(U("coord.distribucion"), date.today(), {**base, "libre_desc": ["Materiales e insumos"],
+                                                                 "libre_destino": ["Almacén demo 2"], "libre_kg": ["120"]})
+    s.commit()
+    assert r.peso_total == 120 and r.carga_libre[0]["destino"] == "Almacén demo 2" and not r.stops
+    assert rm.daily_board(date.today())["filas"][0]["libre"]
+
+
+def test_cuadro_de_despacho_lista_desplegable_quien_lleva(app):
+    html = _cliente(app, "coord.distribucion").get("/operacion/despacho").get_data(as_text=True)
+    assert '<select id="tt-sel" name="tipo_transportista"' in html and "Otra carga sin OV" in html
+
+
+def test_checklist_desde_el_perfil_del_chofer(s, U, app):
+    from app.models import Driver, Vehicle
+    from app.services import rutas_manual as rm
+    from app.services.vehicle_checklist import driver_checklists
+    chofer = U("conductor1")
+    d = s.query(Driver).filter_by(user_id=chofer.id).first()
+    v = s.query(Vehicle).filter_by(propio=True, disponible=True).first()
+    r = rm.create_manual(U("coord.distribucion"), date.today(), {"tipo_transportista": "CHOFER", "vehicle_id": v.id,
+                                                                 "driver_id": d.id, "libre_desc": ["Muestras"], "libre_kg": ["5"]})
+    s.commit()
+    filas = driver_checklists(chofer)
+    assert filas and filas[0]["r"].id == r.id and filas[0]["salida"] is None and filas[0]["pendiente"]
+    html = _cliente(app, "conductor1").get("/distribucion/mis-entregas").get_data(as_text=True)
+    assert "Mi checklist vehicular" in html and "Registrar checklist de salida" in html
+    assert _cliente(app, "conductor1").get(f"/distribucion/ruta/{r.id}/checklist").status_code == 200
+
+
+def test_preprogramacion_recomienda_consolidar_y_modificar_citas(s, U, new_order):
+    from app.models import Route, RouteStop, Vehicle
+    from app.services.rutas_recomendaciones import recomendaciones
+    o1 = new_order([("PT-901", 2)], dias=1)
+    o2 = new_order([("PT-901", 2)], dias=1)
+    o3 = new_order([("PT-901", 2)], dias=1)
+    f = o1.fecha_compromiso
+    for o in (o1, o2, o3):
+        o.lugar_entrega = "Almacén central demo"
+    o1.hora_cita, o3.hora_cita = "08:00", "08:20"
+    o3.lugar_entrega = "Otro punto demo"
+    vs = s.query(Vehicle).filter(Vehicle.capacidad_kg > 0).order_by(Vehicle.capacidad_kg.desc()).limit(2).all()
+    r1 = Route(fecha=f, vehicle_id=vs[0].id, zona="Z1", estado="PROPUESTA", peso_total=10, advertencias=[],
+               hora_salida_prog="09:00")
+    r2 = Route(fecha=f, vehicle_id=vs[1].id, zona="Z1", estado="PROPUESTA", peso_total=10, advertencias=[])
+    r1.stops.append(RouteStop(order_id=o1.id, orden=1, peso_kg=5))
+    r1.stops.append(RouteStop(order_id=o3.id, orden=2, peso_kg=5))
+    r2.stops.append(RouteStop(order_id=o2.id, orden=1, peso_kg=10))
+    s.add_all([r1, r2])
+    s.commit()
+    recs = recomendaciones(f, pendientes=[])
+    titulos = " | ".join(x["titulo"] for x in recs)
+    assert f"Consolidar las rutas #{r1.id} y #{r2.id}" in titulos  # baja ocupación, misma zona, caben juntas
+    assert "mismo punto de entrega en 2 rutas" in titulos            # o1 y o2 van al mismo lugar en rutas distintas
+    assert "antes de la salida" in titulos and "citas muy seguidas" in titulos
+    assert recs[0]["prioridad"] == "ALTA"

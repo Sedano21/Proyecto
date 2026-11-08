@@ -1001,6 +1001,8 @@ class Route(Base):
     peso_real_kg: Mapped[float | None] = mapped_column(Float, nullable=True)
     pernocte: Mapped[list] = mapped_column(JSON, default=list, server_default="[]")  # [{fotos, nota, user, ts}]
     cambios: Mapped[list] = mapped_column(JSON, default=list, server_default="[]")  # [{campo, de, a, motivo, user, ts}]
+    # V25: carga sin OV escrita a mano (p. ej. traslado no registrado, materiales) [{descripcion, destino, peso_kg}]
+    carga_libre: Mapped[list] = mapped_column(JSON, default=list, server_default="[]")
     vehicle = relationship("Vehicle")
     driver = relationship("Driver")
     stops = relationship("RouteStop", back_populates="route", order_by="RouteStop.orden",

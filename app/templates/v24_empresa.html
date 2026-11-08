@@ -17,7 +17,7 @@
 <td class="r">{{ x.venta|n }}</td><td class="r">{{ x.necesidad|n if x.necesidad is not none else '—' }}</td><td class="r">{{ (x.avance_necesidad ~ ' %') if x.avance_necesidad is not none else '—' }}</td>
 <td class="r">{{ x.meta|n if x.meta is not none else '—' }}</td><td class="r {{ 'err' if x.vs_necesidad is not none and x.vs_necesidad < 0 }}">{{ ('%+.0f'|format(x.vs_necesidad)) if x.vs_necesidad is not none else '—' }}</td>
 <td class="r {{ 'err' if x.vs_meta is not none and x.vs_meta < 0 }}">{{ ('%+.0f'|format(x.vs_meta)) if x.vs_meta is not none else '—' }}</td><td>{{ x.variacion_motivo or '' }}{% if x.nota %} <span class="muted">{{ x.nota }}</span>{% endif %}</td></tr>{% endfor %}</table></div>
-{{ graf.semanal }}
+{% if semanas|selectattr("venta")|list or semanas|selectattr("necesidad")|list or semanas|selectattr("meta")|list %}{{ graf.semanal }}{% endif %}
 {% if puede_nec %}<form method="post" class="row noprint">{{ csrf() }}<div><label class="req">Semana (cualquier día)</label><input type="date" name="semana" value="{{ lunes.isoformat() }}" required></div>
 <div><label class="req">Necesita ingresar S/</label><input name="monto" type="number" step="any" min="0" required style="width:130px"></div>
 <div class="grow"><label>Motivo de la variación vs la meta (obligatorio si difiere)</label><input name="motivo"></div><div class="grow"><label>Nota</label><input name="nota"></div><div><button>Registrar</button></div></form>{% endif %}</section>

@@ -29,7 +29,11 @@ def routes():
                               .order_by(Route.fecha)).scalars())
     pend = dsvc.dispatchable_orders(fecha)
     from ..services.orders import order_weight_kg
-    return render_template("routes.html", rows=rows, otras=otras, fecha=fecha, pend=pend, peso=lambda o: order_weight_kg(o)[0])
+    from ..services.rutas_recomendaciones import recomendaciones
+    usados = dsvc.orders_in_active_route()
+    recs = recomendaciones(fecha, [o for o in dsvc.dispatchable_orders(fecha, require_prepared=False) if o.id not in usados])
+    return render_template("routes.html", rows=rows, otras=otras, fecha=fecha, pend=pend, peso=lambda o: order_weight_kg(o)[0],
+                           recs=recs)
 
 
 @bp.route("/ruta/<int:rid>", methods=["GET", "POST"])
@@ -243,7 +247,8 @@ def my_deliveries():
     rutas = dsvc.driver_stops(g.user)
     mios = {r.vehicle for r, *_ in rutas if getattr(r, "vehicle", None)} if rutas and isinstance(rutas[0], tuple) else set()
     vehiculos = sorted(mios, key=lambda v: v.placa) or list(db().execute(select(Vehicle).order_by(Vehicle.placa)).scalars())
-    return render_template("my_deliveries.html", rutas=rutas, vehiculos=vehiculos)
+    from ..services.vehicle_checklist import driver_checklists
+    return render_template("my_deliveries.html", rutas=rutas, vehiculos=vehiculos, checks=driver_checklists(g.user))
 
 
 @bp.route("/rastreo", methods=["GET", "POST"])

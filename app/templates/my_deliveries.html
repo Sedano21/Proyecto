@@ -1,6 +1,14 @@
 {% extends "base.html" %}{% from "_m.html" import b, csrf, ic, empty %}{% import "_entrega.html" as ent with context %}
 {% block content %}<h1>Mis entregas</h1>
 <p class="small muted">Al llegar, toque «Llegué». Para cerrar cada entrega registre la conformidad: nombre y DNI de quien recibe, su firma en pantalla, la foto de la entrega y la guía firmada.</p>
+{% if checks %}<section class="card" id="checklist"><div class="card-head"><h3>{{ ic('clipboard') }} Mi checklist vehicular</h3><small class="muted">Antes de salir y al volver: marque B / M / NA y toque en el dibujo del vehículo la parte dañada (o escriba la observación).</small></div>
+<div class="cards">{% for c in checks %}<article class="xcard{{ ' st-PENDIENTE' if c.pendiente }}"><div class="xcard-head"><b>Ruta #{{ c.r.id }} · {{ c.r.fecha|d }}</b>{{ b(c.r.estado) }}</div>
+<div class="meta"><span>{{ c.r.vehicle.placa }}{{ ' · ' ~ (c.r.vehicle.descripcion or c.r.vehicle.tipo_unidad) if (c.r.vehicle.descripcion or c.r.vehicle.tipo_unidad) }}</span>
+<span>Salida: {% if c.salida %}{{ b(c.salida.estado) }}{% if c.salida.nn_fallidos %} <b class="err">no negociables en mal estado</b>{% endif %}{% else %}<b>pendiente</b>{% endif %}</span>
+<span>Retorno: {% if c.retorno %}{{ b(c.retorno.estado) }}{% elif c.puede_retorno %}<b>pendiente</b>{% else %}al volver{% endif %}</span></div>
+<p class="row">{% if not c.salida %}<a class="btn small" href="{{ url_for('dist.checklist', rid=c.r.id) }}#nuevo">{{ ic('check') }} Registrar checklist de salida</a>{% endif %}
+{% if c.puede_retorno and not c.retorno %}<a class="btn small" href="{{ url_for('dist.checklist', rid=c.r.id) }}#nuevo">{{ ic('check') }} Registrar checklist de retorno</a>{% endif %}
+<a class="btn sec small" href="{{ url_for('dist.checklist', rid=c.r.id) }}">Ver</a></p></article>{% endfor %}</div></section>{% endif %}
 {% for r, stops in rutas %}<h2>Ruta #{{ r.id }} · {{ r.fecha|d }} · {{ r.vehicle.placa if r.vehicle else '' }} {{ b(r.estado) }}</h2>
 <p class="row noprint">{% if r.vehicle %}<a class="btn sec small" href="{{ url_for('dist.checklist', rid=r.id) }}">{{ ic('check') }} Checklist vehicular</a>{% endif %}
 <button class="btn sec small" data-open="dlg-pern-{{ r.id }}">{{ ic('truck') }} Pernocte: foto de lo que queda en el vehículo</button>

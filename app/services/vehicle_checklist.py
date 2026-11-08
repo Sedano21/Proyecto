@@ -195,3 +195,23 @@ def can_close_return(route):
     if c.estado != "VALIDADO":
         return "Seguridad aún no valida el checklist de retorno."
     return None
+
+
+def driver_checklists(user, hoy=None):
+    """V25 (08-nov-2026): rutas del chofer (de hoy en adelante y las que siguen en curso) con el estado de sus checklists
+    de salida y retorno, para registrarlos desde su perfil («Mis entregas»)."""
+    from datetime import date as _date
+    from ..models import Driver, Route
+    hoy = hoy or _date.today()
+    ids = [d.id for d in db().execute(select(Driver).where(Driver.user_id == user.id)).scalars()]
+    if not ids:
+        return []
+    q = select(Route).where(Route.driver_id.in_(ids), Route.vehicle_id.is_not(None),
+                            ((Route.fecha >= hoy) & Route.estado.in_(("PROPUESTA", "CONFIRMADA", "EN_RUTA")))
+                            | (Route.estado == "EN_RUTA")).order_by(Route.fecha, Route.id)
+    out = []
+    for r in db().execute(q).scalars():
+        sal, ret = of_route(r, "SALIDA"), of_route(r, "RETORNO")
+        out.append({"r": r, "salida": sal, "retorno": ret, "puede_retorno": r.estado in ("EN_RUTA", "CERRADA"),
+                    "pendiente": (sal is None and r.estado != "EN_RUTA") or (r.estado == "EN_RUTA" and ret is None)})
+    return out

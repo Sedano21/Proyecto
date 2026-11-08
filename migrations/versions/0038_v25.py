@@ -1,4 +1,4 @@
-"""V25 (08-nov-2026): documentos e informe de Calidad de importaciones, necesidad semanal de ingresos y chat interno.
+"""V25 (08-nov-2026): documentos e informe de Calidad de importaciones, carga sin OV en rutas manuales, necesidad semanal de ingresos y chat interno.
 
 Revision ID: 0038
 Revises: 0037
@@ -18,6 +18,8 @@ def upgrade():
     with op.batch_alter_table('import_followups') as b:
         b.add_column(sa.Column('documentos', sa.JSON(), nullable=False, server_default='[]'))
         b.add_column(sa.Column('informe_calidad', sa.JSON(), nullable=False, server_default='{}'))
+    with op.batch_alter_table('routes') as b:
+        b.add_column(sa.Column('carga_libre', sa.JSON(), nullable=False, server_default='[]'))
     op.create_table(
         'weekly_revenue_needs',
         sa.Column('id', sa.Integer(), primary_key=True),
@@ -49,6 +51,8 @@ def upgrade():
 def downgrade():
     op.drop_table('chat_messages')
     op.drop_table('weekly_revenue_needs')
+    with op.batch_alter_table('routes') as b:
+        b.drop_column('carga_libre')
     with op.batch_alter_table('import_followups') as b:
         b.drop_column('informe_calidad')
         b.drop_column('documentos')

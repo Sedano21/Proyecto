@@ -50,7 +50,31 @@ def route_transfers(route):
 
 
 def route_weight(route):
-    return round(sum(st.peso_kg or 0 for st in route.stops) + sum(rt.peso_kg or 0 for rt in route_transfers(route)), 2)
+    return round(sum(st.peso_kg or 0 for st in route.stops) + sum(rt.peso_kg or 0 for rt in route_transfers(route))
+                 + sum(float(x.get("peso_kg") or 0) for x in (route.carga_libre or [])), 2)
+
+
+def carga_libre(datos):
+    """V25: carga sin OV escrita a mano (descripción, destino y kg). Una ruta manual no exige OV."""
+    getl = (lambda k: datos.getlist(k)) if hasattr(datos, "getlist") else (lambda k: datos.get(k) or [])
+    desc, dest, kgs = getl("libre_desc"), getl("libre_destino"), getl("libre_kg")
+    out = []
+    for i in range(max(len(desc), len(dest), len(kgs))):
+        d = ((desc[i] if i < len(desc) else "") or "").strip()
+        de = ((dest[i] if i < len(dest) else "") or "").strip()
+        k = ((kgs[i] if i < len(kgs) else "") or "").strip().replace(",", ".")
+        if not (d or de or k):
+            continue
+        if not d:
+            raise BusinessError(f"Carga sin OV, línea {i + 1}: indique qué se lleva.")
+        try:
+            kg = float(k) if k else 0.0
+        except ValueError:
+            raise BusinessError(f"Carga sin OV, línea {i + 1}: peso inválido.") from None
+        if kg < 0:
+            raise BusinessError(f"Carga sin OV, línea {i + 1}: el peso no puede ser negativo.")
+        out.append({"descripcion": d[:200], "destino": de[:160], "peso_kg": round(kg, 2)})
+    return out
 
 
 def peso_ov(o):
@@ -264,8 +288,9 @@ def create_manual(user, fecha, datos, orden_ids=(), traslado_ids=(), auxiliar_id
         raise BusinessError("No se registran rutas en fechas pasadas.")
     ordenes = _orders_ok(orden_ids)
     traslados = _transfers_ok(traslado_ids)
-    if not ordenes and not traslados:
-        raise BusinessError("Agregue al menos una OV o un traslado a la ruta.")
+    libre = carga_libre(datos)
+    if not ordenes and not traslados and not libre:
+        raise BusinessError("Agregue a la ruta al menos una OV, un traslado o escriba la carga que lleva (sin OV).")
     trans = _transportista(datos)
     vehicle = driver = None
     if trans["tipo"] != "TRABAJADOR":
@@ -285,7 +310,8 @@ def create_manual(user, fecha, datos, orden_ids=(), traslado_ids=(), auxiliar_id
     r = Route(fecha=fecha, vehicle_id=vehicle.id if vehicle else None, driver_id=driver.id if driver else None,
               requiere_externo=bool(vehicle is not None and not vehicle.propio), zona=(datos.get("zona") or "").strip()[:120],
               estado="PROPUESTA", manual=True, auxiliares=auxs, auxiliar_id=auxs[0] if auxs else None, transportista=trans,
-              hora_salida_prog=_hora(datos.get("hora_salida")), creado_por=user.id, advertencias=[])
+              hora_salida_prog=_hora(datos.get("hora_salida")), creado_por=user.id, advertencias=[],
+              carga_libre=libre)
     db().add(r)
     db().flush()
     for o in ordenes:
@@ -296,10 +322,11 @@ def create_manual(user, fecha, datos, orden_ids=(), traslado_ids=(), auxiliar_id
         db().add(RouteTransfer(route_id=r.id, transfer_id=t.id, orden=i, peso_kg=transfer_weight(t), user_id=user.id))
     db().flush()
     if not r.zona:
-        r.zona = ", ".join(sorted({(o.distrito or o.customer.distrito or "").upper() for o in ordenes} - {""}))[:120] or "TRASLADOS"
+        r.zona = (", ".join(sorted({(o.distrito or o.customer.distrito or "").upper() for o in ordenes} - {""}))[:120]
+                  or ", ".join(x["destino"].upper() for x in libre if x["destino"])[:120] or "TRASLADOS")
     _recalc(r, user)
     audit(user, "RUTA_MANUAL", "Route", r.id, {"ov": [o.numero for o in ordenes], "traslados": [t.id for t in traslados],
-                                                "transportista": trans, "auxiliares": auxs})
+                                                "carga_libre": libre, "transportista": trans, "auxiliares": auxs})
     return r
 
 
@@ -438,7 +465,7 @@ def daily_board(fecha):
         sc = overload(r)
         filas.append({"r": r, "quien": quien, "vehiculo": vehiculo, "auxiliares": [a for a in auxs if a],
                       "tipo": t.get("tipo", "TERCERO" if r.requiere_externo else "CHOFER"), "motivo": t.get("motivo", ""),
-                      "clientes": dict(clientes), "traslados": trs, "peso": peso, "permitido": perm, "real": real,
+                      "clientes": dict(clientes), "traslados": trs, "libre": r.carga_libre or [], "peso": peso, "permitido": perm, "real": real,
                       "uso_pct": round(100 * peso / perm, 1) if perm else None, "valor": round(valor, 2), "sobrecarga": sc})
         tot["rutas"] += 1
         tot["peso"] += peso
