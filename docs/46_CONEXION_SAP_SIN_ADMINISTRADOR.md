@@ -217,6 +217,6 @@ sesión remota…» y luego `ss -ltn | grep 127.0.0.1:50000` vuelve a mostrar el
 
 **Límites:**
 - Si Exys exige un segundo factor (código al celular) para el Escritorio remoto, no funciona.
-- Si el puerto 3389 solo acepta la IP de la oficina, hay que pedir a Exys que agregue 32.198.172.171 (sin mencionar
-  nada más que «acceso de Escritorio remoto desde nuestro servidor»).
+- Si el puerto 3389 solo acepta la IP de la oficina, hay que pedir a Exys que agregue 32.198.172.171 a las direcciones
+  permitidas para el Escritorio remoto.
 - Ocupa una sesión de Escritorio remoto de la VM mientras la usa.
