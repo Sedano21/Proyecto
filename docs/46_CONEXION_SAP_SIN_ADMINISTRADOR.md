@@ -104,3 +104,46 @@ Cuando esté lista la opción A o B, quite `tunel_sap.bat` de `shell:startup` y 
 ```bash
 sudo usermod -L -s /usr/sbin/nologin tunelsap && sudo rm /var/lib/tunelsap/.ssh/authorized_keys
 ```
+
+## 4. Que el túnel siga al cerrar la sesión (prueba sin administrador)
+
+El proveedor cierra las sesiones desconectadas a las ~3 horas (es su política de Escritorio remoto). Al cerrarse la
+sesión se cierran sus programas, incluido el túnel. Windows permite que el propio usuario programe una tarea que corre
+**aunque no haya sesión abierta**, siempre que su cuenta tenga el permiso «Iniciar sesión como proceso por lotes».
+Muchos servidores no se lo dan a los usuarios comunes. No hay forma de saberlo sin probar:
+
+1. Copie `tunel_sap.bat` a `%USERPROFILE%\tunel_sap.bat` (la carpeta del usuario).
+2. En cmd (pide la contraseña de Windows de su usuario, la de la VM):
+   ```bat
+   schtasks /create /tn "Tunel SAP" /tr "\"%USERPROFILE%\tunel_sap.bat\"" /sc minute /mo 10 /ru "%USERDOMAIN%\%USERNAME%" /rp *
+   schtasks /run /tn "Tunel SAP"
+   ```
+   Cada 10 minutos la tarea revisa que esté corriendo; si ya corre, no abre otra. También vuelve sola después de un
+   reinicio de la VM.
+3. Cierre el `.bat` abierto en pantalla y quítelo de `shell:startup` (así no corren dos). En el servidor:
+   `ss -ltn | grep 127.0.0.1:50000` debe seguir mostrando el túnel. Salga del Escritorio remoto y vuelva a revisarlo
+   a las 4 horas.
+4. Resultado:
+   - Si `schtasks /create` responde **«Acceso denegado»**, o el estado de la tarea queda en
+     «No se pudo iniciar» (`schtasks /query /tn "Tunel SAP" /v /fo list`), el usuario no tiene ese permiso. Bórrela:
+     `schtasks /delete /tn "Tunel SAP" /f`. Queda la solución del punto 2 de esta guía.
+   - Si el túnel sigue arriba con la sesión cerrada, ya no depende de la sesión.
+   - Si cambia la contraseña de Windows del usuario, la tarea deja de correr: vuelva a crearla.
+
+## 5. Propuesta del asesor: «aplicación intermedia publicada por el partner»
+
+Es viable, pero no evita al partner ni su posible cobro: igual tiene que **instalarla en su servidor** (con
+administrador) y **publicarla** a internet (NAT/firewall). Es lo mismo que la opción A, más un programa adicional que
+alguien debe mantener.
+
+- El Service Layer ya es una aplicación web con usuario, contraseña y HTTPS. Publicarlo **solo para la IP
+  32.198.172.171** da el mismo resultado y es menos trabajo para el partner.
+- Si su política no permite publicar el Service Layer directamente, la alternativa equivalente es un **proxy inverso**
+  (IIS/nginx) que reenvíe las mismas rutas `/b1s/v1/` y solo acepte esa IP. El sistema funciona sin cambios: solo se
+  cambia `SAP_SL_URL`.
+- Hay que evitar una API «a medida» del partner: obligaría a adaptar el sistema y dependeríamos de ellos para cada
+  cambio.
+
+**Qué pedir en la cotización:** el precio de (1) publicar el puerto 50000 del Service Layer restringido a la IP
+32.198.172.171, o (2) un proxy inverso transparente con la misma restricción. Se elige la más barata. Es un pago único
+de configuración; no debería generar costo mensual.

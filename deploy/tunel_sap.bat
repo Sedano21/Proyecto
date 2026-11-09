@@ -10,6 +10,8 @@ REM  Una sola vez, en una ventana de comandos (cmd) de la VM:
 REM    ssh-keygen -t ed25519 -f "%USERPROFILE%\.ssh\tunel_sap" -N "" -C tunel-sap
 REM    type "%USERPROFILE%\.ssh\tunel_sap.pub"      (esa linea se pega en el servidor: deploy/vpn/tunel_ssh_servidor.sh)
 REM  Para que arranque solo al iniciar sesion: copie este archivo a la carpeta que abre  shell:startup
+REM  Para que siga aunque se cierre la sesion (si su usuario tiene permiso; ver docs/46 seccion 4):
+REM    schtasks /create /tn "Tunel SAP" /tr "\"%USERPROFILE%\tunel_sap.bat\"" /sc minute /mo 10 /ru "%USERDOMAIN%\%USERNAME%" /rp *
 REM ====================================================================================================
 set SERVIDOR=32.198.172.171
 set SAP=172.18.103.1:50000
@@ -22,5 +24,6 @@ if not exist "%LLAVE%" (echo Falta la llave %LLAVE%. Genere la llave como indica
 echo [%date% %time%] Conectando tunel a %SERVIDOR% ...
 "%SSH%" -N -T -i "%LLAVE%" -o ExitOnForwardFailure=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o StrictHostKeyChecking=accept-new -o BatchMode=yes -R 127.0.0.1:50000:%SAP% tunelsap@%SERVIDOR%
 echo [%date% %time%] Tunel cortado. Reintento en 15 segundos...
-timeout /t 15 /nobreak >nul
+REM ping en lugar de timeout: funciona tambien como tarea programada sin ventana
+ping -n 16 127.0.0.1 >nul
 goto loop
