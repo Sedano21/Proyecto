@@ -13,6 +13,7 @@
     python -m app.cli carga <n>       # errores y advertencias de la carga n.° n
     python -m app.cli sap-diagnostico # lectura de SAP, maestros, almacenes, cola de OV y estado de la conexión
     python -m app.cli sap-consulta-stock  # crea en SAP la consulta guardada del stock por lote (solo la consulta)
+    python -m app.cli eliminar-usuario <usuario> [--confirmar]  # borra un usuario creado por error (o lo da de baja si tiene registros)
     python -m app.cli clave <usuario> # asigna una contraseña nueva (la pide en pantalla; se cambia en el primer ingreso)
     python -m app.cli muestras <carpeta>   # genera los Excel ficticios de ejemplo
     python -m app.cli demo-dia        # agrega un día de operación FICTICIO con todas las casuísticas y el flujo completo
@@ -163,6 +164,51 @@ def main(argv):
             print(f"{'USUARIO':<24}{'PERFIL':<24}{'ACTIVO':<8}{'NOMBRE':<32}CORREO")
             for u in s.execute(select(User).order_by(User.username)).scalars():
                 print(f"{u.username:<24}{u.role_code:<24}{'sí' if u.activo else 'no':<8}{(u.nombre or '')[:30]:<32}{u.email or ''}")
+        elif cmd == "eliminar-usuario":
+            # 09-nov-2026: quitar usuarios creados por error. Si el usuario no tiene ningún registro asociado se BORRA;
+            # si tiene (auditoría, OV, alertas…) se DA DE BAJA: queda inactivo y con el nombre liberado, para no perder
+            # la trazabilidad. Sin --confirmar solo muestra lo que haría.
+            if len(argv) < 2:
+                print("Uso: eliminar-usuario <usuario> [--confirmar]")
+                return 2
+            from sqlalchemy import func, select
+            from .models import Base, User
+            from .services.core import audit
+            u = s.execute(select(User).where(User.username == argv[1])).scalars().first()
+            if u is None:
+                print("Usuario no encontrado. Vea la lista con: python -m app.cli usuarios")
+                return 2
+            if u.role_code == "SISTEMAS" and u.activo and s.execute(select(func.count()).select_from(User).where(
+                    User.role_code == "SISTEMAS", User.activo.is_(True))).scalar() <= 1:
+                print("Es la única cuenta de Sistemas activa: cree otra antes de quitar esta.")
+                return 2
+            refs = []
+            for t in Base.metadata.sorted_tables:
+                if t.name == "users":
+                    continue
+                for col in t.columns:
+                    if any(fk.column.table.name == "users" for fk in col.foreign_keys):
+                        n = s.execute(select(func.count()).select_from(t).where(col == u.id)).scalar() or 0
+                        if n:
+                            refs.append(f"{t.name}.{col.name}: {n}")
+            print(f"Usuario {u.username} ({u.nombre}, {u.role_code}, {'activo' if u.activo else 'inactivo'})")
+            print("Registros asociados: " + (", ".join(refs) if refs else "ninguno"))
+            accion = "DAR DE BAJA (inactivo, nombre de usuario liberado)" if refs else "BORRAR"
+            if "--confirmar" not in argv:
+                print(f"Se haría: {accion}. Para hacerlo, repita el comando con --confirmar")
+                return 0
+            if refs:
+                antes = u.username
+                u.activo = False
+                u.username = f"{antes}.baja{u.id}"[:60]
+                audit(None, "USUARIO_DADO_DE_BAJA_CONSOLA", "User", u.id, {"usuario": antes, "referencias": refs})
+                print(f"{antes} dado de baja: ya no puede ingresar; el nombre «{antes}» quedó libre para crearlo bien.")
+            else:
+                antes = u.username
+                audit(None, "USUARIO_BORRADO_CONSOLA", "User", u.id, {"usuario": antes, "nombre": u.nombre, "rol": u.role_code})
+                s.flush()
+                s.delete(u)
+                print(f"{antes} borrado.")
         elif cmd == "clave":
             if len(argv) < 2:
                 print("Uso: clave <usuario>")

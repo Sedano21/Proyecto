@@ -147,3 +147,76 @@ alguien debe mantener.
 **Qué pedir en la cotización:** el precio de (1) publicar el puerto 50000 del Service Layer restringido a la IP
 32.198.172.171, o (2) un proxy inverso transparente con la misma restricción. Se elige la más barata. Es un pago único
 de configuración; no debería generar costo mensual.
+
+**Resultado de la prueba (09-nov-2026):** Windows respondió «Se necesita habilitar el privilegio de inicio de sesión
+del archivo por lotes». El usuario de la VM **no tiene ese permiso**: la tarea no corre sin sesión. Bórrela con
+`schtasks /delete /tn "Tunel SAP" /f` y use la sección 7.
+
+## 6. Opinión sobre lo que propuso el experto SAP (aplicación intermedia en la VM + IIS + puerto en la IP pública)
+
+**Lo que tiene razón:**
+- Publicar el Service Layer completo a internet es riesgoso. Una aplicación intermedia que solo expone las operaciones
+  que el sistema necesita (y con su propia clave) es una buena práctica.
+- La IP pública ya existe (la del Escritorio remoto): basta con que el proveedor (Exys) agregue **otro puerto** hacia la
+  VM. Técnicamente es un cambio pequeño.
+
+**Lo que hay que precisar:**
+- **El túnel actual no publica el Service Layer a internet.** El puerto queda solo en `127.0.0.1` del servidor de
+  Lightsail (no se alcanza desde afuera) y viaja cifrado dentro de SSH. Su problema es la **disponibilidad** (depende
+  de la sesión), no la seguridad.
+- **La aplicación intermedia necesita administrador en la VM:** instalarla, crear el sitio en IIS y que corra como
+  servicio. Es justo lo que hoy no se tiene. Además, sin poder instalar herramientas, habría que escribirla afuera y
+  llevar un ejecutable ya armado, y aun así alguien con administrador tiene que publicarla en IIS.
+- Por lo tanto **sigue necesitando a Exys**: para el administrador en la VM y para el puerto.
+
+**Sobre «no mencionar el Service Layer a Exys»:** no lo recomiendo. Si el contrato con Exys cobra o restringe el uso
+del Service Layer, ocultarlo puede ser un incumplimiento, y el uso actual por túnel ya es ese mismo uso. Lo prudente es
+**revisar el contrato** (o preguntarlo por escrito) y decidir con esa información. Es una decisión de la empresa.
+
+**Cómo se haría si deciden ese camino** (cuando haya administrador en la VM):
+1. La aplicación intermedia la puedo preparar yo: un programa pequeño que hace el login al Service Layer y expone solo
+   las operaciones del sistema (leer clientes, productos, stock y OV; crear OV y cotizaciones), con clave propia y que
+   solo acepta la IP de Lightsail.
+2. Exys (o alguien con administrador) la instala como servicio o sitio de IIS en la VM.
+3. Exys asigna un puerto de la IP pública hacia esa aplicación, restringido a la IP 32.198.172.171.
+4. En el servidor solo se cambia la dirección de SAP; el túnel se retira.
+
+## 7. Sesión remota automática desde el servidor de AWS (sin administrador en la VM, sin Exys)
+
+Es lo que se preguntó: que el servidor de Lightsail tenga abierta la sesión de Escritorio remoto, en segundo plano,
+y que vuelva a entrar sola si se cierra. Al iniciar sesión, `shell:startup` arranca `tunel_sap.bat` y el túnel vuelve.
+
+**Cómo funciona `deploy/rdp/guardian_rdp.sh` (servicio `operaciones-rdp`):**
+- Revisa cada minuto si el túnel está arriba. **Solo si está caído** abre la sesión remota (sin pantalla).
+- Al abrirse la sesión, Windows ejecuta el `.bat` de Inicio y el túnel sube en 1 o 2 minutos.
+- Si la sesión se cierra (límite de 3 horas, reinicio de la VM), el túnel cae y el guardián vuelve a entrar solo.
+- **Si una persona entra con el mismo usuario**, Windows le da la sesión a la persona y el guardián se desconecta. El
+  túnel sigue corriendo en esa sesión y el guardián no vuelve a entrar mientras siga arriba.
+- Si la clave falla 3 veces seguidas, espera 30 minutos para no bloquear la cuenta.
+- La clave de la VM queda solo en `/etc/operaciones/rdp.env` (600 root) y se le pasa al programa por la entrada
+  estándar (no aparece en la lista de procesos).
+
+**Recomendación:** pedir a Exys un **usuario de Windows solo para esto** (no el de una persona), para que nadie le
+quite la sesión al entrar. Si no es posible, funciona igual con el usuario actual.
+
+**Instalación (en el servidor):**
+```bash
+sudo -u operaciones git -C /opt/operaciones pull --ff-only
+# 1) ¿El servidor puede llegar al Escritorio remoto de la VM? (la IP o nombre que usan en la conexión de Escritorio remoto)
+nc -zv -w 5 <IP_ESCRITORIO_REMOTO> 3389          # «succeeded» = sí; si no, Exys restringe el 3389 a la IP de la oficina
+# 2) Instalar
+sudo bash /opt/operaciones/deploy/rdp/instalar_guardian_rdp.sh
+sudo nano /etc/operaciones/rdp.env                # RDP_HOST, RDP_PUERTO, RDP_USUARIO, RDP_DOMINIO (si aplica), RDP_CLAVE
+sudo systemctl enable --now operaciones-rdp
+sudo tail -f /var/log/operaciones-rdp.log         # Ctrl+C para salir
+```
+En la VM, `tunel_sap.bat` debe estar en `shell:startup` de ese usuario (sección 3).
+
+**Prueba:** cierre la sesión de la VM con «Cerrar sesión». En 1 a 3 minutos el registro dice «Túnel SAP caído: abriendo
+sesión remota…» y luego `ss -ltn | grep 127.0.0.1:50000` vuelve a mostrar el túnel.
+
+**Límites:**
+- Si Exys exige un segundo factor (código al celular) para el Escritorio remoto, no funciona.
+- Si el puerto 3389 solo acepta la IP de la oficina, hay que pedir a Exys que agregue 32.198.172.171 (sin mencionar
+  nada más que «acceso de Escritorio remoto desde nuestro servidor»).
+- Ocupa una sesión de Escritorio remoto de la VM mientras la usa.

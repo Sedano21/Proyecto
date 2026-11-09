@@ -1,0 +1,23 @@
+[Unit]
+Description=Guardián del túnel SAP (sesión remota automática a la VM del partner)
+After=network-online.target ssh.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=rdpguard
+Group=rdpguard
+EnvironmentFile=/etc/operaciones/rdp.env
+ExecStart=/bin/bash /opt/operaciones/deploy/rdp/guardian_rdp.sh
+Restart=always
+RestartSec=30
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/rdpguard
+StandardOutput=append:/var/log/operaciones-rdp.log
+StandardError=append:/var/log/operaciones-rdp.log
+
+[Install]
+WantedBy=multi-user.target
