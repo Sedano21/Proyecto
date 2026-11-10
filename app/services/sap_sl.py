@@ -283,17 +283,25 @@ def rows_productos(sl):
 def rows_despachos(sl, desde=None):
     # V21: por defecto, las entregas de los últimos «sap_despachos_dias» (30) días; antes solo las de hoy
     desde = desde or (date.today() - timedelta(days=int(param("sap_despachos_dias", 30) or 30)))
-    ords = {}
     out = []
-    for dn in sl.get_all("DeliveryNotes", {"$filter": f"DocDate ge '{desde.isoformat()}'",
-                                           "$select": "DocNum,DocDate,FolioPrefixString,FolioNumber,DocumentLines"}):
+    entregas = sl.get_all("DeliveryNotes", {"$filter": f"DocDate ge '{desde.isoformat()}'",
+                                            "$select": "DocNum,DocDate,FolioPrefixString,FolioNumber,DocumentLines"})
+    # 10-nov-2026: el número de OV de las líneas se pide a SAP en grupos de 20 (antes una consulta por OV: con 30 días
+    # de guías eran cientos de consultas por el túnel y la página se cortaba)
+    bases = sorted({ln["BaseEntry"] for dn in entregas for ln in (dn.get("DocumentLines") or [])
+                    if ln.get("BaseType") == 17 and ln.get("BaseEntry")})
+    ords = {}
+    for i in range(0, len(bases), 20):
+        grupo = bases[i:i + 20]
+        filtro = " or ".join(f"DocEntry eq {int(b)}" for b in grupo)
+        for o in sl.get_all("Orders", {"$filter": filtro, "$select": "DocEntry,DocNum"}):
+            ords[o.get("DocEntry")] = o.get("DocNum")
+    for dn in entregas:
         guia = f"{dn.get('FolioPrefixString') or ''}-{dn.get('FolioNumber')}" if dn.get("FolioNumber") else str(dn.get("DocNum"))
         for ln in dn.get("DocumentLines") or []:
             ov = ""
             if ln.get("BaseType") == 17 and ln.get("BaseEntry"):
-                if ln["BaseEntry"] not in ords:
-                    ords[ln["BaseEntry"]] = sl._req("GET", f"Orders({ln['BaseEntry']})?$select=DocNum").get("DocNum")
-                ov = ords[ln["BaseEntry"]]
+                ov = ords.get(ln["BaseEntry"], "")
             out.append({"Número de OV": ov, "Número de guía": guia, "Fecha": _d(dn.get("DocDate")),
                         "Código de producto": ln.get("ItemCode"), "Cantidad": ln.get("Quantity")})
     return out
@@ -1085,3 +1093,76 @@ def create_stock_query(user=None):
     cfg["STOCK"] = STOCK_SQL_CODE
     set_param("sap_consultas", cfg, user)
     return {"creada": not existe, "filas": len(filas), "ejemplo": filas[0] if filas else None}
+
+
+
+# ------------------------------------------------------------------ 10-nov-2026: «Traer de SAP» en segundo plano
+JOB_MAX_MIN = 20  # una carga «en curso» por más de esto se considera interrumpida (p. ej. reinicio del servidor)
+
+
+def _job_key(tipo):
+    return f"sap_trabajo_{tipo}"
+
+
+def job_state(tipo):
+    """Estado del último «Traer de SAP» de ese tipo: {estado EN_CURSO/OK/ERROR, inicio, fin, usuario, carga, error}."""
+    from ..db import db
+    from ..models import Param
+    p = db().get(Param, _job_key(tipo))
+    j = dict((p.valor or {}).get("v") or {}) if p is not None else {}
+    if j.get("estado") == "EN_CURSO":
+        try:
+            if (datetime.now() - datetime.fromisoformat(j["inicio"])).total_seconds() > JOB_MAX_MIN * 60:
+                j["estado"], j["error"] = "ERROR", "Se interrumpió (el servidor se reinició o SAP no respondió). Vuelva a intentarlo."
+        except (KeyError, ValueError):
+            pass
+    return j
+
+
+def _job_set(tipo, datos):
+    from ..db import db
+    from ..models import Param
+    s = db()
+    p = s.get(Param, _job_key(tipo))
+    if p is None:
+        p = Param(key=_job_key(tipo), valor={"v": datos}, tipo="dict", grupo="Integración SAP",
+                  descripcion="Estado del último «Traer de SAP» (interno)", estado="DEFINIDO", fuente="Sistema")
+        s.add(p)
+    else:
+        p.valor = {"v": datos}
+    s.commit()
+
+
+def sync_background(app, tipo, user, upload_dir):
+    """Trae el dato de SAP en un hilo aparte: la página responde enseguida y muestra «Trayendo…» hasta que termina
+    (las guías o el stock de varios días pueden tardar minutos por el túnel)."""
+    import threading
+    if tipo not in TIPOS_SAP:
+        raise BusinessError("Tipo de dato de SAP no válido.")
+    if job_state(tipo).get("estado") == "EN_CURSO":
+        raise BusinessError(f"Ya se están trayendo {TIPOS_SAP[tipo].lower()} de SAP; espere a que termine.")
+    inicio = datetime.now().isoformat(timespec="seconds")
+    uid, nombre = user.id, user.nombre
+    _job_set(tipo, {"estado": "EN_CURSO", "inicio": inicio, "usuario": nombre})
+
+    def _run():
+        from ..db import SessionLocal, db
+        from ..models import User
+        with app.app_context():
+            try:
+                u = db().get(User, uid)
+                b = sync(tipo, u, upload_dir)
+                db().commit()
+                _job_set(tipo, {"estado": "OK", "inicio": inicio, "fin": datetime.now().isoformat(timespec="seconds"),
+                                "usuario": u.nombre, "carga": b.id if b is not None else None})
+            except Exception as e:  # noqa: BLE001  (el error se muestra en la pantalla de Integración SAP)
+                db().rollback()
+                _job_set(tipo, {"estado": "ERROR", "inicio": inicio, "fin": datetime.now().isoformat(timespec="seconds"),
+                                "usuario": nombre, "error": str(e)[:500]})
+            finally:
+                SessionLocal.remove()
+
+    if app.config.get("TESTING") and not app.config.get("SAP_SEGUNDO_PLANO"):
+        _run()  # en las pruebas, en el mismo hilo (resultado inmediato)
+    else:
+        threading.Thread(target=_run, name=f"sap-{tipo}", daemon=True).start()

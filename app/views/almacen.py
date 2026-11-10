@@ -490,16 +490,13 @@ def sap_sync():
             return act(lambda: sap_sl.test_connection(), lambda r: f"Conexión con SAP correcta (versión {r['version'] or '-'}).",
                        url_for("alm.sap_sync"))
         tipo = request.form.get("tipo", "")
-        holder = {}
-
-        def _do():
-            holder["b"] = sap_sl.sync(tipo, g.user, current_app.config["UPLOAD_DIR"])
-            return holder["b"]
-        resp = act(_do, lambda b: f"Datos traídos de SAP: carga #{b.id} ({b.estado.replace('_', ' ').lower()}).",
-                   url_for("alm.sap_sync"))
-        if holder.get("b") is not None and holder["b"].id:
-            return redirect(url_for("alm.upload_detail", bid=holder["b"].id))
-        return resp
+        if tipo not in sap_sl.TIPOS_SAP or SPECS[tipo]["perm"] not in g.perms:
+            abort(403)
+        # 10-nov-2026: se trae en segundo plano; la pantalla se actualiza sola y muestra la carga al terminar
+        app_obj = current_app._get_current_object()
+        return act(lambda: sap_sl.sync_background(app_obj, tipo, g.user, current_app.config["UPLOAD_DIR"]),
+                   f"Trayendo {sap_sl.TIPOS_SAP.get(tipo, tipo).lower()} de SAP… puede tardar unos minutos; esta página se "
+                   "actualiza sola.", url_for("alm.sap_sync"))
     tipos = [(t, n) for t, n in sap_sl.TIPOS_SAP.items() if SPECS[t]["perm"] in g.perms]
     ult = {t: db().execute(select(UploadBatch).where(UploadBatch.archivo.like(f"SAP_SL_{t}_%"))
                            .order_by(UploadBatch.id.desc())).scalars().first() for t, _ in tipos}
@@ -507,7 +504,9 @@ def sap_sync():
     from ..models import SalesOrder
     ovs = list(db().execute(select(SalesOrder).where(SalesOrder.origen == "MODULO", SalesOrder.estado != "BORRADOR")
                             .order_by(SalesOrder.id.desc()).limit(500)).scalars())
-    return render_template("sap_sync.html", tipos=tipos, ult=ult, configurado=sap_sl.configured(),
+    trabajos = {t: sap_sl.job_state(t) for t, _ in tipos}
+    return render_template("sap_sync.html", tipos=tipos, ult=ult, configurado=sap_sl.configured(), trabajos=trabajos,
+                           en_curso=any(j.get("estado") == "EN_CURSO" for j in trabajos.values()),
                            url=cfg["url"], empresa=cfg["company"], estado=sap_sl.connection_state(),
                            cola=[o for o in ovs if sap_sl.pending_action(o)],
                            conflictos=[o for o in ovs if (o.sap_envio or {}).get("conflicto")])

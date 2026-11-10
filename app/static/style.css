@@ -801,3 +801,7 @@ tr.niv-err td{background:#fdf1f2}tr.niv-ok td{background:#f0f8f3}
 .rec-list li.rec-media{border-left-color:var(--warn,#e0a100)}
 /* V25: los campos que no corresponden a «¿Quién lleva la carga?» se ocultan aunque la fila sea flex */
 .tt[hidden],.row[hidden],fieldset[hidden]{display:none!important}
+/* 10-nov-2026: «Traer de SAP» en segundo plano */
+.spin-sm{display:inline-block;width:12px;height:12px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:spin-sm .8s linear infinite;vertical-align:-2px}
+@keyframes spin-sm{to{transform:rotate(360deg)}}
+.small.ok{color:var(--ok);font-weight:600}

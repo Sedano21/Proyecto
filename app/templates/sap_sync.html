@@ -8,5 +8,9 @@
 {% else %}<div class="card row"><div class="grow"><b>Service Layer</b><div class="small muted">{{ url }} · empresa {{ empresa }}</div></div><form method="post">{{ csrf() }}<input type="hidden" name="accion" value="probar"><button class="btn sec">{{ ic('refresh') }} Probar conexión</button></form></div>{% endif %}
 {% if tipos %}<div class="cards">{% for t, n in tipos %}{% set u = ult.get(t) %}<article class="xcard"><div class="xcard-head"><b>{{ n }}</b>{% if u %}{{ b(u.estado) }}{% endif %}</div>
 <div class="meta">{% if u %}<span>Última: {{ u.ts.strftime('%d/%m/%Y %H:%M') }}</span><a href="{{ url_for('alm.upload_detail', bid=u.id) }}">carga #{{ u.id }}</a>{% else %}<span>Aún no se trajo de SAP</span>{% endif %}</div>
-{% if configurado %}<form method="post">{{ csrf() }}<input type="hidden" name="tipo" value="{{ t }}"><button class="btn small">{{ ic('download') }} Traer de SAP</button></form>{% endif %}</article>{% endfor %}</div>
+{% set j = trabajos.get(t) or {} %}{% if j.estado == 'EN_CURSO' %}<p class="small"><span class="spin-sm" aria-hidden="true"></span> <b>Trayendo de SAP…</b> desde {{ j.inicio[11:16] }} ({{ j.usuario }}). Puede tardar unos minutos.</p>
+{% elif j.estado == 'ERROR' %}<p class="small err">No se pudo traer ({{ (j.fin or j.inicio)[11:16] }}): {{ j.error }}</p>
+{% elif j.estado == 'OK' and j.carga and (not u or u.id == j.carga) %}<p class="small ok">Listo a las {{ j.fin[11:16] }}: <a href="{{ url_for('alm.upload_detail', bid=j.carga) }}">revisar la carga #{{ j.carga }}</a></p>{% endif %}
+{% if configurado and j.estado != 'EN_CURSO' %}<form method="post">{{ csrf() }}<input type="hidden" name="tipo" value="{{ t }}"><button class="btn small">{{ ic('download') }} Traer de SAP</button></form>{% endif %}</article>{% endfor %}</div>
+{% if en_curso %}<script>setTimeout(function(){ location.reload(); }, 10000);</script>{% endif %}
 {% else %}{{ empty('Su perfil no carga datos de SAP.') }}{% endif %}{% endblock %}
