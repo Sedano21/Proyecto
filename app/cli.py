@@ -315,4 +315,9 @@ def main(argv):
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]))
+    from .services.core import BusinessError as _BE
+    try:
+        sys.exit(main(sys.argv[1:]))
+    except _BE as e:  # mensaje claro, sin el detalle técnico de Python
+        print(f"ERROR: {e}")
+        sys.exit(1)

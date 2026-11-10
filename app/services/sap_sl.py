@@ -1064,10 +1064,23 @@ def create_stock_query(user=None):
             raise
         except BusinessError:
             existe = False
-        if not existe:
-            sl._req("POST", "SQLQueries", {"SqlCode": STOCK_SQL_CODE, "SqlName": "Stock por lote (módulo de operaciones)",
-                                           "SqlText": STOCK_SQL})
-        filas = sl.sql_query(STOCK_SQL_CODE)
+        try:
+            if not existe:
+                sl._req("POST", "SQLQueries", {"SqlCode": STOCK_SQL_CODE, "SqlName": "Stock por lote (módulo de operaciones)",
+                                               "SqlText": STOCK_SQL})
+            filas = sl.sql_query(STOCK_SQL_CODE)
+        except SapConnectionError:
+            raise
+        except BusinessError as e:
+            if "403" in str(e) or "not permitted" in str(e).lower():
+                raise BusinessError(
+                    f"{e}. El usuario de SAP «{sl.cfg.get('user')}» no tiene autorización para lo que usa la consulta "
+                    "(datos maestros de artículos y números de lote) o para crear consultas guardadas. En SAP, con un "
+                    "usuario administrador: Gestión → Inicialización sistema → Autorizaciones → Autorizaciones generales; "
+                    "a ese usuario déle «Solo lectura» en Inventario → Datos maestros de artículos y en los informes/"
+                    "transacciones de números de lote, y «Autorización total» en Informes → Generador de consultas "
+                    "(o que un administrador cree la consulta CPOPS_STOCK_LOTE). Luego repita este comando.") from None
+            raise
     cfg = dict(param("sap_consultas", {}) or {})
     cfg["STOCK"] = STOCK_SQL_CODE
     set_param("sap_consultas", cfg, user)
