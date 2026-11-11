@@ -151,3 +151,5 @@ Si quieren, preparo el procedimiento paso a paso para esa segunda instancia. Par
   - balance leído de SAP (simulado).
 - Ajustes a pruebas anteriores: el título de la conciliación (`test_v26`) y la fila de la ejecución, que ahora es un diccionario (`test_v28`).
 - Migración 0041 aplicada sobre una base nueva: la base coincide con el código.
+- Suite completa: **602 pruebas, todas pasan**.
+- Revisión en navegador: notas de crédito, OV con el aviso «NO DESPACHAR», conciliación por clase, demanda y balance de peso.
