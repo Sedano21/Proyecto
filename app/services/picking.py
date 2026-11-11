@@ -40,7 +40,9 @@ def staff(warehouse_code, roles=ROLES_PICKING):
 def _fecha_programada(order, hoy=None):
     hoy = hoy or date.today()
     antes = int(param("dias_picking_antes_despacho", 1) or 0)
-    return max(hoy, order.fecha_compromiso - timedelta(days=antes))
+    f = max(hoy, order.fecha_compromiso - timedelta(days=antes))
+    from .dias_no_laborables import es_no_laborable, siguiente_habil  # V27: el almacén no labora ese día
+    return siguiente_habil("Almacén", f) if es_no_laborable("Almacén", f) else f
 
 
 def _warehouses(order):

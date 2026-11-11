@@ -134,6 +134,11 @@ def propose_routes(fecha, user, orders=None, require_prepared=True, automatico=F
             return ampliadas
         orders = pendientes
     s = db()
+    from .dias_no_laborables import es_no_laborable
+    if es_no_laborable("Distribución", fecha):
+        if automatico:
+            return []
+        raise BusinessError(f"Distribución no labora el {fecha:%d/%m/%Y} (día no laborable registrado): elija otra fecha.")
     candidates = orders if orders is not None else dispatchable_orders(fecha, require_prepared)
     usados = orders_in_active_route()
     candidates = [o for o in candidates if o.id not in usados]

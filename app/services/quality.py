@@ -770,6 +770,11 @@ def review_certificate(cert, user, cambios, aprobar=False):
         cert.estado = "APROBADO"
         cert.revisado_por = user.id
         cert.revisado_ts = now()
+        # V27: firma del certificado: solo la Jefatura y la Supervisión de Calidad (cada una con su propia firma)
+        if user.role_code in (param("firma_certificado_roles", ["JEFE_CALIDAD", "SUPERV_CALIDAD"]) or []):
+            cargos = param("certificado_cargos", {}) or {}
+            cert.datos = dict(cert.datos, firmante={"user_id": user.id, "nombre": user.nombre,
+                                                    "cargo": cargos.get(user.role_code) or (user.role.nombre if user.role else "")})
         alerts.close_by_system(f"CERT:{cert.id}", "Certificado aprobado")
         alerts.emit("CERTIFICADO_LISTO", f"Certificado {cert.numero} aprobado y cargado",
                     f"Lote {datos.get('lote')} · {cert.product_code}" + (f" · OV {datos.get('pedido')}" if datos.get("pedido") else "")

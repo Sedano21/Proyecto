@@ -295,30 +295,53 @@ def review_documents(route, user, impresos=False):
 
 
 VB_LABEL = {"SEGURIDAD": "Seguridad (documentos completos)", "AUX_DESPACHO": "Auxiliar de Despacho",
-            "LIDER_ALMACEN": "Líder Operativo", "CHOFER": "Chofer"}
+            "LIDER_ALMACEN": "Líder Operativo", "CHOFER": "Conductor", "CALIDAD": "Calidad (día anterior o mismo día)"}
 
 
 def required_exit_approvals():
     return list(param("vistos_buenos_salida", ["SEGURIDAD", "CHOFER", "LIDER_ALMACEN"]) or [])
 
 
-def give_exit_ok(route, user, nota=""):
-    """Visto bueno a la salida con la carga validada: el CHOFER de la ruta (V8, D02: Seguridad, Chofer y Líder
-    Operativo) o el Auxiliar de Despacho si la configuración aún lo pide (Q16)."""
-    _route_ready(route)
+def roles_vb_de(route, user):
+    """V27: vistos buenos de la carga que este usuario puede dar ahora en la ruta (los que faltan): conductor,
+    Auxiliar de Despacho y Calidad (Calidad el día anterior o el mismo día del despacho). Seguridad da el suyo al revisar
+    los documentos y el Líder Operativo da el último al autorizar la salida."""
+    from datetime import date as _date, timedelta as _td
     requeridos = required_exit_approvals()
+    vb = route.vistos_buenos or {}
+    out = []
     sin_cuenta = route.driver is not None and not route.driver.user_id
-    if "CHOFER" in requeridos and (_es_chofer(route, user) or (sin_cuenta and has_perm(user, "distribucion.programar"))):
-        rol = "CHOFER"  # chofer externo sin cuenta: lo registra Distribución por encargo
-        if sin_cuenta and not _es_chofer(route, user):
-            nota = f"Por encargo del chofer {route.driver.nombre} (sin cuenta en el módulo). {nota}".strip()
-    elif "AUX_DESPACHO" in requeridos and has_perm(user, "distribucion.visto_bueno_salida"):
-        rol = "AUX_DESPACHO"
-    else:
-        raise BusinessError("Este visto bueno de salida lo da el chofer de la ruta"
-                            + (" o el Auxiliar de Despacho." if "AUX_DESPACHO" in requeridos else "."))
-    if not route.carga_validada:
-        raise BusinessError("Primero valide la carga (camión cargado).")
+    if "CHOFER" in requeridos and "CHOFER" not in vb and route.estado == "CONFIRMADA" and (
+            _es_chofer(route, user) or (sin_cuenta and has_perm(user, "distribucion.programar"))):
+        out.append("CHOFER")
+    if "AUX_DESPACHO" in requeridos and "AUX_DESPACHO" not in vb and route.estado == "CONFIRMADA" and \
+            has_perm(user, "distribucion.visto_bueno_salida"):
+        out.append("AUX_DESPACHO")
+    hoy = _date.today()
+    if "CALIDAD" in requeridos and "CALIDAD" not in vb and route.estado in ("PROPUESTA", "CONFIRMADA") and \
+            has_perm(user, "distribucion.visto_bueno_calidad") and route.fecha - _td(days=1) <= hoy <= route.fecha:
+        out.append("CALIDAD")
+    return out
+
+
+def give_exit_ok(route, user, nota="", rol=None):
+    """Visto bueno de la carga a despachar (V27): conductor, Auxiliar de Despacho y Calidad (el día anterior o el mismo
+    día); Seguridad lo da al revisar los documentos y el Líder Operativo al autorizar la salida."""
+    posibles = roles_vb_de(route, user)
+    if not posibles:
+        from datetime import timedelta as _td
+        if "CALIDAD" in required_exit_approvals() and has_perm(user, "distribucion.visto_bueno_calidad"):
+            raise BusinessError(f"Calidad da su visto bueno el día anterior o el mismo día del despacho "
+                                f"({route.fecha - _td(days=1):%d/%m} o {route.fecha:%d/%m}).")
+        raise BusinessError("No tiene un visto bueno pendiente que dar en esta ruta (lo dan el conductor, el Auxiliar de "
+                            "Despacho y Calidad; Seguridad al revisar documentos y el Líder Operativo al autorizar la salida).")
+    rol = rol if rol in posibles else posibles[0]
+    if rol != "CALIDAD":
+        _route_ready(route)
+        if not route.carga_validada:
+            raise BusinessError("Primero valide la carga (camión cargado).")
+    if rol == "CHOFER" and route.driver is not None and not route.driver.user_id and not _es_chofer(route, user):
+        nota = f"Por encargo del chofer {route.driver.nombre} (sin cuenta en el módulo). {nota}".strip()
     vb = dict(route.vistos_buenos or {})
     vb[rol] = {"user": user.nombre, "user_id": user.id, "ts": now().isoformat(), "detalle": nota}
     route.vistos_buenos = vb

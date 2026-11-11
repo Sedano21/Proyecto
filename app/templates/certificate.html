@@ -29,7 +29,7 @@
 {% if td.inocuidad %}<h4>4. INOCUIDAD.</h4>{{ t('inocuidad') }}{% endif %}
 <h3>{{ 'IV.' if tipo=='CA' else 'III.' }}&nbsp;&nbsp; CONCLUSIONES</h3>{{ t('conclusiones') }}
 <p style="text-align:right">Lima, {{ f('fecha_emision') }}</p>
-{% set fm = doc_param('certificado_firmante', {}) %}
+{% set fm = d.firmante or doc_param('certificado_firmante', {}) %}
 <div class="firma">{% if c.estado == 'APROBADO' and firma_url %}<img src="{{ firma_url }}" alt="firma"><br>{% else %}<div style="height:16mm"></div>{% endif %}<span class="ln">{{ fm.nombre }}<br>{{ fm.cargo }}</span>
 {% if c.estado != 'APROBADO' %}<div class="small muted noprint">La firma se imprime solo cuando el certificado está aprobado.</div>{% endif %}</div>
 </div>{{ pie() }}</div>

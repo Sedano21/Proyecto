@@ -1,0 +1,32 @@
+{% extends "base.html" %}{% from "_m.html" import csrf, ic, empty, b %}
+{% block content %}<div class="page-head"><div><h1>Solicitudes de fumigación</h1>
+<p class="sub">Calidad, Producción o Almacén solicita (uno o varios lotes, completos o en parte). Calidad aprueba, elige el lugar ({{ lugares|join(', ') }}) y la fecha de liberación. Almacén confirma con el checklist lo que ingresa a fumigar.</p></div>
+<div><a class="btn sec small" href="{{ url_for('cal.fumigated') }}">Producto fumigado almacenado</a></div></div>
+{% if can('fumigacion.solicitar') %}<details class="card" {{ 'open' if not reqs }}><summary><b>{{ ic('plus') }} Nueva solicitud de fumigación</b></summary>
+<form method="post">{{ csrf() }}<input type="hidden" name="accion" value="solicitar">
+<div class="row"><div><label class="req">Área que solicita</label><select name="area" required>{% for a in areas %}<option>{{ a }}</option>{% endfor %}</select></div>
+<div class="grow"><label class="req">Motivo</label><input name="motivo" required placeholder="p. ej. presencia de gorgojo, fumigación preventiva antes de despacho"></div></div>
+<table class="small" id="fs-lotes"><tr><th>Lote (producto · almacén · stock)</th><th>Cantidad a fumigar</th><th></th></tr>
+<tr class="dynrow"><td><select name="lot_id" data-search="Buscar lote o producto…" required><option value="">Elija el lote</option>{% for l in lotes %}<option value="{{ l.id }}" data-stock="{{ l.cantidad }}">{{ l.lote }} · {{ l.product_code }} {{ pd(l.product_code) }} · {{ l.warehouse_code }} · {{ l.cantidad|n }} · {{ l.estado|lower|replace('_', ' ') }}</option>{% endfor %}</select></td>
+<td><input name="cantidad" type="number" step="any" min="0.001" placeholder="todo el lote" style="width:130px"></td><td><button type="button" class="ibtn" data-delrow aria-label="Quitar">{{ ic('x') }}</button></td></tr></table>
+<p><button type="button" class="sec small" data-addrow="#fs-lotes">{{ ic('plus') }} Agregar otro lote</button> <span class="small muted">Deje la cantidad vacía para fumigar el lote completo.</span></p>
+<p><button>{{ ic('check') }} Enviar a Calidad</button></p></form></details>{% endif %}
+<form class="row" method="get"><div><label>Estado</label><select name="estado"><option value="">(todas)</option>{% for e in ['SOLICITADA','APROBADA','EN_FUMIGACION','RECHAZADA'] %}<option value="{{ e }}" {{ 'selected' if estado == e }}>{{ e|lower|replace('_', ' ') }}</option>{% endfor %}</select></div></form>
+<div data-lista id="lista-fumi">{% for r in reqs %}<section class="card"><div class="card-head"><h3>Fumigación #{{ r.id }} · {{ r.area }}</h3>{{ b(r.estado) }}</div>
+<div class="meta small"><span>Solicitó {{ r.user.nombre if r.user }} · {{ r.ts.strftime('%d/%m/%Y %H:%M') }}</span><span>{{ r.motivo }}</span>
+{% if r.lugar %}<span><b>{{ r.lugar }}</b> · del {{ r.inicio.strftime('%d/%m/%Y') }} · liberación {{ r.liberacion.strftime('%d/%m/%Y') }}</span>{% endif %}
+{% if r.aprobacion %}<span>{{ 'Rechazó' if r.aprobacion.rechazo else 'Aprobó' }} {{ r.aprobacion.user }}{{ ': ' ~ r.aprobacion.comentario if r.aprobacion.comentario }}</span>{% endif %}</div>
+{% if r.estado == 'APROBADA' and can('fumigacion.ingreso') %}<form method="post">{{ csrf() }}<input type="hidden" name="accion" value="ingreso"><input type="hidden" name="id" value="{{ r.id }}">
+<p class="small"><b>Checklist de ingreso a {{ r.lugar }}:</b> marque la cantidad que ingresó de cada lote (0 si no ingresó).</p>{% endif %}
+<div class="tw"><table class="small"><tr><th>Lote</th><th>Producto</th><th>Almacén</th><th class="r">Solicitado</th><th>{{ 'Ingresó' if r.estado in ['APROBADA','EN_FUMIGACION'] else '' }}</th></tr>
+{% for x in r.lineas %}<tr><td><b>{{ x.lote }}</b>{{ ' (completo)' if x.completo else ' (parte del lote)' }}</td><td>{{ x.product_code }} <span class="muted">{{ pd(x.product_code) }}</span></td><td>{{ x.warehouse_code }}</td><td class="r">{{ x.cantidad|n }}</td>
+<td>{% if r.estado == 'APROBADA' and can('fumigacion.ingreso') %}<input name="cant_{{ x.lot_id }}" type="number" step="any" min="0" value="{{ x.cantidad }}" style="width:110px" aria-label="Cantidad que ingresó del lote {{ x.lote }}">{% elif x.ingresado is not none %}{{ x.ingresado|n }}{% endif %}</td></tr>{% endfor %}</table></div>
+{% if r.estado == 'APROBADA' and can('fumigacion.ingreso') %}<div class="row"><div class="grow"><label>Observación</label><input name="observacion"></div><div><button>{{ ic('check') }} Confirmar ingreso</button></div></div></form>{% endif %}
+{% if r.estado == 'SOLICITADA' and can('fumigacion.aprobar') %}<form method="post" class="row">{{ csrf() }}<input type="hidden" name="id" value="{{ r.id }}">
+<div><label class="req">Lugar</label><select name="lugar">{% for l in lugares %}<option>{{ l }}</option>{% endfor %}</select></div>
+<div><label class="req">Inicio</label><input type="date" name="inicio" value="{{ today.isoformat() }}"></div>
+<div><label class="req">Liberación</label><input type="date" name="liberacion" min="{{ today.isoformat() }}"></div>
+<div class="grow"><label>Comentario (obligatorio si rechaza)</label><input name="comentario"></div>
+<div><button name="accion" value="aprobar">{{ ic('check') }} Aprobar</button> <button class="sec" name="accion" value="rechazar">Rechazar</button></div></form>{% endif %}
+{% if r.ingreso %}<p class="small muted">Ingreso confirmado por {{ r.ingreso.user }} ({{ r.ingreso.ts|replace('T', ' ') }}){{ ': ' ~ r.ingreso.observacion if r.ingreso.observacion }}</p>{% endif %}
+</section>{% else %}{{ empty('No hay solicitudes de fumigación.', 'shield') }}{% endfor %}</div>{% endblock %}

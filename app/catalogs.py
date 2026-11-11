@@ -872,7 +872,7 @@ PARAMS = [
                          "LENTEJA": "NTP-205.022.2014 LEGUMINOSA. Lenteja"}, "dict", "Certificados",
      "Norma técnica de referencia por producto base (se busca la palabra en el producto declarado). Productos sin norma: Calidad la completa.",
      "PROPUESTO", "Certificados PT3756 (frijol) y MP276 (lenteja)"),
-    ("certificado_firmante", {"nombre": "Ing. Liesbet Cordova Garcia", "cargo": "Jefe de Aseguramiento de Calidad"}, "dict",
+    ("certificado_firmante", {"nombre": "", "cargo": "Jefe de Aseguramiento de Calidad"}, "dict",
      "Certificados", "Firmante del certificado. La imagen de la firma no se guarda en el repositorio: la carga Sistemas en el servidor "
      "y se imprime solo en certificados aprobados.", "DEFINIDO", "Certificados N°CP2026-PT3756 / MP276 / CA0764"),
     ("documentos_pie", ["Av. Aviación Nº1560 - La Victoria - Lima / Telf: 303-6446 / Cel.: 998 256 589 / 984 173 183",
@@ -2911,3 +2911,117 @@ ALERT_TYPES += [
      _CAL_ALM, "DEFINIDO", V26, "Lote ya fumigado que sigue almacenado: aviso a los 15 días y alerta a los 20 (parámetros "
      "fumigado_dias_aviso y fumigado_dias_max).", False),
 ]
+
+# ----------------------------------------------------------------------------------------------------------------------
+# V27 (11-nov-2026): Gerencia de Administración y Finanzas, días no laborables, guías SUNAT, fumigación solicitada,
+# checklist vehicular diario y validación de la carga
+V27 = "Observaciones V27 (11-nov-2026)"
+GAF = "GERENTE_ADMIN_FINANZAS"
+ROLES.append((GAF, "Gerente de Administración y Finanzas", "Finanzas", V27,
+              "Dirige Administración y Finanzas: el poder del Jefe de Administración y Finanzas y de la Coordinación de "
+              "Finanzas, y la vista gerencial de compras, costos, margen y nivel de servicio."))
+ROLE_PERMISSIONS[GAF] = [(p, o, f"{V27}: poder del Jefe de Administración y Finanzas") for p, o, _ in ROLE_PERMISSIONS[JAF]]
+for _p in ("compras.ver", "costos.ver", "margen.ver", "indicadores.servicio", "informes.cumplimiento", "compras.rendiciones"):
+    if not any(x[0] == _p for x in ROLE_PERMISSIONS[GAF]):
+        ROLE_PERMISSIONS[GAF].append((_p, "DEFINIDO", f"{V27}: vista gerencial"))
+for _i, (_k, _v, *_rest) in enumerate(PARAMS):
+    if _k == "roles_equivalentes":
+        _v.setdefault(GAF, [JAF, "COORD_FINANZAS"])
+    if _k == "jefe_por_rol":
+        _v.setdefault(JAF, [GAF])
+DEMO_USERS_V27 = [("gerente.finanzas", "Gerente de Administración y Finanzas", GAF)]
+for _code, _n, _m, _t, _roles in [
+        ("dias.no_laborables", "Registrar días no laborables del área y replanificar lo programado", "Operaciones", "edicion",
+         ["JEFE_PRODUCCION", "JEFE_LOGISTICA", "COORD_LOGISTICA", "COORD_DISTRIBUCION", "JEFE_MANTENIMIENTO",
+          "JEFE_OPERACIONES", "GERENCIA_GENERAL", "GERENTE_GENERAL_ADJUNTO", "SISTEMAS"]),
+]:
+    PERMISSIONS.append((_code, _n, _m, _t))
+    for _r in _roles:
+        if _r in ROLE_PERMISSIONS and not any(p[0] == _code for p in ROLE_PERMISSIONS[_r]):
+            ROLE_PERMISSIONS[_r].append((_code, "DEFINIDO", V27))
+PARAMS += [
+    ("dias_no_laborables_areas_por_rol",
+     {"JEFE_PRODUCCION": ["Producción"], "JEFE_LOGISTICA": ["Almacén", "Distribución"], "COORD_LOGISTICA": ["Almacén"],
+      "COORD_DISTRIBUCION": ["Distribución"], "JEFE_MANTENIMIENTO": ["Mantenimiento", "Limpieza"],
+      "JEFE_OPERACIONES": ["*"], "GERENCIA_GENERAL": ["*"], "GERENTE_GENERAL_ADJUNTO": ["*"], "SISTEMAS": ["*"]},
+     "dict", "Operaciones", "Áreas cuyo día no laborable registra cada perfil («*» = todas).", "PROPUESTO", V27),
+]
+ALERT_TYPES += [
+    ("DIA_NO_LABORABLE", "Día no laborable de un área y replanificación", "Operaciones", "Planificación", "MEDIA",
+     ["JEFE_OPERACIONES", "JEFE_PRODUCCION", "JEFE_LOGISTICA", "COORD_DISTRIBUCION", "COORD_VENTAS", "JEFE_VENTAS"],
+     "DEFINIDO", V27, "Un área no labora un día: lo programado se replanifica; si una OV queda después de su fecha "
+     "comprometida, se avisa a Comercial.", False),
+]
+for _code, _n, _m, _t, _roles in [
+        ("guias.sunat_cargar", "Cargar guías emitidas en SUNAT (regularización), unirlas a su OV y enviarlas a SAP",
+         "Distribución", "edicion", ["COORD_DISTRIBUCION", "ASIST_DISTRIBUCION", "AUX_DESPACHO"]),
+        ("guias.regularizar_inventario", "Indicar si la guía SUNAT ya se descontó del inventario o descontarla",
+         "Operaciones", "aprobacion", ["JEFE_OPERACIONES"]),
+]:
+    PERMISSIONS.append((_code, _n, _m, _t))
+    for _r in _roles:
+        if _r in ROLE_PERMISSIONS and not any(p[0] == _code for p in ROLE_PERMISSIONS[_r]):
+            ROLE_PERMISSIONS[_r].append((_code, "DEFINIDO", V27))
+ALERT_TYPES += [
+    ("GUIA_SUNAT_INVENTARIO", "Guía SUNAT regularizada: decidir el descuento del inventario", "Operaciones", "Guías", "ALTA",
+     ["JEFE_OPERACIONES"], "DEFINIDO", V27, "Se cargó una guía emitida en SUNAT: el Jefe de Operaciones indica si el "
+     "producto ya se descontó del inventario o si hay que descontarlo.", False),
+]
+PARAMS += [
+    ("sap_servicios_ultimo", {}, "dict", "Integración SAP",
+     "Última lectura de órdenes de servicio/fabricación ligadas a OV (la escribe el sistema al traerlas de SAP).",
+     "DEFINIDO", V27),
+    ("sap_servicios_dias", 90, "int", "Integración SAP",
+     "Días hacia atrás de las órdenes de servicio/fabricación ligadas a OV que se traen de SAP (maquila).", "PROPUESTO", V27),
+]
+_CAL_JS = ["JEFE_CALIDAD", "SUPERV_CALIDAD"]
+_ALM_ING = ["COORD_ALMACEN", "COORD_ALMACEN_MP", "SUPERV_ALMACEN", "LIDER_ALMACEN", "JEFE_LOGISTICA", "COORD_LOGISTICA"]
+for _code, _n, _m, _t, _roles in [
+        ("fumigacion.solicitar", "Solicitar fumigación de lotes", "Calidad", "edicion",
+         _CAL_JS + ["ASIST_CALIDAD", "JEFE_PRODUCCION", "ASIST_PRODUCCION"] + _ALM_ING),
+        ("fumigacion.aprobar", "Aprobar la fumigación: lugar y fecha de liberación", "Calidad", "aprobacion", _CAL_JS),
+        ("fumigacion.ingreso", "Confirmar con checklist lo que ingresa a fumigar", "Almacén", "edicion", _ALM_ING),
+]:
+    PERMISSIONS.append((_code, _n, _m, _t))
+    for _r in _roles:
+        if _r in ROLE_PERMISSIONS and not any(p[0] == _code for p in ROLE_PERMISSIONS[_r]):
+            ROLE_PERMISSIONS[_r].append((_code, "DEFINIDO", V27))
+PARAMS += [
+    ("fumigacion_lugares", ["Contenedor 1", "Contenedor 2", "Patio"], "list", "Calidad",
+     "Lugares donde se fumiga (los elige Calidad al aprobar la solicitud).", "DEFINIDO", V27),
+]
+ALERT_TYPES += [
+    ("FUMIGACION_SOLICITADA", "Solicitud de fumigación por aprobar", "Calidad", "Fumigación", "ALTA", _CAL_JS, "DEFINIDO", V27,
+     "Calidad, Producción o Almacén solicitó fumigar lotes: Calidad aprueba, elige el lugar y la fecha de liberación.", False),
+    ("FUMIGACION_INGRESO", "Fumigación aprobada: checklist de ingreso", "Almacén", "Fumigación", "ALTA", _ALM_ING, "DEFINIDO", V27,
+     "Almacén confirma lote por lote lo que ingresa a fumigar.", False),
+]
+PARAMS += [
+    ("firma_certificado_roles", ["JEFE_CALIDAD", "SUPERV_CALIDAD"], "list", "Certificados",
+     "Perfiles que firman los certificados de calidad (cada persona carga su propia firma y se imprime en los que aprueba).",
+     "DEFINIDO", V27),
+    ("certificado_cargos", {"JEFE_CALIDAD": "Jefe de Aseguramiento de Calidad", "SUPERV_CALIDAD": "Supervisora de Calidad"},
+     "dict", "Certificados", "Cargo que se imprime bajo la firma, según el perfil de quien aprueba el certificado.", "PROPUESTO", V27),
+]
+for _code, _n, _m, _t, _roles in [
+        ("desempeno.personas", "Rendimiento e indicadores de desempeño por persona", "Gestión Humana", "consulta",
+         ["GESTION_HUMANA", "JEFE_OPERACIONES", "JEFE_LOGISTICA", "JEFE_PRODUCCION", "GERENCIA_GENERAL", "GERENTE_GENERAL_ADJUNTO"]),
+]:
+    PERMISSIONS.append((_code, _n, _m, _t))
+    for _r in _roles:
+        if _r in ROLE_PERMISSIONS and not any(p[0] == _code for p in ROLE_PERMISSIONS[_r]):
+            ROLE_PERMISSIONS[_r].append((_code, "DEFINIDO", V27))
+# V27: valida la carga a despachar: conductor, Seguridad, Calidad (día anterior o mismo día), Auxiliar de Despacho y Líder
+PARAMS_CAMBIO.append(("vistos_buenos_salida", ["SEGURIDAD", "CHOFER", "LIDER_ALMACEN"],
+                      ["SEGURIDAD", "CHOFER", "CALIDAD", "AUX_DESPACHO", "LIDER_ALMACEN"],
+                      f"{V27}: validan la carga conductor, Seguridad, Calidad, Auxiliar de Despacho y Líder Operativo"))
+PARAMS = [(k, (["SEGURIDAD", "CHOFER", "CALIDAD", "AUX_DESPACHO", "LIDER_ALMACEN"] if k == "vistos_buenos_salida" else v), *rest)
+          for k, v, *rest in PARAMS]
+for _code, _n, _m, _t, _roles in [
+        ("distribucion.visto_bueno_calidad", "Visto bueno de Calidad a la carga a despachar (día anterior o mismo día)",
+         "Calidad", "aprobacion", ["JEFE_CALIDAD", "SUPERV_CALIDAD", "ASIST_CALIDAD"]),
+]:
+    PERMISSIONS.append((_code, _n, _m, _t))
+    for _r in _roles:
+        if _r in ROLE_PERMISSIONS and not any(p[0] == _code for p in ROLE_PERMISSIONS[_r]):
+            ROLE_PERMISSIONS[_r].append((_code, "DEFINIDO", V27))

@@ -493,13 +493,19 @@ def sap_sync():
         if tipo == "FACTURAS":
             if "facturas.cargar" not in g.perms:
                 abort(403)
+        elif tipo == "SERVICIOS":
+            if not g.perms & {"ov.importar", "produccion.liquidar", "distribucion.ver", "ov.ver"}:
+                abort(403)
         elif tipo not in sap_sl.TIPOS_SAP or SPECS[tipo]["perm"] not in g.perms:
             abort(403)
         # 10-nov-2026: se trae en segundo plano; la pantalla se actualiza sola y muestra la carga al terminar
         app_obj = current_app._get_current_object()
+        volver = request.form.get("volver", "")
+        volver = volver if volver.startswith("/") and not volver.startswith("//") else url_for("alm.sap_sync")
+        nombre = sap_sl.TIPOS_SAP.get(tipo) or {"FACTURAS": "facturas y notas de crédito",
+                                                "SERVICIOS": "órdenes de servicio/fabricación"}.get(tipo, tipo)
         return act(lambda: sap_sl.sync_background(app_obj, tipo, g.user, current_app.config["UPLOAD_DIR"]),
-                   f"Trayendo {sap_sl.TIPOS_SAP.get(tipo, 'facturas y notas de crédito').lower()} de SAP… puede tardar unos minutos; esta página se "
-                   "actualiza sola.", url_for("alm.sap_sync"))
+                   f"Trayendo {nombre.lower()} de SAP… puede tardar unos minutos; esta página se actualiza sola.", volver)
     tipos = [(t, n) for t, n in sap_sl.TIPOS_SAP.items() if SPECS[t]["perm"] in g.perms]
     ult = {t: db().execute(select(UploadBatch).where(UploadBatch.archivo.like(f"SAP_SL_{t}_%"))
                            .order_by(UploadBatch.id.desc())).scalars().first() for t, _ in tipos}
@@ -562,4 +568,7 @@ def sap_dispatch_check():
                         headers={"Content-Disposition": "attachment; filename=ov_vs_guias_sap.xlsx"})
     estado = request.args.get("estado", "")
     filas = [f for f in res["filas"] if not estado or f["estado"] == estado or (estado == "ALERTA" and f["alertas"])]
-    return render_template("sap_despachos.html", res=res, filas=filas, estado=estado)
+    from ..services import sap_sl
+    job = sap_sl.job_state("SERVICIOS")
+    return render_template("sap_despachos.html", res=res, filas=filas, estado=estado, job=job,
+                           configurado=sap_sl.configured())

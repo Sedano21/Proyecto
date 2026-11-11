@@ -197,6 +197,18 @@ def check_new_password(user, nueva):
 @login_required
 def change_password():
     from ..services.core import param
+    if request.method == "POST" and request.form.get("accion") == "nombre":
+        # V27: cada usuario corrige su propio nombre (el usuario de ingreso y el perfil los cambia Sistemas)
+        def _nombre():
+            n = " ".join((request.form.get("nombre") or "").split())
+            if len(n) < 3:
+                raise BusinessError("Escriba su nombre completo.")
+            if len(n) > 120:
+                raise BusinessError("El nombre es muy largo (máximo 120 caracteres).")
+            antes = g.user.nombre
+            g.user.nombre = n
+            audit(g.user, "NOMBRE_CAMBIADO", "User", g.user.id, {"antes": antes, "despues": n})
+        return act(_nombre, "Nombre actualizado.", url_for("main.change_password"))
     if request.method == "POST":
         def _do():
             if not check_password_hash(g.user.password_hash, request.form.get("actual") or ""):
@@ -1148,3 +1160,31 @@ def export(entidad):
 def evidence(name):
     from flask import current_app
     return send_from_directory(current_app.config["UPLOAD_DIR"], os.path.basename(name))
+
+
+# ------------------------------- V27: días no laborables por área ----------------------------------------------
+@bp.route("/dias-no-laborables", methods=["GET", "POST"])
+@perm_required("dias.no_laborables")
+def days_off():
+    from ..models import AreaDayOff
+    from ..services import dias_no_laborables as dnl
+    from .common import f_date
+    back = url_for("main.days_off")
+    if request.method == "POST":
+        f = request.form
+        acc = f.get("accion")
+        if acc == "registrar":
+            return act(lambda: dnl.registrar(g.user, f.get("area", ""), f_date("fecha"), f.get("motivo", "")),
+                       lambda d: f"{d.area}: el {d.fecha:%d/%m/%Y} queda como día no laborable.", back)
+        d = db().get(AreaDayOff, int(f.get("id") or 0)) or abort(404)
+        if acc == "replanificar":
+            return act(lambda: dnl.replanificar(g.user, d, f_date("destino"), f.getlist("item") or None),
+                       lambda r: f"{r['movidos']} programación(es) pasaron al {r['destino']:%d/%m/%Y}."
+                       + (f" OV en riesgo de fecha: {', '.join(r['riesgo'])} (se avisó a Comercial)." if r["riesgo"] else ""), back)
+        if acc == "anular":
+            return act(lambda: dnl.anular(g.user, d), "Día no laborable anulado.", back)
+        abort(400)
+    dias = [d for d in dnl.proximos() if d.area in dnl.areas_de(g.user)]
+    return render_template("dias_no_laborables.html", areas=dnl.areas_de(g.user), dias=dias,
+                           afectados={d.id: dnl.afectados(d.area, d.fecha) for d in dias},
+                           siguiente={d.id: dnl.siguiente_habil(d.area, d.fecha) for d in dias})

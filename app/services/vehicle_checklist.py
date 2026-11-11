@@ -152,6 +152,10 @@ def validate(user, c, aprobar, km_seguridad=None, nota=""):
     if not aprobar and not (nota or "").strip():
         raise BusinessError("Indique qué observa Seguridad.")
     r = c.route
+    if c.route_id is None and c.momento == "FIN_DIA":  # V27: el final del día no puede ser menor que el inicio
+        ini = daily_of(c.vehicle_id, c.driver_id, c.fecha, "INICIO_DIA")
+        if ini is not None and ini.km_seguridad is not None and km < ini.km_seguridad:
+            raise BusinessError("El kilometraje del fin del día no puede ser menor al del inicio.")
     if c.momento == "RETORNO" and r is not None and r.km_salida is not None and km < r.km_salida:
         raise BusinessError("El kilometraje de retorno no puede ser menor al de salida.")
     c.estado = "VALIDADO" if aprobar else "OBSERVADO"
@@ -165,10 +169,11 @@ def validate(user, c, aprobar, km_seguridad=None, nota=""):
     if v is not None and (v.km_actual is None or km > v.km_actual):
         v.km_actual = km
     if not aprobar:
-        alerts.emit("CHECKLIST_OBSERVADO", f"Seguridad observó el checklist de {c.momento.lower()}: {v.placa if v else ''}",
-                    nota, "Route", c.route_id, prioridad="ALTA", dedup_key=f"CHK_SEG:{c.id}", creado_por=user)
-    audit(user, "CHECKLIST_VALIDADO" if aprobar else "CHECKLIST_OBSERVADO", "Route", c.route_id,
-          {"momento": c.momento, "km": km, "nota": nota})
+        alerts.emit("CHECKLIST_OBSERVADO", f"Seguridad observó el checklist de {c.momento.lower().replace('_', ' ')}: {v.placa if v else ''}",
+                    nota, "Route" if c.route_id else "Vehicle", c.route_id or c.vehicle_id, prioridad="ALTA",
+                    dedup_key=f"CHK_SEG:{c.id}", creado_por=user)
+    audit(user, "CHECKLIST_VALIDADO" if aprobar else "CHECKLIST_OBSERVADO", "Route" if c.route_id else "Vehicle",
+          c.route_id or c.vehicle_id, {"momento": c.momento, "km": km, "nota": nota})
     return c
 
 
@@ -215,3 +220,101 @@ def driver_checklists(user, hoy=None):
         out.append({"r": r, "salida": sal, "retorno": ret, "puede_retorno": r.estado in ("EN_RUTA", "CERRADA"),
                     "pendiente": (sal is None and r.estado != "EN_RUTA") or (r.estado == "EN_RUTA" and ret is None)})
     return out
+
+
+# ------------------------------------------------------------------ V27 (11-nov-2026): checklist diario por vehículo
+MOMENTOS_DIA = {"INICIO_DIA": "Inicio del día", "FIN_DIA": "Fin del día"}
+
+
+def driver_of(user):
+    from ..models import Driver
+    return db().execute(select(Driver).where(Driver.user_id == user.id)).scalars().first()
+
+
+def daily_of(vehicle_id, driver_id, fecha, momento):
+    return db().execute(select(VehicleChecklist).where(
+        VehicleChecklist.vehicle_id == vehicle_id, VehicleChecklist.driver_id == driver_id, VehicleChecklist.fecha == fecha,
+        VehicleChecklist.momento == momento, VehicleChecklist.route_id.is_(None)).order_by(VehicleChecklist.id.desc())).scalars().first()
+
+
+def register_daily(user, vehicle, momento, valores, km=None, observaciones="", marcas=None, foto_adelante="", foto_atras="",
+                   driver=None, fecha=None):
+    """Checklist de inspección vehicular CP-OPE-004 al comienzo y al final del día, por vehículo. Un conductor puede
+    manejar varios vehículos el mismo día: hace el de inicio y el de fin de cada uno. Fotos de adelante y de atrás."""
+    from ..models import Driver
+    momento = (momento or "").upper()
+    if momento not in MOMENTOS_DIA:
+        raise BusinessError("Indique si es el checklist del inicio o del fin del día.")
+    if not has_perm(user, "distribucion.checklist"):
+        raise BusinessError("El checklist lo registra el conductor.")
+    driver = driver or driver_of(user)
+    if driver is None:
+        raise BusinessError("Su usuario no está vinculado a un conductor (Distribución → Flota y conductores).")
+    if driver.user_id != user.id and not has_perm(user, "distribucion.programar"):
+        raise BusinessError("Cada conductor registra su propio checklist.")
+    if vehicle is None:
+        raise BusinessError("Elija el vehículo.")
+    fecha = fecha or date.today()
+    if not foto_adelante or not foto_atras:
+        raise BusinessError("Tome la foto de adelante y la de atrás del vehículo.")
+    if daily_of(vehicle.id, driver.id, fecha, momento) is not None:
+        raise BusinessError(f"Ya registró el checklist de {MOMENTOS_DIA[momento].lower()} de {vehicle.placa} hoy.")
+    inicio = daily_of(vehicle.id, driver.id, fecha, "INICIO_DIA")
+    if momento == "FIN_DIA" and inicio is None:
+        raise BusinessError(f"Primero registre el checklist del inicio del día de {vehicle.placa}.")
+    vals, falt = {}, []
+    for code, zona, item, nn in items():
+        v = (valores.get(code) or "").upper()
+        if v not in VALORES:
+            falt.append(item)
+        vals[code] = v
+    if falt:
+        raise BusinessError(f"Marque B, M o NA en todos los ítems (faltan {len(falt)}: {', '.join(falt[:4])}…).")
+    try:
+        km = float(km) if km not in (None, "") else None
+    except ValueError:
+        raise BusinessError("Kilometraje inválido.") from None
+    if km is None:
+        raise BusinessError("Indique el kilometraje.")
+    if momento == "FIN_DIA" and inicio.km is not None and km < inicio.km:
+        raise BusinessError(f"El kilometraje final ({km:g}) no puede ser menor al del inicio del día ({inicio.km:g}).")
+    nn = [item for code, zona, item, es_nn in items() if es_nn and vals[code] == "M"]
+    c = VehicleChecklist(vehicle_id=vehicle.id, route_id=None, momento=momento, fecha=fecha, driver_id=driver.id, items=vals,
+                         observaciones=(observaciones or "").strip(), km=km, nn_fallidos=nn, registrado_por=user.id,
+                         marcas=parse_marks(marcas), fotos={"adelante": foto_adelante, "atras": foto_atras})
+    db().add(c)
+    db().flush()
+    if c.marcas:
+        c.observaciones = (c.observaciones + "\n" if c.observaciones else "") + "; ".join(
+            f"Punto {i + 1}: {m['nota']}" for i, m in enumerate(c.marcas))
+    malos = [item for code, zona, item, _ in items() if vals[code] == "M"]
+    if malos or c.observaciones:
+        alerts.emit("CHECKLIST_OBSERVADO", f"Checklist {MOMENTOS_DIA[momento].lower()} con observaciones: {vehicle.placa}",
+                    ("Puntos NN en mal estado (no debe movilizarse): " + ", ".join(nn) + ". " if nn else "")
+                    + (f"En mal estado: {', '.join(malos)}. " if malos else "")
+                    + (f"Observaciones: {c.observaciones}" if c.observaciones else "") + f" Conductor: {driver.nombre}.",
+                    "Vehicle", vehicle.id, prioridad="ALTA" if nn else "MEDIA", dedup_key=f"CHK:{c.id}", creado_por=user)
+    if vehicle.km_actual is None or km > vehicle.km_actual:
+        vehicle.km_actual = km
+    audit(user, "CHECKLIST_DIARIO", "Vehicle", vehicle.id, {"momento": momento, "conductor": driver.nombre, "km": km,
+                                                             "malos": malos, "nn": nn})
+    return c
+
+
+def daily_status(user, fecha=None):
+    """Vehículos del conductor hoy: los que ya inspeccionó (inicio/fin) y los propios disponibles para empezar."""
+    from ..models import Vehicle
+    fecha = fecha or date.today()
+    driver = driver_of(user)
+    if driver is None:
+        return {"driver": None, "filas": [], "vehiculos": []}
+    hechos = list(db().execute(select(VehicleChecklist).where(VehicleChecklist.driver_id == driver.id,
+                                                              VehicleChecklist.fecha == fecha,
+                                                              VehicleChecklist.route_id.is_(None))).scalars())
+    por_v = {}
+    for c in hechos:
+        por_v.setdefault(c.vehicle_id, {})[c.momento] = c
+    filas = [{"vehicle": db().get(Vehicle, vid), "inicio": m.get("INICIO_DIA"), "fin": m.get("FIN_DIA")} for vid, m in por_v.items()]
+    vehiculos = list(db().execute(select(Vehicle).where(Vehicle.propio.is_(True), Vehicle.disponible.is_(True))
+                                  .order_by(Vehicle.placa)).scalars())
+    return {"driver": driver, "filas": filas, "vehiculos": vehiculos}

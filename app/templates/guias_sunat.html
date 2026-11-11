@@ -1,0 +1,25 @@
+{% extends "base.html" %}{% from "_m.html" import csrf, ic, empty, b, paginacion %}
+{% block content %}<div class="page-head"><div><h1>Guías emitidas en SUNAT (regularización)</h1>
+<p class="sub">Si la guía se emitió directamente en SUNAT (por ejemplo, cuando SAP falló), súbala aquí: el sistema lee serie y número, destinatario, placa y los productos con lote, FP, FV y cantidad. Se une a su OV, el Jefe de Operaciones indica si el producto ya se descontó del inventario y se envía a SAP sin volver a digitarla.</p></div></div>
+{% if can('guias.sunat_cargar') %}<form method="post" enctype="multipart/form-data" class="card row">{{ csrf() }}<input type="hidden" name="accion" value="cargar">
+<div class="grow"><label class="req">PDF de SUNAT o XML de la guía (puede subir varias)</label><input type="file" name="archivos" accept=".pdf,.xml" multiple required></div>
+<div><button>{{ ic('upload') }} Cargar guías</button></div></form>{% endif %}
+{% for gd in guias %}<section class="card"><div class="card-head"><h3>Guía {{ gd.serie }}-{{ gd.numero }}</h3>
+<span>{% if gd.sap.estado == 'OK' %}{{ b('EN SAP', 'ok') }}{% elif gd.sap.estado == 'ERROR' %}{{ b('ERROR SAP', 'err') }}{% else %}{{ b('POR ENVIAR A SAP', 'warn') }}{% endif %}
+{% if gd.inventario.decision == 'DESCONTADO' %}{{ b('STOCK DESCONTADO', 'ok') }}{% elif gd.inventario.decision == 'YA_DESCONTADO' %}{{ b('YA ESTABA DESCONTADO', 'info') }}{% else %}{{ b('INVENTARIO POR DECIDIR', 'warn') }}{% endif %}</span></div>
+<div class="meta small"><span>Emitida {{ gd.fecha_emision.strftime('%d/%m/%Y') if gd.fecha_emision }} · traslado {{ gd.fecha_traslado.strftime('%d/%m/%Y') if gd.fecha_traslado }}</span>
+<span>{{ gd.destinatario or '—' }} (RUC {{ gd.destinatario_ruc or '—' }})</span><span>{{ gd.motivo }}</span>{% if gd.placa %}<span>Placa {{ gd.placa }}</span>{% endif %}
+{% if gd.archivo %}<a href="{{ url_for('main.evidence', name=gd.archivo) }}" target="_blank">ver archivo</a>{% endif %}</div>
+<div class="tw"><table class="small"><tr><th>Código</th><th>Descripción</th><th>Lote</th><th>FP</th><th>FV</th><th class="r">Cantidad</th><th>UM</th></tr>
+{% for x in gd.lineas %}<tr><td>{{ x.codigo }}</td><td>{{ x.descripcion }}</td><td>{{ x.lote or '—' }}</td><td>{{ x.fp }}</td><td>{{ x.fv }}</td><td class="r">{{ x.cantidad|n }}</td><td>{{ x.um }}</td></tr>{% endfor %}</table></div>
+{% if gd.order %}<p class="small">OV: <a href="{{ url_for('com.order_detail', oid=gd.order.id) }}">{{ gd.order.numero }}</a> · {{ gd.order.customer.nombre }}{% if gd.sap_ov %} · OV en SAP {{ gd.sap_ov }}{% endif %}</p>
+{% elif can('guias.sunat_cargar') %}<form method="post" class="row">{{ csrf() }}<input type="hidden" name="accion" value="unir"><input type="hidden" name="id" value="{{ gd.id }}">
+<div class="grow"><label>OV del módulo</label><select name="order_id"><option value="">(elija)</option>{% for o in cand.get(gd.id, []) %}<option value="{{ o.id }}">{{ o.numero }} · {{ o.customer.nombre }} · {{ o.fecha_compromiso|d }}</option>{% endfor %}</select></div>
+<div><label>o número de la OV en SAP</label><input name="sap_ov" size="10" inputmode="numeric"></div><div><button class="sec">Unir</button></div></form>{% endif %}
+{% if not gd.inventario.decision and can('guias.regularizar_inventario') %}<form method="post" class="row">{{ csrf() }}<input type="hidden" name="accion" value="inventario"><input type="hidden" name="id" value="{{ gd.id }}">
+<div><label class="req">Inventario</label><select name="decision" required><option value="">¿Ya se descontó?</option><option value="YA_DESCONTADO">Sí, ya se descontó (no tocar el stock)</option><option value="DESCONTAR">No: descontarlo ahora del lote</option></select></div>
+<div class="grow"><label>Nota</label><input name="nota"></div><div><button>Registrar</button></div></form>
+{% elif gd.inventario.decision %}<p class="small muted">Inventario: {{ 'descontado' if gd.inventario.decision == 'DESCONTADO' else 'ya estaba descontado' }} por {{ gd.inventario.user }} ({{ gd.inventario.ts|replace('T', ' ') }}){% for d in gd.inventario.detalle %} · {{ d.producto }} {{ d.lote }} {{ d.almacen }} −{{ d.cantidad|n }}{% endfor %}</p>{% endif %}
+{% if gd.sap.estado == 'ERROR' %}<p class="small err">SAP: {{ gd.sap.error }}</p>{% elif gd.sap.estado == 'OK' %}<p class="small ok">En SAP: entrega {{ gd.sap.docnum }} ({{ gd.sap.ts|replace('T', ' ') }}).</p>{% endif %}
+{% if gd.sap.estado != 'OK' and gd.sap_ov and can('guias.sunat_cargar') %}<form method="post" class="inline" data-confirm="¿Registrar esta guía en SAP como entrega de la OV {{ gd.sap_ov }}?">{{ csrf() }}<input type="hidden" name="accion" value="sap"><input type="hidden" name="id" value="{{ gd.id }}"><button class="small">{{ ic('upload') }} Enviar a SAP</button></form>{% endif %}
+</section>{% else %}{{ empty('Aún no hay guías de SUNAT cargadas.', 'file') }}{% endfor %}{{ paginacion(guias, 'guías') }}{% endblock %}

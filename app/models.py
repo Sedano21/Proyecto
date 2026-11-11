@@ -2055,6 +2055,8 @@ class VehicleChecklist(Base):
     validado_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     km_seguridad: Mapped[float | None] = mapped_column(Float, nullable=True)  # kilometraje que registra Seguridad
     nota_seguridad: Mapped[str] = mapped_column(Text, default="")
+    # V27: checklist diario (inicio y fin del día) con fotos de adelante y de atrás {adelante, atras}
+    fotos: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}")
     vehicle = relationship("Vehicle")
     driver = relationship("Driver")
     route = relationship("Route")
@@ -2611,3 +2613,63 @@ class ChatMessage(Base):
     ts: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)
     de = relationship("User", foreign_keys=[de_id])
     para = relationship("User", foreign_keys=[para_id])
+
+
+class AreaDayOff(Base):
+    """V27 (11-nov-2026): día en que un área no labora (lo registra su jefe). Lo programado ese día se replanifica."""
+    __tablename__ = "area_days_off"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    area: Mapped[str] = mapped_column(String(40), index=True)
+    fecha: Mapped[date] = mapped_column(Date, index=True)
+    motivo: Mapped[str] = mapped_column(Text, default="")
+    activo: Mapped[bool] = mapped_column(Boolean, default=True)
+    replanificado: Mapped[list] = mapped_column(JSON, default=list)  # [{tipo, id, de, a, ts, user}]
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    user = relationship("User")
+
+
+class SunatGuide(Base):
+    """V27 (11-nov-2026): guía de remisión emitida directamente en SUNAT (p. ej. cuando SAP falla) que se regulariza:
+    se carga el PDF o XML, se une a su OV, el Jefe de Operaciones decide si descontar el inventario y se envía a SAP."""
+    __tablename__ = "sunat_guides"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    serie: Mapped[str] = mapped_column(String(8))
+    numero: Mapped[str] = mapped_column(String(12))
+    fecha_emision: Mapped[date | None] = mapped_column(Date, nullable=True)
+    fecha_traslado: Mapped[date | None] = mapped_column(Date, nullable=True)
+    motivo: Mapped[str] = mapped_column(String(60), default="")
+    destinatario_ruc: Mapped[str] = mapped_column(String(15), default="")
+    destinatario: Mapped[str] = mapped_column(String(200), default="")
+    llegada: Mapped[str] = mapped_column(String(250), default="")
+    placa: Mapped[str] = mapped_column(String(15), default="")
+    lineas: Mapped[list] = mapped_column(JSON, default=list)  # [{codigo, descripcion, lote, fp, fv, cantidad, um}]
+    archivo: Mapped[str] = mapped_column(String(250), default="")
+    order_id: Mapped[int | None] = mapped_column(ForeignKey("sales_orders.id"), nullable=True, index=True)
+    sap_ov: Mapped[str] = mapped_column(String(20), default="")  # número de la OV en SAP
+    estado: Mapped[str] = mapped_column(String(20), default="REGISTRADA")  # REGISTRADA / ENVIADA_SAP / ANULADA
+    inventario: Mapped[dict] = mapped_column(JSON, default=dict)  # {decision YA_DESCONTADO/DESCONTADO, detalle, user, ts}
+    sap: Mapped[dict] = mapped_column(JSON, default=dict)  # {estado OK/ERROR, docentry, docnum, error, ts}
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    order = relationship("SalesOrder")
+    user = relationship("User")
+
+
+class FumigationRequest(Base):
+    """V27 (11-nov-2026): solicitud de fumigación de Calidad, Producción o Almacén; Calidad aprueba, elige el lugar y la
+    fecha de liberación; Almacén confirma con un checklist lo que ingresa a fumigar (lotes completos o en parte)."""
+    __tablename__ = "fumigation_requests"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    area: Mapped[str] = mapped_column(String(30))
+    motivo: Mapped[str] = mapped_column(Text, default="")
+    lineas: Mapped[list] = mapped_column(JSON, default=list)  # [{lot_id, lote, product_code, warehouse_code, cantidad, ingresado}]
+    estado: Mapped[str] = mapped_column(String(15), default="SOLICITADA")  # SOLICITADA/APROBADA/RECHAZADA/EN_FUMIGACION
+    lugar: Mapped[str] = mapped_column(String(60), default="")
+    inicio: Mapped[date | None] = mapped_column(Date, nullable=True)
+    liberacion: Mapped[date | None] = mapped_column(Date, nullable=True)
+    aprobacion: Mapped[dict] = mapped_column(JSON, default=dict)  # {user, ts, comentario}
+    ingreso: Mapped[dict] = mapped_column(JSON, default=dict)  # {user, ts, observacion}
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    user = relationship("User")

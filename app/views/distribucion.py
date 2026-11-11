@@ -18,7 +18,7 @@ bp = Blueprint("dist", __name__, url_prefix="/distribucion")
 
 
 @bp.route("/", methods=["GET", "POST"])
-@perm_required("distribucion.ver")
+@perm_required("distribucion.ver", "distribucion.visto_bueno_calidad")
 def routes():
     fecha = f_date("fecha") or date.today()
     if request.method == "POST":
@@ -37,7 +37,7 @@ def routes():
 
 
 @bp.route("/ruta/<int:rid>", methods=["GET", "POST"])
-@perm_required("distribucion.ver", "distribucion.carga")
+@perm_required("distribucion.ver", "distribucion.carga", "distribucion.visto_bueno_calidad")
 def route_detail(rid):
     r = db().get(Route, rid) or abort(404)
     back = url_for("dist.route_detail", rid=rid)
@@ -123,7 +123,7 @@ def route_detail(rid):
         elif acc == "aprobar_discrepancia":
             fn = lambda: dsp.approve_exit_with_discrepancy(r, u, f.get("motivo", ""))  # noqa: E731
         elif acc == "visto_bueno":
-            fn = lambda: dsp.give_exit_ok(r, u, f.get("nota", ""))  # noqa: E731
+            fn = lambda: dsp.give_exit_ok(r, u, f.get("nota", ""), f.get("rol") or None)  # noqa: E731
         elif acc == "resolver_guia":
             fn = lambda: dsp.resolve_guide_discrepancy(r, u, f.get("detalle", ""))  # noqa: E731
         elif acc == "retorno":
@@ -189,6 +189,7 @@ def route_detail(rid):
                            preguia=dsp.preguia(r), etapas=dsp.ETAPAS_FOTO, certs=certs,
                            faltan=dsp.missing_documents(r) if r.estado == "CONFIRMADA" else [],
                            billing=dsp.billing_status, vb_req=dsp.required_exit_approvals(), vb_label=dsp.VB_LABEL,
+                           vb_puede=dsp.roles_vb_de(r, g.user),
                            horas_seg=dsvc.HORAS_SEGURIDAD, v22=_v22_ctx(r, auxiliares))
 
 

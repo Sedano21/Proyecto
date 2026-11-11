@@ -69,3 +69,12 @@ def performance():
     equipo = seg.team_performance(desde, hasta, None if areas is None or g.user.role_code in ("JEFE_OPERACIONES",) else
                                   (areas | {"Almacén", "Distribución"} if g.user.role.area == "Logística" else areas))
     return render_template("seg_desempeno.html", tiempos=tiempos, equipo=equipo, f=request.args)
+
+
+@bp.route("/desempeno-personas")
+@perm_required("desempeno.personas", "desempeno.equipo")
+def people_performance():
+    """V27: rendimiento e indicadores de desempeño por persona (Gestión Humana y jefaturas)."""
+    from ..services import desempeno_personas as dp
+    d = dp.por_persona(f_date("desde"), f_date("hasta"), request.args.get("area", ""))
+    return render_template("desempeno_personas.html", d=d, f=request.args)

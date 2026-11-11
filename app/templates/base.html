@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">{% if user %}<meta name="csrf" content="{{ csrf_token() }}">{% endif %}
 <title>{% block title %}Módulo de Operaciones{% endblock %} · Corporación Productiva</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23007a3d'/%3E%3Cpath d='M10 23V9h6.5a4.5 4.5 0 0 1 0 9H10' fill='none' stroke='%23fff' stroke-width='3'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=1.2.6">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=1.2.7">
 <script>try{if(localStorage.getItem('cp-nav')==='min')document.documentElement.classList.add('nav-min')}catch(e){}</script>
 </head>
 <body{% if user %} data-alertas="{{ url_for('main.alerts_status') }}"{% endif %}>
@@ -25,6 +25,8 @@
       {{ nl(url_for('main.dashboard'), 'home', 'Inicio') }}
       {% if es_gerencia(user) %}{{ nl(url_for('main.alerts_management'), 'flag', 'Bandeja de gerencia') }}{% endif %}
       {{ nl(url_for('main.alerts'), 'bell', 'Alertas y tareas', ('<span class="count" aria-label="' ~ alertas_abiertas ~ ' abiertas">' ~ alertas_abiertas ~ '</span>')|safe if alertas_abiertas else '') }}
+      {% if can('dias.no_laborables') %}{{ nl(url_for('main.days_off'), 'calendar', 'Días no laborables') }}{% endif %}
+      {% if can('desempeno.personas') %}{{ nl(url_for('seg.people_performance'), 'users', 'Desempeño por persona') }}{% endif %}
       {% if ve('alertas.ver') or ve('informes.comercial') or ve('informes.reempaque') or ve('informes.produccion') or ve('informes.distribucion') or ve('informes.almacen') %}{{ nl(url_for('rep.home'), 'chart', 'Informes') }}{% endif %}
       {% if ve('sugerencias.ver') %}{{ nl(url_for('v22.suggestions'), 'trend', 'Sugerencias de eficiencia') }}{% endif %}
       {% if ve('demanda.analisis') %}{{ nl(url_for('v23.demand'), 'gauge', 'Demanda proyectada') }}{% endif %}
@@ -50,6 +52,7 @@
       {% if ve('oportunidades.registrar') or ve('oportunidades.ver_todas') %}{{ nl(url_for('com.opportunities'), 'users', 'Oportunidades') }}{{ nl(url_for('com.quotes'), 'file', 'Cotizaciones') }}{% endif %}
       {% if ve('informes.comercial') %}{{ nl(url_for('v22.funnel'), 'chart', 'Embudo comercial') }}{% endif %}
       {% if ve('catalogo.ver') or ve('catalogo.fotos') %}{{ nl(url_for('com.catalog'), 'box', 'Catálogo') }}{% endif %}
+      {% if ve('ov.ver') %}{{ nl(url_for('com.order_status'), 'route', 'Estado de OV') }}{% endif %}
       {% if ve('objetivos.ver') %}{{ nl(url_for('com.targets'), 'gauge', 'Objetivos de venta') }}{% endif %}
       {% if ve('demanda.cargar') %}{{ nl(url_for('sup.demand'), 'trend', 'Proyección de demanda') }}{% endif %}
       {% if ve('margen.ver') %}{{ nl(url_for('com.margin_report'), 'chart', 'Margen') }}{% endif %}
@@ -75,6 +78,7 @@
       {% if ve('stock.conteo') %}{{ nl(url_for('alm.counts'), 'count', 'Conteos físicos') }}{% endif %}
       {% if ve('movimiento.solicitar') or ve('movimiento.ejecutar') or ve('movimiento.ver_todos') %}{{ nl(url_for('sup.moves'), 'swap', 'Movimientos punto a punto') }}{% endif %}
       {% if ve('rotacion.ver') %}{{ nl(url_for('sup.rotation'), 'history', 'Stock sin rotación') }}{% endif %}
+      {% if (can('fumigacion.solicitar') or can('fumigacion.ingreso')) and not ve('calidad.ver') %}{{ nl(url_for('cal.fumigation_requests'), 'shield', 'Solicitudes de fumigación') }}{% endif %}
       {% if ve('stock.ver') and not ve('calidad.ver') %}{{ nl(url_for('cal.fumigated'), 'shield', 'Producto fumigado almacenado') }}{% endif %}
       {% if ve('ingresos.ver') %}{{ nl(url_for('alm.entries'), 'download', 'Ingresos a almacén') }}{% endif %}
       {% if (ve('asistencia.area') or ve('asistencia.ver_area') or ve('asistencia.todas')) and not ve('produccion.asistencia') %}{{ nl(url_for('prod.attendance'), 'users', 'Asistencia de mi personal' if not ve('asistencia.todas') else 'Asistencia del personal') }}{% endif %}
@@ -101,6 +105,8 @@
     {% if ve('calidad.ver') or ve('distribucion.seguridad') %}<div class="grp" data-grupo="Calidad"><h4><span class="lbl">{{ 'Calidad' if can('calidad.ver') else 'Seguridad' }}</span></h4>
       {% if ve('calidad.ver') %}{{ nl(url_for('cal.inbox'), 'clipboard', 'Bandeja de Calidad') }}
       {{ nl(url_for('cal.home'), 'shield', 'Liberación y registros') }}
+      {{ nl(url_for('cal.fumigation_requests'), 'shield', 'Solicitudes de fumigación') }}
+      {% if can('distribucion.visto_bueno_calidad') and not ve('distribucion.ver') %}{{ nl(url_for('dist.routes'), 'truck', 'Visto bueno de la carga (rutas)') }}{% endif %}
       {{ nl(url_for('cal.fumigated'), 'alert', 'Producto fumigado almacenado') }}
       {{ nl(url_for('cal.line'), 'factory', 'En la línea y merma') }}
       {{ nl(url_for('cal.materials'), 'layers', 'Material y saldo por línea') }}
@@ -119,8 +125,10 @@
     {% if ve('distribucion.ver') %}<div class="grp" data-grupo="Distribución"><h4><span class="lbl">Distribución</span></h4>
       {% if ve('guias.estado') %}{{ nl(url_for('dist.guides'), 'file', 'Guías de remisión') }}{% endif %}
       {% if ve('distribucion.conformidad') %}{{ nl(url_for('dist.my_deliveries'), 'check', 'Mis entregas') }}{% endif %}
+      {% if can('distribucion.checklist') or can('distribucion.checklist_validar') %}{{ nl(url_for('dist.daily_checklist'), 'clipboard', 'Checklist vehicular diario') }}{% endif %}
       {{ nl(url_for('dist.routes'), 'route', 'Programación y rutas') }}
       {{ nl(url_for('v22.board'), 'clipboard', 'Cuadro de despacho y ruta manual') }}
+      {% if can('guias.sunat_cargar') or can('guias.regularizar_inventario') %}{{ nl(url_for('v22.sunat_guides'), 'file', 'Guías SUNAT (regularización)') }}{% endif %}
       {% if ve('personal.ausencias') %}{{ nl(url_for('v22.absences'), 'calendar', 'Disponibilidad del personal') }}{% endif %}
       {% if ve('checklist.ver') %}{{ nl(url_for('dist.checklists'), 'check', 'Checklists vehiculares') }}{% endif %}
       {{ nl(url_for('dist.incidents'), 'alert', 'Incidencias') }}
@@ -190,7 +198,7 @@
         <details class="usermenu"><summary aria-label="Menú de usuario"><span class="avatar" aria-hidden="true">{{ user.nombre[:1] }}</span><span class="who hide-sm"><b>{{ user.nombre }}</b><small>{{ user.role.nombre }}</small></span></summary>
           <div class="menu-pop"><div class="menu-head"><b>{{ user.nombre }}</b><small>{{ user.role.nombre }}</small></div>
             <a href="{{ url_for('main.help') }}">{{ ic('help') }} Manual de usuario</a>
-            <a href="{{ url_for('main.change_password') }}">{{ ic('key') }} Cambiar contraseña</a>
+            <a href="{{ url_for('main.change_password') }}">{{ ic('key') }} Mi cuenta (nombre y contraseña)</a>
             <a href="{{ url_for('main.notifications') }}">{{ ic('bell') }} Notificaciones en el celular</a>
             {% if can('chat.usar') %}<a href="{{ url_for('chat.home', ref_url=request.full_path.rstrip('?')) }}">{{ ic('chat') }} Enviar esta pantalla por mensaje</a>{% endif %}
             <a href="{{ url_for('mb.observations', propias=1) }}">{{ ic('flag') }} Mis observaciones</a>

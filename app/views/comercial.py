@@ -842,3 +842,18 @@ def market_analysis():
                                        "S/ por kg", title=f"{f['producto']}: a cuánto compramos")
             for f in d["compra"] if f["serie_nacional"] or f["serie_importacion"]}
     return render_template("market_analysis.html", d=d, graf=graf, dias=dias, categorias=market.categorias_para(g.user))
+
+
+@bp.route("/estado")
+@perm_required("ov.ver")
+def order_status():
+    """V27: Estado de OV: etapa de cada OV con indicadores (mismo estilo que «OV abiertas vs guías de SAP»)."""
+    from ..services import estado_ov as eov
+    a = request.args
+    vend = a.get("vendedor_id") or None
+    if g.user.role_code == "EJECUTIVO_VENTAS":  # el ejecutivo ve solo sus OV
+        vend = g.user.id
+    d = eov.tablero(f_date("desde"), f_date("hasta"), a.get("q", ""), vend, a.get("etapa", ""))
+    vendedores = list(db().execute(select(User).where(User.role_code.in_(("EJECUTIVO_VENTAS", "COORD_VENTAS", "JEFE_VENTAS")))
+                                   .order_by(User.nombre)).scalars())
+    return render_template("estado_ov.html", d=d, f=a, filas=paginate(d["filas"], 30), vendedores=vendedores)

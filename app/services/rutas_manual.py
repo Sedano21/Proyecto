@@ -286,6 +286,9 @@ def create_manual(user, fecha, datos, orden_ids=(), traslado_ids=(), auxiliar_id
         raise BusinessError("Indique la fecha de la ruta.")
     if fecha < date.today():
         raise BusinessError("No se registran rutas en fechas pasadas.")
+    from .dias_no_laborables import es_no_laborable
+    if es_no_laborable("Distribución", fecha):
+        raise BusinessError(f"Distribución no labora el {fecha:%d/%m/%Y} (día no laborable registrado): elija otra fecha.")
     ordenes = _orders_ok(orden_ids)
     traslados = _transfers_ok(traslado_ids)
     libre = carga_libre(datos)

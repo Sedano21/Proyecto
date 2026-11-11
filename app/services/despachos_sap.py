@@ -9,7 +9,7 @@ from collections import defaultdict
 from sqlalchemy import select
 
 from ..db import db
-from ..models import UploadBatch
+from ..models import CustomerInvoice, UploadBatch
 
 TOL = 1e-6
 
@@ -78,6 +78,10 @@ def conciliar(ov_batch=None, guias_batch=None):
         ln["entregado"] += _num(d.get("entregado"))
         ln["descripcion"] = _txt(d.get("descripcion"))
     filas, tot = [], defaultdict(int)
+    from .core import param
+    servicios = defaultdict(list)
+    for x in ((param("sap_servicios_ultimo", {}) or {}).get("filas") or []):
+        servicios[_txt(x.get("ov"))].append(x)
     for n, o in ovs.items():
         g = guias.get(n)
         lineas = []
@@ -96,15 +100,27 @@ def conciliar(ov_batch=None, guias_batch=None):
         elif g and any(not l["cuadra"] for l in lineas):
             alertas.append("Lo guiado no cuadra con lo entregado en la OV (revise guías anteriores al periodo o anuladas).")
         mod = order_by_number(n)
+        facturas = set((g or {}).get("facturas", set()))
+        if mod is not None:  # V27: también las facturas traídas de SAP a Finanzas que están unidas a la OV
+            facturas |= {inv.numero for inv in db().execute(select(CustomerInvoice).where(
+                CustomerInvoice.order_id == mod.id, CustomerInvoice.tipo == "FACTURA")).scalars()}
+        ords = servicios.get(n, [])
+        if ords and est != "COMPLETO":  # V27: OV de maquila atendida con orden de servicio/fabricación
+            plan = sum(x["planificado"] for x in ords)
+            comp = sum(x["completado"] for x in ords)
+            alertas.append(f"Orden de servicio/fabricación: {comp:g} de {plan:g} completado"
+                           + (" (completa: falta despacharla)" if plan and comp + TOL >= plan else "") + ".")
         filas.append({"ov": n, "cliente": o["cliente"], "fecha": o["fecha"], "estado": est, "lineas": lineas,
-                      "guias": sorted((g or {}).get("guias", {}).items()), "facturas": sorted((g or {}).get("facturas", set())),
-                      "alertas": alertas, "modulo": mod})
+                      "guias": sorted((g or {}).get("guias", {}).items()), "facturas": sorted(facturas),
+                      "servicios": ords, "alertas": alertas, "modulo": mod})
+        tot["CON_SERVICIO"] += 1 if ords else 0
         tot[est] += 1
         tot["CON_ALERTA"] += 1 if alertas else 0
     orden = {"PARCIAL": 0, "COMPLETO": 1, "SIN_DESPACHO": 2}
     filas.sort(key=lambda f: (orden[f["estado"]], f["fecha"], f["ov"]))
     tot["TOTAL"] = len(filas)
-    return {"ov_batch": ovb, "guias_batch": gub, "filas": filas, "tot": dict(tot)}
+    return {"ov_batch": ovb, "guias_batch": gub, "filas": filas, "tot": dict(tot),
+            "servicios_ts": (param("sap_servicios_ultimo", {}) or {}).get("ts", "")}
 
 
 def excel(res):
@@ -115,7 +131,7 @@ def excel(res):
     ws = wb.active
     ws.title = "OV vs guías"
     ws.append(["OV", "Cliente", "Fecha compromiso", "Estado", "Producto", "Descripción", "Solicitado", "Entregado (SAP)",
-               "Pendiente", "Guiado (guías)", "Cuadra", "Guías", "Facturas", "Observación"])
+               "Pendiente", "Guiado (guías)", "Cuadra", "Guías", "Facturas", "Órdenes de servicio", "Observación"])
     for c in ws[1]:
         c.font = Font(bold=True)
     txt = {"PARCIAL": "Incompleto (parcial)", "COMPLETO": "Completo", "SIN_DESPACHO": "Sin despacho"}
@@ -123,7 +139,9 @@ def excel(res):
         for ln in f["lineas"]:
             ws.append([f["ov"], f["cliente"], f["fecha"], txt[f["estado"]], ln["producto"], ln["descripcion"], ln["solicitado"],
                        ln["entregado"], ln["pendiente"], ln["guiado"], "Sí" if ln["cuadra"] else "No",
-                       ", ".join(gn for gn, _ in f["guias"]), ", ".join(f["facturas"]), " ".join(f["alertas"])])
+                       ", ".join(gn for gn, _ in f["guias"]), ", ".join(f["facturas"]),
+                       "; ".join(f"OF {x['orden']} {x['completado']:g}/{x['planificado']:g} {x['estado']}" for x in f.get("servicios", [])),
+                       " ".join(f["alertas"])])
     ws.freeze_panes = "A2"
     bio = BytesIO()
     wb.save(bio)

@@ -179,7 +179,8 @@ def certificates():
                    lambda c: f"Certificado {c.numero} generado (borrador).", url_for("cal.certificates"))
     rows = list(db().execute(select(Certificate).order_by(Certificate.id.desc())).scalars())
     lots = list(db().execute(select(StockLot).where(StockLot.cantidad > 0).order_by(StockLot.product_code)).scalars())
-    return render_template("certificates.html", rows=paginate(rows), lots=lots, tipos=qsvc.CERT_TIPOS)
+    return render_template("certificates.html", puede_firmar=_puede_firmar(g.user),
+                           tiene_firma=os.path.exists(_firma_path(g.user.id)), rows=paginate(rows), lots=lots, tipos=qsvc.CERT_TIPOS)
 
 
 @bp.route("/certificados/<int:cid>", methods=["GET", "POST"])
@@ -211,33 +212,51 @@ def certificate_detail(cid):
     return render_template("certificate.html", c=c, d=c.datos, editable=qsvc.EDITABLE_CERT_FIELDS,
                            print_mode=request.args.get("imprimir") == "1", tipos=qsvc.CERT_TIPOS, etiquetas=qsvc.CERT_ETIQUETAS,
                            procesado=qsvc.CERT_PROCESADO,
-                           firma_url=url_for("cal.firma") if os.path.exists(_firma_path()) else None)
+                           firma_url=_firma_url(c))
 
 
-def _firma_path():
-    return os.path.join(current_app.instance_path, "firmas", "firma_certificado.png")
+def _firma_url(c):
+    """Firma impresa: la de quien aprobó (si es Jefatura o Supervisión de Calidad); los certificados anteriores a V27
+    conservan la firma general."""
+    f = (c.datos or {}).get("firmante") or {}
+    if f.get("user_id"):
+        return url_for("cal.firma", u=f["user_id"]) if os.path.exists(_firma_path(f["user_id"])) else None
+    return url_for("cal.firma") if os.path.exists(_firma_path()) else None
+
+
+def _firma_path(user_id=None):
+    """V27: una firma por persona (Jefatura y Supervisión de Calidad); sin usuario, la firma general anterior."""
+    nombre = f"firma_user_{int(user_id)}.png" if user_id else "firma_certificado.png"
+    return os.path.join(current_app.instance_path, "firmas", nombre)
+
+
+def _puede_firmar(user):
+    from ..services.core import param
+    return user is not None and user.role_code in (param("firma_certificado_roles", ["JEFE_CALIDAD", "SUPERV_CALIDAD"]) or [])
 
 
 @bp.route("/firma", methods=["GET", "POST"])
 @login_required
 def firma():
-    """Imagen de la firma del certificado: se guarda en el servidor (fuera del repositorio) y la carga Sistemas."""
+    """Imagen de la firma de los certificados: cada firmante autorizado (Jefatura y Supervisión de Calidad) carga la suya;
+    se guarda en el servidor (fuera del repositorio) y se imprime solo en los certificados que esa persona aprobó."""
     if request.method == "POST":
-        if "config.editar" not in g.perms and g.user.role_code != "JEFE_CALIDAD":  # V14: la carga la Jefa de Calidad
+        if not _puede_firmar(g.user):  # V27: solo la Jefatura y la Supervisión de Calidad usan firma
             abort(403)
         f = request.files.get("archivo")
         if not f or not f.filename.lower().endswith(".png"):
             flash("Seleccione una imagen PNG de la firma.", "error")
             return redirect(url_for("cal.certificates"))
-        os.makedirs(os.path.dirname(_firma_path()), exist_ok=True)
-        f.save(_firma_path())
-        audit(g.user, "FIRMA_CERTIFICADO_CARGADA", "Param", "certificado_firmante", {})
+        os.makedirs(os.path.dirname(_firma_path(g.user.id)), exist_ok=True)
+        f.save(_firma_path(g.user.id))
+        audit(g.user, "FIRMA_CERTIFICADO_CARGADA", "User", g.user.id, {})
         db().commit()
-        flash("Firma cargada.", "ok")
+        flash("Su firma quedó cargada: se imprimirá en los certificados que usted apruebe.", "ok")
         return redirect(url_for("cal.certificates"))
-    if "calidad.ver" not in g.perms or not os.path.exists(_firma_path()):
+    uid = request.args.get("u", type=int)
+    if "calidad.ver" not in g.perms or not os.path.exists(_firma_path(uid)):
         abort(404)
-    return send_file(_firma_path(), mimetype="image/png")
+    return send_file(_firma_path(uid), mimetype="image/png")
 
 
 @bp.route("/fumigados")
@@ -246,3 +265,36 @@ def fumigated():
     """V26: producto ya fumigado que sigue almacenado (máximo 20 días): seguimiento de Calidad y Almacén."""
     from ..services import fumigados
     return render_template("fumigados.html", d=fumigados.listar())
+
+
+@bp.route("/fumigacion/solicitudes", methods=["GET", "POST"])
+@perm_required("fumigacion.solicitar", "fumigacion.aprobar", "fumigacion.ingreso", "calidad.ver")
+def fumigation_requests():
+    """V27: solicitudes de fumigación (Calidad, Producción o Almacén), aprobación de Calidad e ingreso con checklist."""
+    from ..models import FumigationRequest
+    from ..services import fumigacion_solicitudes as fs
+    back = url_for("cal.fumigation_requests")
+    if request.method == "POST":
+        f = request.form
+        acc = f.get("accion")
+        if acc == "solicitar":
+            lineas = [{"lot_id": a, "cantidad": b} for a, b in zip(f.getlist("lot_id"), f.getlist("cantidad"))]
+            return act(lambda: fs.solicitar(g.user, f.get("area", ""), f.get("motivo", ""), lineas),
+                       lambda r: f"Solicitud de fumigación #{r.id} enviada a Calidad.", back)
+        r = db().get(FumigationRequest, int(f.get("id") or 0)) or abort(404)
+        if acc == "aprobar":
+            return act(lambda: fs.aprobar(g.user, r, f.get("lugar", ""), f_date("inicio"), f_date("liberacion"), f.get("comentario", "")),
+                       f"Fumigación #{r.id} aprobada: Almacén recibió el checklist de ingreso.", back)
+        if acc == "rechazar":
+            return act(lambda: fs.rechazar(g.user, r, f.get("comentario", "")), f"Solicitud #{r.id} rechazada.", back)
+        if acc == "ingreso":
+            cant = {k[5:]: v for k, v in f.items() if k.startswith("cant_")}
+            return act(lambda: fs.confirmar_ingreso(g.user, r, cant, f.get("observacion", "")),
+                       f"Ingreso a fumigación #{r.id} confirmado: los lotes quedaron en fumigación.", back)
+        abort(400)
+    area_rol = (g.user.role.area or "") if g.user.role else ""
+    propia = "Calidad" if "Calidad" in area_rol else ("Producción" if "Producci" in area_rol else "Almacén")
+    areas = [propia] + [a for a in ("Calidad", "Producción", "Almacén") if a != propia]
+    return render_template("fumigacion_solicitudes.html", reqs=fs.listar(request.args.get("estado", "")),
+                           lotes=fs.lotes_disponibles() if "fumigacion.solicitar" in g.perms else [],
+                           lugares=fs.lugares(), areas=areas, estado=request.args.get("estado", ""))

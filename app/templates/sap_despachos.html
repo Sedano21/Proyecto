@@ -1,10 +1,15 @@
-{% extends "base.html" %}{% from "_m.html" import b, ic, empty %}
+{% extends "base.html" %}{% from "_m.html" import b, ic, empty, csrf %}
 {% block content %}<div class="page-head"><div><h1>OV abiertas vs guías de SAP</h1>
 <p class="sub">Despachos completos, incompletos (parciales) o sin despacho según SAP, y si lo guiado cuadra con lo entregado en cada OV.
 Fuente: la última carga de <b>Órdenes de venta abiertas</b>{% if res.ov_batch %} (#{{ res.ov_batch.id }}, {{ res.ov_batch.ts.strftime('%d/%m/%Y %H:%M') }}){% endif %}
 y de <b>Entregas (guías)</b>{% if res.guias_batch %} (#{{ res.guias_batch.id }}, {{ res.guias_batch.ts.strftime('%d/%m/%Y %H:%M') }}){% else %} (aún no se trajeron){% endif %}.
 Para actualizar, vuelva a traer ambas en <a href="{{ url_for('alm.sap_sync') }}">Integración SAP</a>.</p></div>
 <div>{% if res.filas %}<a class="btn sec small" href="{{ url_for('alm.sap_dispatch_check', salida='xlsx') }}">{{ ic('download') }} Excel</a>{% endif %}</div></div>
+<div class="card row small"><div class="grow"><b>Órdenes de servicio / fabricación (maquila)</b> ligadas a OV en SAP:
+{% if job.estado == 'EN_CURSO' %}<span class="spin-sm" aria-hidden="true"></span> trayendo de SAP desde {{ job.inicio[11:16] }}…<script>setTimeout(function(){ location.reload(); }, 10000);</script>
+{% elif job.estado == 'ERROR' %}<span class="err">no se pudo traer: {{ job.error }}</span>
+{% elif res.servicios_ts %}última lectura {{ res.servicios_ts|replace('T', ' ') }}{% else %}aún no se trajeron{% endif %}</div>
+{% if configurado and job.estado != 'EN_CURSO' %}<form method="post" action="{{ url_for('alm.sap_sync') }}">{{ csrf() }}<input type="hidden" name="tipo" value="SERVICIOS"><input type="hidden" name="volver" value="{{ request.full_path.rstrip('?') }}"><button class="btn sec small">{{ ic('download') }} Traer de SAP</button></form>{% endif %}</div>
 {% if not res.ov_batch %}{{ empty('Primero traiga de SAP las órdenes de venta abiertas y las entregas (guías).', 'truck') }}{% else %}
 {% set t = res.tot %}
 <div class="kpis">
@@ -14,7 +19,7 @@ Para actualizar, vuelva a traer ambas en <a href="{{ url_for('alm.sap_sync') }}"
 <a class="kpi" href="{{ url_for('alm.sap_dispatch_check', estado='SIN_DESPACHO') }}"><span>Sin despacho</span><b>{{ t.SIN_DESPACHO or 0 }}</b></a>
 <a class="kpi err" href="{{ url_for('alm.sap_dispatch_check', estado='ALERTA') }}"><span>Con observación</span><b>{{ t.CON_ALERTA or 0 }}</b></a>
 </div>
-<div class="tw"><table class="small apilable"><tr><th>OV</th><th>Cliente</th><th>Compromiso</th><th>Estado</th><th>Producto</th><th class="r">Solicitado</th><th class="r">Entregado (SAP)</th><th class="r">Pendiente</th><th class="r">Guiado</th><th>Guías</th><th>Facturas</th></tr>
+<div class="tw"><table class="small apilable"><tr><th>OV</th><th>Cliente</th><th>Compromiso</th><th>Estado</th><th>Producto</th><th class="r">Solicitado</th><th class="r">Entregado (SAP)</th><th class="r">Pendiente</th><th class="r">Guiado</th><th>Guías</th><th>Facturas</th><th>Orden de servicio</th></tr>
 {% for f in filas %}{% for ln in f.lineas %}<tr{% if not ln.cuadra %} class="row-warn"{% endif %}>
 {% if loop.first %}<td rowspan="{{ f.lineas|length }}" data-label="OV" style="min-width:200px"><b>{{ f.ov }}</b>{% if f.modulo %}<br><a class="small" href="{{ url_for('com.order_detail', oid=f.modulo.id) }}">ver en el módulo</a>{% endif %}
 {% for a in f.alertas %}<div class="small err">{{ a }}</div>{% endfor %}</td>
@@ -24,6 +29,7 @@ Para actualizar, vuelva a traer ambas en <a href="{{ url_for('alm.sap_sync') }}"
 <td class="r" data-label="Solicitado">{{ ln.solicitado|n }}</td><td class="r" data-label="Entregado">{{ ln.entregado|n }}</td>
 <td class="r" data-label="Pendiente">{{ ln.pendiente|n }}</td><td class="r" data-label="Guiado">{{ ln.guiado|n }}{% if not ln.cuadra %} ⚠{% endif %}</td>
 {% if loop.first %}<td rowspan="{{ f.lineas|length }}" data-label="Guías" class="small">{% for gn, gf in f.guias %}{{ gn }}{% if gf %} <span class="muted">({{ gf }})</span>{% endif %}<br>{% else %}—{% endfor %}</td>
-<td rowspan="{{ f.lineas|length }}" data-label="Facturas" class="small">{{ f.facturas|join(', ') or '—' }}</td>{% endif %}</tr>{% endfor %}
-{% else %}<tr><td colspan="11" class="muted">Sin OV en este filtro.</td></tr>{% endfor %}</table></div>{% endif %}
+<td rowspan="{{ f.lineas|length }}" data-label="Facturas" class="small">{{ f.facturas|join(', ') or '—' }}</td>
+<td rowspan="{{ f.lineas|length }}" data-label="Orden de servicio" class="small">{% for x in f.servicios %}OF {{ x.orden }} · {{ x.producto }} · {{ x.completado|n }}/{{ x.planificado|n }} · {{ x.estado|lower }}<br>{% else %}—{% endfor %}</td>{% endif %}</tr>{% endfor %}
+{% else %}<tr><td colspan="12" class="muted">Sin OV en este filtro.</td></tr>{% endfor %}</table></div>{% endif %}
 {% endblock %}

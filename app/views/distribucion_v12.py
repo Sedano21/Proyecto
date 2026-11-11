@@ -329,3 +329,44 @@ def maintenance_docs(tipo, mid):
                                                 f.get("taller", "")), "Incidencia con el taller registrada.", back)
     return act(lambda: mt.attach_document(g.user, obj, f.get("tipo_doc"), f.get("numero", ""), _up("archivo", f"mant{mid}")),
                "Documento adjuntado.", back)
+
+
+# ------------------------------------------------------------------ V27: checklist vehicular diario (CP-OPE-004)
+@bp.route("/checklist-diario", methods=["GET", "POST"])
+@perm_required("distribucion.checklist", "distribucion.checklist_validar", "checklist.ver")
+def daily_checklist():
+    """El conductor inspecciona cada vehículo que maneja al comienzo y al final del día (fotos de adelante y de atrás).
+    Seguridad valida y registra el kilometraje."""
+    from flask import current_app
+    from ..models import Vehicle
+    from ..services.distribution import save_upload
+    back = url_for("dist.daily_checklist")
+    if request.method == "POST":
+        f = request.form
+        if f.get("accion") == "validar":
+            c = db().get(VehicleChecklist, int(f.get("cid") or 0)) or abort(404)
+            return act(lambda: vc.validate(g.user, c, f.get("aprobar") == "1", f.get("km"), f.get("nota", "")),
+                       "Checklist revisado por Seguridad; kilometraje registrado.", back)
+        v = db().get(Vehicle, int(f.get("vehicle_id") or 0))
+
+        def _reg():
+            up = current_app.config["UPLOAD_DIR"]
+            fa = save_upload(request.files.get("foto_adelante"), up, f"chkdia_{f.get('vehicle_id')}_adelante")
+            fb = save_upload(request.files.get("foto_atras"), up, f"chkdia_{f.get('vehicle_id')}_atras")
+            valores = {k[2:]: x for k, x in f.items() if k.startswith("i_")}
+            return vc.register_daily(g.user, v, f.get("momento"), valores, f.get("km"), f.get("observaciones", ""),
+                                     f.get("marcas", ""), fa, fb)
+        return act(_reg, lambda c: f"Checklist de {vc.MOMENTOS_DIA[c.momento].lower()} de {v.placa} registrado."
+                   + (" Puntos NO NEGOCIABLES en mal estado: no movilice el vehículo." if c.nn_fallidos else ""), back)
+    from datetime import date as _d
+    from ..catalogs import IMAGENES_CHECKLIST, PARTES_VEHICULO
+    st = vc.daily_status(g.user)
+    veh = db().get(Vehicle, request.args.get("vehiculo", type=int) or 0)
+    momento = request.args.get("momento", "INICIO_DIA")
+    clave = (veh.imagen_checklist if veh else "") or _imagen_por_tipo(veh)
+    hoy = list(db().execute(select(VehicleChecklist).where(VehicleChecklist.route_id.is_(None), VehicleChecklist.fecha == _d.today())
+                            .order_by(VehicleChecklist.id.desc())).scalars()) if "distribucion.checklist_validar" in g.perms \
+        or "checklist.ver" in g.perms else []
+    return render_template("checklist_diario.html", st=st, veh=veh, momento=momento, momentos=vc.MOMENTOS_DIA,
+                           zonas=vc.zonas(), items=dict((c, i) for c, _, i, _ in vc.items()), hoy=hoy,
+                           imagenes=IMAGENES_CHECKLIST.get(clave, (None, []))[1], partes=PARTES_VEHICULO)

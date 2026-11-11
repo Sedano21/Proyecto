@@ -1,0 +1,17 @@
+{% extends "base.html" %}{% from "_m.html" import b, ic, empty, paginacion %}
+{% block content %}<div class="page-head"><div><h1>Estado de OV</h1>
+<p class="sub">En qué etapa está cada OV: stock, picking, ruta, guía, entrega y factura. Compromiso del {{ d.desde.strftime('%d/%m/%Y') }} al {{ d.hasta.strftime('%d/%m/%Y') }} ({{ d.total }} OV). Toque un indicador para filtrar.</p></div></div>
+<form class="row card" method="get"><div class="grow"><label>OV o cliente</label><input name="q" type="search" value="{{ f.q or '' }}" placeholder="Buscar…"></div>
+<div><label>Compromiso desde</label><input type="date" name="desde" value="{{ d.desde.isoformat() }}"></div><div><label>hasta</label><input type="date" name="hasta" value="{{ d.hasta.isoformat() }}"></div>
+{% if user.role_code != 'EJECUTIVO_VENTAS' %}<div><label>Ejecutivo</label><select name="vendedor_id"><option value="">(todos)</option>{% for v in vendedores %}<option value="{{ v.id }}" {{ 'selected' if f.vendedor_id == v.id|string }}>{{ v.nombre }}</option>{% endfor %}</select></div>{% endif %}
+<input type="hidden" name="etapa" value="{{ f.etapa or '' }}"><div><button class="sec">Ver</button></div></form>
+<div class="kpis">{% set cls = {'BORRADOR': '', 'DETENIDA': 'err', 'EN_PREPARACION': 'warn', 'LISTA': 'ok', 'DESPACHADA': 'warn', 'ENTREGADA': 'ok', 'CERRADA': ''} %}
+<a class="kpi {{ 'on' if not f.etapa }}" href="{{ url_for('com.order_status', q=f.q, desde=d.desde.isoformat(), hasta=d.hasta.isoformat(), vendedor_id=f.vendedor_id) }}"><span>Todas</span><b>{{ d.total }}</b></a>
+{% for k, nombre, _ in d.etapas %}<a class="kpi {{ cls[k] }} {{ 'on' if f.etapa == k }}" href="{{ url_for('com.order_status', etapa=k, q=f.q, desde=d.desde.isoformat(), hasta=d.hasta.isoformat(), vendedor_id=f.vendedor_id) }}"><span>{{ nombre }}</span><b>{{ d.tot[k] }}</b></a>{% endfor %}
+<div class="kpi err"><span>Atrasadas</span><b>{{ d.tot.ATRASADAS }}</b></div></div>
+<div data-lista id="lista-estado-ov">{% if filas.total %}<div class="tw"><table class="small apilable"><tr><th>OV</th><th>Cliente</th><th>Compromiso</th><th>Etapa</th>{% for p in filas.items[0].pasos %}<th>{{ p[0] }}</th>{% endfor %}</tr>
+{% for x in filas %}<tr{% if x.atrasada %} class="row-warn"{% endif %}><td data-label="OV"><a href="{{ url_for('com.order_detail', oid=x.o.id) }}"><b>{{ x.o.numero }}</b></a></td>
+<td data-label="Cliente">{{ x.o.customer.nombre }}</td><td data-label="Compromiso">{{ x.o.fecha_compromiso.strftime('%d/%m/%Y') }}{% if x.atrasada %} <span class="err">atrasada</span>{% endif %}</td>
+<td data-label="Etapa">{{ b({'BORRADOR': 'BORRADOR', 'DETENIDA': 'DETENIDA', 'EN_PREPARACION': 'EN PREPARACIÓN', 'LISTA': 'LISTA', 'DESPACHADA': 'DESPACHADA', 'ENTREGADA': 'ENTREGADA', 'CERRADA': 'CERRADA'}[x.etapa], cls[x.etapa] or 'info') }}<br><span class="muted">{{ x.o.estado|lower|replace('_', ' ') }}</span></td>
+{% for nombre, hecho, det in x.pasos %}<td data-label="{{ nombre }}" class="paso {{ 'ok' if hecho else 'pend' }}">{{ '✓' if hecho else '○' }} <span class="muted">{{ det }}</span></td>{% endfor %}</tr>{% endfor %}</table></div>
+{{ paginacion(filas, 'OV') }}{% else %}{{ empty('No hay OV con ese filtro.', 'cart') }}{% endif %}</div>{% endblock %}

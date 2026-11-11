@@ -1,0 +1,33 @@
+{% extends "base.html" %}{% from "_m.html" import b, csrf, ic, empty %}{% from "_vehiculo.html" import dibujo, fotos_vehiculo %}
+{% block content %}<div class="page-head"><div><h1>Checklist de inspección vehicular diario</h1><p class="sub">CP-OPE-004 · al comienzo y al final del día, por cada vehículo que maneje (puede ser más de uno en el día). Fotos de adelante y de atrás. Los puntos <b>NN (no negociables)</b> en mal estado impiden movilizar el vehículo.</p></div></div>
+{% if st.driver %}<section class="card"><div class="card-head"><h3>Mis vehículos de hoy · {{ st.driver.nombre }}</h3></div>
+{% if st.filas %}<div class="tw"><table class="small"><tr><th>Vehículo</th><th>Inicio del día</th><th>Fin del día</th><th></th></tr>
+{% for x in st.filas %}<tr><td><b>{{ x.vehicle.placa }}</b> {{ x.vehicle.marca or '' }}</td>
+<td>{% if x.inicio %}{{ x.inicio.registrado_ts.strftime('%H:%M') }} · {{ x.inicio.km|n }} km · {{ b(x.inicio.estado) }}{% else %}—{% endif %}</td>
+<td>{% if x.fin %}{{ x.fin.registrado_ts.strftime('%H:%M') }} · {{ x.fin.km|n }} km · {{ b(x.fin.estado) }}{% else %}<b>pendiente</b>{% endif %}</td>
+<td>{% if not x.fin %}<a class="btn small" href="{{ url_for('dist.daily_checklist', vehiculo=x.vehicle.id, momento='FIN_DIA') }}#nuevo">Registrar fin del día</a>{% endif %}</td></tr>{% endfor %}</table></div>{% else %}<p class="small muted">Aún no inspeccionó ningún vehículo hoy.</p>{% endif %}
+<form method="get" class="row"><div class="grow"><label>Empezar con otro vehículo</label><select name="vehiculo" data-search="Buscar placa…" required><option value="">Elija el vehículo</option>{% for v in st.vehiculos %}<option value="{{ v.id }}" {{ 'selected' if veh and veh.id == v.id }}>{{ v.placa }} · {{ v.marca or '' }} {{ v.modelo or '' }}</option>{% endfor %}</select></div>
+<input type="hidden" name="momento" value="INICIO_DIA"><div><button class="sec">Checklist de inicio del día</button></div></form></section>{% elif can('distribucion.checklist') %}<div class="note warn">Su usuario no está vinculado a un conductor: pídalo a Distribución (Flota y conductores).</div>{% endif %}
+{% if veh and st.driver %}<form method="post" class="card" id="nuevo" enctype="multipart/form-data">{{ csrf() }}<input type="hidden" name="vehicle_id" value="{{ veh.id }}"><input type="hidden" name="momento" value="{{ momento }}">
+<div class="card-head"><h3>{{ momentos[momento] }} · {{ veh.placa }}</h3><span class="muted small">{{ veh.marca or '' }} {{ veh.modelo or '' }}</span></div>
+<div class="row"><div><label class="req">Kilometraje {{ 'inicial' if momento == 'INICIO_DIA' else 'final' }}</label><input name="km" type="number" step="any" min="0" required value="{{ veh.km_actual or '' }}" style="width:130px"></div>
+<div><label class="req">Foto de adelante</label><input type="file" name="foto_adelante" accept="image/*" capture="environment" required></div>
+<div><label class="req">Foto de atrás</label><input type="file" name="foto_atras" accept="image/*" capture="environment" required></div>
+<div class="grow"><label>Observaciones de choques o raspaduras</label><input name="observaciones"></div></div>
+{% if imagenes %}<fieldset class="ind-group"><legend>Toque en la imagen la parte dañada (opcional)</legend>{{ fotos_vehiculo(imagenes, [], True, 'veh-nuevo', partes) }}</fieldset>
+{% else %}<fieldset class="ind-group"><legend>Marque en el dibujo dónde está cada defecto (opcional)</legend>{{ dibujo([], True, 'veh-nuevo') }}</fieldset>{% endif %}
+<p class="small muted">B = bien · M = mal · NA = no aplica.</p>
+<div class="grid g2">{% for zona, lst in zonas.items() %}<fieldset class="ind-group"><legend>{{ zona }}</legend>
+<table class="small"><tbody>{% for code, item, nn in lst %}<tr><td>{{ item }}{% if nn %} <b class="err" title="No negociable">NN</b>{% endif %}</td>
+<td class="r" style="white-space:nowrap">{% for v in ['B','M','NA'] %}<label class="chk" style="margin-left:6px"><input type="radio" name="i_{{ code }}" value="{{ v }}" required {{ 'checked' if v == 'B' }}> {{ v }}</label>{% endfor %}</td></tr>{% endfor %}</tbody></table></fieldset>{% endfor %}</div>
+<p><button>{{ ic('check') }} Registrar checklist</button></p></form>{% endif %}
+{% if hoy %}<div class="section-title">Checklists diarios de hoy (todos los conductores)</div>
+{% for c in hoy %}<div class="card"><div class="card-head"><h3>{{ c.vehicle.placa }} · {{ momentos.get(c.momento, c.momento) }} · {{ c.registrado_ts.strftime('%H:%M') }}</h3>{{ b(c.estado) }}</div>
+<p class="small">Km declarado {{ c.km|n }}{% if c.km_seguridad is not none %} · Seguridad <b>{{ c.km_seguridad|n }}</b>{% endif %}{% if c.fotos %} · <a href="{{ url_for('main.evidence', name=c.fotos.adelante) }}" target="_blank">foto adelante</a> · <a href="{{ url_for('main.evidence', name=c.fotos.atras) }}" target="_blank">foto atrás</a>{% endif %}</p>
+{% if c.nn_fallidos %}<p class="err small"><b>NN en mal estado:</b> {{ c.nn_fallidos|join(', ') }}</p>{% endif %}
+{% set malos = c.items.items()|selectattr(1, 'equalto', 'M')|list %}{% if malos %}<p class="small"><b>En mal estado:</b> {% for k, v in malos %}{{ items.get(k, k) }}{{ ', ' if not loop.last }}{% endfor %}</p>{% endif %}
+{% if c.observaciones %}<p class="small">Observaciones: {{ c.observaciones }}</p>{% endif %}
+{% if c.estado == 'REGISTRADO' and can('distribucion.checklist_validar') %}<form method="post" class="row">{{ csrf() }}<input type="hidden" name="accion" value="validar"><input type="hidden" name="cid" value="{{ c.id }}">
+<div><label class="req">Km que ve en el tablero</label><input name="km" type="number" step="any" min="0" required value="{{ c.km }}" style="width:120px"></div><div class="grow"><label>Nota (obligatoria si observa)</label><input name="nota"></div>
+<div><button name="aprobar" value="1">Validar</button> <button class="sec" name="aprobar" value="0">Observar</button></div></form>{% endif %}</div>{% endfor %}{% endif %}
+{% endblock %}

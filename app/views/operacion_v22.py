@@ -253,3 +253,54 @@ def funnel():
             "dia": charts.line(t["por_dia"], "", title="Oportunidades por día y ejecutivo") if t["por_dia"] else None}
     return render_template("v22_embudo.html", d=d, graf=graf, vendedores=vendedores,
                            vend=str(vend or ""), desde=desde, hasta=hasta)
+
+
+# ------------------------------------------------------------------ V27: regularización de guías emitidas en SUNAT
+@bp.route("/guias-sunat", methods=["GET", "POST"])
+@perm_required("guias.sunat_cargar", "guias.regularizar_inventario", "distribucion.ver")
+def sunat_guides():
+    import os
+    import uuid
+    from ..models import SunatGuide
+    from ..services import guias_sunat as gs
+    back = url_for("v22.sunat_guides")
+    if request.method == "POST":
+        f = request.form
+        acc = f.get("accion")
+        if acc == "cargar":
+            if "guias.sunat_cargar" not in g.perms:
+                abort(403)
+
+            def _cargar():
+                archivos = [x for x in request.files.getlist("archivos") if x and x.filename]
+                if not archivos:
+                    raise BusinessError("Elija el PDF o el XML de la guía (puede subir varias a la vez).")
+                ok, errores = [], []
+                for a in archivos:
+                    ext = os.path.splitext(a.filename)[1].lower()
+                    if ext not in (".pdf", ".xml"):
+                        errores.append(f"{a.filename}: suba el PDF de SUNAT o su XML.")
+                        continue
+                    nombre = f"guia_sunat_{uuid.uuid4().hex[:10]}{ext}"
+                    a.save(os.path.join(_up(), nombre))
+                    try:
+                        with db().begin_nested():
+                            ok.append(gs.registrar(g.user, os.path.join(_up(), nombre), a.filename, nombre))
+                    except BusinessError as e:
+                        errores.append(f"{a.filename}: {e}")
+                if not ok:
+                    raise BusinessError(" ".join(errores))
+                return ok, errores
+            return act(_cargar, lambda r: f"{len(r[0])} guía(s) cargada(s)." + (f" No se cargaron: {' '.join(r[1])}" if r[1] else ""), back)
+        gd = db().get(SunatGuide, int(f.get("id") or 0)) or abort(404)
+        if acc == "unir":
+            return act(lambda: gs.unir(g.user, gd, f.get("order_id") or None, f.get("sap_ov", "")), "Guía unida a su OV.", back)
+        if acc == "inventario":
+            return act(lambda: gs.decidir_inventario(g.user, gd, f.get("decision"), f.get("nota", "")),
+                       lambda x: "Inventario: " + ("descontado del lote." if x.inventario["decision"] == "DESCONTADO" else
+                                                   "ya estaba descontado (no se cambió el stock)."), back)
+        if acc == "sap":
+            return act(lambda: gs.enviar_sap(g.user, gd), lambda x: f"Guía registrada en SAP (entrega {x.sap.get('docnum')}).", back)
+        abort(400)
+    guias = list(db().execute(select(SunatGuide).order_by(SunatGuide.id.desc()).limit(200)).scalars())
+    return render_template("guias_sunat.html", guias=paginate(guias, 25), cand={x.id: gs.candidatas(x) for x in guias if not x.order_id})

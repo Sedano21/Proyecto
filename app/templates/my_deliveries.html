@@ -1,6 +1,7 @@
 {% extends "base.html" %}{% from "_m.html" import b, csrf, ic, empty %}{% import "_entrega.html" as ent with context %}
 {% block content %}<h1>Mis entregas</h1>
 <p class="small muted">Al llegar, toque «Llegué». Para cerrar cada entrega registre la conformidad: nombre y DNI de quien recibe, su firma en pantalla, la foto de la entrega y la guía firmada.</p>
+<p class="row"><a class="btn" href="{{ url_for('dist.daily_checklist') }}">{{ ic('clipboard') }} Checklist diario del vehículo (inicio y fin del día)</a></p>
 {% if checks %}<section class="card" id="checklist"><div class="card-head"><h3>{{ ic('clipboard') }} Mi checklist vehicular</h3><small class="muted">Antes de salir y al volver: marque B / M / NA y toque en el dibujo del vehículo la parte dañada (o escriba la observación).</small></div>
 <div class="cards">{% for c in checks %}<article class="xcard{{ ' st-PENDIENTE' if c.pendiente }}"><div class="xcard-head"><b>Ruta #{{ c.r.id }} · {{ c.r.fecha|d }}</b>{{ b(c.r.estado) }}</div>
 <div class="meta"><span>{{ c.r.vehicle.placa }}{{ ' · ' ~ (c.r.vehicle.descripcion or c.r.vehicle.tipo_unidad) if (c.r.vehicle.descripcion or c.r.vehicle.tipo_unidad) }}</span>

@@ -1,0 +1,18 @@
+{% extends "base.html" %}{% from "_m.html" import csrf, ic, empty, b %}
+{% block content %}<div class="page-head"><div><h1>Días no laborables por área</h1>
+<p class="sub">Si su área no va a operar un día (inventario, mantenimiento general, capacitación…), regístrelo aquí: la programación no usará ese día y lo que ya estaba programado se pasa, todo junto, al siguiente día hábil (o a la fecha que elija).</p></div></div>
+<form method="post" class="card row">{{ csrf() }}<input type="hidden" name="accion" value="registrar">
+<div><label class="req">Área</label><select name="area" required>{% for a in areas %}<option>{{ a }}</option>{% endfor %}</select></div>
+<div><label class="req">Fecha</label><input type="date" name="fecha" min="{{ today.isoformat() }}" required></div>
+<div class="grow"><label class="req">Motivo</label><input name="motivo" required placeholder="p. ej. inventario general, fumigación de planta, capacitación"></div>
+<div><button>{{ ic('calendar') }} Registrar</button></div></form>
+{% for d in dias %}{% set af = afectados[d.id] %}<section class="card"><div class="card-head"><h3>{{ d.area }} · {{ d.fecha.strftime('%d/%m/%Y') }}</h3><small class="muted">{{ d.motivo }} · registró {{ d.user.nombre if d.user }}</small></div>
+{% if af %}<form method="post">{{ csrf() }}<input type="hidden" name="accion" value="replanificar"><input type="hidden" name="id" value="{{ d.id }}">
+<p class="small"><b>{{ af|length }}</b> programación(es) de ese día por replanificar:</p>
+<ul class="small" style="list-style:none;padding-left:0">{% for x in af %}<li><label><input type="checkbox" name="item" value="{{ x.tipo }}:{{ x.id }}" checked> {{ x.texto }}</label></li>{% endfor %}</ul>
+<div class="row"><div><label>Pasar al</label><input type="date" name="destino" value="{{ siguiente[d.id].isoformat() }}"></div>
+<div><button>{{ ic('calendar') }} Replanificar</button></div><div class="small muted grow">Sugerido: siguiente día hábil del área ({{ siguiente[d.id].strftime('%d/%m/%Y') }}).</div></div></form>
+{% else %}<p class="small muted">No queda nada programado ese día.</p>{% endif %}
+{% if d.replanificado %}<details class="small"><summary>Replanificado ({{ d.replanificado|length }})</summary><ul>{% for x in d.replanificado %}<li>{{ x.texto }}: {{ x.de }} → {{ x.a }} · {{ x.user }}</li>{% endfor %}</ul></details>{% endif %}
+<form method="post" class="inline" data-confirm="¿Anular el día no laborable? La programación vuelve a poder usar esa fecha.">{{ csrf() }}<input type="hidden" name="accion" value="anular"><input type="hidden" name="id" value="{{ d.id }}"><button class="sec small">Anular</button></form></section>
+{% else %}{{ empty('No hay días no laborables registrados próximamente.', 'calendar') }}{% endfor %}{% endblock %}

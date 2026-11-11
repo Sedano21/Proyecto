@@ -324,7 +324,8 @@ def capacity_group(line_code):
 def day_factor(d):
     """Jornada del día: 1 completa, 0,5 sábado (hasta mediodía), 0 domingo o feriado que no se trabaja."""
     from .calendar import day_factor as _f
-    return _f(d)
+    from .dias_no_laborables import es_no_laborable  # V27: día no laborable de Producción
+    return 0.0 if es_no_laborable("Producción", d) else _f(d)
 
 
 def schedule(req, user, line_code, fecha):
@@ -338,7 +339,7 @@ def schedule(req, user, line_code, fecha):
     grupo = capacity_group(line_code)
     factor = day_factor(fecha)
     if factor <= 0:
-        raise BusinessError(f"El {fecha:%d/%m/%Y} no se opera (domingo o feriado): elija otra fecha.")
+        raise BusinessError(f"El {fecha:%d/%m/%Y} no se opera (domingo, feriado o día no laborable de Producción): elija otra fecha.")
     if grupo:  # capacidad por grupo de líneas (tabla de capacidades del 14/15-oct), ajustada a la jornada del día
         cap = float(grupo["kg_dia"]) * factor
         carga = sum(line_load_kg(lc, fecha, req.id) for lc in grupo["lineas"]) + kg

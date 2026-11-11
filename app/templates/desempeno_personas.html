@@ -1,0 +1,12 @@
+{% extends "base.html" %}{% from "_m.html" import empty %}
+{% block content %}<div class="page-head"><div><h1>Desempeño por persona</h1>
+<p class="sub">Del {{ d.desde.strftime('%d/%m/%Y') }} al {{ d.hasta.strftime('%d/%m/%Y') }}: lo que registró cada persona en el sistema (picking, movimientos y tareas) y su disponibilidad. Solo aparece quien tuvo actividad o ausencias en el periodo.</p></div></div>
+<form class="row card" method="get"><div><label>Desde</label><input type="date" name="desde" value="{{ d.desde.isoformat() }}"></div><div><label>Hasta</label><input type="date" name="hasta" value="{{ d.hasta.isoformat() }}"></div>
+<div><label>Área</label><select name="area"><option value="">(todas)</option>{% for a in d.areas %}<option {{ 'selected' if f.area == a }}>{{ a }}</option>{% endfor %}</select></div><div><button class="sec">Ver</button></div></form>
+<div data-lista id="lista-desempeno">{% if d.filas %}<div class="tw"><table class="small apilable"><tr><th>Persona</th><th>Área / perfil</th><th class="r">OV preparadas</th><th class="r">Clientes</th><th class="r">Unidades</th><th class="r">kg</th><th class="r">Picking a tiempo</th><th class="r">Movimientos</th><th class="r">Min. por mov.</th><th class="r">Tareas completadas</th><th>Ausencias (días)</th></tr>
+{% for x in d.filas %}<tr{% if x.faltas_injust %} class="row-warn"{% endif %}><td data-label="Persona"><b>{{ x.user.nombre }}</b></td><td data-label="Área">{{ x.area }}<br><span class="muted">{{ x.user.role.nombre if x.user.role }}</span></td>
+<td class="r" data-label="OV">{{ x.ov }}</td><td class="r" data-label="Clientes">{{ x.clientes }}</td><td class="r" data-label="Unidades">{{ x.unidades|n }}</td><td class="r" data-label="kg">{{ x.kg|n }}</td>
+<td class="r" data-label="A tiempo">{% if x.picking_a_tiempo is not none %}<b class="{{ 'ok' if x.picking_a_tiempo >= 90 else 'err' }}">{{ x.picking_a_tiempo }}%</b> <span class="muted">de {{ x.picking_total }}</span>{% else %}—{% endif %}</td>
+<td class="r" data-label="Movimientos">{{ x.movimientos }}</td><td class="r" data-label="Min/mov">{{ x.mov_prom_min if x.mov_prom_min is not none else '—' }}</td><td class="r" data-label="Tareas">{{ x.tareas }}</td>
+<td data-label="Ausencias">{% for k, v in x.ausencias.items() %}{{ d.tipos.get(k, k) }}: {{ v }}{{ '; ' if not loop.last }}{% else %}—{% endfor %}</td></tr>{% endfor %}</table></div>
+{% else %}{{ empty('Sin actividad ni ausencias registradas en el periodo.', 'users') }}{% endif %}</div>{% endblock %}

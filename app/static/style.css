@@ -807,3 +807,6 @@ tr.niv-err td{background:#fdf1f2}tr.niv-ok td{background:#f0f8f3}
 .small.ok{color:var(--ok);font-weight:600}
 /* V26: OV abiertas vs guías de SAP */
 tr.row-warn td{background:#fff8e6}
+/* V27: Estado de OV */
+td.paso.ok{color:var(--ok);font-weight:600}td.paso.pend{color:var(--ink-3,#8a94a3)}
+.kpis>a.kpi.on{outline:2px solid var(--cp-verde,#0b7a3b)}

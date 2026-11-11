@@ -291,20 +291,37 @@ def rows_despachos(sl, desde=None):
     out = []
     entregas = sl.get_all("DeliveryNotes", {"$filter": f"DocDate ge '{desde.isoformat()}'",
                                             "$select": "DocEntry,DocNum,DocDate,FolioPrefixString,FolioNumber,DocumentLines"})
-    # V26: la factura de cada guía (factura basada en la entrega), para conciliar guías y facturas
-    fact_de_entrega = {}
+    # V26/V27: la factura de cada guía, para conciliar guías y facturas. Tres formas en SAP:
+    # factura basada en la entrega (15), factura basada en la OV (17) y factura de reserva con la entrega basada en ella (13)
+    fact_de_entrega, fact_de_ov, fact_por_entry = {}, {}, {}
     try:
-        for inv in sl.get_all("Invoices", {"$filter": f"DocDate ge '{desde.isoformat()}' and Cancelled eq 'tNO'",
-                                           "$select": "DocNum,FolioPrefixString,FolioNumber,DocumentLines"}):
+        desde_fact = desde - timedelta(days=60)  # la factura de reserva suele ser anterior a la guía
+        for inv in sl.get_all("Invoices", {"$filter": f"DocDate ge '{desde_fact.isoformat()}' and Cancelled eq 'tNO'",
+                                           "$select": "DocEntry,DocNum,FolioPrefixString,FolioNumber,DocumentLines"}):
+            fact_por_entry[inv.get("DocEntry")] = _folio(inv)
             for ln in inv.get("DocumentLines") or []:
                 if ln.get("BaseType") == 15 and ln.get("BaseEntry"):
                     fact_de_entrega[ln["BaseEntry"]] = _folio(inv)
+                elif ln.get("BaseType") == 17 and ln.get("BaseEntry"):
+                    fact_de_ov.setdefault(ln["BaseEntry"], set()).add(_folio(inv))
     except BusinessError:
-        fact_de_entrega = {}  # sin permiso sobre facturas: las guías se traen igual
+        fact_de_entrega, fact_de_ov, fact_por_entry = {}, {}, {}  # sin permiso sobre facturas: las guías se traen igual
     # 10-nov-2026: el número de OV de las líneas se pide a SAP en grupos de 20 (antes una consulta por OV: con 30 días
     # de guías eran cientos de consultas por el túnel y la página se cortaba)
+    reserva_ov = {}  # DocEntry de la factura de reserva → DocEntry de su OV
+    reservas = sorted({ln["BaseEntry"] for dn in entregas for ln in (dn.get("DocumentLines") or [])
+                       if ln.get("BaseType") == 13 and ln.get("BaseEntry")})
+    if reservas:
+        try:
+            for k, inv in _docnums(sl, "Invoices", reservas).items():
+                for ln in inv.get("DocumentLines") or []:
+                    if ln.get("BaseType") == 17 and ln.get("BaseEntry"):
+                        reserva_ov[k] = ln["BaseEntry"]
+                        break
+        except BusinessError:
+            reserva_ov = {}
     bases = sorted({ln["BaseEntry"] for dn in entregas for ln in (dn.get("DocumentLines") or [])
-                    if ln.get("BaseType") == 17 and ln.get("BaseEntry")})
+                    if ln.get("BaseType") == 17 and ln.get("BaseEntry")} | set(reserva_ov.values()))
     ords = {}
     for i in range(0, len(bases), 20):
         grupo = bases[i:i + 20]
@@ -314,12 +331,16 @@ def rows_despachos(sl, desde=None):
     for dn in entregas:
         guia = f"{dn.get('FolioPrefixString') or ''}-{dn.get('FolioNumber')}" if dn.get("FolioNumber") else str(dn.get("DocNum"))
         for ln in dn.get("DocumentLines") or []:
-            ov = ""
+            ov, fact = "", fact_de_entrega.get(dn.get("DocEntry"), "")
             if ln.get("BaseType") == 17 and ln.get("BaseEntry"):
                 ov = ords.get(ln["BaseEntry"], "")
+                fact = fact or ", ".join(sorted(fact_de_ov.get(ln["BaseEntry"], set())))
+            elif ln.get("BaseType") == 13 and ln.get("BaseEntry"):  # entrega basada en una factura de reserva
+                fact = fact or fact_por_entry.get(ln["BaseEntry"], "")
+                ov = ov or ords.get(reserva_ov.get(ln["BaseEntry"]), "")
             out.append({"Número de OV": ov, "Número de guía": guia, "Fecha": _d(dn.get("DocDate")),
                         "Código de producto": ln.get("ItemCode"), "Cantidad": ln.get("Quantity"),
-                        "Número de factura": fact_de_entrega.get(dn.get("DocEntry"), "")})
+                        "Número de factura": fact})
     return out
 
 
@@ -1153,10 +1174,10 @@ def sync_background(app, tipo, user, upload_dir):
     """Trae el dato de SAP en un hilo aparte: la página responde enseguida y muestra «Trayendo…» hasta que termina
     (las guías o el stock de varios días pueden tardar minutos por el túnel)."""
     import threading
-    if tipo not in TIPOS_SAP and tipo != "FACTURAS":
+    if tipo not in TIPOS_SAP and tipo not in ("FACTURAS", "SERVICIOS"):
         raise BusinessError("Tipo de dato de SAP no válido.")
     if job_state(tipo).get("estado") == "EN_CURSO":
-        raise BusinessError(f"Ya se están trayendo {TIPOS_SAP.get(tipo, 'facturas').lower()} de SAP; espere a que termine.")
+        raise BusinessError(f"Ya se están trayendo {TIPOS_SAP.get(tipo, 'esos datos').lower()} de SAP; espere a que termine.")
     inicio = datetime.now().isoformat(timespec="seconds")
     uid, nombre = user.id, user.nombre
     _job_set(tipo, {"estado": "EN_CURSO", "inicio": inicio, "usuario": nombre})
@@ -1167,8 +1188,8 @@ def sync_background(app, tipo, user, upload_dir):
         with app.app_context():
             try:
                 u = db().get(User, uid)
-                if tipo == "FACTURAS":
-                    res = sync_facturas(u)
+                if tipo in ("FACTURAS", "SERVICIOS"):
+                    res = sync_facturas(u) if tipo == "FACTURAS" else sync_servicios(u)
                     db().commit()
                     _job_set(tipo, {"estado": "OK", "inicio": inicio, "fin": datetime.now().isoformat(timespec="seconds"),
                                     "usuario": u.nombre, "resumen": res})
@@ -1271,3 +1292,41 @@ def sync_facturas(user, sl=None):
             errores.append(str(e))
     audit(user, "FACTURAS_SAP", "CustomerInvoice", "", {"leidas": len(filas), "registradas": ok, "errores": len(errores)})
     return {"leidas": len(filas), "registradas": ok, "errores": errores[:50]}
+
+
+# ------------------------------------------------------------------ V27 (11-nov-2026): órdenes de servicio (maquila)
+def rows_servicios(sl, desde=None):
+    """Órdenes de fabricación/servicio de SAP ligadas a una OV (origen = la OV): para contrastar las OV de maquila, que
+    se atienden con una orden y no solo con guías. Últimos «sap_servicios_dias» (90) días."""
+    desde = desde or (date.today() - timedelta(days=int(param("sap_servicios_dias", 90) or 90)))
+    est = {"boposPlanned": "PLANIFICADA", "boposReleased": "LIBERADA", "boposClosed": "CERRADA", "boposCancelled": "CANCELADA"}
+    out = []
+    for po in sl.get_all("ProductionOrders", {"$filter": f"PostingDate ge '{desde.isoformat()}'",
+                                              "$select": "AbsoluteEntry,DocumentNumber,ItemNo,ProductDescription,PlannedQuantity,"
+                                                         "CompletedQuantity,ProductionOrderStatus,ProductionOrderType,"
+                                                         "ProductionOrderOriginNumber,ProductionOrderOriginEntry,DueDate"}):
+        if not po.get("ProductionOrderOriginNumber"):
+            continue
+        out.append({"ov": str(po.get("ProductionOrderOriginNumber")), "orden": po.get("DocumentNumber"),
+                    "producto": po.get("ItemNo"), "descripcion": po.get("ProductDescription") or "",
+                    "planificado": float(po.get("PlannedQuantity") or 0), "completado": float(po.get("CompletedQuantity") or 0),
+                    "estado": est.get(po.get("ProductionOrderStatus"), po.get("ProductionOrderStatus") or ""),
+                    "tipo": "Especial" if po.get("ProductionOrderType") == "bopotSpecial" else "Estándar",
+                    "vence": str(po.get("DueDate") or "")[:10]})
+    return out
+
+
+def sync_servicios(user, sl=None):
+    """Guarda la última lectura de órdenes de servicio/fabricación (para la pantalla OV abiertas vs guías)."""
+    from .core import set_param
+    propio = sl is None
+    sl = sl or ServiceLayer()
+    try:
+        if propio:
+            sl.login()
+        filas = rows_servicios(sl)
+    finally:
+        if propio:
+            sl.logout()
+    set_param("sap_servicios_ultimo", {"ts": datetime.now().isoformat(timespec="minutes"), "filas": filas}, user)
+    return {"leidas": len(filas)}
