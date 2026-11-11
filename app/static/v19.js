@@ -136,6 +136,38 @@
     mostrar(subeArchivo ? 'Subiendo y procesando el archivo…' : 'Guardando…');
   }, false);
 
+  // ---------------------------------------------------------------- V26: los filtros buscan mientras se escribe
+  // Al escribir en el buscador de una lista (formulario GET) se filtra solo, sin pulsar «Buscar». Donde la lista se
+  // recarga por partes el cursor no se mueve; en las demás pantallas, al recargar se devuelve el cursor al buscador.
+  var tVivo = null;
+  function esFiltro(el) {
+    var f = el && el.form;
+    return f && (f.getAttribute('method') || 'get').toLowerCase() === 'get' && !f.hasAttribute('data-sin-vivo') && !el.closest('dialog');
+  }
+  document.addEventListener('input', function (e) {
+    var el = e.target;
+    if (!el.matches || !el.matches('input[type=search], input[type=text], input:not([type])') || el.hasAttribute('list') || !esFiltro(el)) return;
+    var v = el.value.trim();
+    if (v.length === 1) return;  // desde 2 letras (o al borrar todo)
+    clearTimeout(tVivo);
+    tVivo = setTimeout(function () {
+      if (!listasDe(document).length) { try { sessionStorage.setItem('filtroVivo', JSON.stringify({ p: location.pathname, n: el.name })); } catch (_) { /* sin almacenamiento */ } }
+      if (el.form.requestSubmit) el.form.requestSubmit(); else el.form.submit();
+    }, 450);
+  });
+  document.addEventListener('change', function (e) {  // listas desplegables y fechas del filtro: también al instante
+    var el = e.target;
+    if (!el.matches || !el.matches('select, input[type=date], input[type=checkbox]') || !esFiltro(el) || !listasDe(document).length) return;
+    if (el.form.requestSubmit) el.form.requestSubmit();
+  });
+  (function volverAlBuscador() {
+    var d = null;
+    try { d = JSON.parse(sessionStorage.getItem('filtroVivo') || 'null'); sessionStorage.removeItem('filtroVivo'); } catch (_) { d = null; }
+    if (!d || d.p !== location.pathname || !d.n) return;
+    var el = document.querySelector('form input[name="' + d.n.replace(/"/g, '') + '"]');
+    if (el) { el.focus(); var n = el.value.length; try { el.setSelectionRange(n, n); } catch (_) { /* tipo sin cursor */ } }
+  })();
+
   // ---------------------------------------------------------------- enlaces
   document.addEventListener('click', function (e) {
     if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;

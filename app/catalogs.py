@@ -2889,3 +2889,25 @@ PARAMS += [
      "La preprogramación también recomienda juntar rutas de zonas distintas (por defecto solo de la misma zona).",
      "PROPUESTO", V25),
 ]
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+# V26 (11-nov-2026): facturas desde SAP, conciliación de despachos, canales, fumigados y picking
+V26 = "Observaciones V26 (11-nov-2026)"
+PARAMS += [
+    ("sap_facturas_dias", 60, "int", "Integración SAP",
+     "Días hacia atrás de las facturas y notas de crédito que se traen de SAP a Finanzas.", "PROPUESTO", V26),
+]
+PARAMS += [
+    ("fumigado_dias_max", 20, "int", "Calidad",
+     "Días máximos que el producto ya fumigado puede seguir almacenado (desde el fin de la fumigación).", "DEFINIDO", V26),
+    ("fumigado_dias_aviso", 15, "int", "Calidad",
+     "Días desde el fin de la fumigación en que se avisa a Calidad y Almacén que el plazo máximo se acerca.", "PROPUESTO", V26),
+]
+_CAL_ALM = ["JEFE_CALIDAD", "SUPERV_CALIDAD", "ASIST_CALIDAD", "COORD_ALMACEN", "COORD_ALMACEN_MP", "SUPERV_ALMACEN",
+            "JEFE_LOGISTICA"]
+ALERT_TYPES += [
+    ("FUMIGADO_ESTANCADO", "Producto fumigado almacenado cerca o sobre el plazo máximo", "Calidad", "Fumigación", "ALTA",
+     _CAL_ALM, "DEFINIDO", V26, "Lote ya fumigado que sigue almacenado: aviso a los 15 días y alerta a los 20 (parámetros "
+     "fumigado_dias_aviso y fumigado_dias_max).", False),
+]

@@ -1,6 +1,11 @@
 {% extends "base.html" %}{% from "_m.html" import csrf, ic, paginacion %}
 {% block content %}<div class="page-head"><div><h1>Clientes</h1><p class="sub">Busque por nombre o RUC; la lista se muestra por páginas.</p></div>
-{% if can('clientes.editar') %}<div><button type="button" data-open="dlg-cliente">{{ ic('plus') }} Nuevo cliente</button></div>{% endif %}</div>
+<div>{% if can('canales.gestionar') %}<button type="button" class="sec" data-open="dlg-canal">{{ ic('plus') }} Agregar canal</button> {% endif %}{% if can('clientes.editar') %}<button type="button" data-open="dlg-cliente">{{ ic('plus') }} Nuevo cliente</button>{% endif %}</div></div>
+{% if can('canales.gestionar') %}<dialog class="modal" id="dlg-canal" aria-labelledby="dlg-canal-t"><form method="post" action="{{ url_for('main.channels') }}">{{ csrf() }}<input type="hidden" name="volver" value="{{ request.full_path.rstrip('?') }}">
+<div class="dlg-head"><h3 id="dlg-canal-t">Agregar canal de precios</h3><button type="button" class="ibtn" data-close aria-label="Cerrar">×</button></div>
+<div class="dlg-body"><p class="small muted">Canales actuales: {{ canales|join(', ') or 'ninguno' }}. El canal nuevo queda disponible en la ficha del cliente, en la OV y en el catálogo.{% if can('config.ver') or can('canales.gestionar') %} Grupos y su canal: <a href="{{ url_for('main.channels') }}">Canales y grupos</a>.{% endif %}</p>
+<label class="req" for="canal-nombre">Nombre del canal</label><input id="canal-nombre" name="nombre" required maxlength="60" placeholder="p. ej. FOOD SERVICE" style="width:100%"></div>
+<div class="dlg-foot"><button type="button" class="sec" data-close>Cancelar</button> <button>{{ ic('check') }} Agregar</button></div></form></dialog>{% endif %}
 <form class="row card" method="get"><div class="grow"><label>Cliente o RUC</label><input name="q" value="{{ f.q }}" type="search"></div>
 <div><label>Grupo</label><select name="grupo"><option value="">(todos)</option>{% for x in grupos %}<option {{ 'selected' if f.grupo==x }}>{{ x }}</option>{% endfor %}</select></div>
 <div><label>Canal</label><select name="canal"><option value="">(todos)</option>{% for x in canales %}<option {{ 'selected' if f.canal==x }}>{{ x }}</option>{% endfor %}</select></div>

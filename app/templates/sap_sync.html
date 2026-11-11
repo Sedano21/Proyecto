@@ -13,4 +13,13 @@
 {% elif j.estado == 'OK' and j.carga and (not u or u.id == j.carga) %}<p class="small ok">Listo a las {{ j.fin[11:16] }}: <a href="{{ url_for('alm.upload_detail', bid=j.carga) }}">revisar la carga #{{ j.carga }}</a></p>{% endif %}
 {% if configurado and j.estado != 'EN_CURSO' %}<form method="post">{{ csrf() }}<input type="hidden" name="tipo" value="{{ t }}"><button class="btn small">{{ ic('download') }} Traer de SAP</button></form>{% endif %}</article>{% endfor %}</div>
 {% if en_curso %}<script>setTimeout(function(){ location.reload(); }, 10000);</script>{% endif %}
-{% else %}{{ empty('Su perfil no carga datos de SAP.') }}{% endif %}{% endblock %}
+{% else %}{{ empty('Su perfil no carga datos de SAP.') }}{% endif %}
+{% if ver_facturas %}{% set j = trabajos.get('FACTURAS') or {} %}<div class="cards" style="margin-top:12px"><article class="xcard"><div class="xcard-head"><b>Facturas y notas de crédito</b></div>
+<div class="meta"><span>Se registran directo en Finanzas → Cobranza (las nuevas se crean; monto y saldo se actualizan con SAP). Periodo: parámetro «sap_facturas_dias».</span></div>
+{% if j.estado == 'EN_CURSO' %}<p class="small"><span class="spin-sm" aria-hidden="true"></span> <b>Trayendo de SAP…</b> desde {{ j.inicio[11:16] }} ({{ j.usuario }}).</p>
+{% elif j.estado == 'ERROR' %}<p class="small err">No se pudo traer ({{ (j.fin or j.inicio)[11:16] }}): {{ j.error }}</p>
+{% elif j.estado == 'OK' and j.resumen %}<p class="small ok">Listo a las {{ j.fin[11:16] }}: {{ j.resumen.registradas }} de {{ j.resumen.leidas }} registradas{% if j.resumen.errores %}; {{ j.resumen.errores|length }} con error{% endif %}.</p>
+{% if j.resumen.errores %}<details class="small"><summary>Ver errores</summary><ul>{% for e in j.resumen.errores %}<li>{{ e }}</li>{% endfor %}</ul></details>{% endif %}{% endif %}
+{% if configurado and j.estado != 'EN_CURSO' %}<form method="post">{{ csrf() }}<input type="hidden" name="tipo" value="FACTURAS"><button class="btn small">{{ ic('download') }} Traer de SAP</button></form>{% endif %}</article></div>{% endif %}
+<p style="margin-top:14px"><a class="btn sec" href="{{ url_for('alm.sap_dispatch_check') }}">{{ ic('truck') }} OV abiertas vs guías de SAP (despachos completos e incompletos)</a></p>
+{% endblock %}

@@ -45,6 +45,10 @@ def canales():
     base = {c for c in db().execute(select(PriceItem.canal).where(PriceItem.vigente.is_(True),
                                                                   PriceItem.lista == "GENERAL")).scalars() if c}
     base |= {str(x).strip().upper() for x in (param("canales_adicionales", []) or []) if str(x).strip()}
+    # V26: una sola lista de canales en OV, catálogo y clientes: también los asignados a grupos y a fichas de clientes
+    base |= {str(x).strip().upper() for x in (param("canal_precio_por_grupo", {}) or {}).values() if str(x or "").strip()}
+    from ..models import Customer
+    base |= {str(x).strip().upper() for x in db().execute(select(Customer.canal_precio).distinct()).scalars() if str(x or "").strip()}
     return sorted(base)
 
 

@@ -424,10 +424,15 @@ def _apply_fumigation(rec, user, lot_id=None):
     if lot is None:
         return
     if rec.datos.get("fin_fecha"):
+        # V26: se guarda el fin de la fumigación para el seguimiento de producto fumigado almacenado (máx. 20 días)
+        lot.fumigacion = dict(lot.fumigacion or {}, fin=str(rec.datos.get("fin_fecha"))[:10])
         if lot.estado == "EN_FUMIGACION":
             change_lot_state(lot, "PENDIENTE_REVISION", user, f"Fin de fumigación (registro #{rec.id}); requiere liberación")
     elif rec.datos.get("inicio_fecha"):
         change_lot_state(lot, "EN_FUMIGACION", user, f"Inicio de fumigación (registro #{rec.id})")
+        lot = db().get(StockLot, lot.id) or lot
+        lot.fumigacion = {k: v for k, v in dict(lot.fumigacion or {}, inicio=str(rec.datos.get("inicio_fecha"))[:10]).items()
+                          if k not in ("fin", "liberado")}  # nueva fumigación: se reinicia el conteo
 
 
 def release_lot(lot, user, aprobar, motivo, estado_rechazo="NO_UTILIZABLE"):

@@ -238,3 +238,11 @@ def firma():
     if "calidad.ver" not in g.perms or not os.path.exists(_firma_path()):
         abort(404)
     return send_file(_firma_path(), mimetype="image/png")
+
+
+@bp.route("/fumigados")
+@perm_required("calidad.ver", "stock.ver")
+def fumigated():
+    """V26: producto ya fumigado que sigue almacenado (máximo 20 días): seguimiento de Calidad y Almacén."""
+    from ..services import fumigados
+    return render_template("fumigados.html", d=fumigados.listar())

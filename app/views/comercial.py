@@ -599,8 +599,7 @@ def customer_list():
     vendedores = list(db().execute(select(User).where(User.role_code.in_(("EJECUTIVO_VENTAS", "COORD_VENTAS", "JEFE_VENTAS")))
                                    .order_by(User.nombre)).scalars())
     grupos = sorted({x for x in db().execute(select(Customer.grupo).distinct()).scalars() if x})
-    canales = sorted({x for x in db().execute(select(Customer.canal_precio).distinct()).scalars() if x}
-                     | {c for c in (param("canal_precio_por_grupo", {}) or {}).values() if c})
+    canales = sorted(set(psvc.canales()) | set(param("lista_granel_canales", []) or []))
     return render_template("customer_list.html", rows=rows, f=f, canal_de=psvc.channel_of, vendedores=vendedores,
                            grupos=grupos, grupos_alta=csv_.customer_groups(), canales=canales,
                            abrir_alta=request.args.get("nuevo") == "1")

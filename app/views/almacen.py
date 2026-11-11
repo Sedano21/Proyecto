@@ -490,12 +490,15 @@ def sap_sync():
             return act(lambda: sap_sl.test_connection(), lambda r: f"Conexión con SAP correcta (versión {r['version'] or '-'}).",
                        url_for("alm.sap_sync"))
         tipo = request.form.get("tipo", "")
-        if tipo not in sap_sl.TIPOS_SAP or SPECS[tipo]["perm"] not in g.perms:
+        if tipo == "FACTURAS":
+            if "facturas.cargar" not in g.perms:
+                abort(403)
+        elif tipo not in sap_sl.TIPOS_SAP or SPECS[tipo]["perm"] not in g.perms:
             abort(403)
         # 10-nov-2026: se trae en segundo plano; la pantalla se actualiza sola y muestra la carga al terminar
         app_obj = current_app._get_current_object()
         return act(lambda: sap_sl.sync_background(app_obj, tipo, g.user, current_app.config["UPLOAD_DIR"]),
-                   f"Trayendo {sap_sl.TIPOS_SAP.get(tipo, tipo).lower()} de SAP… puede tardar unos minutos; esta página se "
+                   f"Trayendo {sap_sl.TIPOS_SAP.get(tipo, 'facturas y notas de crédito').lower()} de SAP… puede tardar unos minutos; esta página se "
                    "actualiza sola.", url_for("alm.sap_sync"))
     tipos = [(t, n) for t, n in sap_sl.TIPOS_SAP.items() if SPECS[t]["perm"] in g.perms]
     ult = {t: db().execute(select(UploadBatch).where(UploadBatch.archivo.like(f"SAP_SL_{t}_%"))
@@ -505,8 +508,11 @@ def sap_sync():
     ovs = list(db().execute(select(SalesOrder).where(SalesOrder.origen == "MODULO", SalesOrder.estado != "BORRADOR")
                             .order_by(SalesOrder.id.desc()).limit(500)).scalars())
     trabajos = {t: sap_sl.job_state(t) for t, _ in tipos}
+    if "facturas.cargar" in g.perms:
+        trabajos["FACTURAS"] = sap_sl.job_state("FACTURAS")
     return render_template("sap_sync.html", tipos=tipos, ult=ult, configurado=sap_sl.configured(), trabajos=trabajos,
                            en_curso=any(j.get("estado") == "EN_CURSO" for j in trabajos.values()),
+                           ver_facturas="facturas.cargar" in g.perms,
                            url=cfg["url"], empresa=cfg["company"], estado=sap_sl.connection_state(),
                            cola=[o for o in ovs if sap_sl.pending_action(o)],
                            conflictos=[o for o in ovs if (o.sap_envio or {}).get("conflicto")])
@@ -542,3 +548,18 @@ def count_excel(cid):
     out.seek(0)
     return send_file(out, as_attachment=True, download_name=f"conteo_{c.id}_{c.warehouse_code}.xlsx",
                      mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+
+@bp.route("/cargas/sap/despachos")
+@perm_required("ov.ver", "distribucion.ver", "stock.cargar", "ov.importar")
+def sap_dispatch_check():
+    """V26: OV abiertas de SAP frente a sus guías de SAP: despachos completos, incompletos o sin despacho."""
+    from flask import Response
+    from ..services import despachos_sap as ds
+    res = ds.conciliar()
+    if request.args.get("salida") == "xlsx":
+        return Response(ds.excel(res), mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        headers={"Content-Disposition": "attachment; filename=ov_vs_guias_sap.xlsx"})
+    estado = request.args.get("estado", "")
+    filas = [f for f in res["filas"] if not estado or f["estado"] == estado or (estado == "ALERTA" and f["alertas"])]
+    return render_template("sap_despachos.html", res=res, filas=filas, estado=estado)

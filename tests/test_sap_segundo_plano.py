@@ -16,6 +16,9 @@ class _SLFalso:
             return [{"DocNum": 9000 + i, "DocDate": "2026-11-09", "FolioPrefixString": "T001", "FolioNumber": 100 + i,
                      "DocumentLines": [{"BaseType": 17, "BaseEntry": 500 + i, "ItemCode": "PT-901", "Quantity": 2}]}
                     for i in range(self.n)]
+        if path == "Invoices":
+            return [{"DocNum": 1, "FolioPrefixString": "F001", "FolioNumber": 55,
+                     "DocumentLines": [{"BaseType": 15, "BaseEntry": None}]}]
         if path == "Orders":
             ids = [int(x.split(" eq ")[1]) for x in params["$filter"].split(" or ")]
             assert len(ids) <= 20
@@ -31,6 +34,7 @@ def test_guias_piden_las_ov_en_grupos_de_20(app):
     sl = _SLFalso(45)
     filas = sap_sl.rows_despachos(sl)
     assert len(filas) == 45 and filas[0]["Número de OV"] == 70500 and filas[0]["Número de guía"] == "T001-100"
+    assert "Número de factura" in filas[0]
     assert sl.consultas.count("Orders") == 3  # 45 OV → 3 consultas (antes 45)
 
 

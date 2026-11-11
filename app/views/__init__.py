@@ -960,8 +960,9 @@ def channels():
         if f.get("accion") == "grupo":
             return act(lambda: csvc.add_group(g.user, f.get("nombre", ""), f.get("canal", "")),
                        lambda n: f"Grupo {n} agregado.", url_for("main.channels"))
-        return act(lambda: csvc.add_channel(g.user, f.get("nombre", "")), lambda n: f"Canal {n} agregado.",
-                   url_for("main.channels"))
+        volver = f.get("volver", "")
+        volver = volver if volver.startswith("/") and not volver.startswith("//") else url_for("main.channels")
+        return act(lambda: csvc.add_channel(g.user, f.get("nombre", "")), lambda n: f"Canal {n} agregado.", volver)
     mapa = param("canal_precio_por_grupo", {}) or {}
     return render_template("channels.html", canales=psvc.canales(), adicionales=param("canales_adicionales", []) or [],
                            grupos=csvc.customer_groups(), mapa=mapa)

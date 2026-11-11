@@ -280,12 +280,27 @@ def rows_productos(sl):
             for it in sl.get_all("Items", {"$select": "ItemCode,ItemName,SalesUnitWeight", "$filter": "Valid eq 'tYES'"})]
 
 
+def _folio(doc):
+    """Número legal del comprobante (serie-correlativo, p. ej. F001-123); si no tiene, el número interno de SAP."""
+    return f"{doc.get('FolioPrefixString') or ''}-{doc.get('FolioNumber')}" if doc.get("FolioNumber") else str(doc.get("DocNum"))
+
+
 def rows_despachos(sl, desde=None):
     # V21: por defecto, las entregas de los últimos «sap_despachos_dias» (30) días; antes solo las de hoy
     desde = desde or (date.today() - timedelta(days=int(param("sap_despachos_dias", 30) or 30)))
     out = []
     entregas = sl.get_all("DeliveryNotes", {"$filter": f"DocDate ge '{desde.isoformat()}'",
-                                            "$select": "DocNum,DocDate,FolioPrefixString,FolioNumber,DocumentLines"})
+                                            "$select": "DocEntry,DocNum,DocDate,FolioPrefixString,FolioNumber,DocumentLines"})
+    # V26: la factura de cada guía (factura basada en la entrega), para conciliar guías y facturas
+    fact_de_entrega = {}
+    try:
+        for inv in sl.get_all("Invoices", {"$filter": f"DocDate ge '{desde.isoformat()}' and Cancelled eq 'tNO'",
+                                           "$select": "DocNum,FolioPrefixString,FolioNumber,DocumentLines"}):
+            for ln in inv.get("DocumentLines") or []:
+                if ln.get("BaseType") == 15 and ln.get("BaseEntry"):
+                    fact_de_entrega[ln["BaseEntry"]] = _folio(inv)
+    except BusinessError:
+        fact_de_entrega = {}  # sin permiso sobre facturas: las guías se traen igual
     # 10-nov-2026: el número de OV de las líneas se pide a SAP en grupos de 20 (antes una consulta por OV: con 30 días
     # de guías eran cientos de consultas por el túnel y la página se cortaba)
     bases = sorted({ln["BaseEntry"] for dn in entregas for ln in (dn.get("DocumentLines") or [])
@@ -303,7 +318,8 @@ def rows_despachos(sl, desde=None):
             if ln.get("BaseType") == 17 and ln.get("BaseEntry"):
                 ov = ords.get(ln["BaseEntry"], "")
             out.append({"Número de OV": ov, "Número de guía": guia, "Fecha": _d(dn.get("DocDate")),
-                        "Código de producto": ln.get("ItemCode"), "Cantidad": ln.get("Quantity")})
+                        "Código de producto": ln.get("ItemCode"), "Cantidad": ln.get("Quantity"),
+                        "Número de factura": fact_de_entrega.get(dn.get("DocEntry"), "")})
     return out
 
 
@@ -1137,10 +1153,10 @@ def sync_background(app, tipo, user, upload_dir):
     """Trae el dato de SAP en un hilo aparte: la página responde enseguida y muestra «Trayendo…» hasta que termina
     (las guías o el stock de varios días pueden tardar minutos por el túnel)."""
     import threading
-    if tipo not in TIPOS_SAP:
+    if tipo not in TIPOS_SAP and tipo != "FACTURAS":
         raise BusinessError("Tipo de dato de SAP no válido.")
     if job_state(tipo).get("estado") == "EN_CURSO":
-        raise BusinessError(f"Ya se están trayendo {TIPOS_SAP[tipo].lower()} de SAP; espere a que termine.")
+        raise BusinessError(f"Ya se están trayendo {TIPOS_SAP.get(tipo, 'facturas').lower()} de SAP; espere a que termine.")
     inicio = datetime.now().isoformat(timespec="seconds")
     uid, nombre = user.id, user.nombre
     _job_set(tipo, {"estado": "EN_CURSO", "inicio": inicio, "usuario": nombre})
@@ -1151,6 +1167,12 @@ def sync_background(app, tipo, user, upload_dir):
         with app.app_context():
             try:
                 u = db().get(User, uid)
+                if tipo == "FACTURAS":
+                    res = sync_facturas(u)
+                    db().commit()
+                    _job_set(tipo, {"estado": "OK", "inicio": inicio, "fin": datetime.now().isoformat(timespec="seconds"),
+                                    "usuario": u.nombre, "resumen": res})
+                    return
                 b = sync(tipo, u, upload_dir)
                 db().commit()
                 _job_set(tipo, {"estado": "OK", "inicio": inicio, "fin": datetime.now().isoformat(timespec="seconds"),
@@ -1166,3 +1188,86 @@ def sync_background(app, tipo, user, upload_dir):
         _run()  # en las pruebas, en el mismo hilo (resultado inmediato)
     else:
         threading.Thread(target=_run, name=f"sap-{tipo}", daemon=True).start()
+
+
+
+# ------------------------------------------------------------------ V26 (11-nov-2026): facturas y notas de crédito
+def _docnums(sl, entidad, entries):
+    """DocEntry → (DocNum, líneas) de documentos de SAP, pedidos en grupos de 20."""
+    out = {}
+    entries = sorted({int(e) for e in entries if e})
+    for i in range(0, len(entries), 20):
+        filtro = " or ".join(f"DocEntry eq {e}" for e in entries[i:i + 20])
+        for d in sl.get_all(entidad, {"$filter": filtro, "$select": "DocEntry,DocNum,DocumentLines"}):
+            out[d["DocEntry"]] = d
+    return out
+
+
+def rows_facturas(sl, desde=None):
+    """Facturas y notas de crédito de clientes de SAP de los últimos «sap_facturas_dias» días, en el formato de la carga
+    de Finanzas (número, tipo, RUC, cliente, OV, fechas, moneda, monto, saldo, referencia). Las anuladas no se traen."""
+    desde = desde or (date.today() - timedelta(days=int(param("sap_facturas_dias", 60) or 60)))
+    sel = ("DocEntry,DocNum,FolioPrefixString,FolioNumber,CardCode,CardName,DocDate,DocDueDate,DocCurrency,DocTotal,"
+           "DocTotalFc,PaidToDate,PaidToDateFC,Comments,DocumentLines")
+    docs = []
+    for tipo, ent in (("NOTA_CREDITO", "CreditNotes"), ("FACTURA", "Invoices")):
+        for d in sl.get_all(ent, {"$filter": f"DocDate ge '{desde.isoformat()}' and Cancelled eq 'tNO'", "$select": sel}):
+            docs.append((tipo, d))
+    # OV de cada documento: directa (líneas basadas en la OV) o a través de la guía (líneas basadas en la entrega)
+    entregas = _docnums(sl, "DeliveryNotes", [ln.get("BaseEntry") for _, d in docs for ln in d.get("DocumentLines") or []
+                                              if ln.get("BaseType") == 15])
+    ov_entries = [ln.get("BaseEntry") for _, d in docs for ln in d.get("DocumentLines") or [] if ln.get("BaseType") == 17]
+    ov_entries += [ln.get("BaseEntry") for e in entregas.values() for ln in e.get("DocumentLines") or [] if ln.get("BaseType") == 17]
+    ovs = {k: v.get("DocNum") for k, v in _docnums(sl, "Orders", ov_entries).items()}
+    folio_fact = {d["DocEntry"]: _folio(d) for t, d in docs if t == "FACTURA"}
+    bps = _bp_index(sl, [d.get("CardCode") for _, d in docs])
+    filas = []
+    for tipo, d in docs:
+        ov, ref = "", ""
+        for ln in d.get("DocumentLines") or []:
+            bt, be = ln.get("BaseType"), ln.get("BaseEntry")
+            if bt == 17 and be in ovs:
+                ov = ov or ovs[be]
+            elif bt == 15 and be in entregas:
+                for l2 in entregas[be].get("DocumentLines") or []:
+                    if l2.get("BaseType") == 17 and l2.get("BaseEntry") in ovs:
+                        ov = ov or ovs[l2["BaseEntry"]]
+            elif bt == 13 and be in folio_fact:
+                ref = ref or folio_fact[be]
+        local = (d.get("DocCurrency") or "").upper() in ("", "S/", "SOL", "SOLES", "PEN", "##")
+        total = float(d.get("DocTotal") or 0) if local or not d.get("DocTotalFc") else float(d.get("DocTotalFc") or 0)
+        pagado = float(d.get("PaidToDate") or 0) if local or not d.get("DocTotalFc") else float(d.get("PaidToDateFC") or 0)
+        bp = bps.get(d.get("CardCode"), {})
+        filas.append({"tipo": tipo, "numero": _folio(d), "ruc": _ruc_de(bp) if bp else d.get("CardCode"),
+                      "cliente": d.get("CardName") or "", "ov": str(ov or ""), "fecha": _d(d.get("DocDate")),
+                      "vencimiento": _d(d.get("DocDueDate")), "moneda": "SOLES" if local else (d.get("DocCurrency") or "USD").upper(),
+                      "monto": round(total, 2), "saldo": round(max(total - pagado, 0.0), 2) if tipo == "FACTURA" else None,
+                      "referencia": ref})
+    return filas
+
+
+def sync_facturas(user, sl=None):
+    """Registra en Finanzas las facturas y notas de crédito de SAP (crea las nuevas y actualiza monto y saldo de las
+    existentes: SAP es la fuente oficial). Primero las notas de crédito y después las facturas, para que el saldo final
+    de cada factura sea el de SAP. Devuelve el resumen."""
+    from .finance import register_invoice
+    propio = sl is None
+    sl = sl or ServiceLayer()
+    try:
+        if propio:
+            sl.login()
+        filas = rows_facturas(sl)
+    finally:
+        if propio:
+            sl.logout()
+    ok, errores = 0, []
+    from ..db import db
+    for f in filas:
+        try:
+            with db().begin_nested():
+                register_invoice(user, f, origen="SAP")
+            ok += 1
+        except BusinessError as e:
+            errores.append(str(e))
+    audit(user, "FACTURAS_SAP", "CustomerInvoice", "", {"leidas": len(filas), "registradas": ok, "errores": len(errores)})
+    return {"leidas": len(filas), "registradas": ok, "errores": errores[:50]}

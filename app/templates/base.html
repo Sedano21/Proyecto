@@ -75,6 +75,7 @@
       {% if ve('stock.conteo') %}{{ nl(url_for('alm.counts'), 'count', 'Conteos físicos') }}{% endif %}
       {% if ve('movimiento.solicitar') or ve('movimiento.ejecutar') or ve('movimiento.ver_todos') %}{{ nl(url_for('sup.moves'), 'swap', 'Movimientos punto a punto') }}{% endif %}
       {% if ve('rotacion.ver') %}{{ nl(url_for('sup.rotation'), 'history', 'Stock sin rotación') }}{% endif %}
+      {% if ve('stock.ver') and not ve('calidad.ver') %}{{ nl(url_for('cal.fumigated'), 'shield', 'Producto fumigado almacenado') }}{% endif %}
       {% if ve('ingresos.ver') %}{{ nl(url_for('alm.entries'), 'download', 'Ingresos a almacén') }}{% endif %}
       {% if (ve('asistencia.area') or ve('asistencia.ver_area') or ve('asistencia.todas')) and not ve('produccion.asistencia') %}{{ nl(url_for('prod.attendance'), 'users', 'Asistencia de mi personal' if not ve('asistencia.todas') else 'Asistencia del personal') }}{% endif %}
       {% if ve('demanda.ver') and not ve('demanda.cargar') %}{{ nl(url_for('sup.demand'), 'trend', 'Proyección de demanda') }}{% endif %}
@@ -100,6 +101,7 @@
     {% if ve('calidad.ver') or ve('distribucion.seguridad') %}<div class="grp" data-grupo="Calidad"><h4><span class="lbl">{{ 'Calidad' if can('calidad.ver') else 'Seguridad' }}</span></h4>
       {% if ve('calidad.ver') %}{{ nl(url_for('cal.inbox'), 'clipboard', 'Bandeja de Calidad') }}
       {{ nl(url_for('cal.home'), 'shield', 'Liberación y registros') }}
+      {{ nl(url_for('cal.fumigated'), 'alert', 'Producto fumigado almacenado') }}
       {{ nl(url_for('cal.line'), 'factory', 'En la línea y merma') }}
       {{ nl(url_for('cal.materials'), 'layers', 'Material y saldo por línea') }}
       {{ nl(url_for('cal.management'), 'check', 'Inspecciones, visitas, quejas y NC') }}
@@ -296,7 +298,7 @@ d.addEventListener('change',function(e){if(e.target.matches('[data-dest]'))f();}
 <script src="{{ url_for('static', filename='ux.js') }}?v=1.1.0"></script>
 <script src="{{ url_for('static', filename='v14.js') }}?v=1.0"></script>
 <script src="{{ url_for('static', filename='v18.js') }}?v=1.0"></script>
-{{ velo() }}<script src="{{ url_for('static', filename='v19.js') }}?v=1.0"></script>
+{{ velo() }}<script src="{{ url_for('static', filename='v19.js') }}?v=1.1"></script>
 {% if user %}<script src="{{ url_for('static', filename='v20.js') }}?v=1.1"></script>{% endif %}
 </body>
 </html>

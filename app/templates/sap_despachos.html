@@ -1,0 +1,29 @@
+{% extends "base.html" %}{% from "_m.html" import b, ic, empty %}
+{% block content %}<div class="page-head"><div><h1>OV abiertas vs guías de SAP</h1>
+<p class="sub">Despachos completos, incompletos (parciales) o sin despacho según SAP, y si lo guiado cuadra con lo entregado en cada OV.
+Fuente: la última carga de <b>Órdenes de venta abiertas</b>{% if res.ov_batch %} (#{{ res.ov_batch.id }}, {{ res.ov_batch.ts.strftime('%d/%m/%Y %H:%M') }}){% endif %}
+y de <b>Entregas (guías)</b>{% if res.guias_batch %} (#{{ res.guias_batch.id }}, {{ res.guias_batch.ts.strftime('%d/%m/%Y %H:%M') }}){% else %} (aún no se trajeron){% endif %}.
+Para actualizar, vuelva a traer ambas en <a href="{{ url_for('alm.sap_sync') }}">Integración SAP</a>.</p></div>
+<div>{% if res.filas %}<a class="btn sec small" href="{{ url_for('alm.sap_dispatch_check', salida='xlsx') }}">{{ ic('download') }} Excel</a>{% endif %}</div></div>
+{% if not res.ov_batch %}{{ empty('Primero traiga de SAP las órdenes de venta abiertas y las entregas (guías).', 'truck') }}{% else %}
+{% set t = res.tot %}
+<div class="kpis">
+<a class="kpi {{ 'on' if estado == '' }}" href="{{ url_for('alm.sap_dispatch_check') }}"><span>OV abiertas</span><b>{{ t.TOTAL or 0 }}</b></a>
+<a class="kpi warn" href="{{ url_for('alm.sap_dispatch_check', estado='PARCIAL') }}"><span>Incompletas (parciales)</span><b>{{ t.PARCIAL or 0 }}</b></a>
+<a class="kpi ok" href="{{ url_for('alm.sap_dispatch_check', estado='COMPLETO') }}"><span>Completas (sin cerrar en SAP)</span><b>{{ t.COMPLETO or 0 }}</b></a>
+<a class="kpi" href="{{ url_for('alm.sap_dispatch_check', estado='SIN_DESPACHO') }}"><span>Sin despacho</span><b>{{ t.SIN_DESPACHO or 0 }}</b></a>
+<a class="kpi err" href="{{ url_for('alm.sap_dispatch_check', estado='ALERTA') }}"><span>Con observación</span><b>{{ t.CON_ALERTA or 0 }}</b></a>
+</div>
+<div class="tw"><table class="small apilable"><tr><th>OV</th><th>Cliente</th><th>Compromiso</th><th>Estado</th><th>Producto</th><th class="r">Solicitado</th><th class="r">Entregado (SAP)</th><th class="r">Pendiente</th><th class="r">Guiado</th><th>Guías</th><th>Facturas</th></tr>
+{% for f in filas %}{% for ln in f.lineas %}<tr{% if not ln.cuadra %} class="row-warn"{% endif %}>
+{% if loop.first %}<td rowspan="{{ f.lineas|length }}" data-label="OV" style="min-width:200px"><b>{{ f.ov }}</b>{% if f.modulo %}<br><a class="small" href="{{ url_for('com.order_detail', oid=f.modulo.id) }}">ver en el módulo</a>{% endif %}
+{% for a in f.alertas %}<div class="small err">{{ a }}</div>{% endfor %}</td>
+<td rowspan="{{ f.lineas|length }}" data-label="Cliente">{{ f.cliente }}</td><td rowspan="{{ f.lineas|length }}" data-label="Compromiso">{{ f.fecha }}</td>
+<td rowspan="{{ f.lineas|length }}" data-label="Estado">{{ b({'PARCIAL': 'INCOMPLETO', 'COMPLETO': 'COMPLETO', 'SIN_DESPACHO': 'SIN DESPACHO'}[f.estado], {'PARCIAL': 'warn', 'COMPLETO': 'ok', 'SIN_DESPACHO': 'info'}[f.estado]) }}</td>{% endif %}
+<td data-label="Producto">{{ ln.producto }} <span class="muted">{{ ln.descripcion or pd(ln.producto) }}</span></td>
+<td class="r" data-label="Solicitado">{{ ln.solicitado|n }}</td><td class="r" data-label="Entregado">{{ ln.entregado|n }}</td>
+<td class="r" data-label="Pendiente">{{ ln.pendiente|n }}</td><td class="r" data-label="Guiado">{{ ln.guiado|n }}{% if not ln.cuadra %} ⚠{% endif %}</td>
+{% if loop.first %}<td rowspan="{{ f.lineas|length }}" data-label="Guías" class="small">{% for gn, gf in f.guias %}{{ gn }}{% if gf %} <span class="muted">({{ gf }})</span>{% endif %}<br>{% else %}—{% endfor %}</td>
+<td rowspan="{{ f.lineas|length }}" data-label="Facturas" class="small">{{ f.facturas|join(', ') or '—' }}</td>{% endif %}</tr>{% endfor %}
+{% else %}<tr><td colspan="11" class="muted">Sin OV en este filtro.</td></tr>{% endfor %}</table></div>{% endif %}
+{% endblock %}

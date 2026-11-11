@@ -1,0 +1,11 @@
+{% extends "base.html" %}{% from "_m.html" import b, empty %}
+{% block content %}<div class="page-head"><div><h1>Producto fumigado almacenado</h1>
+<p class="sub">Lotes que ya terminaron la fumigación y siguen en almacén. Plazo máximo: <b>{{ d.maximo }} días</b> desde el fin de la fumigación; aviso a los {{ d.aviso }} días a Calidad y Almacén. Priorice su despacho o uso; si no saldrá, Calidad evalúa una nueva fumigación.</p></div></div>
+{% set venc = d.filas|selectattr('nivel', 'equalto', 'VENCIDO')|list %}{% set av = d.filas|selectattr('nivel', 'equalto', 'AVISO')|list %}
+<div class="kpis"><div class="kpi err"><span>Sobre el plazo</span><b>{{ venc|length }}</b></div><div class="kpi warn"><span>Por vencer el plazo</span><b>{{ av|length }}</b></div><div class="kpi"><span>Lotes fumigados en almacén</span><b>{{ d.filas|length }}</b></div></div>
+{% if d.filas %}<div class="tw"><table class="small apilable"><tr><th>Lote</th><th>Producto</th><th>Almacén</th><th class="r">Cantidad</th><th>Estado del lote</th><th>Fin de fumigación</th><th class="r">Días almacenado</th><th>Seguimiento</th></tr>
+{% for x in d.filas %}<tr><td data-label="Lote"><b>{{ x.lot.lote }}</b></td><td data-label="Producto">{{ x.lot.product_code }} <span class="muted">{{ pd(x.lot.product_code) }}</span></td>
+<td data-label="Almacén">{{ x.lot.warehouse_code }}</td><td class="r" data-label="Cantidad">{{ x.lot.cantidad|n }}</td><td data-label="Estado">{{ b(x.lot.estado) }}</td>
+<td data-label="Fin">{{ x.fin.strftime('%d/%m/%Y') }}</td><td class="r" data-label="Días"><b>{{ x.dias }}</b></td>
+<td data-label="Seguimiento">{% if x.nivel == 'VENCIDO' %}{{ b('SOBRE EL PLAZO', 'err') }}{% elif x.nivel == 'AVISO' %}{{ b('QUEDAN ' ~ x.restan ~ ' DÍAS', 'warn') }}{% else %}{{ b('EN PLAZO', 'ok') }} <span class="muted">quedan {{ x.restan }} días</span>{% endif %}</td></tr>{% endfor %}</table></div>
+{% else %}{{ empty('No hay producto fumigado almacenado.', 'shield') }}{% endif %}{% endblock %}

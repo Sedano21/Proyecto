@@ -300,6 +300,12 @@ def catalog():
         rows = [p for p in rows if q in p.code.upper() or q in (p.descripcion or "").upper() or q in (p.marca or "").upper()]
     if request.args.get("con_foto") == "1":
         rows = [p for p in rows if p.foto]
+    # V26: catálogo general o específico por tipo de producto (prefijo del código: MP, MQ, PT, GR…)
+    _pref = lambda p: (p.code.split("-")[0] if "-" in p.code else (p.tipo or "")).upper()  # noqa: E731
+    tipos_cat = sorted({_pref(p) for p in rows if _pref(p)}, key=lambda t: (["MP", "MQ", "PT", "GR"].index(t) if t in ("MP", "MQ", "PT", "GR") else 9, t))
+    tipo_cat = (request.args.get("tipo") or "").strip().upper()
+    if tipo_cat:
+        rows = [p for p in rows if _pref(p) == tipo_cat]
     # V21: catálogo por canal: los productos con precio vigente en la lista del canal (granel: la lista mayorista granel)
     from ..services import prices as psvc
     from ..services.core import param
@@ -314,7 +320,8 @@ def catalog():
         rows = [p for p in rows if p.code in precios]
     from ..services.orders import unit_for
     return render_template("catalog.html", canal=canal, canales_cat=canales_cat, precios=precios, rows=rows, pagina=paginate(rows, 24), q=q, unit_for=unit_for, con_foto=request.args.get("con_foto", ""),
-                           destacados=ctsvc.featured(), dest_txt=ctsvc.DESTACADOS, dest=request.args.get("destacado", ""))
+                           destacados=ctsvc.featured(), dest_txt=ctsvc.DESTACADOS, dest=request.args.get("destacado", ""),
+                           tipos_cat=tipos_cat, tipo_cat=tipo_cat)
 
 
 @bp.route("/catalogo/<code>", methods=["GET", "POST"])
