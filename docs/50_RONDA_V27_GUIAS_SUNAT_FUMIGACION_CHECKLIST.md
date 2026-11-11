@@ -118,6 +118,7 @@ formato: no se suben al repositorio. Migración nueva: **0039**.
   - estado de OV y desempeño;
   - checklist diario con dos vehículos;
   - visto bueno de Calidad.
+- Suite completa: **592 pruebas, todas pasan** (las pruebas anteriores de salida siguen con los 3 vistos buenos; el flujo de 5 se prueba aparte).
 - Revisión en navegador:
   - solicitudes de fumigación;
   - días no laborables;
