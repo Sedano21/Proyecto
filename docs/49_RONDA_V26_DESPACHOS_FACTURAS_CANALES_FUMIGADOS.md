@@ -49,6 +49,7 @@ Pruebas con datos ficticios.
   - canales únicos y alta desde Clientes;
   - catálogo por tipo.
 - `tests/test_sap_segundo_plano.py`: carga en segundo plano y guías con su factura.
+- Suite completa: **581 pruebas, todas pasan** (una prueba anterior se ajustó porque ahora la carga de guías también lee las facturas del periodo).
 - Revisión en navegador:
   - OV vs guías;
   - ventana «Agregar canal»;
