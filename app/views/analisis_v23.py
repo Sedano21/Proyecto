@@ -20,7 +20,16 @@ def demand():
     except (ValueError, IndexError):
         mes = f"{hoy:%Y-%m}"
     gran = request.args.get("gran") if request.args.get("gran") in ("DIA", "SEMANA", "MES") else "SEMANA"
-    d = dm.informe(mes, gran=gran, hoy=hoy)
+    # V28: rango de fechas para ver la ejecución del mes (por defecto, el mes elegido)
+    from .common import f_date
+    ini, fin = dm._rango_mes(mes)
+    desde, hasta = f_date("desde") or ini, f_date("hasta") or fin
+    if hasta < desde:
+        desde, hasta = hasta, desde
+    d = dm.informe(mes, desde=desde, hasta=hasta, gran=gran, hoy=hoy)
+    d["ejecucion"] = dm.ejecucion(desde, hasta)
+    d["rango"] = (desde, hasta)
+    cat_f = request.args.get("ov", "")
     meses = [dm._mes_rel(f"{hoy:%Y-%m}", k) for k in (-3, -2, -1, 0, 1, 2)]
     from ..services import charts
     fs = d["cumplimiento"]["filas"]
@@ -28,7 +37,7 @@ def demand():
                                                        ("Pedido (OV)", [f["pedido_kg"] for f in fs]),
                                                        ("Despachado", [f["despachado_kg"] for f in fs])], "kg",
                           title="Proyectado vs pedido vs despachado")
-    html = render_template("v23_demanda.html", d=d, meses=meses, gran=gran, graf=graf)
+    html = render_template("v23_demanda.html", d=d, meses=meses, gran=gran, graf=graf, cat_f=cat_f)
     formato = request.args.get("formato")
     if formato in ("pdf", "xlsx"):
         from ..services import pdfreport

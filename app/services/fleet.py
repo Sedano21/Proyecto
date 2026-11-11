@@ -292,3 +292,25 @@ def import_vehicles(user, path):
     db().flush()
     audit(user, "FLOTA_CARGADA", "Vehicle", "", {"nuevas": nuevas, "actualizadas": actualizadas, "errores": len(errores)})
     return {"nuevas": nuevas, "actualizadas": actualizadas, "errores": errores}
+
+
+# ------------------------------------------------------------------ V28 (11-nov-2026): conductores con usuario
+def sync_conductor_users():
+    """Cada usuario activo con perfil de conductor aparece en «Flota y conductores» (se crea su ficha de conductor,
+    vinculada a su usuario, si no la tiene). Los conductores externos (sin usuario) se siguen agregando a mano."""
+    from ..models import Driver, User
+    s = db()
+    vinculados = {d.user_id: d for d in s.execute(select(Driver).where(Driver.user_id.is_not(None))).scalars()}
+    n = 0
+    for u in s.execute(select(User).where(User.role_code == "CONDUCTOR", User.activo.is_(True))).scalars():
+        if u.username.startswith("sim."):
+            continue
+        d = vinculados.get(u.id)
+        if d is None:
+            s.add(Driver(nombre=u.nombre, user_id=u.id, externo=False, disponible=True))
+            n += 1
+        elif d.nombre != u.nombre:
+            d.nombre = u.nombre  # el nombre lo corrige el propio usuario (Mi cuenta)
+    if n:
+        s.flush()
+    return n

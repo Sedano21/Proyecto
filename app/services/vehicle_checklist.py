@@ -228,7 +228,12 @@ MOMENTOS_DIA = {"INICIO_DIA": "Inicio del día", "FIN_DIA": "Fin del día"}
 
 def driver_of(user):
     from ..models import Driver
-    return db().execute(select(Driver).where(Driver.user_id == user.id)).scalars().first()
+    d = db().execute(select(Driver).where(Driver.user_id == user.id)).scalars().first()
+    if d is None and user.role_code == "CONDUCTOR":  # V28: el usuario conductor tiene su ficha sin pasos extra
+        from .fleet import sync_conductor_users
+        sync_conductor_users()
+        d = db().execute(select(Driver).where(Driver.user_id == user.id)).scalars().first()
+    return d
 
 
 def daily_of(vehicle_id, driver_id, fecha, momento):

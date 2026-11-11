@@ -39,7 +39,11 @@
 <td>{{ f.codigo_sap }}</td><td>{{ f.contrato }}{% if f.contrato_archivo %} <a href="{{ url_for('main.evidence', name=f.contrato_archivo) }}" target="_blank" title="Contrato">{{ ic('file') }}</a>{% endif %}</td><td>{{ f.proveedor }}</td><td><b>{{ f.item }}</b></td><td>{{ f.pais_origen }}</td><td class="r">{{ f.contenedores }}</td>
 <td>{{ f.fecha_llegada|d if f.fecha_llegada else '—' }}</td><td class="r">{{ f.dias_libres }}</td>
 <td><b>{{ x.fmax|d if x.fmax else '—' }}</b>{% if x.dias_retiro is not none and not x.retirado %}<br><span class="small {{ 'err' if x.dias_retiro < 0 else '' }}">{{ ('faltan ' ~ x.dias_retiro ~ ' d') if x.dias_retiro >= 0 else ('vencido hace ' ~ (-x.dias_retiro) ~ ' d') }}</span>{% endif %}</td>
-<td class="{{ 'pend' if 'PENDIENTE' in f.status_senasa }}">{{ f.status_senasa }}</td><td class="{{ 'pend' if 'PENDIENTE' in f.status_bl }}">{{ f.status_bl }}</td>
+{% set hs = f.historial_status or [] %}{% set ult = {} %}{% for h in hs %}{% set _ = ult.update({h.campo: h}) %}{% endfor %}
+<td class="{{ 'pend' if 'PENDIENTE' in f.status_senasa }}">{{ f.status_senasa }}{% if ult.SENASA %}<br><span class="small muted" title="Último cambio">{{ ult.SENASA.ts|replace('T', ' ') }}</span>{% endif %}</td>
+<td class="{{ 'pend' if 'PENDIENTE' in f.status_bl }}">{{ f.status_bl }}{% if ult.BL %}<br><span class="small muted" title="Último cambio">{{ ult.BL.ts|replace('T', ' ') }}</span>{% endif %}
+{% if hs %}<br><button type="button" class="btn sec sm noprint" data-open="dlg-h{{ f.id }}" title="Día y hora de cada cambio de status">{{ ic('history') }} Historial</button>{% endif %}
+{% if f.retrasos %}<br><span class="b MEDIA" title="{{ f.retrasos[-1].motivo }}">Retraso: {{ f.retrasos[-1].nombre }} → {{ f.retrasos[-1].fecha_nueva[8:10] }}/{{ f.retrasos[-1].fecha_nueva[5:7] }}</span>{% endif %}</td>
 <td>{{ f.retiro_fecha.strftime('%d-%m') if f.retiro_fecha else '—' }}{% if f.retiro_fecha %}<br><span class="small muted">{{ 'real' if f.retiro_real else 'tentativa' }}</span>{% endif %}</td>
 <td class="{{ 'pend' if 'PENDIENTE' in (f.almacen_info or '').upper() }}">{{ f.almacen_info }}</td>
 <td class="small">{% for dx in f.documentos or [] %}<a href="{{ url_for('main.evidence', name=dx.archivo) }}" target="_blank" title="{{ dx.nombre }} · {{ dx.fecha }} · {{ dx.user }}">{{ ic('file') }} {{ dx.nombre }}</a><br>{% endfor %}{% set fl = faltan(f) %}{% if fl %}<span class="pend" title="{{ fl|join(', ') }}">Faltan {{ fl|length }}</span>{% elif f.documentos %}<span class="ok">Completo</span>{% endif %}</td>
@@ -47,7 +51,7 @@
 {% elif ic_.get('modo') == 'GENERADO' %}<a href="{{ url_for('cal.record_detail', rid=ic_.record_id) }}">{{ ic('file') }} REG-CAL-005 #{{ ic_.record_id }}</a><br>{{ b(ic_.resultado) if ic_.resultado }}
 {% else %}<span class="pend">Pendiente</span>{% endif %}
 {% if calidad %}<div class="noprint" style="margin-top:4px"><button type="button" class="btn sec sm" data-open="dlg-inf{{ f.id }}">Subir PDF</button> <a class="btn sm" href="{{ url_for('cal.new_record', formato='RECEPCION_IMPORTADO', referencia_tipo='ImportFollowup', referencia_id=f.id) }}">Generar informe</a></div>{% endif %}</td>
-<td class="noprint">{% if puede %}<button class="ibtn" data-open="dlg-e{{ f.id }}" title="Editar / gastos / inconveniente">{{ ic('edit') }}</button>{% endif %}</td></tr>
+<td class="noprint">{% if puede %}<button class="ibtn" data-open="dlg-e{{ f.id }}" title="Editar / gastos / inconveniente">{{ ic('edit') }}</button> <button class="btn sec sm" data-open="dlg-r{{ f.id }}" title="Registrar un retraso (SENASA, BL, naviera, retiro)">{{ ic('alert') }} Retraso</button>{% endif %}</td></tr>
 {% if x.gastos or x.riesgo_sobreestadia or x.penalidad_a_favor or f.incidencias %}<tr class="sub"><td colspan="16" class="small">
 {% if x.riesgo_sobreestadia %}<span class="b ALTA">Sobreestadía {{ x.sobreestadia_dias }} d · USD {{ x.riesgo_sobreestadia|n }}</span> {% endif %}
 {% if x.penalidad_a_favor %}<span class="b ok">Penalidad a favor {{ f.moneda }} {{ x.penalidad_a_favor|n }}</span> {% endif %}
@@ -79,6 +83,15 @@
 <h4>Reportar inconveniente</h4><form method="post" class="row">{{ csrf() }}<input type="hidden" name="accion" value="incidencia"><input type="hidden" name="id" value="{{ f.id }}">
 <div><label>Tipo</label><select name="tipo"><option>Retraso</option><option>Documentación</option><option>Inspección SENASA</option><option>Naviera / puerto</option><option>Calidad de la carga</option><option>Otro</option></select></div><div class="grow"><label>Qué pasó</label><input name="detalle" required></div><div><button class="sec">Reportar</button></div></form>
 </div></dialog>{% endfor %}{% endif %}
+{% for x in d.filas %}{% set f = x.f %}{% if f.historial_status %}<dialog class="modal" id="dlg-h{{ f.id }}"><div class="dlg-head"><h3>Historial de status · {{ f.item }} ({{ f.contrato }})</h3><button class="ibtn" type="button" data-close>{{ ic('x') }}</button></div><div class="dlg-body">
+<table class="small"><tr><th>Día y hora</th><th>Qué cambió</th><th>De</th><th>A</th><th>Quién</th><th>Motivo</th></tr>{% for h in f.historial_status|reverse %}<tr><td>{{ h.ts|replace('T', ' ') }}</td><td>{{ h.campo }}</td><td>{{ h.de or '—' }}</td><td><b>{{ h.a }}</b></td><td>{{ h.user }}</td><td>{{ h.motivo or '' }}</td></tr>{% endfor %}</table></div></dialog>{% endif %}
+{% if puede %}<dialog class="modal" id="dlg-r{{ f.id }}"><form method="post">{{ csrf() }}<input type="hidden" name="accion" value="retraso"><input type="hidden" name="id" value="{{ f.id }}">
+<div class="dlg-head"><h3>Registrar retraso · {{ f.item }} ({{ f.contrato }})</h3><button class="ibtn" type="button" data-close>{{ ic('x') }}</button></div>
+<div class="dlg-body"><p class="small muted">Fecha máxima de retiro: <b>{{ x.fmax|d if x.fmax else '—' }}</b>. Si la nueva fecha la supera, se alerta el riesgo de sobreestadía.</p>
+<div class="row"><div><label class="req">Qué se retrasó</label><select name="campo" required>{% for k, n in campos_retraso.items() %}<option value="{{ k }}">{{ n }}</option>{% endfor %}</select></div>
+<div><label class="req">Fecha modificada</label><input type="date" name="fecha_nueva" required></div></div>
+<label class="req">Motivo</label><input name="motivo" required style="width:100%" placeholder="p. ej. SENASA reprogramó la inspección; la naviera no liberó el BL"></div>
+<div class="dlg-foot"><button type="button" class="sec" data-close>Cancelar</button> <button>{{ ic('check') }} Registrar retraso</button></div></form></dialog>{% endif %}{% endfor %}
 {% if calidad %}{% for x in d.filas %}{% set f = x.f %}<dialog class="modal" id="dlg-inf{{ f.id }}"><div class="dlg-head"><h3>Informe de recepción · {{ f.item }} ({{ f.contrato }})</h3><button class="ibtn" type="button" data-close>{{ ic('x') }}</button></div><div class="dlg-body">
 <p class="small">Suba el informe firmado en PDF, o use <b>Generar informe</b> para llenarlo en el sistema con el formato REG-CAL-005 (informe de recepción de productos importados).</p>
 <form method="post" enctype="multipart/form-data" class="row">{{ csrf() }}<input type="hidden" name="accion" value="informe_pdf"><input type="hidden" name="id" value="{{ f.id }}">

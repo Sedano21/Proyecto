@@ -380,3 +380,40 @@ def informe(mes=None, desde=None, hasta=None, gran="SEMANA", hoy=None):
     return {"mes": mes, "desde": desde, "hasta": hasta, "gran": gran, "hoy": hoy, "comparativo": comp, "cumplimiento": cum,
             "requerimiento": req, "produccion": prod, "distribucion": dist, "mensajes": mensajes, "validar": validar,
             "pasos": pasos}
+
+
+# ------------------------------------------------------------------ V28 (11-nov-2026): ejecución del periodo por OV
+CERRADAS = ("ENTREGADA", "CERRADA", "REGULARIZADA_CERRADA", "DEVUELTA")
+
+
+def ejecucion(desde, hasta):
+    """OV con compromiso en el rango: abiertas (aún sin despacho), cerradas (atendidas completas) o incompletas
+    (despacho parcial o cerradas con saldo), con lo pedido y lo despachado en unidades y kg."""
+    s = db()
+    prods = {p.code: p for p in s.execute(select(Product)).scalars()}
+    ovs = list(s.execute(select(SalesOrder).where(SalesOrder.fecha_compromiso >= desde, SalesOrder.fecha_compromiso <= hasta,
+                                                  SalesOrder.estado.notin_(EXCLUIDAS))
+                         .order_by(SalesOrder.fecha_compromiso, SalesOrder.id)).scalars())
+    filas = []
+    tot = {k: {"n": 0, "pedido_kg": 0.0, "despachado_kg": 0.0} for k in ("ABIERTA", "INCOMPLETA", "CERRADA")}
+    for o in ovs:
+        lineas = [l for l in o.lines if l.activa]
+        ped = sum(l.cantidad for l in lineas)
+        desp = sum(min(l.despachado or 0, l.cantidad) for l in lineas)
+        ped_kg = sum(_kg(prods.get(l.product_code), l.cantidad) for l in lineas)
+        desp_kg = sum(_kg(prods.get(l.product_code), min(l.despachado or 0, l.cantidad)) for l in lineas)
+        if ped and desp + 1e-9 >= ped:
+            cat = "CERRADA"
+        elif desp > 1e-9 or o.estado == "ENTREGA_PARCIAL" or (o.estado in CERRADAS and desp + 1e-9 < ped):
+            cat = "INCOMPLETA"
+        else:
+            cat = "ABIERTA"
+        t = tot[cat]
+        t["n"] += 1
+        t["pedido_kg"] += ped_kg
+        t["despachado_kg"] += desp_kg
+        filas.append({"o": o, "categoria": cat, "pedido": round(ped, 2), "despachado": round(desp, 2),
+                      "pedido_kg": round(ped_kg, 1), "despachado_kg": round(desp_kg, 1), "avance": _pct(desp, ped)})
+    for t in tot.values():
+        t["pedido_kg"], t["despachado_kg"] = round(t["pedido_kg"], 1), round(t["despachado_kg"], 1)
+    return {"desde": desde, "hasta": hasta, "filas": filas, "tot": tot}

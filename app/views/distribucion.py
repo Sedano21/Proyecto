@@ -396,7 +396,9 @@ def fleet():
                 d.disponible = f.get("disponible") == "1"
                 audit(g.user, "CONDUCTOR_GUARDADO", "Driver", d.nombre, {"disponible": d.disponible})
         return act(_do, "Guardado.", url_for("dist.fleet"))
-    from ..services.fleet import soat_status
+    from ..services.fleet import soat_status, sync_conductor_users
+    if sync_conductor_users():  # V28: los usuarios con perfil de conductor aparecen solos
+        db().commit()
     return render_template("fleet.html", vehicles=list(s.execute(select(Vehicle).order_by(Vehicle.capacidad_kg)).scalars()),
                            drivers=list(s.execute(select(Driver).order_by(Driver.nombre)).scalars()), soat=soat_status)
 

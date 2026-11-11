@@ -15,7 +15,7 @@
 <div class="dlg-head"><h3>{{ d.nombre if d else 'Nuevo conductor' }}</h3><button class="ibtn" data-close aria-label="Cerrar">{{ ic('x') }}</button></div>
 <div class="dlg-body">{% if not d %}<label class="req">Nombre</label><input name="nombre" required style="width:100%">{% endif %}
 <label>Licencia</label><input name="licencia" value="{{ d.licencia if d }}">
-<div class="row"><div><label>Externo</label><select name="externo"><option value="0">No</option><option value="1" {{ 'selected' if d and d.externo }}>Sí</option></select></div><div><label>Disponible</label><select name="disponible"><option value="1" {{ 'selected' if not d or d.disponible }}>Sí</option><option value="0" {{ 'selected' if d and not d.disponible }}>No</option></select></div></div></div>
+<div class="row"><div><label>Externo</label><select name="externo"><option value="0" {{ 'selected' if d and not d.externo }}>No</option><option value="1" {{ 'selected' if not d or d.externo }}>Sí</option></select></div><div><label>Disponible</label><select name="disponible"><option value="1" {{ 'selected' if not d or d.disponible }}>Sí</option><option value="0" {{ 'selected' if d and not d.disponible }}>No</option></select></div></div></div>
 <div class="dlg-foot"><button class="btn sec" data-close>Cancelar</button><button class="btn">Guardar</button></div></form>{% endmacro %}
 {% block content %}<h1>Flota y conductores</h1>
 <p class="seg small"><a class="on" href="{{ url_for('dist.fleet') }}">Unidades</a><a href="{{ url_for('dist.fleet_tracking') }}">Documentos y mantenimiento</a>{% if can('distribucion.rastreo') %}<a href="{{ url_for('dist.tracking') }}">Rastreo GEOSATELITAL</a>{% endif %}</p>
@@ -37,8 +37,8 @@
 <div class="meta"><span>{{ 'Propia' if v.propio else 'Tercero' }}</span>{% if v.capacidad_kg > 0 %}<span>{{ v.capacidad_kg|n }} kg</span>{% else %}<span class="err">sin capacidad registrada</span>{% endif %}<span>{{ 'disponible' if v.disponible else 'no disponible' }}</span></div>
 <div class="meta"><span>{{ txt }}</span><a href="{{ url_for('dist.vehicle_detail', vid=v.id) }}">Documentos →</a></div></article>
 <dialog class="modal" id="dlg-v-{{ v.id }}">{{ vform(v) }}</dialog>{% else %}{{ empty('Sin unidades registradas.', 'truck') }}{% endfor %}</div>
-<div class="card-head"><h2 style="flex:1">Conductores</h2><button class="btn sec" data-open="dlg-d-new">{{ ic('plus') }} Agregar conductor</button></div>
+<div class="card-head"><h2 style="flex:1">Conductores</h2><p class="small muted" style="flex-basis:100%;order:3">Los usuarios con perfil de conductor aparecen solos (marca «USUARIO»). Agregue a mano solo a los conductores externos, que no tienen usuario en el sistema.</p><button class="btn sec" data-open="dlg-d-new">{{ ic('plus') }} Agregar conductor externo</button></div>
 <dialog class="modal" id="dlg-d-new">{{ dform() }}</dialog>
-<div class="cards">{% for d in drivers %}<article class="xcard"><div class="xcard-head"><b>{{ d.nombre }}</b>{{ b('EXTERNO') if d.externo }}<button class="ibtn" data-open="dlg-d-{{ d.id }}" aria-label="Editar {{ d.nombre }}" title="Editar">{{ ic('edit') }}</button></div>
+<div class="cards">{% for d in drivers %}<article class="xcard"><div class="xcard-head"><b>{{ d.nombre }}</b>{{ b('EXTERNO') if d.externo }}{% if d.user_id %}<span class="b ok" title="Usuario del sistema con perfil de conductor">USUARIO</span>{% endif %}<button class="ibtn" data-open="dlg-d-{{ d.id }}" aria-label="Editar {{ d.nombre }}" title="Editar">{{ ic('edit') }}</button></div>
 <div class="meta"><span>Licencia {{ d.licencia or '—' }}</span><span>{{ 'disponible' if d.disponible else 'no disponible' }}</span></div></article>
 <dialog class="modal" id="dlg-d-{{ d.id }}">{{ dform(d) }}</dialog>{% else %}{{ empty('Sin conductores.', 'user') }}{% endfor %}</div>{% endblock %}

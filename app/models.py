@@ -2500,6 +2500,9 @@ class ImportFollowup(Base):
     # V25: documentos de la importación [{tipo, archivo, nombre, nota, fecha, user}] e informe de recepción de Calidad
     documentos: Mapped[list] = mapped_column(JSON, default=list, server_default="[]")
     informe_calidad: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}")  # {modo PDF/GENERADO, archivo, record_id, user, ts}
+    # V28: cuándo cambió cada status (SENASA, BL, llegada, retiro) y los retrasos que registra Importaciones
+    historial_status: Mapped[list] = mapped_column(JSON, default=list, server_default="[]")  # [{campo, de, a, ts, user}]
+    retrasos: Mapped[list] = mapped_column(JSON, default=list, server_default="[]")  # [{campo, motivo, fecha_antes, fecha_nueva, ts, user}]
     estado: Mapped[str] = mapped_column(String(15), default="EN_TRANSITO")  # EN_TRANSITO / EN_PUERTO / RETIRADO / CERRADO
     shipment_id: Mapped[int | None] = mapped_column(ForeignKey("import_shipments.id"), nullable=True)
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)

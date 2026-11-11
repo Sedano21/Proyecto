@@ -118,6 +118,9 @@ def imports():
             return act(lambda: imp.add_expense(g.user, fila, f.get("tipo"), f.get("monto"), f.get("moneda", "USD"),
                                                f.get("detalle", ""), _archivo("archivo", f"gasto_imp_{fila.id}")),
                        "Gasto registrado.", back)
+        if acc == "retraso":  # V28: retraso de SENASA, BL, naviera o retiro con motivo y fecha modificada
+            return act(lambda: imp.register_delay(g.user, fila, f.get("campo"), f.get("motivo", ""), f.get("fecha_nueva")),
+                       "Retraso registrado: se avisó a Gerencia Adjunta e Importaciones.", back)
         if acc == "incidencia":
             return act(lambda: imp.add_incident(g.user, fila, f.get("tipo", ""), f.get("detalle", "")),
                        "Inconveniente reportado: se avisó a Gerencia Adjunta e Importaciones.", back)
@@ -144,7 +147,7 @@ def imports():
     if request.args.get("salida") == "xlsx":
         return Response(imp.excel(), headers={"Content-Disposition": f"attachment; filename=importaciones_{date.today():%Y%m%d}.xlsx"},
                         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    return render_template("v24_importaciones.html", d=imp.board(incluir_cerradas=request.args.get("todas") == "1"),
+    return render_template("v24_importaciones.html", campos_retraso=imp.CAMPOS_RETRASO, d=imp.board(incluir_cerradas=request.args.get("todas") == "1"),
                            precios=imp.precios_importado_vs_nacional(), tipos_gasto=imp.TIPOS_GASTO, estados=imp.ESTADOS,
                            puede=("importaciones.seguimiento" in g.perms), hoy=date.today(), tipos_doc=imp.TIPOS_DOC,
                            faltan=imp.missing_documents,

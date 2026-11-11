@@ -111,8 +111,19 @@ def save(user, datos, f=None):
     if datos.get("estado") in ESTADOS:
         f.estado = datos["estado"]
     db().flush()
-    cambios = {k: str(v) for k, v in antes.items()
-               if v != {"llegada": f.fecha_llegada, "retiro": f.retiro_fecha, "senasa": f.status_senasa, "bl": f.status_bl}[k]}
+    despues = {"llegada": f.fecha_llegada, "retiro": f.retiro_fecha, "senasa": f.status_senasa, "bl": f.status_bl}
+    cambios = {k: str(v) for k, v in antes.items() if v != despues[k]}
+    # V28: historial con día y hora de cada cambio de status (SENASA, BL, llegada y retiro)
+    if not nuevo and cambios:
+        from ..models import now as _now
+        hist = list(f.historial_status or [])
+        etiq = {"senasa": "SENASA", "bl": "BL", "llegada": "Llegada", "retiro": "Retiro"}
+        for k in cambios:
+            de, a = antes[k], despues[k]
+            hist.append({"campo": etiq[k], "de": de.strftime("%d/%m/%Y") if hasattr(de, "strftime") else (de or ""),
+                         "a": a.strftime("%d/%m/%Y") if hasattr(a, "strftime") else (a or ""),
+                         "ts": _now().isoformat(timespec="minutes"), "user": user.nombre})
+        f.historial_status = hist
     audit(user, "IMPORTACION_SEGUIMIENTO", "ImportFollowup", f.id, {"nuevo": nuevo, "cambios": cambios})
     if not nuevo and "llegada" in cambios and antes["llegada"] and f.fecha_llegada and f.fecha_llegada > antes["llegada"]:
         alerts.emit("IMPORT_RETRASO", f"{f.item} ({f.contrato}): la llegada se movió al {f.fecha_llegada:%d/%m}",
@@ -412,3 +423,47 @@ def precios_importado_vs_nacional():
                       "dif_pct": round(100 * (imp - nac) / nac, 1) if imp and nac else None,
                       "conviene": ("Nacional" if imp and nac and nac < imp else "Importado" if imp and nac else "—")})
     return {"tc": tc, "filas": filas}
+
+
+
+# ------------------------------------------------------------------ V28 (11-nov-2026): retrasos
+CAMPOS_RETRASO = {"SENASA": "SENASA", "BL": "Liberación de BL", "LLEGADA": "Llegada del buque / naviera",
+                  "RETIRO": "Retiro del contenedor", "OTRO": "Otro"}
+
+
+def register_delay(user, f, campo, motivo, fecha_nueva):
+    """Importaciones registra un retraso (de SENASA, del BL, de la naviera…): motivo y fecha modificada. Si la nueva
+    fecha pasa la fecha máxima de retiro, se avisa el riesgo de sobreestadía."""
+    from ..models import now as _now
+    _req(user)
+    campo = (campo or "").upper()
+    if campo not in CAMPOS_RETRASO:
+        raise BusinessError("Indique qué se retrasó.")
+    motivo = (motivo or "").strip()
+    if not motivo:
+        raise BusinessError("Indique el motivo del retraso.")
+    nueva = _fecha(fecha_nueva) if fecha_nueva not in (None, "") else None
+    if nueva is None:
+        raise BusinessError("Indique la fecha modificada (nueva fecha estimada).")
+    antes = None
+    if campo == "LLEGADA":
+        antes, f.fecha_llegada = f.fecha_llegada, nueva
+    elif campo == "RETIRO":
+        antes, f.retiro_fecha, f.retiro_real = f.retiro_fecha, nueva, False
+    r = {"campo": campo, "nombre": CAMPOS_RETRASO[campo], "motivo": motivo,
+         "fecha_antes": antes.isoformat() if antes else "", "fecha_nueva": nueva.isoformat(),
+         "ts": _now().isoformat(timespec="minutes"), "user": user.nombre}
+    f.retrasos = list(f.retrasos or []) + [r]
+    hist = list(f.historial_status or [])
+    hist.append({"campo": f"Retraso · {CAMPOS_RETRASO[campo]}", "de": antes.strftime("%d/%m/%Y") if antes else "",
+                 "a": nueva.strftime("%d/%m/%Y"), "ts": r["ts"], "user": user.nombre, "motivo": motivo})
+    f.historial_status = hist
+    fmax = fecha_max_retiro(f)
+    riesgo = bool(fmax and nueva > fmax and campo in ("SENASA", "BL", "RETIRO", "OTRO"))
+    alerts.emit("IMPORT_RETRASO", f"{f.item} ({f.contrato}): retraso de {CAMPOS_RETRASO[campo].lower()} al {nueva:%d/%m}",
+                f"Motivo: {motivo}." + (f" Fecha anterior {antes:%d/%m/%Y}." if antes else "")
+                + (f" Supera la fecha máxima de retiro ({fmax:%d/%m/%Y}): riesgo de sobreestadía." if riesgo else ""),
+                "ImportFollowup", f.id, creado_por=user, prioridad="ALTA" if riesgo else None,
+                dedup_key=f"IMPRETRASO:{f.id}:{campo}:{nueva.isoformat()}")
+    audit(user, "IMPORTACION_RETRASO", "ImportFollowup", f.id, r)
+    return f
