@@ -16,4 +16,5 @@ Pruebas con datos ficticios. Migración nueva: **0040**.
   - historial de status y retrasos, incluida la alerta de sobreestadía;
   - conductores con usuario en Flota.
 - Prueba de migraciones hasta la 0040.
+- Suite completa: **595 pruebas, todas pasan**.
 - Revisión en navegador del cuadro y del historial.
