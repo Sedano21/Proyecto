@@ -27,7 +27,7 @@ def test_ejecucion_del_periodo_abiertas_incompletas_cerradas(app, s, new_order):
     s.commit()
     hoy = date.today()
     e = dm.ejecucion(hoy, hoy + timedelta(days=5))
-    cat = {x["o"].id: x["categoria"] for x in e["filas"]}
+    cat = {x["o"]["oid"]: x["categoria"] for x in e["filas"]}
     assert (cat[a.id], cat[b.id], cat[c.id]) == ("ABIERTA", "INCOMPLETA", "CERRADA")
     assert e["tot"]["INCOMPLETA"]["n"] >= 1
     mes = f"{hoy:%Y-%m}"

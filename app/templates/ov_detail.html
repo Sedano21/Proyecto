@@ -5,12 +5,13 @@
 {% set gestionable = o.estado not in ['CANCELADA','DESPACHADA','ENTREGADA','ENTREGA_PARCIAL','RECHAZADA','DEVUELTA','EN_RUTA'] %}
 {% set puede_gestionar = gestionable and (can('ov.renegociar') or can('ov.cancelar')) %}
 <p class="small"><a href="{{ url_for('com.orders') }}">← Órdenes de venta</a></p>
-<div class="page-head"><div><h1>OV {{ o.numero }}</h1>
+<div class="page-head"><div><h1>{{ 'Orden de servicio' if o.clase == 'SERVICIO' else 'OV' }} {{ o.numero }}</h1>
 <p class="sub">{{ o.customer.nombre }} · comprometida <b>{{ o.fecha_compromiso|d }}</b> · {{ b(o.estado) }} {{ b(o.estado_stock) }} {% if o.urgente %}<span class="b ALTA">URGENTE</span>{% endif %}{% if o.regularizacion %} <span class="b MEDIA">REGULARIZACIÓN</span>{% endif %}</p></div>
 <div class="row">{% if puede_editar %}<a class="btn" href="#editar">{{ ic('edit') }}{{ 'Editar' if can('ov.modificar') else 'Solicitar modificación' }}</a>{% endif %}
 <a class="btn sec" href="{{ url_for('com.order_print', oid=o.id) }}">{{ ic('file') }}Imprimir OV</a>
 <a class="btn sec" href="#expediente">{{ ic('folder') }}Expediente</a>
 {% if can('ov.reportar_atraso') and gestionable and not o.aviso_atraso %}<button class="btn sec" data-open="dlg-atraso">{{ ic('alert') }}Avisar atraso</button>{% endif %}</div></div>
+{% include "_nc_ov.html" %}
 {% set bq = o.bloqueo_ov or {} %}
 {% if o.estado == 'BLOQUEADA' %}<div class="card" style="box-shadow:inset 3px 0 0 var(--err),var(--sh)"><div class="card-head"><h3 style="flex:1">{{ ic('alert') }} OV bloqueada: no compromete stock</h3>{{ b(bq.estado) }}</div>
 <p>{{ bq.motivo }}</p>

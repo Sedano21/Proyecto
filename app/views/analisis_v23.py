@@ -26,8 +26,10 @@ def demand():
     desde, hasta = f_date("desde") or ini, f_date("hasta") or fin
     if hasta < desde:
         desde, hasta = hasta, desde
-    d = dm.informe(mes, desde=desde, hasta=hasta, gran=gran, hoy=hoy)
-    d["ejecucion"] = dm.ejecucion(desde, hasta)
+    clase = request.args.get("clase", "")  # V29: órdenes de venta, de servicio o ambas
+    clase = clase if clase in ("VENTA", "SERVICIO") else ""
+    d = dm.informe(mes, desde=desde, hasta=hasta, gran=gran, hoy=hoy, clase=clase or None)
+    d["ejecucion"] = dm.ejecucion(desde, hasta, clase or None)
     d["rango"] = (desde, hasta)
     cat_f = request.args.get("ov", "")
     meses = [dm._mes_rel(f"{hoy:%Y-%m}", k) for k in (-3, -2, -1, 0, 1, 2)]
@@ -37,7 +39,11 @@ def demand():
                                                        ("Pedido (OV)", [f["pedido_kg"] for f in fs]),
                                                        ("Despachado", [f["despachado_kg"] for f in fs])], "kg",
                           title="Proyectado vs pedido vs despachado")
-    html = render_template("v23_demanda.html", d=d, meses=meses, gran=gran, graf=graf, cat_f=cat_f)
+    from ..services import sap_sl
+    from flask import g
+    html = render_template("v23_demanda.html", d=d, meses=meses, gran=gran, graf=graf, cat_f=cat_f, clase=clase,
+                           puede_sap=sap_sl.configured() and bool(g.perms & {"ov.importar", "ov.ver", "demanda.analisis"}),
+                           job_ord=sap_sl.job_state("ORDENES"))
     formato = request.args.get("formato")
     if formato in ("pdf", "xlsx"):
         from ..services import pdfreport

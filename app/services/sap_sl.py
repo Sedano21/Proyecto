@@ -35,6 +35,10 @@ from .core import BusinessError, audit, param
 
 TIPOS_SAP = {"OV": "Órdenes de venta abiertas", "CLIENTES": "Clientes", "PRODUCTOS": "Artículos",
              "DESPACHOS": "Entregas (guías)", "STOCK": "Stock por lote", "LIQUIDACION": "Liquidaciones de producción"}
+# V29: lecturas de SAP que no son cargas: facturas y notas de crédito, órdenes de fabricación ligadas a OV, órdenes de
+# venta y de servicio del periodo (demanda) y balance de peso de las órdenes de fabricación
+EXTRAS = {"FACTURAS": "Facturas y notas de crédito", "SERVICIOS": "Órdenes de fabricación ligadas a OV",
+          "ORDENES": "Órdenes de venta y de servicio del periodo", "BALANCE_OF": "Balance de peso de órdenes de fabricación"}
 MAX_PAGINAS = 400
 
 
@@ -211,11 +215,14 @@ def rows_ov(sl):
     vend = {x["SalesEmployeeCode"]: x.get("SalesEmployeeName", "") for x in sl.get_all("SalesPersons")}
     ords = sl.get_all("Orders", {"$filter": "DocumentStatus eq 'bost_Open'",
                                  "$select": "DocNum,DocDate,DocDueDate,CardCode,CardName,Comments,SalesPersonCode,Address2,"
-                                            "DocCurrency,PaymentGroupCode,DocumentLines"})
+                                            "DocCurrency,PaymentGroupCode,DocType,Series,DocumentLines"})
     bps = _bp_index(sl, [o.get("CardCode") for o in ords])
+    from .sap_v29 import clase_de, nombre_serie  # V29: orden de venta u orden de servicio (por el código de la serie)
+    series = {}
     filas = []
     for o in ords:
         bp = bps.get(o.get("CardCode"), {})
+        clase, serie = clase_de(o, series), nombre_serie(o, series)
         for ln in o.get("DocumentLines") or []:
             qty = float(ln.get("Quantity") or 0)
             filas.append({"Número de documento": o.get("DocNum"), "Estado": "Abierto", "Fecha de Emisión": _d(o.get("DocDate")),
@@ -228,7 +235,8 @@ def rows_ov(sl):
                           "Entregado": qty - float(ln.get("RemainingOpenQuantity") or 0),
                           "Unidad de medida": ln.get("UoMCode") or ln.get("MeasureUnit") or "",
                           "P. Unitario SOLES": ln.get("Price"), "Moneda": o.get("DocCurrency") or "",
-                          "Comentarios": o.get("Comments") or "", "TaxCode": ln.get("TaxCode") or ""})
+                          "Comentarios": o.get("Comments") or "", "TaxCode": ln.get("TaxCode") or "",
+                          "Clase": clase, "Serie": serie})
     # V7: las OV cerradas recientemente se traen solo para cerrar en el módulo las que SAP ya atendió (no se importan)
     desde = (date.today() - timedelta(days=7)).isoformat()
     for o in sl.get_all("Orders", {"$filter": f"DocumentStatus eq 'bost_Close' and UpdateDate ge '{desde}'",
@@ -545,7 +553,31 @@ def scheduled_sync(ahora=None):
     if u is None:
         return 0
     n = 0
-    for tipo in param("sap_sync_tipos", []) or []:
+    tipos = list(param("sap_sync_tipos", []) or [])
+    if param("balance_of_automatico", True) and "BALANCE_OF" not in tipos:
+        tipos.append("BALANCE_OF")  # V29: el balance de peso de las OF se revisa solo (pedido de la empresa)
+    for tipo in tipos:
+        if tipo in EXTRAS:  # V29: lecturas que no son cargas, con el mismo intervalo
+            j = job_state(tipo)
+            try:
+                if j.get("fin") and (ahora - datetime.fromisoformat(j["fin"])).total_seconds() < minutos * 60:
+                    continue
+            except ValueError:
+                pass
+            ini = ahora.isoformat(timespec="seconds")
+            try:
+                res = sync_extra(tipo, u)
+                _job_set(tipo, {"estado": "OK", "inicio": ini, "fin": datetime.now().isoformat(timespec="seconds"),
+                                "usuario": u.nombre, "resumen": res})
+                n += 1
+            except SapConnectionError as e:
+                _set_state(False, str(e), ahora)
+                break
+            except BusinessError as e:
+                from . import alerts
+                alerts.emit("CARGA_SAP_DESACTUALIZADA", f"Sincronización con SAP fallida: {EXTRAS[tipo]}", str(e),
+                            "UploadBatch", "", dedup_key=f"SAP_SL_ERR:{tipo}:{ahora:%Y%m%d%H}")
+            continue
         ult = db().execute(select(UploadBatch).where(UploadBatch.archivo.like(f"SAP_SL_{tipo}_%"))
                            .order_by(UploadBatch.id.desc())).scalars().first()
         if ult is not None and ult.ts and (ahora - ult.ts).total_seconds() < minutos * 60:
@@ -1174,7 +1206,7 @@ def sync_background(app, tipo, user, upload_dir):
     """Trae el dato de SAP en un hilo aparte: la página responde enseguida y muestra «Trayendo…» hasta que termina
     (las guías o el stock de varios días pueden tardar minutos por el túnel)."""
     import threading
-    if tipo not in TIPOS_SAP and tipo not in ("FACTURAS", "SERVICIOS"):
+    if tipo not in TIPOS_SAP and tipo not in EXTRAS:
         raise BusinessError("Tipo de dato de SAP no válido.")
     if job_state(tipo).get("estado") == "EN_CURSO":
         raise BusinessError(f"Ya se están trayendo {TIPOS_SAP.get(tipo, 'esos datos').lower()} de SAP; espere a que termine.")
@@ -1188,14 +1220,22 @@ def sync_background(app, tipo, user, upload_dir):
         with app.app_context():
             try:
                 u = db().get(User, uid)
-                if tipo in ("FACTURAS", "SERVICIOS"):
-                    res = sync_facturas(u) if tipo == "FACTURAS" else sync_servicios(u)
+                if tipo in EXTRAS:
+                    res = sync_extra(tipo, u)
                     db().commit()
                     _job_set(tipo, {"estado": "OK", "inicio": inicio, "fin": datetime.now().isoformat(timespec="seconds"),
                                     "usuario": u.nombre, "resumen": res})
                     return
                 b = sync(tipo, u, upload_dir)
                 db().commit()
+                if tipo == "LIQUIDACION":  # V29: con las liquidaciones se revisa también el balance de peso de las OF
+                    try:
+                        _job_set("BALANCE_OF", {"estado": "OK", "inicio": inicio, "usuario": u.nombre,
+                                                "fin": datetime.now().isoformat(timespec="seconds"),
+                                                "resumen": sync_extra("BALANCE_OF", u)})
+                        db().commit()
+                    except (BusinessError, SapConnectionError):
+                        db().rollback()
                 _job_set(tipo, {"estado": "OK", "inicio": inicio, "fin": datetime.now().isoformat(timespec="seconds"),
                                 "usuario": u.nombre, "carga": b.id if b is not None else None})
             except Exception as e:  # noqa: BLE001  (el error se muestra en la pantalla de Integración SAP)
@@ -1278,6 +1318,11 @@ def sync_facturas(user, sl=None):
         if propio:
             sl.login()
         filas = rows_facturas(sl)
+        try:  # V29: notas de crédito sobre OV por despachar (si falla, las facturas se registran igual)
+            from .sap_v29 import rows_nc_ov
+            nc_ov, nc_error = rows_nc_ov(sl), ""
+        except BusinessError as e:
+            nc_ov, nc_error = [], str(e)
     finally:
         if propio:
             sl.logout()
@@ -1291,7 +1336,11 @@ def sync_facturas(user, sl=None):
         except BusinessError as e:
             errores.append(str(e))
     audit(user, "FACTURAS_SAP", "CustomerInvoice", "", {"leidas": len(filas), "registradas": ok, "errores": len(errores)})
-    return {"leidas": len(filas), "registradas": ok, "errores": errores[:50]}
+    from .notas_credito_ov import aplicar
+    nc = aplicar(user, nc_ov)
+    if nc_error:
+        nc["error"] = nc_error[:300]
+    return {"leidas": len(filas), "registradas": ok, "errores": errores[:50], "notas_credito_ov": nc}
 
 
 # ------------------------------------------------------------------ V27 (11-nov-2026): órdenes de servicio (maquila)
@@ -1330,3 +1379,18 @@ def sync_servicios(user, sl=None):
             sl.logout()
     set_param("sap_servicios_ultimo", {"ts": datetime.now().isoformat(timespec="minutes"), "filas": filas}, user)
     return {"leidas": len(filas)}
+
+
+def sync_extra(tipo, user, sl=None):
+    """V29: ejecuta una lectura de EXTRAS y devuelve su resumen."""
+    if tipo == "FACTURAS":
+        return sync_facturas(user, sl)
+    if tipo == "SERVICIOS":
+        return sync_servicios(user, sl)
+    if tipo == "ORDENES":
+        from .sap_v29 import sync_ordenes
+        return sync_ordenes(user, sl)
+    if tipo == "BALANCE_OF":
+        from .balance_of import sync as sync_balance
+        return sync_balance(user, sl)
+    raise BusinessError("Tipo de dato de SAP no válido.")

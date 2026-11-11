@@ -71,7 +71,9 @@ SPECS = {
                  "tipo_venta": ["Tipo de Venta", "Tipo de venta"],
                  "forma_pago": ["Forma de pago", "Condición de pago", "Condicion de pago", "Términos de pago"],
                  "moneda": ["Moneda"], "descuento": ["Descuento"], "tax_code": ["TaxCode", "Tax Code", "Código de impuesto"],
-                 "codigo_cliente": ["Código de cliente", "Código SN", "CardCode"]},
+                 "codigo_cliente": ["Código de cliente", "Código SN", "CardCode"],
+                 # V29: orden de venta u orden de servicio (según la serie de SAP)
+                 "clase": ["Clase"], "serie": ["Serie"]},
         "req": ["numero", "fecha_compromiso", "ruc", "cliente", "producto", "solicitado"],
     },
     "LIQUIDACION": {
@@ -1132,11 +1134,26 @@ def _c_ov(b, user, opciones):
                                                         "descuento": 0.0, "tax_code": _txt(d.get("tax_code")).upper()})
             ln["cantidad"] += (_num(d["solicitado"]) or 0) - (_num(d.get("entregado")) or 0)
             ln["descuento"] += _num(d.get("descuento")) or 0
-        lines = [l for l in cons.values() if l["cantidad"] > 0]
+        o = order_by_number(numero)
+        clase = "SERVICIO" if _txt(d0.get("clase")).upper() == "SERVICIO" else "VENTA"
+        if o is not None:
+            if (o.clase or "VENTA") != clase:
+                o.clase = clase
+            # V29: lo acreditado por notas de crédito ya no se despacha; SAP sigue mostrándolo pendiente en la OV
+            # (la nota se hace sobre la factura). Se descuenta solo lo que SAP aún no refleja, para no restarlo dos veces.
+            from .notas_credito_ov import aplicadas_por_ov
+            ncs = aplicadas_por_ov(o.numero)
+            if o.sap_docnum and o.sap_docnum != o.numero:
+                for k, v in aplicadas_por_ov(o.sap_docnum).items():
+                    ncs[k] = ncs.get(k, 0) + v
+            act = {l.product_code: l.cantidad for l in o.lines if l.activa}
+            for code, q in ncs.items():
+                if code in cons and q > 1e-9:
+                    cons[code]["cantidad"] -= min(q, max(cons[code]["cantidad"] - act.get(code, 0.0), 0.0))
+        lines = [l for l in cons.values() if l["cantidad"] > 1e-9]
         if not lines:
             continue
         vend = s.execute(select(User).where(User.nombre == _txt(d0.get("vendedor")))).scalars().first()
-        o = order_by_number(numero)
         try:
             if o is None:
                 o = create_order(user, numero, c.id, _date(d0["fecha_compromiso"]), lines, comentarios=_txt(d0.get("comentarios")),
@@ -1147,6 +1164,7 @@ def _c_ov(b, user, opciones):
                     o.vendedor_nombre = _txt(d0.get("vendedor"))[:120]
                 o.forma_pago = _txt(d0.get("forma_pago"))[:60]
                 o.moneda = ((_txt(d0.get("moneda")) or "SOLES").upper())[:10]
+                o.clase = clase
                 creadas += 1
             else:
                 actual = {l.product_code: l.cantidad for l in o.lines if l.activa}

@@ -1,0 +1,7 @@
+{% set _ncs = notas_credito_ov(o) %}{% if _ncs %}{% set _apl = _ncs|selectattr('estado', 'equalto', 'APLICADA')|list %}
+<div class="card {{ 'warn' if _apl else '' }}" id="notas-credito"><h3>{{ ic('alert') }} Notas de crédito de SAP sobre esta OV</h3>
+{% if _apl %}<p><b>NO DESPACHAR</b> lo que indica la nota de crédito: ya se descontó de la cantidad a preparar y despachar{% if _apl|sum(attribute='liberado') > 0 %} y se liberaron las reservas que sobraban{% endif %}.</p>{% endif %}
+<div class="tw"><table class="small apilable"><tr><th>Nota de crédito</th><th>Factura</th><th>Fecha</th><th>Producto</th><th class="r">Cantidad de la nota</th><th class="r">No se despacha</th><th>Situación</th></tr>
+{% for n in _ncs %}<tr><td data-label="Nota">{{ n.nc_numero }}</td><td data-label="Factura">{{ n.factura }}</td><td data-label="Fecha">{{ n.fecha|d }}</td><td data-label="Producto">{{ n.product_code }} <span class="muted">{{ pd(n.product_code) }}</span></td>
+<td class="r" data-label="Cantidad">{{ n.cantidad|n }}</td><td class="r" data-label="No se despacha"><b>{{ n.aplicada|n }}</b></td>
+<td data-label="Situación">{{ {'APLICADA': 'Descontada del despacho', 'YA_DESPACHADO': 'Nota posterior al despacho: no cambia el picking', 'SIN_OV': 'Sin OV en el módulo'}.get(n.estado, n.estado) }}</td></tr>{% endfor %}</table></div></div>{% endif %}

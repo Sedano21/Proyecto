@@ -44,8 +44,9 @@ def estado_ov(lineas):
     return "PARCIAL"
 
 
-def conciliar(ov_batch=None, guias_batch=None):
-    """[{ov, cliente, fecha, estado, lineas[{producto, solicitado, entregado, pendiente, guiado, cuadra}], guias, alerta}]"""
+def conciliar(ov_batch=None, guias_batch=None, clase=None):
+    """V29: clase = VENTA (órdenes de venta), SERVICIO (órdenes de servicio) o None (todas).
+    [{ov, cliente, fecha, estado, lineas[{producto, solicitado, entregado, pendiente, guiado, cuadra}], guias, alerta}]"""
     from .orders import order_by_number
     ovb = ov_batch or _ultima("OV")
     gub = guias_batch or _ultima("DESPACHOS")
@@ -72,6 +73,8 @@ def conciliar(ov_batch=None, guias_batch=None):
             continue
         n = _txt(d.get("numero"))
         o = ovs.setdefault(n, {"ov": n, "cliente": _txt(d.get("cliente")), "fecha": _txt(d.get("fecha_compromiso"))[:10],
+                               "clase": "SERVICIO" if _txt(d.get("clase")).upper() == "SERVICIO" else "VENTA",
+                               "serie": _txt(d.get("serie")),
                                "lineas": defaultdict(lambda: {"solicitado": 0.0, "entregado": 0.0})})
         ln = o["lineas"][_txt(d.get("producto"))]
         ln["solicitado"] += _num(d.get("solicitado"))
@@ -79,21 +82,34 @@ def conciliar(ov_batch=None, guias_batch=None):
         ln["descripcion"] = _txt(d.get("descripcion"))
     filas, tot = [], defaultdict(int)
     from .core import param
+    from .notas_credito_ov import aplicadas_por_ov
+    por_clase = defaultdict(int)
+    for o in ovs.values():
+        por_clase[o["clase"]] += 1
+    if clase:
+        ovs = {k: v for k, v in ovs.items() if v["clase"] == clase}
     servicios = defaultdict(list)
     for x in ((param("sap_servicios_ultimo", {}) or {}).get("filas") or []):
         servicios[_txt(x.get("ov"))].append(x)
     for n, o in ovs.items():
         g = guias.get(n)
         lineas = []
+        ncs = aplicadas_por_ov(n)  # V29: lo que una nota de crédito sacó del despacho
         for prod, ln in o["lineas"].items():
             guiado = g["cant"].get(prod, 0.0) if g else 0.0
             lineas.append({"producto": prod, "descripcion": ln.get("descripcion", ""), "solicitado": ln["solicitado"],
+                           "nota_credito": ncs.get(prod, 0.0),
                            "entregado": ln["entregado"], "pendiente": max(ln["solicitado"] - ln["entregado"], 0.0),
                            "guiado": guiado, "cuadra": abs(guiado - ln["entregado"]) <= TOL or (g is None and ln["entregado"] <= TOL)})
         est = estado_ov(lineas)
         alertas = []
         if est == "COMPLETO":
             alertas.append("Entregada completa en SAP pero la OV sigue abierta: cerrarla en SAP.")
+        if ncs:
+            alertas.append("Nota de crédito: no se despacha " + ", ".join(f"{k} {v:g}" for k, v in ncs.items())
+                           + " (ya descontado del picking en el módulo).")
+            if est == "PARCIAL" and all(l["entregado"] + l["nota_credito"] + TOL >= l["solicitado"] for l in lineas):
+                alertas.append("Con la nota de crédito, lo entregado completa la OV: cerrarla en SAP.")
         if est != "SIN_DESPACHO" and not g:
             alertas.append("SAP la marca con entregas, pero no hay guías en la carga de entregas (¿guía anterior al periodo "
                            "traído? Amplíe «sap_despachos_dias»).")
@@ -108,9 +124,10 @@ def conciliar(ov_batch=None, guias_batch=None):
         if ords and est != "COMPLETO":  # V27: OV de maquila atendida con orden de servicio/fabricación
             plan = sum(x["planificado"] for x in ords)
             comp = sum(x["completado"] for x in ords)
-            alertas.append(f"Orden de servicio/fabricación: {comp:g} de {plan:g} completado"
+            alertas.append(f"Orden de fabricación: {comp:g} de {plan:g} completado"
                            + (" (completa: falta despacharla)" if plan and comp + TOL >= plan else "") + ".")
         filas.append({"ov": n, "cliente": o["cliente"], "fecha": o["fecha"], "estado": est, "lineas": lineas,
+                      "clase": o["clase"], "serie": o["serie"],
                       "guias": sorted((g or {}).get("guias", {}).items()), "facturas": sorted(facturas),
                       "servicios": ords, "alertas": alertas, "modulo": mod})
         tot["CON_SERVICIO"] += 1 if ords else 0
@@ -119,7 +136,7 @@ def conciliar(ov_batch=None, guias_batch=None):
     orden = {"PARCIAL": 0, "COMPLETO": 1, "SIN_DESPACHO": 2}
     filas.sort(key=lambda f: (orden[f["estado"]], f["fecha"], f["ov"]))
     tot["TOTAL"] = len(filas)
-    return {"ov_batch": ovb, "guias_batch": gub, "filas": filas, "tot": dict(tot),
+    return {"ov_batch": ovb, "guias_batch": gub, "filas": filas, "tot": dict(tot), "por_clase": dict(por_clase),
             "servicios_ts": (param("sap_servicios_ultimo", {}) or {}).get("ts", "")}
 
 
@@ -130,15 +147,17 @@ def excel(res):
     wb = Workbook()
     ws = wb.active
     ws.title = "OV vs guías"
-    ws.append(["OV", "Cliente", "Fecha compromiso", "Estado", "Producto", "Descripción", "Solicitado", "Entregado (SAP)",
-               "Pendiente", "Guiado (guías)", "Cuadra", "Guías", "Facturas", "Órdenes de servicio", "Observación"])
+    ws.append(["Orden", "Clase", "Serie", "Cliente", "Fecha compromiso", "Estado", "Producto", "Descripción", "Solicitado", "Entregado (SAP)",
+               "Pendiente", "Nota de crédito (no se despacha)", "Guiado (guías)", "Cuadra", "Guías", "Facturas",
+               "Órdenes de fabricación", "Observación"])
     for c in ws[1]:
         c.font = Font(bold=True)
     txt = {"PARCIAL": "Incompleto (parcial)", "COMPLETO": "Completo", "SIN_DESPACHO": "Sin despacho"}
     for f in res["filas"]:
         for ln in f["lineas"]:
-            ws.append([f["ov"], f["cliente"], f["fecha"], txt[f["estado"]], ln["producto"], ln["descripcion"], ln["solicitado"],
-                       ln["entregado"], ln["pendiente"], ln["guiado"], "Sí" if ln["cuadra"] else "No",
+            ws.append([f["ov"], "Servicio" if f.get("clase") == "SERVICIO" else "Venta", f.get("serie", ""), f["cliente"],
+                       f["fecha"], txt[f["estado"]], ln["producto"], ln["descripcion"], ln["solicitado"],
+                       ln["entregado"], ln["pendiente"], ln.get("nota_credito", 0), ln["guiado"], "Sí" if ln["cuadra"] else "No",
                        ", ".join(gn for gn, _ in f["guias"]), ", ".join(f["facturas"]),
                        "; ".join(f"OF {x['orden']} {x['completado']:g}/{x['planificado']:g} {x['estado']}" for x in f.get("servicios", [])),
                        " ".join(f["alertas"])])

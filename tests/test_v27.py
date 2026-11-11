@@ -208,7 +208,7 @@ def test_conciliacion_con_facturas_y_ordenes_de_servicio(app, s, U, new_order):
     s.commit()
     f = next(x for x in ds.conciliar()["filas"] if x["ov"] == o.numero)
     assert "F001-55" in f["facturas"] and f["servicios"][0]["orden"] == 801
-    assert any("Orden de servicio" in a and "falta despacharla" in a for a in f["alertas"])
+    assert any("Orden de fabricación" in a and "falta despacharla" in a for a in f["alertas"])  # V29: no es orden de servicio
 
 
 # ------------------------------------------------------------------ fumigación solicitada

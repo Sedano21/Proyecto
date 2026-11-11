@@ -24,7 +24,7 @@ import calendar as cal
 from collections import defaultdict
 from datetime import date, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
 from ..db import db
 from ..models import DemandForecast, Product, SalesHistory, SalesOrder, Vehicle
@@ -100,15 +100,15 @@ def _buckets(desde, hasta, gran):
     return out
 
 
-def cumplimiento(desde, hasta, gran="SEMANA", hoy=None):
+def cumplimiento(desde, hasta, gran="SEMANA", hoy=None, clase=None):
     """Proyectado vs pedido vs despachado por periodo y por producto. Los periodos que aún no empiezan no tienen
     cumplimiento (solo el avance del pedido); el total compara lo despachado con lo proyectado hasta hoy."""
     hoy = hoy or date.today()
     s = db()
     prods = {p.code: p for p in s.execute(select(Product)).scalars()}
     proy_mes = {}
-    ovs = list(s.execute(select(SalesOrder).where(SalesOrder.fecha_compromiso >= desde, SalesOrder.fecha_compromiso <= hasta,
-                                                  SalesOrder.estado.notin_(EXCLUIDAS))).scalars())
+    # V29: OV y órdenes de servicio abiertas y cerradas (de SAP si se leyeron, más las que solo están en el módulo)
+    ovs = ordenes_periodo(desde, hasta, clase)["ordenes"]
     filas = []
     por_prod = defaultdict(lambda: {"proy": 0.0, "pedido": 0.0, "desp": 0.0})
     for et, ini, fin in _buckets(desde, hasta, gran):
@@ -124,11 +124,10 @@ def cumplimiento(desde, hasta, gran="SEMANA", hoy=None):
             d += timedelta(days=1)
         ped, desp = defaultdict(float), defaultdict(float)
         for o in ovs:
-            if ini <= o.fecha_compromiso <= fin:
-                for l in o.lines:
-                    if l.activa:
-                        ped[l.product_code] += l.cantidad
-                        desp[l.product_code] += min(l.despachado or 0, l.cantidad)
+            if ini <= o["fecha"] <= fin:
+                for code, q, dq in o["lineas"]:
+                    ped[code] += q
+                    desp[code] += min(dq, q)
         kg = lambda dct: sum(_kg(prods.get(c), q) for c, q in dct.items())  # noqa: E731
         f = {"periodo": et, "desde": ini, "hasta": fin, "proyectado_kg": round(kg(proy), 1), "pedido_kg": round(kg(ped), 1),
              "despachado_kg": round(kg(desp), 1)}
@@ -323,14 +322,14 @@ def carga_distribucion(mes, hoy):
             "uso_pct": _pct(kg, cap), "faltante_kg": round(falta), "recomendacion": reco}
 
 
-def informe(mes=None, desde=None, hasta=None, gran="SEMANA", hoy=None):
+def informe(mes=None, desde=None, hasta=None, gran="SEMANA", hoy=None, clase=None):
     hoy = hoy or date.today()
     mes = mes or _mes(hoy)
     ini, fin = _rango_mes(mes)
     desde = desde or ini
     hasta = hasta or fin
     comp = comparativo(mes)
-    cum = cumplimiento(desde, hasta, gran, hoy)
+    cum = cumplimiento(desde, hasta, gran, hoy, clase)
     req = requerimiento(mes, hoy)
     prod = carga_produccion(req, hoy)
     dist = carga_distribucion(mes, hoy)
@@ -386,34 +385,88 @@ def informe(mes=None, desde=None, hasta=None, gran="SEMANA", hoy=None):
 CERRADAS = ("ENTREGADA", "CERRADA", "REGULARIZADA_CERRADA", "DEVUELTA")
 
 
-def ejecucion(desde, hasta):
-    """OV con compromiso en el rango: abiertas (aún sin despacho), cerradas (atendidas completas) o incompletas
-    (despacho parcial o cerradas con saldo), con lo pedido y lo despachado en unidades y kg."""
+def ordenes_periodo(desde, hasta, clase=None):
+    """V29: órdenes con fecha de entrega comprometida en el rango, abiertas y cerradas, de venta y de servicio.
+    Fuente: la lectura de SAP del periodo (sap_ordenes) si cubre el rango; además, las OV que solo están en el módulo.
+    Si no hay lectura de SAP, solo las del módulo. clase = VENTA, SERVICIO o None (ambas).
+    {"ordenes": [{numero, cliente, fecha, estado, clase, fuente, oid, lineas[(producto, pedido, despachado)]}],
+     "fuente": texto, "sap_ts"}"""
+    from ..models import SapOrderLine
+    s = db()
+    ult = param("sap_ordenes_ultimo", {}) or {}
+    cubre = False
+    try:
+        cubre = bool(ult) and date.fromisoformat(ult["desde"]) <= desde and hasta <= date.fromisoformat(ult["hasta"])
+    except (KeyError, ValueError, TypeError):
+        cubre = False
+    ordenes, vistos = [], set()
+    if cubre:
+        sap = {}
+        for r in s.execute(select(SapOrderLine).where(SapOrderLine.fecha_entrega >= desde, SapOrderLine.fecha_entrega <= hasta,
+                                                      SapOrderLine.estado != "CANCELADA")
+                           .order_by(SapOrderLine.fecha_entrega, SapOrderLine.docnum, SapOrderLine.id)).scalars():
+            o = sap.setdefault(r.docnum, {"numero": r.docnum, "cliente": r.cliente, "fecha": r.fecha_entrega,
+                                          "estado": r.estado, "clase": r.clase or "VENTA", "fuente": "SAP", "oid": None,
+                                          "lineas": []})
+            o["lineas"].append((r.product_code, r.cantidad, r.entregado))
+        vistos = set(sap)
+        mods = {}
+        if sap:
+            for so in s.execute(select(SalesOrder).where(or_(SalesOrder.numero.in_(vistos), SalesOrder.sap_docnum.in_(vistos))
+                                                          )).scalars():
+                mods[so.sap_docnum or so.numero] = so.id
+                mods[so.numero] = so.id
+        for o in sap.values():
+            o["oid"] = mods.get(o["numero"])
+            ordenes.append(o)
+    for so in s.execute(select(SalesOrder).where(SalesOrder.fecha_compromiso >= desde, SalesOrder.fecha_compromiso <= hasta,
+                                                 SalesOrder.estado.notin_(EXCLUIDAS))
+                        .order_by(SalesOrder.fecha_compromiso, SalesOrder.id)).scalars():
+        if so.numero in vistos or (so.sap_docnum and so.sap_docnum in vistos):
+            continue
+        ordenes.append({"numero": so.numero, "cliente": so.customer.nombre if so.customer else "", "fecha": so.fecha_compromiso,
+                        "estado": so.estado, "clase": so.clase or "VENTA", "fuente": "MODULO", "oid": so.id,
+                        "cerrada": so.estado in CERRADAS or so.estado == "ENTREGA_PARCIAL",
+                        "lineas": [(l.product_code, l.cantidad, l.despachado or 0) for l in so.lines if l.activa]})
+    if clase:
+        ordenes = [o for o in ordenes if o["clase"] == clase]
+    ordenes.sort(key=lambda o: (o["fecha"], o["numero"]))
+    return {"ordenes": ordenes, "sap_ts": (ult.get("ts") or "").replace("T", " ") if cubre else "",
+            "fuente": ("Órdenes de SAP (abiertas y cerradas) leídas el " + (ult.get("ts") or "").replace("T", " ")
+                       + " y las OV que solo están en el módulo") if cubre else
+                      "OV registradas en el módulo (abiertas y cerradas). Para incluir todas las de SAP, use «Traer de SAP»."}
+
+
+def ejecucion(desde, hasta, clase=None):
+    """Órdenes con compromiso en el rango: abiertas (aún sin despacho), cerradas (atendidas completas) o incompletas
+    (despacho parcial o cerradas con saldo), con lo pedido y lo despachado en unidades y kg. V29: de venta y de servicio,
+    abiertas y cerradas en SAP."""
     s = db()
     prods = {p.code: p for p in s.execute(select(Product)).scalars()}
-    ovs = list(s.execute(select(SalesOrder).where(SalesOrder.fecha_compromiso >= desde, SalesOrder.fecha_compromiso <= hasta,
-                                                  SalesOrder.estado.notin_(EXCLUIDAS))
-                         .order_by(SalesOrder.fecha_compromiso, SalesOrder.id)).scalars())
+    per = ordenes_periodo(desde, hasta, clase)
     filas = []
     tot = {k: {"n": 0, "pedido_kg": 0.0, "despachado_kg": 0.0} for k in ("ABIERTA", "INCOMPLETA", "CERRADA")}
-    for o in ovs:
-        lineas = [l for l in o.lines if l.activa]
-        ped = sum(l.cantidad for l in lineas)
-        desp = sum(min(l.despachado or 0, l.cantidad) for l in lineas)
-        ped_kg = sum(_kg(prods.get(l.product_code), l.cantidad) for l in lineas)
-        desp_kg = sum(_kg(prods.get(l.product_code), min(l.despachado or 0, l.cantidad)) for l in lineas)
+    por_clase = {k: {"n": 0, "pedido_kg": 0.0, "despachado_kg": 0.0} for k in ("VENTA", "SERVICIO")}
+    for o in per["ordenes"]:
+        ped = sum(q for _, q, _ in o["lineas"])
+        desp = sum(min(dq, q) for _, q, dq in o["lineas"])
+        ped_kg = sum(_kg(prods.get(c), q) for c, q, _ in o["lineas"])
+        desp_kg = sum(_kg(prods.get(c), min(dq, q)) for c, q, dq in o["lineas"])
+        cerrada = o["estado"] == "CERRADA" if o["fuente"] == "SAP" else o.get("cerrada", False)
         if ped and desp + 1e-9 >= ped:
             cat = "CERRADA"
-        elif desp > 1e-9 or o.estado == "ENTREGA_PARCIAL" or (o.estado in CERRADAS and desp + 1e-9 < ped):
+        elif desp > 1e-9 or o["estado"] == "ENTREGA_PARCIAL" or (cerrada and desp + 1e-9 < ped):
             cat = "INCOMPLETA"
         else:
             cat = "ABIERTA"
-        t = tot[cat]
-        t["n"] += 1
-        t["pedido_kg"] += ped_kg
-        t["despachado_kg"] += desp_kg
+        for t in (tot[cat], por_clase[o["clase"] if o["clase"] in por_clase else "VENTA"]):
+            t["n"] += 1
+            t["pedido_kg"] += ped_kg
+            t["despachado_kg"] += desp_kg
         filas.append({"o": o, "categoria": cat, "pedido": round(ped, 2), "despachado": round(desp, 2),
                       "pedido_kg": round(ped_kg, 1), "despachado_kg": round(desp_kg, 1), "avance": _pct(desp, ped)})
-    for t in tot.values():
+    for t in list(tot.values()) + list(por_clase.values()):
         t["pedido_kg"], t["despachado_kg"] = round(t["pedido_kg"], 1), round(t["despachado_kg"], 1)
-    return {"desde": desde, "hasta": hasta, "filas": filas, "tot": tot}
+        t["desviacion_kg"] = round(t["pedido_kg"] - t["despachado_kg"], 1)
+    return {"desde": desde, "hasta": hasta, "filas": filas, "tot": tot, "por_clase": por_clase, "clase": clase or "",
+            "fuente": per["fuente"]}

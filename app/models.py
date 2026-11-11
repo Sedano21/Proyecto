@@ -440,6 +440,8 @@ class SalesOrder(Base):
     sap_envio: Mapped[dict] = mapped_column(JSON, default=dict)
     # V12: pre-guía generada al terminar el picking; la valida Distribución y se registra como guía en SAP
     preguia: Mapped[dict] = mapped_column(JSON, default=dict)
+    # V29: clase del documento de SAP: VENTA (orden de venta) o SERVICIO (orden de servicio), según la serie
+    clase: Mapped[str] = mapped_column(String(10), default="VENTA", server_default="VENTA", index=True)
     customer = relationship("Customer")
     # canal / grupo de precios elegido al registrar (el mínimo varía por canal; observaciones al demo v0.6)
     canal_precio: Mapped[str] = mapped_column(String(60), default="")
@@ -2676,3 +2678,48 @@ class FumigationRequest(Base):
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     ts: Mapped[datetime] = mapped_column(DateTime, default=now)
     user = relationship("User")
+
+
+class OrderCreditNote(Base):
+    """V29 (11-nov-2026): nota de crédito de SAP sobre una OV todavía por despachar (p. ej. sobre la factura de reserva o
+    la factura emitida desde la OV). La cantidad de la nota se descuenta de lo que falta despachar, se liberan las
+    reservas que sobran y el picking ve qué no debe despachar. Una fila por línea de la nota (no se aplica dos veces)."""
+    __tablename__ = "ov_notas_credito"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    clave: Mapped[str] = mapped_column(String(40), unique=True)  # DocEntry de la nota : línea
+    nc_numero: Mapped[str] = mapped_column(String(40), default="")
+    factura: Mapped[str] = mapped_column(String(40), default="")
+    fecha: Mapped[date | None] = mapped_column(Date, nullable=True)
+    ov_numero: Mapped[str] = mapped_column(String(30), default="", index=True)
+    order_id: Mapped[int | None] = mapped_column(ForeignKey("sales_orders.id"), nullable=True, index=True)
+    line_id: Mapped[int | None] = mapped_column(ForeignKey("sales_order_lines.id"), nullable=True)
+    product_code: Mapped[str] = mapped_column(String(30), default="")
+    cantidad: Mapped[float] = mapped_column(Float, default=0)  # cantidad de la nota de crédito
+    aplicada: Mapped[float] = mapped_column(Float, default=0)  # lo que se dejó de despachar en el módulo
+    liberado: Mapped[float] = mapped_column(Float, default=0)  # reservas liberadas
+    # APLICADA / YA_DESPACHADO (nota posterior al despacho: no cambia el picking) / SIN_OV (la OV no está en el módulo)
+    estado: Mapped[str] = mapped_column(String(15), default="APLICADA")
+    origen: Mapped[str] = mapped_column(String(20), default="")  # FACTURA_OV / FACTURA_RESERVA / FACTURA_GUIA
+    comentario: Mapped[str] = mapped_column(Text, default="")
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    order = relationship("SalesOrder")
+
+
+class SapOrderLine(Base):
+    """V29: fotografía de las órdenes de venta y de servicio de SAP del periodo (abiertas, cerradas y canceladas) para
+    la ejecución y la desviación de la demanda. Se reemplaza en cada lectura del rango."""
+    __tablename__ = "sap_ordenes"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    docnum: Mapped[str] = mapped_column(String(20), index=True)
+    clase: Mapped[str] = mapped_column(String(10), default="VENTA")  # VENTA / SERVICIO
+    serie: Mapped[str] = mapped_column(String(40), default="")
+    fecha: Mapped[date | None] = mapped_column(Date, nullable=True)  # emisión
+    fecha_entrega: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)  # DocDueDate
+    cliente: Mapped[str] = mapped_column(String(200), default="")
+    estado: Mapped[str] = mapped_column(String(12), default="ABIERTA")  # ABIERTA / CERRADA / CANCELADA
+    product_code: Mapped[str] = mapped_column(String(30), default="")
+    descripcion: Mapped[str] = mapped_column(String(200), default="")
+    cantidad: Mapped[float] = mapped_column(Float, default=0)
+    entregado: Mapped[float] = mapped_column(Float, default=0)
+    linea_cerrada: Mapped[bool] = mapped_column(Boolean, default=False)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)

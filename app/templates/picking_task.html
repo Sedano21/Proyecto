@@ -2,6 +2,7 @@
 {% block content %}<p class="small"><a href="{{ url_for('alm.picking_schedule', fecha=t.fecha.isoformat()) }}">← Programación de picking</a></p>
 <div class="page-head"><div><h1>Picking OV {{ o.numero }}</h1><p class="sub">{{ b(t.estado) }} · {{ t.warehouse_code }} · programado {{ t.fecha|d }} · {{ o.customer.nombre }}</p></div>
 <div class="row">{% if can('picking.asignar') and t.estado != 'LISTO' %}<a class="btn sec" href="#asignar">{{ ic('users') }}Asignar o modificar</a>{% endif %}<a class="btn sec" href="{{ url_for('alm.picking_format', tid=t.id) }}">{{ ic('file') }}Imprimir formato</a></div></div>
+{% include "_nc_ov.html" %}
 <ol class="steps" aria-label="Avance del picking"><li class="{{ 'done' if t.estado != 'PROGRAMADO' else 'now' }}">1. Iniciar con foto</li><li class="{{ 'now' if t.estado == 'EN_PROCESO' else ('done' if t.estado == 'LISTO' else '') }}">2. Registrar en el formato</li><li class="{{ 'done' if t.estado == 'LISTO' else '' }}">3. Listo para despacho (foto)</li></ol>
 <div class="card"><table class="kv"><tr><td>Cliente / entrega</td><td>{{ o.customer.nombre }} · {{ o.lugar_entrega or '-' }} {{ o.distrito }} · comprometida {{ o.fecha_compromiso|d }}</td></tr>
 <tr><td>Asignado a</td><td>{% for i in t.asignados %}{{ usuarios[i].nombre if i in usuarios }}{{ ', ' if not loop.last }}{% else %}<span class="b ALTA">sin asignar</span>{% endfor %}{% if t.asignados|length > 1 %} <span class="b info">grupo</span>{% endif %}</td></tr>

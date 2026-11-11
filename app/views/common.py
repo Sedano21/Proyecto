@@ -289,6 +289,8 @@ def install(app):
     # V22: categorías del botón «Reportar avería» y archivos de video en las evidencias
     app.jinja_env.globals["ticket_categorias"] = lambda: __import__("app.services.tickets", fromlist=["x"]).categorias()
     app.jinja_env.globals["es_gerencia"] = lambda u: __import__("app.services.alerts", fromlist=["x"]).es_gerencia_consolidada(u)
+    # V29: notas de crédito de SAP que cambiaron lo que se despacha de una OV (OV y picking)
+    app.jinja_env.globals["notas_credito_ov"] = lambda o: __import__("app.services.notas_credito_ov", fromlist=["x"]).de_orden(o)
     app.jinja_env.globals["sim_cargada"] = lambda: __import__("app.services.simulacion", fromlist=["x"]).hay_simulacion()
     app.jinja_env.globals["centros_costo"] = lambda: __import__("app.services.centros_costo", fromlist=["x"]).lista()
     app.jinja_env.globals["es_video"] = lambda n: __import__("app.services.distribution", fromlist=["x"]).es_video(n)

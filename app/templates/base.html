@@ -53,6 +53,7 @@
       {% if ve('informes.comercial') %}{{ nl(url_for('v22.funnel'), 'chart', 'Embudo comercial') }}{% endif %}
       {% if ve('catalogo.ver') or ve('catalogo.fotos') %}{{ nl(url_for('com.catalog'), 'box', 'Catálogo') }}{% endif %}
       {% if ve('ov.ver') %}{{ nl(url_for('com.order_status'), 'route', 'Estado de OV') }}{% endif %}
+      {% if ve('ov.ver') or ve('distribucion.ver') %}{{ nl(url_for('alm.sap_dispatch_check'), 'truck', 'Órdenes de venta y servicio vs guías') }}{{ nl(url_for('v29.credit_notes'), 'file', 'Notas de crédito sobre OV') }}{% endif %}
       {% if ve('objetivos.ver') %}{{ nl(url_for('com.targets'), 'gauge', 'Objetivos de venta') }}{% endif %}
       {% if ve('demanda.cargar') %}{{ nl(url_for('sup.demand'), 'trend', 'Proyección de demanda') }}{% endif %}
       {% if ve('margen.ver') %}{{ nl(url_for('com.margin_report'), 'chart', 'Margen') }}{% endif %}
@@ -90,6 +91,7 @@
       {{ nl(url_for('prod.plan'), 'calendar', 'Planeamiento') }}
       {{ nl(url_for('prod.bom'), 'layers', 'Lista de materiales') }}
       {{ nl(url_for('prod.liquidations'), 'file', 'Liquidaciones') }}
+      {{ nl(url_for('v29.mass_balance'), 'scale', 'Balance de peso de OF (SAP)') }}
       {% if ve('produccion.liquidacion_proceso') %}{{ nl(url_for('prod.process_liqs'), 'clipboard', 'Liquidación de proceso (CP-OPE-004)') }}{% endif %}
       {% if ve('produccion.partes_ver') %}{{ nl(url_for('prod.reports'), 'gauge', 'Partes de producción') }}
       {{ nl(url_for('prod.monitor'), 'trend', 'Monitoreo en tiempo real') }}

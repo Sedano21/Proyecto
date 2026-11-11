@@ -54,6 +54,8 @@ def register_views(app):
     app.register_blueprint(simulacion.bp)
     from . import chat  # V25: chat interno uno a uno
     app.register_blueprint(chat.bp)
+    from . import v29  # V29: notas de crédito sobre OV y balance de peso de las órdenes de fabricación de SAP
+    app.register_blueprint(v29.bp)
 
     @app.after_request
     def _aviso_descarga(resp):
@@ -454,7 +456,8 @@ def alert_detail(aid):
                    "RepackRequest": "Reempaque", "Transfer": "Traslado", "ImportShipment": "Importación", "Certificate": "Certificado",
                    "StockLot": "Lote", "UploadBatch": "Carga", "PriceListMeta": "Lista de precios", "Liquidation": "Liquidación",
                    "OVChangeRequest": "Solicitud de modificación", "PhysicalCount": "Conteo", "Alert": "Tarea", "Vehicle": "Vehículo",
-                   "Customer": "Cliente", "Incident": "Incidencia", "MarketPrice": "Precio de mercado", "Product": "Producto"}
+                   "Customer": "Cliente", "Incident": "Incidencia", "MarketPrice": "Precio de mercado", "Product": "Producto",
+                   "ProductionOrderSAP": "Orden de fabricación de SAP"}
     return render_template("alert_detail.html", a=a, users=users, roles=roles, todos=todos, svc=alert_svc,
                            roles_nombre=roles_nombre, entidad_txt=entidad_txt,
                            puede_decidir=alert_actions.can_decide(a) and alert_actions.user_can_decide(g.user, a),

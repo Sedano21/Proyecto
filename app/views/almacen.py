@@ -496,14 +496,19 @@ def sap_sync():
         elif tipo == "SERVICIOS":
             if not g.perms & {"ov.importar", "produccion.liquidar", "distribucion.ver", "ov.ver"}:
                 abort(403)
+        elif tipo == "ORDENES":  # V29: órdenes de venta y de servicio del periodo (demanda)
+            if not g.perms & {"ov.importar", "ov.ver", "demanda.analisis", "dashboard.ver"}:
+                abort(403)
+        elif tipo == "BALANCE_OF":  # V29: balance de peso de las órdenes de fabricación
+            if not g.perms & {"produccion.ver", "produccion.liquidar"}:
+                abort(403)
         elif tipo not in sap_sl.TIPOS_SAP or SPECS[tipo]["perm"] not in g.perms:
             abort(403)
         # 10-nov-2026: se trae en segundo plano; la pantalla se actualiza sola y muestra la carga al terminar
         app_obj = current_app._get_current_object()
         volver = request.form.get("volver", "")
         volver = volver if volver.startswith("/") and not volver.startswith("//") else url_for("alm.sap_sync")
-        nombre = sap_sl.TIPOS_SAP.get(tipo) or {"FACTURAS": "facturas y notas de crédito",
-                                                "SERVICIOS": "órdenes de servicio/fabricación"}.get(tipo, tipo)
+        nombre = sap_sl.TIPOS_SAP.get(tipo) or sap_sl.EXTRAS.get(tipo, tipo)
         return act(lambda: sap_sl.sync_background(app_obj, tipo, g.user, current_app.config["UPLOAD_DIR"]),
                    f"Trayendo {nombre.lower()} de SAP… puede tardar unos minutos; esta página se actualiza sola.", volver)
     tipos = [(t, n) for t, n in sap_sl.TIPOS_SAP.items() if SPECS[t]["perm"] in g.perms]
@@ -562,7 +567,9 @@ def sap_dispatch_check():
     """V26: OV abiertas de SAP frente a sus guías de SAP: despachos completos, incompletos o sin despacho."""
     from flask import Response
     from ..services import despachos_sap as ds
-    res = ds.conciliar()
+    clase = request.args.get("clase", "VENTA")
+    clase = clase if clase in ("VENTA", "SERVICIO", "TODAS") else "VENTA"
+    res = ds.conciliar(clase=None if clase == "TODAS" else clase)
     if request.args.get("salida") == "xlsx":
         return Response(ds.excel(res), mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         headers={"Content-Disposition": "attachment; filename=ov_vs_guias_sap.xlsx"})
@@ -570,5 +577,7 @@ def sap_dispatch_check():
     filas = [f for f in res["filas"] if not estado or f["estado"] == estado or (estado == "ALERTA" and f["alertas"])]
     from ..services import sap_sl
     job = sap_sl.job_state("SERVICIOS")
-    return render_template("sap_despachos.html", res=res, filas=filas, estado=estado, job=job,
+    from ..services.core import param
+    return render_template("sap_despachos.html", res=res, filas=filas, estado=estado, job=job, clase=clase,
+                           series_servicio=param("sap_series_orden_servicio", []) or [],
                            configurado=sap_sl.configured())

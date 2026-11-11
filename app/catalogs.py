@@ -3025,3 +3025,37 @@ for _code, _n, _m, _t, _roles in [
     for _r in _roles:
         if _r in ROLE_PERMISSIONS and not any(p[0] == _code for p in ROLE_PERMISSIONS[_r]):
             ROLE_PERMISSIONS[_r].append((_code, "DEFINIDO", V27))
+# ------------------------------------------------------------------ V29 (11-nov-2026)
+V29 = "Observaciones V29 (11-nov-2026)"
+PARAMS += [
+    ("sap_series_orden_servicio", [], "list", "Integración SAP",
+     "Código de la serie de SAP de las ÓRDENES DE SERVICIO (p. ej. [\"23\"]); el resto son ÓRDENES DE VENTA. Las órdenes "
+     "de tipo servicio de SAP también cuentan como servicio. Los códigos y nombres se ven con «app.cli sap-series».",
+     "PENDIENTE", V29),
+    ("sap_ordenes_meses", 3, "int", "Integración SAP",
+     "Meses (incluido el actual) de órdenes de venta y de servicio que se leen de SAP, abiertas y cerradas, para la "
+     "ejecución y la desviación de la demanda (además, el mes siguiente).", "PROPUESTO", V29),
+    ("sap_ordenes_ultimo", {}, "dict", "Integración SAP",
+     "Última lectura de las órdenes del periodo (la escribe el sistema).", "DEFINIDO", V29),
+    ("liquidacion_items_merma", [], "list", "Producción",
+     "Códigos de artículo de la merma o desmedro en las órdenes de fabricación de SAP (además, los componentes con "
+     "cantidad negativa y los que dicen MERMA o DESMEDRO en la descripción).", "PENDIENTE", V29),
+    ("balance_of_tolerancia_pct", 0.5, "float", "Producción",
+     "Diferencia de peso (% de los insumos) que se tolera entre insumos y producto + merma en las órdenes de fabricación "
+     "de SAP antes de alertar. 0 = cualquier diferencia alerta.", "PROPUESTO", V29),
+    ("balance_of_automatico", True, "bool", "Producción",
+     "Revisar solo, con la sincronización con SAP, el balance de peso de las órdenes de fabricación y liquidaciones.",
+     "DEFINIDO", V29),
+    ("sap_balance_of_ultimo", {}, "dict", "Producción",
+     "Último resultado del balance de peso de las órdenes de fabricación (lo escribe el sistema).", "DEFINIDO", V29),
+]
+ALERT_TYPES += [
+    ("OV_NOTA_CREDITO", "Nota de crédito en una OV por despachar", "Comercial", "OV", "MEDIA",
+     ["COORD_VENTAS", "JEFE_VENTAS", "COORD_ALMACEN", "COORD_ALMACEN_MP", "SUPERV_ALMACEN", "LIDER_ALMACEN",
+      "JEFE_LOGISTICA", "COORD_LOGISTICA", "COORD_DISTRIBUCION", "JEFE_OPERACIONES"], "DEFINIDO", V29,
+     "SAP registró una nota de crédito sobre la factura de una OV que aún no se despacha: cambia lo que se pica y "
+     "despacha y se liberan las reservas que sobran.", False),
+    ("BALANCE_OF", "Orden de fabricación o liquidación de SAP con el peso descuadrado", "Producción", "Liquidación", "ALTA",
+     ["JEFE_OPERACIONES", "JEFE_PRODUCCION"], "DEFINIDO", V29,
+     "Insumos (granel o materia prima) distintos en peso al producto más la merma o desmedro.", True),
+]

@@ -48,7 +48,7 @@ def test_ov_abiertas_vs_guias(app, s):
     assert ds.excel(res)[:2] == b"PK"
     c = _cliente(app, "jefe.logistica")
     html = c.get("/almacen/cargas/sap/despachos").get_data(as_text=True)
-    assert "OV abiertas vs guías de SAP" in html and "INCOMPLETO" in html and "T001-1" in html
+    assert "Órdenes de venta abiertas vs guías de SAP" in html and "INCOMPLETO" in html and "T001-1" in html
     assert c.get("/almacen/cargas/sap/despachos?salida=xlsx").status_code == 200
 
 

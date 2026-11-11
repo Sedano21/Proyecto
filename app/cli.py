@@ -12,6 +12,7 @@
     python -m app.cli cargas          # últimas cargas (tipo, estado, filas con error) y quién las confirma
     python -m app.cli carga <n>       # errores y advertencias de la carga n.° n
     python -m app.cli sap-diagnostico # lectura de SAP, maestros, almacenes, cola de OV y estado de la conexión
+    python -m app.cli sap-series      # series de las órdenes de venta en SAP y cuáles cuentan como órdenes de servicio
     python -m app.cli sap-consulta-stock  # crea en SAP la consulta guardada del stock por lote (solo la consulta)
     python -m app.cli eliminar-usuario <usuario> [--confirmar]  # borra un usuario creado por error (o lo da de baja si tiene registros)
     python -m app.cli clave <usuario> # asigna una contraseña nueva (la pide en pantalla; se cambia en el primer ingreso)
@@ -270,6 +271,21 @@ def main(argv):
             if r["ejemplo"]:
                 print("Ejemplo:", r["ejemplo"])
             print("Ahora: python -m app.cli sap-traer STOCK <usuario de Almacén> y confirmar la carga en Almacén → Cargas de archivos.")
+        elif cmd == "sap-series":
+            # V29: para decidir qué serie es de órdenes de servicio (parámetro sap_series_orden_servicio). Solo lee.
+            from collections import Counter
+            from .services import sap_sl, sap_v29
+            with sap_sl.ServiceLayer() as sl:
+                series = sap_v29.series_ordenes(sl)
+                desde = (__import__("datetime").date.today() - __import__("datetime").timedelta(days=90)).isoformat()
+                docs = sl.get_all("Orders", {"$filter": f"DocDate ge '{desde}'", "$select": "DocNum,Series,DocType"})
+            n = Counter(d.get("Series") for d in docs)
+            tipo_srv = Counter(d.get("Series") for d in docs if d.get("DocType") == "dDocument_Service")
+            print("Serie (código) | Nombre | Órdenes de los últimos 90 días | De tipo servicio | Clase en el módulo")
+            for cod in sorted(set(series) | set(n), key=lambda x: str(x)):
+                clase = sap_v29.clase_de({"Series": cod})
+                print(f"{cod} | {series.get(cod, '?')} | {n.get(cod, 0)} | {tipo_srv.get(cod, 0)} | {clase}")
+            print("Para marcar una serie como de órdenes de servicio: Parámetros → sap_series_orden_servicio con su CÓDIGO, p. ej. [\"23\"].")
         elif cmd == "sap-diagnostico":
             from .services import sap_sl
             for linea in sap_sl.diagnostics():

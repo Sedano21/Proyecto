@@ -1,0 +1,15 @@
+{% extends "base.html" %}{% from "_m.html" import b, ic, empty, csrf %}
+{% block content %}<div class="page-head"><div><h1>Balance de peso de órdenes de fabricación (SAP)</h1>
+<p class="sub">Lo que ingresa al proceso (granel o materia prima) debe pesar lo mismo que el producto (terminado o materia prima, según el proceso) más la merma o desmedro. Se revisa al <b>registrar la orden</b> (lo planificado) y al <b>liquidar</b> (lo emitido frente a lo completado y rechazado). Tolerancia: {{ tol }} % de los insumos. Si no cuadra, se alerta a la Jefatura de Operaciones y a la Jefatura de Producción.
+{% if ult.ts %}Última revisión: {{ ult.ts|replace('T', ' ') }}.{% endif %}</p></div>
+<div>{% if configurado %}{% if job.estado == 'EN_CURSO' %}<span class="small"><span class="spin-sm" aria-hidden="true"></span> revisando en SAP…</span><script>setTimeout(function(){ location.reload(); }, 10000);</script>{% else %}<form method="post" action="{{ url_for('alm.sap_sync') }}">{{ csrf() }}<input type="hidden" name="tipo" value="BALANCE_OF"><input type="hidden" name="volver" value="{{ request.full_path.rstrip('?') }}"><button class="btn sec">{{ ic('refresh') }} Revisar ahora en SAP</button></form>{% endif %}{% endif %}</div></div>
+{% if job.estado == 'ERROR' %}<div class="card err small">No se pudo revisar en SAP: {{ job.error }}</div>{% endif %}
+<div class="tabs noprint"><a class="{{ 'on' if ver == 'MAL' }}" href="?ver=MAL">No cuadran</a><a class="{{ 'on' if ver == 'TODAS' }}" href="?ver=TODAS">Todas</a></div>
+{% if filas %}<div class="tw"><table class="small apilable"><tr><th>Orden</th><th>Producto</th><th>Estado en SAP</th><th>Revisión</th><th class="r">Insumos kg</th><th class="r">Producto kg</th><th class="r">Merma / desmedro kg</th><th class="r">Diferencia kg</th><th class="r">Diferencia %</th><th>Resultado</th></tr>
+{% for f in filas %}<tr{% if not f.ok %} class="row-warn"{% endif %}><td data-label="Orden"><b>{{ f.orden }}</b><br><span class="muted">{{ f.fecha }}</span></td><td data-label="Producto">{{ f.producto }} <span class="muted">{{ f.descripcion or pd(f.producto) }}</span></td>
+<td data-label="Estado">{{ f.estado|lower }}</td><td data-label="Revisión">{{ 'Registro (planificado)' if f.etapa == 'PLAN' else 'Liquidación (real)' }}</td>
+<td class="r" data-label="Insumos">{{ f.insumos_kg|n }}</td><td class="r" data-label="Producto">{{ f.producto_kg|n }}</td><td class="r" data-label="Merma">{{ f.merma_kg|n }}</td>
+<td class="r" data-label="Diferencia kg">{{ f.dif_kg|n }}</td><td class="r" data-label="Diferencia %">{{ '%+.2f'|format(f.dif_pct) }} %</td>
+<td data-label="Resultado">{% if f.ok %}{{ b('CUADRA', 'ok') }}{% elif f.sin_peso %}{{ b('SIN PESO', 'warn') }} <span class="small">falta el peso de {{ f.sin_peso|join(', ') }}</span>{% else %}{{ b('NO CUADRA', 'err') }}{% endif %}</td></tr>{% endfor %}</table></div>
+{% else %}{{ empty('Todas las órdenes revisadas cuadran.' if ult.ts and ver == 'MAL' else 'Aún no se revisaron las órdenes de fabricación de SAP.', 'factory') }}{% endif %}
+{% endblock %}
