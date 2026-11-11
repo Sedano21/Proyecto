@@ -8,6 +8,8 @@ guía e imprime el folio → Seguridad revisa que los documentos estén completo
 autoriza la salida (decisión Q16, 12-oct-2026). Una discrepancia carga vs guía bloquea la salida salvo que el Jefe o el
 Coordinador de Logística la apruebe mientras se resuelve la guía (Q8).
 """
+from datetime import date, timedelta
+
 from sqlalchemy import select
 
 from ..db import db
@@ -306,7 +308,6 @@ def roles_vb_de(route, user):
     """V27: vistos buenos de la carga que este usuario puede dar ahora en la ruta (los que faltan): conductor,
     Auxiliar de Despacho y Calidad (Calidad el día anterior o el mismo día del despacho). Seguridad da el suyo al revisar
     los documentos y el Líder Operativo da el último al autorizar la salida."""
-    from datetime import date as _date, timedelta as _td
     requeridos = required_exit_approvals()
     vb = route.vistos_buenos or {}
     out = []
@@ -317,9 +318,9 @@ def roles_vb_de(route, user):
     if "AUX_DESPACHO" in requeridos and "AUX_DESPACHO" not in vb and route.estado == "CONFIRMADA" and \
             has_perm(user, "distribucion.visto_bueno_salida"):
         out.append("AUX_DESPACHO")
-    hoy = _date.today()
+    hoy = date.today()
     if "CALIDAD" in requeridos and "CALIDAD" not in vb and route.estado in ("PROPUESTA", "CONFIRMADA") and \
-            has_perm(user, "distribucion.visto_bueno_calidad") and route.fecha - _td(days=1) <= hoy <= route.fecha:
+            has_perm(user, "distribucion.visto_bueno_calidad") and route.fecha - timedelta(days=1) <= hoy <= route.fecha:
         out.append("CALIDAD")
     return out
 
@@ -329,10 +330,9 @@ def give_exit_ok(route, user, nota="", rol=None):
     día); Seguridad lo da al revisar los documentos y el Líder Operativo al autorizar la salida."""
     posibles = roles_vb_de(route, user)
     if not posibles:
-        from datetime import timedelta as _td
         if "CALIDAD" in required_exit_approvals() and has_perm(user, "distribucion.visto_bueno_calidad"):
             raise BusinessError(f"Calidad da su visto bueno el día anterior o el mismo día del despacho "
-                                f"({route.fecha - _td(days=1):%d/%m} o {route.fecha:%d/%m}).")
+                                f"({route.fecha - timedelta(days=1):%d/%m} o {route.fecha:%d/%m}).")
         raise BusinessError("No tiene un visto bueno pendiente que dar en esta ruta (lo dan el conductor, el Auxiliar de "
                             "Despacho y Calidad; Seguridad al revisar documentos y el Líder Operativo al autorizar la salida).")
     rol = rol if rol in posibles else posibles[0]

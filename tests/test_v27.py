@@ -299,7 +299,9 @@ def test_checklist_diario_varios_vehiculos(app, s, U):
 def test_visto_bueno_de_calidad_dia_anterior_o_mismo_dia(app, s, U, cust):
     from app.models import Route
     from app.services import despacho as dsp
+    from app.services.core import set_param
     from .test_v12 import _route
+    set_param("vistos_buenos_salida", ["SEGURIDAD", "CHOFER", "CALIDAD", "AUX_DESPACHO", "LIDER_ALMACEN"])
     assert dsp.required_exit_approvals() == ["SEGURIDAD", "CHOFER", "CALIDAD", "AUX_DESPACHO", "LIDER_ALMACEN"]
     r, _o = _route(s, U, cust)
     r.fecha = date.today() + timedelta(days=3)
@@ -313,3 +315,5 @@ def test_visto_bueno_de_calidad_dia_anterior_o_mismo_dia(app, s, U, cust):
     s.commit()
     assert "CALIDAD" in s.get(Route, r.id).vistos_buenos
     assert "CALIDAD" in dsp.missing_exit_approvals(Route(vistos_buenos={}))
+    from app import catalogs as C
+    assert dict((k, v) for k, v, *_ in C.PARAMS)["vistos_buenos_salida"][2] == "CALIDAD"  # valor de la empresa

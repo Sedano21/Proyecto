@@ -164,7 +164,7 @@ def test_q16_salida_requiere_tres_vistos_buenos(s, U, new_order):
     with pytest.raises(BusinessError, match="Seguridad"):
         dsp.review_documents(r, U("aux.despacho"), True)
     assert dsp.review_documents(r, U("seguridad"), impresos=True) == []
-    with pytest.raises(BusinessError, match="Chofer"):  # V8 (D02)
+    with pytest.raises(BusinessError, match="Conductor"):  # V8 (D02)
         dist.confirm_departure(r, U("lider.almacen"), check)
     for quien in ("seguridad", "lider.almacen", "aux.despacho"):
         with pytest.raises(BusinessError):

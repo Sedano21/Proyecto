@@ -180,4 +180,5 @@ def test_cambios_de_parametros_en_bases_existentes(s):
     s.query(AuditLog).filter_by(accion="PARAMETRO_CAMBIO_CATALOGO").delete()
     s.flush()
     sync_catalogs()
-    assert param("vistos_buenos_salida") == ["SEGURIDAD", "CHOFER", "LIDER_ALMACEN"]
+    # V8 lo pasó a Seguridad, Chofer y Líder; V27 agrega Calidad y Auxiliar de Despacho (se aplican en orden)
+    assert param("vistos_buenos_salida") == ["SEGURIDAD", "CHOFER", "CALIDAD", "AUX_DESPACHO", "LIDER_ALMACEN"]

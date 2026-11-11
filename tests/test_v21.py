@@ -137,8 +137,9 @@ def test_entregas_de_los_ultimos_30_dias(s):
     sap_sl.rows_despachos(sl)
     desde = (date.today() - timedelta(days=30)).isoformat()
     assert ("DeliveryNotes", f"DocDate ge '{desde}'") in sl.filtros
-    # V26: además se leen las facturas del mismo periodo (para la factura de cada guía)
-    assert any(f[0] == "Invoices" and f[1].startswith(f"DocDate ge '{desde}'") for f in sl.filtros)
+    # V26/V27: además se leen las facturas (desde 60 días antes: la factura de reserva suele ser anterior a la guía)
+    desde_fact = (date.today() - timedelta(days=90)).isoformat()
+    assert any(f[0] == "Invoices" and f[1].startswith(f"DocDate ge '{desde_fact}'") for f in sl.filtros)
 
 
 class _SLVerif:

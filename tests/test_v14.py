@@ -160,7 +160,7 @@ def test_inicio_de_calidad_lineas_en_proceso_y_firma(app, s, U):
     s.commit()
     html = _get(app, "jefe.calidad", "/calidad/").get_data(as_text=True)
     assert "Líneas en proceso de producción (1)" in html and "merma" in html
-    assert "Firma de la Jefatura de Calidad" in _get(app, "jefe.calidad", "/calidad/certificados").get_data(as_text=True)
+    assert "Mi firma para los certificados" in _get(app, "jefe.calidad", "/calidad/certificados").get_data(as_text=True)
 
 
 def test_interfaz_hora_fotos_y_notificaciones(app):

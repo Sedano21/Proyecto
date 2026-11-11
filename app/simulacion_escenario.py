@@ -604,7 +604,14 @@ class Escenario:
                                     "fecha_analisis": d.isoformat()})
                     self.paso("Certificado de calidad aprobado", qual.review_certificate, cert, cal, cambios, True)
             self.paso("Seguridad revisa documentos", dsp.review_documents, r, seg, True)
-            self.paso("Visto bueno del chofer", dsp.give_exit_ok, r, chofer)
+            self.paso("Visto bueno del chofer", dsp.give_exit_ok, r, chofer, "", "CHOFER")
+            # V27: también validan la carga Calidad (el mismo día) y el Auxiliar de Despacho
+            if "CALIDAD" in dsp.required_exit_approvals():
+                self.paso("Visto bueno de Calidad a la carga", dsp.give_exit_ok, r,
+                          self.actor("distribucion.visto_bueno_calidad"), "", "CALIDAD")
+            if "AUX_DESPACHO" in dsp.required_exit_approvals():
+                self.paso("Visto bueno del Auxiliar de Despacho", dsp.give_exit_ok, r,
+                          self.actor("distribucion.visto_bueno_salida"), "", "AUX_DESPACHO")
             sim.fijar_hora(d, 15, self.rnd.randint(0, 40))
             self.paso("Salida confirmada", dist.confirm_departure, r, lider, {k: True for k, _ in dist.CHECKLIST})
             if r.estado == "EN_RUTA":

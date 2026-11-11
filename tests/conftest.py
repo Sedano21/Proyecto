@@ -35,6 +35,8 @@ def app():
         # V12: el checklist vehicular (salida y retorno) se prueba en test_v12.py; los flujos anteriores no lo incluyen
         set_param("exigir_checklist_vehicular", False)
         set_param("hora_corte_rutas", "")  # V12: corte de rutas de las 15:00 (se prueba con hora fija)
+        # V27: los flujos anteriores usan los 3 vistos buenos de salida; los 5 (con Calidad y Auxiliar) en test_v27.py
+        set_param("vistos_buenos_salida", ["SEGURIDAD", "CHOFER", "LIDER_ALMACEN"])
         SessionLocal().commit()
         yield app
         SessionLocal.remove()
