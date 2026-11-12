@@ -73,12 +73,15 @@ def fill_rate(salidas):
     return out
 
 
-def compute(desde=None, hasta=None):
+def compute(desde=None, hasta=None, canal=""):
     s = db()
     from ..models import SalesOrderLine
     # V20: líneas y reservas en 3 consultas en lugar de una por OV y por línea
     orders = [o for o in s.execute(select(SalesOrder).options(
         selectinload(SalesOrder.lines).selectinload(SalesOrderLine.reservations))).scalars() if _between(o, desde, hasta)]
+    if canal:  # V30: indicadores de un canal
+        from .margin import channel
+        orders = [o for o in orders if channel(o.customer, o) == canal]
     activas = [o for o in orders if o.estado != "CANCELADA"]
     k = {}
     estados = Counter(o.estado for o in orders)

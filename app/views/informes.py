@@ -251,7 +251,7 @@ def _show(nombre):
         clientes = list(db().execute(select(Customer).order_by(Customer.nombre)).scalars())
         filtros = {"canales": sorted({prsvc.channel_of(c) for c in clientes} - {"", None}), "clientes": clientes,
                    "vendedores": sorted({v for v, _ in d["vendedores"]})}
-        k = kpisvc.compute(desde, hasta)
+        k = kpisvc.compute(desde, hasta, fa.get("canal", ""))  # V30: con el mismo canal del informe
         d["tiempos"] = {"preparacion_h": k.get("tiempo_preparacion_h"), "despacho_h": k.get("tiempo_despacho_h")}
         graf = {"semanal": charts.line([("Ventas S/", d["serie_semanal"])], "S/", title="Ventas semanales"),
                 "vend_soles": charts.bars([(k, v["soles"]) for k, v in d["vendedores"]], "S/", title="Ventas por ejecutivo comercial (S/)"),

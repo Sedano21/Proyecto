@@ -3059,3 +3059,37 @@ ALERT_TYPES += [
      ["JEFE_OPERACIONES", "JEFE_PRODUCCION"], "DEFINIDO", V29,
      "Insumos (granel o materia prima) distintos en peso al producto más la merma o desmedro.", True),
 ]
+# ------------------------------------------------------------------ V30 (12-nov-2026)
+V30 = "Observaciones V30 (12-nov-2026)"
+for _code, _n, _m, _t, _roles in [
+        ("stock.ubicacion", "Editar la ubicación de los lotes en el almacén", "Almacén", "edicion",
+         ["SUPERV_ALMACEN", "JEFE_LOGISTICA", "LIDER_ALMACEN", "COORD_LOGISTICA"]),
+        ("clientes.inactivos", "Revisar clientes sin movimiento (excluir, incluir o editar)", "Comercial", "edicion",
+         ["JEFE_VENTAS", "COORD_VENTAS"]),
+        ("facturas_reserva.ver", "Ver las facturas de reserva de SAP sin entrega", "Logística", "consulta",
+         ["JEFE_LOGISTICA", "COORD_LOGISTICA", "SUPERV_ALMACEN", "COORD_ALMACEN", "COORD_ALMACEN_MP", "JEFE_VENTAS",
+          "JEFE_OPERACIONES", "JEFE_PRODUCCION", "GERENCIA_OPERACIONES"]),
+        ("facturas_reserva.aprobar", "Aprobar las facturas de reserva para la preprogramación de producción", "Producción",
+         "aprobacion", ["JEFE_PRODUCCION"]),
+]:
+    PERMISSIONS.append((_code, _n, _m, _t))
+    for _r in _roles:
+        if _r in ROLE_PERMISSIONS and not any(p[0] == _code for p in ROLE_PERMISSIONS[_r]):
+            ROLE_PERMISSIONS[_r].append((_code, "DEFINIDO", V30))
+PARAMS += [
+    ("clientes_inactividad_meses", 18, "int", "Comercial",
+     "Meses sin ningún movimiento ni pedido para que un cliente pase a la revisión de clientes sin movimiento.",
+     "DEFINIDO", V30),
+    ("sap_reservas_dias", 180, "int", "Integración SAP",
+     "Días hacia atrás de las facturas de reserva abiertas (sin entrega completa) que se leen de SAP.", "PROPUESTO", V30),
+    ("sap_reservas_automatico", True, "bool", "Integración SAP",
+     "Leer solas, con la sincronización con SAP, las facturas de reserva sin entrega (antes de las OV).", "DEFINIDO", V30),
+    ("sap_reservas_ultimo", {}, "dict", "Integración SAP",
+     "Última lectura de las facturas de reserva (la escribe el sistema).", "DEFINIDO", V30),
+]
+ALERT_TYPES += [
+    ("FUMIGACION_SALIDA", "Recordatorio: sale producto de fumigación (día anterior y mismo día)", "Almacén", "Fumigación",
+     "MEDIA", ["JEFE_LOGISTICA", "LIDER_ALMACEN", "GERENCIA_OPERACIONES", "SUPERV_ALMACEN", "COORD_LOGISTICA",
+               "SUPERV_CALIDAD", "JEFE_CALIDAD"], "DEFINIDO", V30,
+     "Un día antes y el mismo día de la fecha de liberación de la fumigación, para organizar la salida del contenedor.", False),
+]

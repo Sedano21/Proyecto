@@ -27,7 +27,7 @@ def _card(area, titulo, valor, frase, nivel="", url=None):
     return {"area": area, "titulo": titulo, "valor": valor, "frase": frase, "nivel": nivel, "url": url}
 
 
-def tablero(hoy=None, ver_costos=False):
+def tablero(hoy=None, ver_costos=False, canal=""):
     from .comercial_v23 import nivel_periodo
     from .commercial_mgmt import _metas
     from .finance import collection_board
@@ -39,16 +39,24 @@ def tablero(hoy=None, ver_costos=False):
     s = db()
     excl = ("CANCELADA", "BORRADOR", "REGULARIZACION_OBSERVADA")
 
+    from .margin import channel
+
+    def del_canal(lst):  # V30: indicadores por canal o en general
+        return [o for o in lst if not canal or channel(o.customer, o) == canal]
+
     def venta(desde, hasta):
-        return sum(order_amount(o) for o in s.execute(select(SalesOrder).where(
-            SalesOrder.fecha_emision >= desde, SalesOrder.fecha_emision <= hasta, SalesOrder.estado.notin_(excl))).scalars())
+        return sum(order_amount(o) for o in del_canal(s.execute(select(SalesOrder).where(
+            SalesOrder.fecha_emision >= desde, SalesOrder.fecha_emision <= hasta, SalesOrder.estado.notin_(excl))).scalars()))
     v_mes = venta(ini, hoy)
     dia_eq = min(hoy.day, ant_fin.day)
     v_ant = venta(ant_ini, ant_ini.replace(day=dia_eq))
-    ovs_mes = [o for o in s.execute(select(SalesOrder).where(SalesOrder.fecha_emision >= ini, SalesOrder.fecha_emision <= hoy,
-                                                             SalesOrder.estado.notin_(excl))).scalars()]
+    ovs_mes = del_canal(s.execute(select(SalesOrder).where(SalesOrder.fecha_emision >= ini, SalesOrder.fecha_emision <= hoy,
+                                                           SalesOrder.estado.notin_(excl))).scalars())
     metas = _metas(f"{hoy:%Y-%m}", ovs_mes, "", {})
-    gen = next((m for m in metas["filas"] if m["alcance"] == "GENERAL"), None)
+    if canal:
+        gen = next((m for m in metas["filas"] if m["alcance"] == "CANAL" and str(m.get("nombre", "")).upper() == canal.upper()), None)
+    else:
+        gen = next((m for m in metas["filas"] if m["alcance"] == "GENERAL"), None)
     cards, atencion = [], []
     var_ant = _pct(v_mes - v_ant, v_ant)
     if gen and gen["avance_soles"] is not None:
@@ -63,7 +71,11 @@ def tablero(hoy=None, ver_costos=False):
         cards.append(_card("Comercial", "Venta del mes", f"S/ {v_mes:,.0f}",
                            (f"{var_ant:+.0f} % vs el mismo corte del mes anterior" if var_ant is not None else "sin meta cargada"),
                            "warn" if var_ant is not None and var_ant < -10 else ""))
-    n = nivel_periodo(ini, None, hoy)
+    if canal:
+        from .comercial_v23 import base_mes, fin_de_mes, nivel
+        n = nivel(del_canal(base_mes(ini, fin_de_mes(ini))), hoy=hoy)
+    else:
+        n = nivel_periodo(ini, None, hoy)
     otif = n["otif"]
     cards.append(_card("Logística", "OTIF del mes", f"{otif} %" if otif is not None else "—",
                        f"{n['conteos'][2]} de {n['n']} OV a tiempo y completas; {n['en_plazo']} aún en plazo",

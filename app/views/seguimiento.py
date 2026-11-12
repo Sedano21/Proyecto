@@ -24,6 +24,20 @@ def groups():
                            f=request.args, vend=vend)
 
 
+@bp.route("/expedientes/cliente/<int:cid>")
+@perm_required("expedientes.ver")
+def customer_docs(cid):
+    """V30: guías, facturas y notas de crédito del cliente."""
+    from ..services import v30
+    c = db().get(Customer, cid) or abort(404)
+    if g.user.role_code == "EJECUTIVO_VENTAS" and c.vendedor_id not in (None, g.user.id):
+        abort(403)
+    d = v30.documentos_cliente(c, f_date("desde"), f_date("hasta"))
+    ver = request.args.get("ver", "guias")
+    return render_template("v30_docs_cliente.html", c=c, d=d, ver=ver if ver in ("guias", "facturas", "notas") else "guias",
+                           f=request.args)
+
+
 @bp.route("/expedientes/<int:cid>/<fecha>")
 @perm_required("expedientes.ver")
 def group(cid, fecha):
@@ -44,7 +58,9 @@ def group(cid, fecha):
 @bp.route("/servicio")
 @perm_required("indicadores.servicio", "informes.comercial")
 def service():
-    d = seg.service_month(f_date("mes") or None, request.args.get("cliente") or None, request.args.get("vendedor") or None)
+    canal = (request.args.get("canal") or "").strip()  # V30: por canal o en general
+    d = seg.service_month(f_date("mes") or None, request.args.get("cliente") or None, request.args.get("vendedor") or None,
+                          canal=canal)
     ver = request.args.get("ver", "")
     filas = d["filas"]
     filtros = {"otif_no": lambda x: not x["otif"], "otif_si": lambda x: x["otif"],
@@ -53,7 +69,7 @@ def service():
     if ver in filtros:
         filas = [x for x in filas if filtros[ver](x)]
     clientes = list(db().execute(select(Customer).order_by(Customer.nombre)).scalars())
-    return render_template("seg_servicio.html", d=d, filas=filas, ver=ver, f=request.args, clientes=clientes)
+    return render_template("seg_servicio.html", d=d, filas=filas, ver=ver, f=request.args, clientes=clientes, canal=canal)
 
 
 @bp.route("/desempeno")

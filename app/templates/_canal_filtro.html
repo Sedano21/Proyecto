@@ -1,0 +1,1 @@
+{% set _cs = canales_filtro() %}{% if canal and canal not in _cs %}{% set _cs = _cs + [canal] %}{% endif %}<div><label for="f_canal">Canal</label><select id="f_canal" name="canal"><option value="">General (todos)</option>{% for c in _cs %}<option value="{{ c }}" {{ 'selected' if canal == c }}>{{ c }}</option>{% endfor %}</select></div>

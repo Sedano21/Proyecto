@@ -73,7 +73,7 @@ def stock():
     if q:
         # V20: también por lote; «000863FA» encuentra todas sus variantes (000863FA., 000863FA..)
         stmt = stmt.join(Product).where((StockLot.product_code.like(f"%{q}%")) | (Product.descripcion.like(f"%{q}%"))
-                                        | StockLot.lote.like(f"%{q.rstrip('.,')}%"))
+                                        | StockLot.lote.like(f"%{q.rstrip('.,')}%") | StockLot.ubicacion.like(f"%{q}%"))
     if wh:
         stmt = stmt.where(StockLot.warehouse_code == wh)
     if est:
@@ -86,7 +86,7 @@ def stock():
                                   .order_by(Product.code)).scalars())
     return render_template("stock.html", lots=lots, resumen=resumen, q=q, wh=wh, est=est, whs=whs, estados=ESTADOS_FISICOS,
                            labels=ESTADOS_LABEL, reserved=reserved_qty, free=free_qty, base=base_qty, productos=productos,
-                           blocked=BLOQUEADOS)
+                           blocked=BLOQUEADOS, ubicaciones=__import__("app.services.v30", fromlist=["x"]).ubicaciones_usadas())
 
 
 @bp.route("/lote/<int:lid>/estado", methods=["POST"])
@@ -175,8 +175,8 @@ def upload_row(bid, rid):
     accion = request.form.get("accion")
     if accion == "excluir":
         fn = lambda: usvc.exclude_row(b, r, g.user, request.form.get("motivo", ""))  # noqa: E731
-    elif accion == "incluir":
-        fn = lambda: usvc.exclude_row(b, r, g.user, "", excluir=False)  # noqa: E731
+    elif accion == "incluir":  # V30: incluir tal como viene, con motivo (excluida o con observaciones)
+        fn = lambda: usvc.include_row(b, r, g.user, request.form.get("motivo", ""))  # noqa: E731
     else:
         nuevos = {k[2:]: v for k, v in request.form.items() if k.startswith("c_")}
         fn = lambda: usvc.edit_row(b, r, g.user, nuevos)  # noqa: E731
@@ -498,6 +498,9 @@ def sap_sync():
                 abort(403)
         elif tipo == "ORDENES":  # V29: órdenes de venta y de servicio del periodo (demanda)
             if not g.perms & {"ov.importar", "ov.ver", "demanda.analisis", "dashboard.ver"}:
+                abort(403)
+        elif tipo == "RESERVAS":  # V30: facturas de reserva sin entrega
+            if not g.perms & {"facturas_reserva.ver", "facturas_reserva.aprobar"}:
                 abort(403)
         elif tipo == "BALANCE_OF":  # V29: balance de peso de las órdenes de fabricación
             if not g.perms & {"produccion.ver", "produccion.liquidar"}:

@@ -156,7 +156,7 @@ def month_bounds(ref=None):
     return ini, fin
 
 
-def service_month(ref=None, customer_id=None, vendedor_id=None, desde=None, hasta=None):
+def service_month(ref=None, customer_id=None, vendedor_id=None, desde=None, hasta=None, canal=""):
     """OTIF, fill rate y a tiempo (on time) sobre el universo de OV cargadas cuya fecha comprometida cae en el mes en
     curso (o en el rango dado), sin las canceladas. Cada indicador trae el detalle de sus OV.
     V23 (fórmula de la empresa): la base de los tres indicadores son todas las OV que se subieron y corresponden
@@ -173,6 +173,9 @@ def service_month(ref=None, customer_id=None, vendedor_id=None, desde=None, hast
     if vendedor_id:
         q = q.where(SalesOrder.vendedor_id == int(vendedor_id))
     universo = list(db().execute(q).scalars())
+    if canal:  # V30: filtro por canal (el de la OV o, si no tiene, el del cliente)
+        from .margin import channel
+        universo = [o for o in universo if channel(o.customer, o) == canal]
     hoy = date.today()
     filas = []
     for o in universo:

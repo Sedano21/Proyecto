@@ -208,7 +208,8 @@ def company():
         f = request.form
         return act(lambda: ing.registrar(g.user, f_date("semana"), f.get("monto"), f.get("nota", ""), f.get("motivo", "")),
                    lambda r: f"Necesidad de la semana del {r.semana:%d/%m} registrada: S/ {r.monto:,.0f}.", url_for("v24.company"))
-    d = emp.tablero(ver_costos="costos.analisis" in g.perms or "costos.ver" in g.perms)
+    canal = (request.args.get("canal") or "").strip()  # V30: por canal o en general
+    d = emp.tablero(ver_costos="costos.analisis" in g.perms or "costos.ver" in g.perms, canal=canal)
     sem = d["graficos"]["semanas"]
     graf = {"venta": charts.columns([x[0] for x in sem], [("Venta S/", [x[1] for x in sem])], "S/", title="Venta por semana"),
             "otif": charts.line([("OTIF %", [(x[0], x[2]) for x in sem])], "%", title="OTIF por semana"),
@@ -217,7 +218,7 @@ def company():
     graf["semanal"] = charts.columns([f"{x['semana']:%d/%m}" for x in sem],
                                      [("Venta S/", [x["venta"] for x in sem]), ("Necesita S/", [x["necesidad"] or 0 for x in sem]),
                                       ("Meta S/", [x["meta"] or 0 for x in sem])], "S/", title="Venta vs lo que necesita la empresa y la meta")
-    html = render_template("v24_empresa.html", d=d, graf=graf, semanas=sem, puede_nec="finanzas.necesidad_semanal" in g.perms,
+    html = render_template("v24_empresa.html", canal=canal, d=d, graf=graf, semanas=sem, puede_nec="finanzas.necesidad_semanal" in g.perms,
                            lunes=ing.lunes(date.today()), ver_costos=("costos.ver" in g.perms or "costos.analisis" in g.perms))
     return _descarga(html, "Cómo va la empresa", "como_va_la_empresa")
 

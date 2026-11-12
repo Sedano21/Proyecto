@@ -1,18 +1,22 @@
-"""V29 (11-nov-2026): balance de peso de las órdenes de fabricación y sus liquidaciones registradas en SAP.
+"""V29 (11-nov-2026), ajustado en V30 (12-nov-2026): balance de peso de las órdenes de fabricación y sus liquidaciones
+registradas en SAP.
 
-Regla de la empresa: lo que ingresa al proceso (granel o materia prima) debe ser igual en peso a la suma del producto
-(producto terminado o materia prima, según el proceso) más el desmedro o la merma. En kg:
+Regla de la empresa: la cantidad de materia ingresada (granel o materia prima) más el desmedro debe ser igual en peso a
+la suma del producto (producto terminado o materia prima, según el proceso). En kg:
 
-    insumos (granel + materia prima)  =  producto (completado + rechazado)  +  merma / desmedro
+    granel + materia prima  +  desmedro  =  producto (completado + rechazado)
+
+El desmedro es la merma (decisión del 13-oct-2026): en las órdenes de SAP es el componente «X - DESMEDRO» de la lista de
+materiales, con los prefijos de «prefijos_desmedro_bom» (ME-), o un código de «liquidacion_items_merma», o el que dice
+DESMEDRO o MERMA en su descripción. Cada cantidad se toma con el signo que tiene en SAP (un subproducto que se recibe
+tiene cantidad negativa). Envases, etiquetas, suministros, recursos y textos no pesan en el balance.
 
 Se valida dos veces:
 - al REGISTRAR la orden de fabricación (lo planificado): componentes planificados vs producto planificado;
 - al LIQUIDAR (lo real): lo emitido de cada componente vs lo completado y rechazado, cuando la orden está cerrada o ya
   se completó lo planificado (antes, la liquidación puede estar en curso).
-La merma o desmedro es el componente que en SAP tiene cantidad negativa (subproducto que se recibe) o cuyo código está en
-«liquidacion_items_merma» o cuya descripción dice MERMA o DESMEDRO. Envases, etiquetas y suministros no pesan en el
-balance. Si la diferencia supera «balance_of_tolerancia_pct» (% de los insumos) se alerta a la Jefatura de Operaciones y
-a la Jefatura de Producción.
+Si la diferencia supera «balance_of_tolerancia_pct» (% de lo ingresado) se alerta a la Jefatura de Operaciones y a la
+Jefatura de Producción.
 """
 from datetime import datetime
 
@@ -33,10 +37,13 @@ def _kg(p, q):
     return q * p.peso_kg if p.peso_kg else None
 
 
-def _es_merma(code, p, q):
+def _es_merma(code, p):
+    """Desmedro (= merma): prefijos de la lista de materiales (ME-), códigos configurados o la palabra en la descripción."""
+    code = (code or "").upper()
+    pref = [str(x).strip().upper() for x in (param("prefijos_desmedro_bom", ["ME-"]) or []) if str(x).strip()]
     cods = {str(x).strip().upper() for x in (param("liquidacion_items_merma", []) or []) if str(x).strip()}
     desc = ((p.descripcion if p else "") or "").upper()
-    return q < -TOL or code.upper() in cods or any(w in desc for w in PALABRAS_MERMA)
+    return any(code.startswith(x) for x in pref) or code in cods or any(w in desc for w in PALABRAS_MERMA)
 
 
 def _es_insumo(p):
@@ -63,26 +70,24 @@ def evaluar(orden, etapa):
         if abs(q) <= TOL:
             continue
         p = s.get(Product, c["producto"])
-        if _es_merma(c["producto"], p, q):
-            kg = _kg(p, abs(q))
-            if kg is None:
-                sin_peso.append(c["producto"])
-            else:
-                merma += kg
-        elif _es_insumo(p):
-            kg = _kg(p, q)
-            if kg is None:
-                sin_peso.append(c["producto"])
-            else:
-                insumos += kg
+        es_merma = _es_merma(c["producto"], p)
+        if not es_merma and not _es_insumo(p):
+            continue
+        kg = _kg(p, q)  # con el signo de SAP
+        if kg is None:
+            sin_peso.append(c["producto"])
+        elif es_merma:
+            merma += kg
+        else:
+            insumos += kg
     if insumos <= TOL:
         return None
     kg_prod = _kg(prod, q_prod)
     if kg_prod is None:
         sin_peso.append(orden["producto"])
         kg_prod = 0.0
-    salida = kg_prod + merma
-    dif = insumos - salida
+    entrada = insumos + merma
+    dif = entrada - kg_prod
     pct = 100.0 * dif / insumos
     tol = float(param("balance_of_tolerancia_pct", 0.5) or 0)
     return {"orden": orden["orden"], "producto": orden["producto"], "descripcion": orden.get("descripcion", ""),
@@ -108,11 +113,14 @@ def revisar(user, ordenes):
             msg = (f"No se puede validar el peso: falta el peso por unidad de {', '.join(r['sin_peso'])} en el maestro de "
                    f"artículos del módulo.")
         else:
-            msg = (f"Insumos (granel/MP) {r['insumos_kg']:,.2f} kg ≠ producto {r['producto_kg']:,.2f} kg + merma/desmedro "
-                   f"{r['merma_kg']:,.2f} kg. Diferencia {r['dif_kg']:,.2f} kg ({r['dif_pct']:+.2f} %; tolerancia "
+            msg = (f"Granel/MP {r['insumos_kg']:,.2f} kg + desmedro {r['merma_kg']:,.2f} kg = "
+                   f"{r['insumos_kg'] + r['merma_kg']:,.2f} kg ≠ producto {r['producto_kg']:,.2f} kg. Diferencia "
+                   f"{r['dif_kg']:,.2f} kg ({r['dif_pct']:+.2f} %; tolerancia "
                    f"{float(param('balance_of_tolerancia_pct', 0.5) or 0):g} %). "
-                   + ("Sobra insumo: ¿falta registrar producto o merma?" if r["dif_kg"] > 0 else
-                      "Sale más de lo que ingresó: ¿falta emitir insumos o la cantidad completada está de más?"))
+                   + ("Lo ingresado más el desmedro supera al producto: ¿falta registrar producto o el desmedro está de más?"
+                      if r["dif_kg"] > 0 else
+                      "El producto supera lo ingresado más el desmedro: ¿falta emitir insumos o desmedro, o la cantidad "
+                      "completada está de más?"))
         alerts.emit("BALANCE_OF", f"OF {r['orden']} ({r['producto']}): el balance de peso no cuadra en el {que}",
                     msg + " Revise la orden en SAP.", "ProductionOrderSAP", r["orden"],
                     dedup_key=f"BALANCE_OF:{r['orden']}:{r['etapa']}:{r['dif_kg']:.1f}", creado_por=user)

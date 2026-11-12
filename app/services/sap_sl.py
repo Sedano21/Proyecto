@@ -38,7 +38,8 @@ TIPOS_SAP = {"OV": "Órdenes de venta abiertas", "CLIENTES": "Clientes", "PRODUC
 # V29: lecturas de SAP que no son cargas: facturas y notas de crédito, órdenes de fabricación ligadas a OV, órdenes de
 # venta y de servicio del periodo (demanda) y balance de peso de las órdenes de fabricación
 EXTRAS = {"FACTURAS": "Facturas y notas de crédito", "SERVICIOS": "Órdenes de fabricación ligadas a OV",
-          "ORDENES": "Órdenes de venta y de servicio del periodo", "BALANCE_OF": "Balance de peso de órdenes de fabricación"}
+          "ORDENES": "Órdenes de venta y de servicio del periodo", "BALANCE_OF": "Balance de peso de órdenes de fabricación",
+          "RESERVAS": "Facturas de reserva sin entrega"}
 MAX_PAGINAS = 400
 
 
@@ -556,6 +557,8 @@ def scheduled_sync(ahora=None):
     tipos = list(param("sap_sync_tipos", []) or [])
     if param("balance_of_automatico", True) and "BALANCE_OF" not in tipos:
         tipos.append("BALANCE_OF")  # V29: el balance de peso de las OF se revisa solo (pedido de la empresa)
+    if param("sap_reservas_automatico", True) and "RESERVAS" not in tipos:
+        tipos.insert(0, "RESERVAS")  # V30: antes de las OV, para no cerrar las que tienen factura de reserva por entregar
     for tipo in tipos:
         if tipo in EXTRAS:  # V29: lecturas que no son cargas, con el mismo intervalo
             j = job_state(tipo)
@@ -1393,4 +1396,7 @@ def sync_extra(tipo, user, sl=None):
     if tipo == "BALANCE_OF":
         from .balance_of import sync as sync_balance
         return sync_balance(user, sl)
+    if tipo == "RESERVAS":
+        from .facturas_reserva import sync as sync_reservas
+        return sync_reservas(user, sl)
     raise BusinessError("Tipo de dato de SAP no válido.")

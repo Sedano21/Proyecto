@@ -176,6 +176,34 @@ def check_fumigation_release(hoy=None):
     return n
 
 
+def check_fumigation_exit_reminder(hoy=None):
+    """V30: recordatorio de la salida de productos del contenedor o lugar de fumigación, un día antes y el mismo día de la
+    fecha de liberación (lotes en fumigación y solicitudes aprobadas), para organizarse."""
+    from ..models import FumigationRequest
+    hoy = hoy or date.today()
+    por_fecha = {}
+    for lot in db().execute(select(StockLot).where(StockLot.estado == "EN_FUMIGACION", StockLot.cantidad > 0)).scalars():
+        lib = _d((lot.fumigacion or {}).get("liberacion"))
+        if lib in (hoy, hoy + timedelta(days=1)):
+            por_fecha.setdefault(lib, []).append(f"lote {lot.lote} ({lot.product_code}, {lot.cantidad:g} en {lot.warehouse_code}"
+                                                 + (f", {lot.fumigacion.get('zona')}" if (lot.fumigacion or {}).get("zona") else "") + ")")
+    for r in db().execute(select(FumigationRequest).where(FumigationRequest.estado.in_(("APROBADA", "EN_FUMIGACION")),
+                                                          FumigationRequest.liberacion.in_((hoy, hoy + timedelta(days=1))))).scalars():
+        lotes = ", ".join(x.get("lote", "") for x in r.lineas or [])
+        txt = f"solicitud #{r.id} en {r.lugar or 'lugar por definir'} (lotes {lotes})"
+        if not any(x.get("lote", "") and x.get("lote", "") in t for t in por_fecha.get(r.liberacion, []) for x in r.lineas or []):
+            por_fecha.setdefault(r.liberacion, []).append(txt)
+    n = 0
+    for f, items in por_fecha.items():
+        cuando = "HOY" if f == hoy else "MAÑANA"
+        alerts.emit("FUMIGACION_SALIDA", f"{cuando} ({f:%d/%m}) sale producto de fumigación: {len(items)} por organizar",
+                    "Fecha de liberación: " + "; ".join(items[:15]) + (" …" if len(items) > 15 else "")
+                    + ". Organice el retiro, el espacio y la revisión de Calidad.", "StockLot", "",
+                    prioridad="ALTA" if f == hoy else None, dedup_key=f"FUMI_SALIDA:{f.isoformat()}:{cuando}")
+        n += 1
+    return n
+
+
 ESTADOS_FECHA = ("DISPONIBLE", "OBSERVADO", "EN_FUMIGACION", "NO_UTILIZABLE", "LIBERADO")
 
 

@@ -810,3 +810,9 @@ tr.row-warn td{background:#fff8e6}
 /* V27: Estado de OV */
 td.paso.ok{color:var(--ok);font-weight:600}td.paso.pend{color:var(--ink-3,#8a94a3)}
 .kpis>a.kpi.on{outline:2px solid var(--cp-verde,#0b7a3b)}
+/* V30: filas plegables (+/−) */
+button.tg{width:28px;height:28px;padding:0;border-radius:6px;font-weight:700;font-size:1.05rem;line-height:1;background:var(--surface,#fff);color:var(--cp-verde-700,#0b6a33);border:1px solid var(--line)}
+button.tg:hover{background:var(--cp-verde-50,#eaf6ef)}
+tr.det>td{background:var(--surface-2,#f7f8f6);padding:10px 12px}
+tr.det table{margin:0;background:var(--surface,#fff)}
+tr.det[hidden]{display:none!important}

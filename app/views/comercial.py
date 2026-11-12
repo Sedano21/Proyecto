@@ -62,7 +62,9 @@ def orders():
     rows = sorted(db().execute(q).scalars(), key=priority_key)  # el orden por prioridad se calcula; luego se pagina
     pend = list(db().execute(select(OVChangeRequest).where(OVChangeRequest.estado == "PENDIENTE")).scalars())
     pend = [r for r in pend if osvc.can_authorize_change(g.user, r.order) or r.solicitado_por == g.user.id]
-    return render_template("ov_list.html", rows=paginate(rows), estado=estado or "", estado_stock=stock or "", pend=pend)
+    from ..services.stock import line_reserved
+    return render_template("ov_list.html", rows=paginate(rows), estado=estado or "", estado_stock=stock or "", pend=pend,
+                           reservado=line_reserved)
 
 
 @bp.route("/api/precio")
@@ -144,7 +146,8 @@ def sap_excel_upload():
 @bp.route("/nueva", methods=["GET", "POST"])
 @perm_required("ov.crear")
 def order_new():
-    customers = list(db().execute(select(Customer).order_by(Customer.nombre)).scalars())
+    # V30: los clientes excluidos por falta de movimiento no se ofrecen al registrar (se incluyen en Clientes sin movimiento)
+    customers = list(db().execute(select(Customer).where(Customer.excluido.is_(False)).order_by(Customer.nombre)).scalars())
     vendedores = list(db().execute(select(User).where(User.role_code == "EJECUTIVO_VENTAS")).scalars())
     products = list(db().execute(select(Product).where(__import__("app.services.orders", fromlist=["x"]).condicion_vendible()).order_by(Product.code)).scalars())
     if request.method == "POST":

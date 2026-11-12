@@ -21,17 +21,21 @@ Se actualizan solas con la sincronización con SAP o al traerlas en <a href="{{ 
 <a class="kpi" href="{{ url_for('alm.sap_dispatch_check', estado='SIN_DESPACHO', clase=clase) }}"><span>Sin despacho</span><b>{{ t.SIN_DESPACHO or 0 }}</b></a>
 <a class="kpi err" href="{{ url_for('alm.sap_dispatch_check', estado='ALERTA', clase=clase) }}"><span>Con observación</span><b>{{ t.CON_ALERTA or 0 }}</b></a>
 </div>
-<div class="tw"><table class="small apilable"><tr><th>Orden</th><th>Cliente</th><th>Compromiso</th><th>Estado</th><th>Producto</th><th class="r">Solicitado</th><th class="r">Entregado (SAP)</th><th class="r">Pendiente</th><th class="r">Nota de crédito</th><th class="r">Guiado</th><th>Guías</th><th>Facturas</th><th>Orden de fabricación</th></tr>
-{% for f in filas %}{% for ln in f.lineas %}<tr{% if not ln.cuadra %} class="row-warn"{% endif %}>
-{% if loop.first %}<td rowspan="{{ f.lineas|length }}" data-label="OV" style="min-width:200px"><b>{{ f.ov }}</b>{% if clase == 'TODAS' %} {{ b('SERVICIO' if f.clase == 'SERVICIO' else 'VENTA', 'info') }}{% endif %}{% if f.serie %} <span class="muted small">serie {{ f.serie }}</span>{% endif %}{% if f.modulo %}<br><a class="small" href="{{ url_for('com.order_detail', oid=f.modulo.id) }}">ver en el módulo</a>{% endif %}
-{% for a in f.alertas %}<div class="small err">{{ a }}</div>{% endfor %}</td>
-<td rowspan="{{ f.lineas|length }}" data-label="Cliente">{{ f.cliente }}</td><td rowspan="{{ f.lineas|length }}" data-label="Compromiso">{{ f.fecha }}</td>
-<td rowspan="{{ f.lineas|length }}" data-label="Estado">{{ b({'PARCIAL': 'INCOMPLETO', 'COMPLETO': 'COMPLETO', 'SIN_DESPACHO': 'SIN DESPACHO'}[f.estado], {'PARCIAL': 'warn', 'COMPLETO': 'ok', 'SIN_DESPACHO': 'info'}[f.estado]) }}</td>{% endif %}
-<td data-label="Producto">{{ ln.producto }} <span class="muted">{{ ln.descripcion or pd(ln.producto) }}</span></td>
+<p class="noprint"><button type="button" class="btn sec small" data-tg-all>Desplegar todo</button></p>
+<div class="tw"><table class="small"><tr><th></th><th>Orden</th><th>Cliente</th><th>Compromiso</th><th>Estado</th></tr>
+{% for f in filas %}<tr><td><button type="button" class="tg" data-tg="d{{ loop.index }}" aria-expanded="false" title="Ver el detalle de la orden {{ f.ov }}" aria-label="Ver el detalle de la orden {{ f.ov }}">+</button></td>
+<td><b>{{ f.ov }}</b>{% if clase == 'TODAS' %} {{ b('SERVICIO' if f.clase == 'SERVICIO' else 'VENTA', 'info') }}{% endif %}{% if f.serie %} <span class="muted">serie {{ f.serie }}</span>{% endif %}{% if f.alertas %} <span class="err" title="{{ f.alertas|join(' ') }}">⚠ {{ f.alertas|length }}</span>{% endif %}</td>
+<td>{{ f.cliente }}</td><td>{{ f.fecha }}</td>
+<td>{{ b({'PARCIAL': 'INCOMPLETO', 'COMPLETO': 'COMPLETO', 'SIN_DESPACHO': 'SIN DESPACHO'}[f.estado], {'PARCIAL': 'warn', 'COMPLETO': 'ok', 'SIN_DESPACHO': 'info'}[f.estado]) }}</td></tr>
+<tr class="det" id="d{{ loop.index }}" hidden><td></td><td colspan="4">
+{% for a in f.alertas %}<div class="small err">{{ a }}</div>{% endfor %}
+<div class="tw"><table class="small apilable"><tr><th>Producto</th><th class="r">Solicitado</th><th class="r">Entregado (SAP)</th><th class="r">Pendiente</th><th class="r">Nota de crédito</th><th class="r">Guiado</th></tr>
+{% for ln in f.lineas %}<tr{% if not ln.cuadra %} class="row-warn"{% endif %}><td data-label="Producto">{{ ln.producto }} <span class="muted">{{ ln.descripcion or pd(ln.producto) }}</span></td>
 <td class="r" data-label="Solicitado">{{ ln.solicitado|n }}</td><td class="r" data-label="Entregado">{{ ln.entregado|n }}</td>
-<td class="r" data-label="Pendiente">{{ ln.pendiente|n }}</td><td class="r" data-label="Nota de crédito">{{ ln.nota_credito|n if ln.nota_credito else '—' }}</td><td class="r" data-label="Guiado">{{ ln.guiado|n }}{% if not ln.cuadra %} ⚠{% endif %}</td>
-{% if loop.first %}<td rowspan="{{ f.lineas|length }}" data-label="Guías" class="small">{% for gn, gf in f.guias %}{{ gn }}{% if gf %} <span class="muted">({{ gf }})</span>{% endif %}<br>{% else %}—{% endfor %}</td>
-<td rowspan="{{ f.lineas|length }}" data-label="Facturas" class="small">{{ f.facturas|join(', ') or '—' }}</td>
-<td rowspan="{{ f.lineas|length }}" data-label="Orden de fabricación" class="small">{% for x in f.servicios %}OF {{ x.orden }} · {{ x.producto }} · {{ x.completado|n }}/{{ x.planificado|n }} · {{ x.estado|lower }}<br>{% else %}—{% endfor %}</td>{% endif %}</tr>{% endfor %}
-{% else %}<tr><td colspan="13" class="muted">Sin órdenes en este filtro.</td></tr>{% endfor %}</table></div>{% endif %}
+<td class="r" data-label="Pendiente">{{ ln.pendiente|n }}</td><td class="r" data-label="Nota de crédito">{{ ln.nota_credito|n if ln.nota_credito else '—' }}</td><td class="r" data-label="Guiado">{{ ln.guiado|n }}{% if not ln.cuadra %} ⚠{% endif %}</td></tr>{% endfor %}</table></div>
+<p class="small"><b>Guías:</b> {% for gn, gf in f.guias %}{{ gn }}{% if gf %} <span class="muted">({{ gf }})</span>{% endif %}{{ ', ' if not loop.last }}{% else %}—{% endfor %}
+· <b>Facturas:</b> {{ f.facturas|join(', ') or '—' }}
+{% if f.servicios %}· <b>Órdenes de fabricación:</b> {% for x in f.servicios %}OF {{ x.orden }} · {{ x.producto }} · {{ x.completado|n }}/{{ x.planificado|n }} · {{ x.estado|lower }}{{ '; ' if not loop.last }}{% endfor %}{% endif %}
+{% if f.modulo %}· <a href="{{ url_for('com.order_detail', oid=f.modulo.id) }}">ver en el módulo</a>{% endif %}</p></td></tr>
+{% else %}<tr><td colspan="5" class="muted">Sin órdenes en este filtro.</td></tr>{% endfor %}</table></div>{% endif %}
 {% endblock %}

@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">{% if user %}<meta name="csrf" content="{{ csrf_token() }}">{% endif %}
 <title>{% block title %}Módulo de Operaciones{% endblock %} · Corporación Productiva</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23007a3d'/%3E%3Cpath d='M10 23V9h6.5a4.5 4.5 0 0 1 0 9H10' fill='none' stroke='%23fff' stroke-width='3'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=1.2.7">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=1.2.8">
 <script>try{if(localStorage.getItem('cp-nav')==='min')document.documentElement.classList.add('nav-min')}catch(e){}</script>
 </head>
 <body{% if user %} data-alertas="{{ url_for('main.alerts_status') }}"{% endif %}>
@@ -54,6 +54,8 @@
       {% if ve('catalogo.ver') or ve('catalogo.fotos') %}{{ nl(url_for('com.catalog'), 'box', 'Catálogo') }}{% endif %}
       {% if ve('ov.ver') %}{{ nl(url_for('com.order_status'), 'route', 'Estado de OV') }}{% endif %}
       {% if ve('ov.ver') or ve('distribucion.ver') %}{{ nl(url_for('alm.sap_dispatch_check'), 'truck', 'Órdenes de venta y servicio vs guías') }}{{ nl(url_for('v29.credit_notes'), 'file', 'Notas de crédito sobre OV') }}{% endif %}
+      {% if ve('clientes.inactivos') %}{{ nl(url_for('v30.inactive_customers'), 'users', 'Clientes sin movimiento') }}{% endif %}
+      {% if ve('facturas_reserva.ver') or ve('facturas_reserva.aprobar') %}{{ nl(url_for('v30.reserve_invoices'), 'file', 'Facturas de reserva sin entrega') }}{% endif %}
       {% if ve('objetivos.ver') %}{{ nl(url_for('com.targets'), 'gauge', 'Objetivos de venta') }}{% endif %}
       {% if ve('demanda.cargar') %}{{ nl(url_for('sup.demand'), 'trend', 'Proyección de demanda') }}{% endif %}
       {% if ve('margen.ver') %}{{ nl(url_for('com.margin_report'), 'chart', 'Margen') }}{% endif %}
@@ -310,5 +312,6 @@ d.addEventListener('change',function(e){if(e.target.matches('[data-dest]'))f();}
 <script src="{{ url_for('static', filename='v18.js') }}?v=1.0"></script>
 {{ velo() }}<script src="{{ url_for('static', filename='v19.js') }}?v=1.1"></script>
 {% if user %}<script src="{{ url_for('static', filename='v20.js') }}?v=1.1"></script>{% endif %}
+{% if user %}<script src="{{ url_for('static', filename='v30.js') }}?v=1.0"></script>{% endif %}
 </body>
 </html>

@@ -73,6 +73,7 @@ def _pasos(user, today):
         ("proyeccion_compras", lambda: demand_plan.check_purchase_deadlines(today)),
         ("lotes_observados", lambda: quality_v13.check_observed(today)),
         ("fumigaciones_por_liberar", lambda: quality_v13.check_fumigation_release(today)),
+        ("fumigacion_salida_recordatorio", lambda: quality_v13.check_fumigation_exit_reminder(today)),  # V30
         ("reprocesos_vencidos", lambda: quality_v13.check_reprocess()),
         ("terceros_pagos_vencidos", lambda: third_party.check_payments(today)),
         ("presupuesto_consumo", lambda: budget.check_consumption(today)),

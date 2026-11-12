@@ -292,6 +292,8 @@ def create_order(user, numero, customer_id, fecha_compromiso, lines, urgente=Fal
     # queda detenida hasta la confirmación del Coordinador o Jefe Comercial)
     _validate_lines(lines, exigir_precio=origen == "MODULO" and "MUESTRA" not in (tipo_venta or "").upper())
     c = db().get(Customer, int(customer_id))
+    if c is not None and c.excluido:  # V30: un cliente excluido por inactividad que vuelve a pedir queda incluido
+        __import__("app.services.v30", fromlist=["x"]).reactivar_por_movimiento(c, user, f"OV {numero}")
     if origen == "MODULO":
         hora_cita = normalize_hour(hora_cita)
     entrega = entrega or resolve_delivery(c, exigir=False)

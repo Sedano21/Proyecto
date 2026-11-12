@@ -215,6 +215,9 @@ class Customer(Base):
     condicion_historial: Mapped[list] = mapped_column(JSON, default=list)
     es_prospecto: Mapped[bool] = mapped_column(Boolean, default=False)
     convertido: Mapped[dict] = mapped_column(JSON, default=dict)  # paso de prospecto a cliente (OC, usuario, fecha)
+    # V30: revisión de clientes sin movimiento (18 meses): EXCLUIDO / INCLUIDO, con motivo, usuario y fecha
+    inactividad: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}")
+    excluido: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     vendedor = relationship("User", foreign_keys=[vendedor_id])
     sites = relationship("CustomerSite", back_populates="customer", order_by="CustomerSite.id")
 
@@ -271,6 +274,9 @@ class StockLot(Base):
     observacion: Mapped[dict] = mapped_column(JSON, default=dict)  # {categoria, detalle, user, ts}
     fechas_produccion: Mapped[list] = mapped_column(JSON, default=list)  # [{fecha, cantidad, estado, nota, user, ts}]
     fumigacion: Mapped[dict] = mapped_column(JSON, default=dict)  # {inicio, liberacion, zona, user, ts}
+    # V30: ubicación física del lote en el almacén (la editan Supervisor de Almacén, Líder Operativo y Logística)
+    ubicacion: Mapped[str] = mapped_column(String(80), default="", server_default="")
+    ubicacion_hist: Mapped[list] = mapped_column(JSON, default=list, server_default="[]")  # [{de, a, user, ts}]
     liberacion_solicitada: Mapped[dict] = mapped_column(JSON, default=dict)  # {user, ts, motivo}
     product = relationship("Product")
     warehouse = relationship("Warehouse")
@@ -324,6 +330,8 @@ class UploadRow(Base):
     advertencias: Mapped[list] = mapped_column(JSON, default=list)
     excluida: Mapped[bool] = mapped_column(Boolean, default=False)
     motivo_exclusion: Mapped[str] = mapped_column(String(250), default="")
+    # V30: fila incluida tal como viene (sin editarla) a pesar de sus observaciones: {motivo, user, ts}
+    inclusion: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}")
     editada: Mapped[bool] = mapped_column(Boolean, default=False)
     batch = relationship("UploadBatch", back_populates="rows")
 
@@ -2722,4 +2730,27 @@ class SapOrderLine(Base):
     cantidad: Mapped[float] = mapped_column(Float, default=0)
     entregado: Mapped[float] = mapped_column(Float, default=0)
     linea_cerrada: Mapped[bool] = mapped_column(Boolean, default=False)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+
+class SapReserveInvoiceLine(Base):
+    """V30 (12-nov-2026): facturas de reserva de SAP con mercadería aún sin entregar (una fila por línea con saldo). Se
+    reemplaza en cada lectura; la aprobación de la Jefatura de Producción para preprogramar se conserva por «clave»."""
+    __tablename__ = "sap_facturas_reserva"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    clave: Mapped[str] = mapped_column(String(40), unique=True)  # DocEntry : línea
+    numero: Mapped[str] = mapped_column(String(40), default="")  # serie-correlativo
+    docnum: Mapped[str] = mapped_column(String(20), default="")
+    fecha: Mapped[date | None] = mapped_column(Date, nullable=True)
+    fecha_entrega: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
+    cliente: Mapped[str] = mapped_column(String(200), default="")
+    codigo_cliente: Mapped[str] = mapped_column(String(30), default="")
+    ov_numero: Mapped[str] = mapped_column(String(30), default="", index=True)
+    product_code: Mapped[str] = mapped_column(String(30), default="")
+    descripcion: Mapped[str] = mapped_column(String(200), default="")
+    cantidad: Mapped[float] = mapped_column(Float, default=0)
+    pendiente: Mapped[float] = mapped_column(Float, default=0)  # por entregar
+    vigente: Mapped[bool] = mapped_column(Boolean, default=True)  # False: ya no figura con saldo en la última lectura
+    # aprobación de la Jefatura de Producción para usarla en la preprogramación: {estado APROBADA/RECHAZADA, user, ts, motivo}
+    aprobacion: Mapped[dict] = mapped_column(JSON, default=dict)
     ts: Mapped[datetime] = mapped_column(DateTime, default=now)

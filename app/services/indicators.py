@@ -218,24 +218,24 @@ def _pct(x):
     return "—" if x is None else f"{x} %"
 
 
-def _otif_mes(desde=None, hasta=None):
+def _otif_mes(desde=None, hasta=None, canal=""):
     """V23: OTIF = OV a tiempo y completas ÷ OV que corresponden despacharse en el mes (fecha comprometida)."""
     from .seguimiento import service_month
-    d = service_month(desde=desde, hasta=hasta) if desde and hasta else service_month()
+    d = service_month(desde=desde, hasta=hasta, canal=canal) if desde and hasta else service_month(canal=canal)
     if not d["universo"]:
         return "—", "sin OV que correspondan despacharse en el periodo"
     return (f"{d['otif']} %", f"{d['otif_n'][0]} de {d['otif_n'][1]} OV del mes · on time {_pct(d['on_time'])} · "
                               f"in full {_pct(d['in_full'])}")
 
 
-def values(user, codes, desde=None, hasta=None):
+def values(user, codes, desde=None, hasta=None, canal=""):
     """Valor de cada indicador pedido que el usuario puede ver: [{codigo, nombre, valor, detalle}]. Los no visibles
     se descartan aquí (no basta con no ofrecerlos en pantalla)."""
     from .kpis import compute
     codes = [c for c in codes if c in INDICADORES and visible(user, c) and INDICADORES[c][2] != "Datos"]
     if not codes:
         return []
-    k = compute(desde, hasta) if any(not c.startswith("PROD_") for c in codes) else {}
+    k = compute(desde, hasta, canal) if any(not c.startswith("PROD_") for c in codes) else {}
     p = production_summary(desde, hasta, set(codes)) if any(c.startswith("PROD_") for c in codes) else {}
     hoy_codes = {"PROD_LINEAS_HOY", "PROD_PLAN_HOY", "PROD_PENDIENTES", "PROD_REEMPAQUES"}
     h = __import__("app.services.prod_home", fromlist=["x"]).summary() if hoy_codes & set(codes) else {}
@@ -245,7 +245,7 @@ def values(user, codes, desde=None, hasta=None):
     fx = {
         "PED_PENDIENTES": lambda: (k["pendientes"], f"{k['completos']} con stock completo · {k['incompletos']} incompletos"),
         "PED_COBERTURA": lambda: (_pct(k["cobertura_unidades_prom"]), f"por líneas {_pct(k['cobertura_lineas_prom'])}"),
-        "OTIF_SALIDA": lambda: _otif_mes(desde, hasta),
+        "OTIF_SALIDA": lambda: _otif_mes(desde, hasta, canal),
         "FILL_RATE": lambda: (_pct(k["fill_rate_unidades"]), f"líneas {_pct(k['fill_rate_lineas'])}"),
         "VOLUMEN_OV_KG": lambda: (f"{k['volumen_kg']:,.0f} kg", f"pendiente {k['volumen_pendiente_kg']:,.0f} kg"),
         "RECHAZOS": lambda: (k["rechazos"], f"{k['devoluciones']} devoluciones · {k['entregas_parciales']} parciales"),

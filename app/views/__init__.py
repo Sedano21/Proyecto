@@ -56,6 +56,8 @@ def register_views(app):
     app.register_blueprint(chat.bp)
     from . import v29  # V29: notas de crédito sobre OV y balance de peso de las órdenes de fabricación de SAP
     app.register_blueprint(v29.bp)
+    from . import v30  # V30: ubicación de lotes, clientes sin movimiento y facturas de reserva sin entrega
+    app.register_blueprint(v30.bp)
 
     @app.after_request
     def _aviso_descarga(resp):
@@ -270,10 +272,11 @@ def dashboard():
     hasta = request.args.get("hasta")
     d1 = date.fromisoformat(desde) if desde else None
     d2 = date.fromisoformat(hasta) if hasta else None
+    canal = (request.args.get("canal") or "").strip()  # V30: indicadores por canal o en general
     mios = ind.default_set(g.user) if "dashboard.ver" in g.perms else set()
     # rediseño 28-oct-2026: cada perfil ve solo los indicadores pertinentes (matriz de indicadores)
     from ..services.core import ttl_cache  # V20: los indicadores agregados se recalculan como máximo cada 60 s
-    k = ttl_cache(("kpis", d1, d2, date.today()), 60, lambda: compute(d1, d2)) \
+    k = ttl_cache(("kpis", d1, d2, canal, date.today()), 60, lambda: compute(d1, d2, canal)) \
         if mios - {c for c in mios if c.startswith("PROD_")} else None
     prod = ind.production_summary(d1, d2, mios) if any(c.startswith("PROD_") for c in mios) else None
     hoy_prod = None
@@ -318,7 +321,7 @@ def dashboard():
     despachos = seg.dispatch_board(g.user) if g.user.role_code in (
         "JEFE_LOGISTICA", "JEFE_OPERACIONES", "GERENCIA_GENERAL", "GERENTE_GENERAL_ADJUNTO", "GERENTE_COMERCIAL",
         "COORD_VENTAS", "JEFE_VENTAS", "COORD_LOGISTICA", "EJECUTIVO_VENTAS") else None
-    nivel = seg.service_month() if ("indicadores.servicio" in p and g.user.role_code in (
+    nivel = seg.service_month(canal=canal) if ("indicadores.servicio" in p and g.user.role_code in (
         "COORD_LOGISTICA", "JEFE_LOGISTICA", "JEFE_OPERACIONES", "GERENCIA_GENERAL", "GERENTE_GENERAL_ADJUNTO")) else None
     # V22: Gerencia General y Gerente General Adjunto ven los principales indicadores de cada área y las sugerencias
     areas_gg = sug = None
@@ -336,7 +339,7 @@ def dashboard():
         from ..services.supply import rotation_summary
         rot = rotation_summary()
     return render_template("dashboard.html", rot=rot, ver_costos=("costos.ver" in p or "costos.analisis" in p), k=k, prod=prod, hp=hoy_prod, mis_alertas=mis, tareas=tareas, desde=desde or "", hasta=hasta or "",
-                           areas_gg=areas_gg, sug=sug, bandeja=bandeja,
+                           canal=canal, areas_gg=areas_gg, sug=sug, bandeja=bandeja,
                            estado_txt=alert_svc.ESTADO_TXT, arrastre=pending_carryover(g.user), com=com, det=det,
                            mis_ov=mis_ov, nivel=nivel, despachos=despachos)
 

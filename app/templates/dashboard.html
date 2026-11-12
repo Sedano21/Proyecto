@@ -4,6 +4,7 @@
 {% if k or prod %}<form class="row noprint" method="get" aria-label="Periodo de los indicadores">
   <div><label for="f_desde">Periodo desde</label><input id="f_desde" type="date" name="desde" value="{{ desde }}"></div>
   <div><label for="f_hasta">hasta</label><input id="f_hasta" type="date" name="hasta" value="{{ hasta }}"></div>
+  {% include "_canal_filtro.html" %}
   <div><button class="sec">Filtrar</button></div></form>{% endif %}</div>
 {% if user.debe_cambiar_clave %}<div class="note">Debe <a href="{{ url_for('main.change_password') }}">cambiar su contraseña</a>.</div>{% endif %}
 
@@ -50,7 +51,7 @@
 <div class="tw"><table class="small"><tr><th>OV</th><th>Cliente</th><th>Despacho</th><th>Estado</th><th>Dónde está</th><th class="r">Productos</th><th class="r">Líneas</th><th>Avance</th></tr>
 {% for x in mis_ov %}<tr><td><a href="{{ url_for('com.order_detail', oid=x.o.id) }}">{{ x.o.numero }}</a></td><td>{{ x.o.customer.nombre }}</td><td>{{ x.o.fecha_compromiso|d }}</td><td>{{ b(x.o.estado) }}</td><td>{{ x.area }}</td><td class="r">{{ x.avance.unidades }} %</td><td class="r">{{ x.avance.lineas }} %</td><td>{% if x.retraso %}<span class="b ALTA">{{ x.retraso }}</span>{% else %}<span class="b ok">al día</span>{% endif %}</td></tr>
 {% else %}<tr><td colspan="8" class="muted">No tiene OV abiertas.</td></tr>{% endfor %}</table></div>{% endif %}
-{% if nivel %}<div class="section-title">Nivel de servicio del mes ({{ nivel.desde|d }} – {{ nivel.hasta|d }}, {{ nivel.universo }} OV) <a class="small" href="{{ url_for('seg.service') }}">Ver detalle</a></div>
+{% if nivel %}<div class="section-title">Nivel de servicio del mes ({{ nivel.desde|d }} – {{ nivel.hasta|d }}, {{ nivel.universo }} OV) {% if canal %}· canal {{ canal }} {% endif %}<a class="small" href="{{ url_for('seg.service', canal=canal) }}">Ver detalle</a></div>
 <div class="kpis"><a class="kpi {{ '' if nivel.otif is none else ('ok' if nivel.otif >= 95 else 'warn') }}" href="{{ url_for('seg.service', ver='otif_no') }}"><b>{{ nivel.otif if nivel.otif is not none else '—' }}{{ ' %' if nivel.otif is not none }}</b><span>OTIF</span><small>{{ nivel.otif_n[0] }} de {{ nivel.otif_n[1] }}</small></a>
 <a class="kpi" href="{{ url_for('seg.service', ver='incompletas') }}"><b>{{ nivel.fill_rate if nivel.fill_rate is not none else '—' }}{{ ' %' if nivel.fill_rate is not none }}</b><span>Fill rate</span><small>por líneas {{ nivel.fill_rate_lineas if nivel.fill_rate_lineas is not none else '—' }} %</small></a>
 <a class="kpi {{ '' if nivel.on_time is none else ('ok' if nivel.on_time >= 95 else 'warn') }}" href="{{ url_for('seg.service', ver='tarde') }}"><b>{{ nivel.on_time if nivel.on_time is not none else '—' }}{{ ' %' if nivel.on_time is not none }}</b><span>A tiempo (on time)</span><small>{{ nivel.on_time_n[0] }} de {{ nivel.on_time_n[1] }}</small></a>

@@ -163,17 +163,17 @@ def _of(orden, comps, planificado=100, completado=0.0, rechazado=0.0, estado="LI
 def test_balance_de_peso_de_ordenes_de_fabricacion(app, s, U):
     from app.models import Product
     from app.services import balance_of
-    s.add(Product(code="MR-901", descripcion="MERMA DE SELECCION DEMO", um="KILOGRAMO", peso_kg=1))
+    s.add(Product(code="ME-901", descripcion="ARVEJA - DESMEDRO DEMO", um="KILOGRAMO", peso_kg=1))
     s.flush()
     ok = _of("OF-1", [{"producto": "MP-901", "planificado": 105, "emitido": 105},
-                      {"producto": "MR-901", "planificado": -5, "emitido": -5},
+                      {"producto": "ME-901", "planificado": -5, "emitido": -5},
                       {"producto": "EN-901", "planificado": 3, "emitido": 3}], completado=100, estado="CERRADA")
     # plan: 105 = 100 + 5 · real: 105 = 100 + 5 → cuadra (el envase no pesa en el balance)
     assert balance_of.evaluar(ok, "PLAN")["ok"] and balance_of.evaluar(ok, "LIQUIDACION")["ok"]
     mala = _of("OF-2", [{"producto": "MP-901", "planificado": 105, "emitido": 120},
-                        {"producto": "MR-901", "planificado": -5, "emitido": -5}], completado=100, estado="CERRADA")
+                        {"producto": "ME-901", "planificado": -5, "emitido": -5}], completado=100, estado="CERRADA")
     r = balance_of.evaluar(mala, "LIQUIDACION")
-    assert not r["ok"] and r["dif_kg"] == 15 and r["insumos_kg"] == 120 and r["merma_kg"] == 5
+    assert not r["ok"] and r["dif_kg"] == 15 and r["insumos_kg"] == 120 and r["merma_kg"] == -5  # 120 − 5 ≠ 100
     en_curso = _of("OF-3", [{"producto": "MP-901", "planificado": 100, "emitido": 100}], completado=40)
     assert balance_of.evaluar(en_curso, "LIQUIDACION") is None  # liquidación en curso: aún no se valida lo real
     plan_malo = _of("OF-4", [{"producto": "GR-901", "planificado": 90, "emitido": 0}])

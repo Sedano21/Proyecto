@@ -1,5 +1,6 @@
 {% extends "base.html" %}{% from "_m.html" import ic, empty, csrf %}
-{% block content %}<div class="dir-head"><h1>Cómo va la empresa</h1><p>{{ d.hoy|d }} · lo principal de cada área y a qué prestarle atención</p></div>
+{% block content %}<div class="dir-head"><h1>Cómo va la empresa</h1><p>{{ d.hoy|d }} · lo principal de cada área y a qué prestarle atención{% if canal %} · venta y nivel de servicio del canal <b>{{ canal }}</b>{% endif %}</p></div>
+<form method="get" class="row noprint">{% include "_canal_filtro.html" %}<div><button class="sec">Ver</button></div></form>
 <div class="row noprint" style="justify-content:flex-end"><a class="btn sec" href="?formato=pdf">{{ ic('download') }} PDF</a></div>
 <section class="card msg-clave"><h3>A qué prestarle atención</h3>{% if d.atencion %}<ul class="atencion">{% for n, area, t in d.atencion %}<li class="{{ n }}"><span class="b {{ n }}">{{ {'ALTA': 'Urgente', 'MEDIA': 'Atención', 'INFO': 'Seguimiento'}[n] }}</span> <b>{{ area }}:</b> {{ t }}</li>{% endfor %}</ul>{% else %}<p>Nada fuera de lo normal: todos los indicadores están dentro de lo esperado.</p>{% endif %}</section>
 <div class="empresa-cards">{% for c in d.cards %}<section class="card ec {{ c.nivel }}"><span class="ec-area">{{ c.area }}</span><h3>{{ c.titulo }}</h3><b class="ec-v">{{ c.valor }}</b><p class="small">{{ c.frase }}</p></section>{% endfor %}</div>

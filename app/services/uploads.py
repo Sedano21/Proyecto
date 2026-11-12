@@ -483,6 +483,18 @@ def validate_batch(b):
         r.errores, r.advertencias = [], []
     fn(b)
     activos = [r for r in b.rows if not r.excluida]
+    req = SPECS.get(b.tipo, {}).get("req", [])
+    for r in activos:  # V30: fila incluida tal como viene, con motivo: sus observaciones pasan a advertencias
+        inc = r.inclusion or {}
+        if not inc or not r.errores:
+            continue
+        faltan = [k for k in req if (r.datos or {}).get(k) in (None, "")]
+        if faltan:
+            r.errores = r.errores + [f"No se puede incluir sin corregir: falta {', '.join(faltan)}."]
+            continue
+        r.advertencias = r.advertencias + [f"Incluida con motivo por {inc.get('user', '')}: {inc.get('motivo', '')} "
+                                           f"(observación: {e})" for e in r.errores]
+        r.errores = []
     n_err = sum(1 for r in activos if r.errores)
     n_adv = sum(1 for r in activos if r.advertencias)
     res = dict(b.resumen or {})
@@ -850,6 +862,24 @@ def exclude_row(b, row, user, motivo, excluir=True):
           {"fila": row.fila, "motivo": motivo})
 
 
+def include_row(b, row, user, motivo):
+    """V30: incluye la fila tal como viene, sin editarla, con motivo: una fila excluida vuelve a la carga y una fila con
+    observaciones se acepta (sus errores pasan a advertencias). Las filas sin un dato obligatorio se deben corregir."""
+    from ..models import now
+    if b.estado in ("CONFIRMADO", "DESCARTADO"):
+        raise BusinessError("La carga ya fue cerrada.")
+    if not (motivo or "").strip():
+        raise BusinessError("Indique el motivo para incluir la fila.")
+    row.excluida = False
+    row.motivo_exclusion = ""
+    row.inclusion = {"motivo": motivo.strip()[:250], "user": user.nombre, "ts": now().isoformat(timespec="minutes")}
+    validate_batch(b)
+    audit(user, "CARGA_FILA_INCLUIDA", "UploadBatch", b.id, {"fila": row.fila, "motivo": motivo.strip(),
+                                                              "observaciones": list(row.advertencias)})
+    if row.errores:
+        raise BusinessError("; ".join(row.errores))
+
+
 def exclude_errors(b, user, motivo):
     """V15: excluye de una vez todas las filas con error (p. ej. RUC inválidos o cuentas internas de SAP), con motivo."""
     if b.estado in ("CONFIRMADO", "DESCARTADO"):
@@ -1207,12 +1237,17 @@ def _c_ov(b, user, opciones):
     # en SAP»: se liberan sus reservas y NO se descuenta stock aquí (la salida ya está en SAP y la próxima carga de stock
     # la refleja; descontar aquí la duplicaría). Si ya está en preparación o en ruta manda el módulo: queda como diferencia.
     cerradas_auto = 0
+    # V30: la OV con factura de reserva aún por entregar sigue abierta en el módulo aunque SAP cierre la OV
+    from .facturas_reserva import ov_con_reserva_pendiente
+    con_reserva = ov_con_reserva_pendiente()
     if param("cerrar_ov_cerrada_en_sap", True):
         from .stock import release_order
         for o in s.execute(select(SalesOrder).where(or_(SalesOrder.numero.in_(cerradas_sap or {""}),
                                                         SalesOrder.sap_docnum.in_(cerradas_sap or {""})),
                                                     SalesOrder.estado.in_(("BORRADOR", "REGISTRADA", "EVALUADA", "BLOQUEADA")))).scalars():
             if o.numero in grupos or (o.sap_docnum and o.sap_docnum in grupos):
+                continue
+            if o.numero in con_reserva or (o.sap_docnum and o.sap_docnum in con_reserva):
                 continue
             release_order(o, "OV atendida y cerrada en SAP")
             antes = o.estado
@@ -1224,6 +1259,8 @@ def _c_ov(b, user, opciones):
         for o in s.execute(select(SalesOrder).where(SalesOrder.estado.notin_(ORDEN_ESTADOS_CERRADOS))).scalars():
             if o.numero in grupos or (o.regularizacion or {}):
                 continue
+            if o.numero in con_reserva or (o.sap_docnum and o.sap_docnum in con_reserva):
+                continue  # V30: cerrada en SAP por la factura de reserva, con mercadería aún por entregar
             if o.numero in cerradas_sap:
                 conc.add("OV", o.numero, "Estado", "Cerrada en SAP", o.estado,
                          "La OV ya está en preparación o en ruta en el módulo: revisar antes de cerrarla")

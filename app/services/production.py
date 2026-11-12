@@ -990,6 +990,11 @@ def requirements(periodo="SEMANA", desde=None, hasta=None):
                 continue
             falt = l.cantidad - l.despachado - line_reserved(l)
             sumar(l.product_code, o.fecha_compromiso, falt, "Faltante OV", o.numero)
+    # V30: facturas de reserva sin entrega aprobadas por la Jefatura de Producción (si su OV no está abierta en el módulo)
+    from .facturas_reserva import para_preprogramacion
+    for x in para_preprogramacion():
+        if x.product_code in con_bom:
+            sumar(x.product_code, x.fecha_entrega or date.today(), x.pendiente, "Factura de reserva", x.numero)
     planificado = {}
     from ..models import ProductionPlan
     for pl in s.execute(select(ProductionPlan).where(ProductionPlan.periodo == periodo, ProductionPlan.fecha >= _inicio(periodo, desde),

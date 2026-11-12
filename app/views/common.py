@@ -291,6 +291,8 @@ def install(app):
     app.jinja_env.globals["es_gerencia"] = lambda u: __import__("app.services.alerts", fromlist=["x"]).es_gerencia_consolidada(u)
     # V29: notas de crédito de SAP que cambiaron lo que se despacha de una OV (OV y picking)
     app.jinja_env.globals["notas_credito_ov"] = lambda o: __import__("app.services.notas_credito_ov", fromlist=["x"]).de_orden(o)
+    # V30: canales para filtrar los indicadores (los de las listas de precios, agregados y asignados) y «(sin canal)»
+    app.jinja_env.globals["canales_filtro"] = lambda: sorted(__import__("app.services.prices", fromlist=["x"]).canales()) + ["(sin canal)"]
     app.jinja_env.globals["sim_cargada"] = lambda: __import__("app.services.simulacion", fromlist=["x"]).hay_simulacion()
     app.jinja_env.globals["centros_costo"] = lambda: __import__("app.services.centros_costo", fromlist=["x"]).lista()
     app.jinja_env.globals["es_video"] = lambda n: __import__("app.services.distribution", fromlist=["x"]).es_video(n)

@@ -5,9 +5,10 @@
 <div class="grow"><label>Cliente</label><select name="cliente" data-search="Buscar cliente…"><option value="">(todos)</option>{% for c in clientes %}<option value="{{ c.id }}" {{ 'selected' if f.cliente == c.id|string }}>{{ c.nombre }}</option>{% endfor %}</select></div>
 {% if user.role_code != 'EJECUTIVO_VENTAS' %}<div><label>Ejecutivo comercial</label><select name="vendedor"><option value="">(todos)</option>{% for v in vendedores %}<option value="{{ v.id }}" {{ 'selected' if vend == v.id|string }}>{{ v.nombre }}</option>{% endfor %}</select></div>{% endif %}
 <div><button class="sec">Ver</button></div></form>
+{% if f.cliente %}<p><a class="btn sec" href="{{ url_for('seg.customer_docs', cid=f.cliente, desde=f.desde, hasta=f.hasta) }}">Guías, facturas y notas de crédito del cliente</a></p>{% endif %}
 <div class="tw"><table><tr><th>Despacho</th><th>Cliente</th><th class="r">OV</th><th class="r">kg</th><th class="r">Avance</th><th>Estados</th><th>Retrasos</th><th></th></tr>
 {% for gx in grupos %}<tr><td>{{ gx.fecha|d }}</td><td>{{ gx.cliente.nombre if gx.cliente }}</td><td class="r">{{ gx.ovs|length }}</td><td class="r">{{ gx.kg|n }}</td><td class="r">{{ gx.avance }} %</td>
 <td class="small">{% for e, n in gx.estados.items() %}{{ b(e) }} {{ n }} {% endfor %}</td><td>{% if gx.retrasos %}<span class="b ALTA">{{ gx.retrasos }}</span>{% else %}—{% endif %}</td>
-<td><a class="btn sec small" href="{{ url_for('seg.group', cid=gx.cliente.id, fecha=gx.fecha.isoformat()) }}">Ver expediente</a></td></tr>
+<td><a class="btn sec small" href="{{ url_for('seg.group', cid=gx.cliente.id, fecha=gx.fecha.isoformat()) }}">Ver expediente</a> <a class="btn sec small" href="{{ url_for('seg.customer_docs', cid=gx.cliente.id) }}">Guías y facturas</a></td></tr>
 {% else %}<tr><td colspan="8" class="muted">Sin OV en el periodo.</td></tr>{% endfor %}</table></div>
 {% endblock %}
