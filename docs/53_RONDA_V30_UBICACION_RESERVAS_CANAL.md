@@ -170,3 +170,4 @@ materia ingresada (granel o materia prima)  +  desmedro  =  producto (terminado 
   - lista de OV desplegada;
   - clientes sin movimiento;
   - facturas de reserva.
+- Suite completa: **612 pruebas, todas pasan**.
