@@ -171,3 +171,5 @@ Si la necesidad es mayor que 0:
   - compras sin PT, MQ ni MP y reposición anticipada;
   - OTIF día a día.
 - Migración 0043 aplicada sobre una base nueva: la base coincide con el código.
+- Pruebas anteriores: siguen con su configuración original (compra de MP en los datos de demostración y sin stock de seguridad). Las reglas nuevas se prueban en test_v31. La demostración ahora solo crea compras de lo que no se fabrica.
+- Suite completa: **619 pruebas, todas pasan**.
