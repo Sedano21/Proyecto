@@ -139,7 +139,12 @@ def test_rotacion_con_produccion_vencidos_y_kg(app, s):
 def test_compras_no_pt_mq_mp_y_reposicion_anticipada(app, s, U, new_order):
     from app.models import ProductionRequest, PurchaseRequest
     from app.services import purchasing
-    from app.services.core import BusinessError, param
+    from app.services.core import BusinessError, param, set_param
+    from app.catalogs import PARAMS
+    valores = {k: v for k, v, *_ in PARAMS}
+    assert valores["prefijos_producidos"] == ["PT", "MQ", "MP"] and valores["usar_stock_seguridad"] is True
+    set_param("prefijos_producidos", ["PT", "MQ", "MP"])
+    set_param("usar_stock_seguridad", True)
     for code in ("PT-901", "MP-901"):
         with pytest.raises(BusinessError, match="fabrica la empresa"):
             purchasing.create_request(U("coord.almacen"), code, 10)

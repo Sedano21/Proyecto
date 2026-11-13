@@ -37,6 +37,10 @@ def app():
         set_param("hora_corte_rutas", "")  # V12: corte de rutas de las 15:00 (se prueba con hora fija)
         # V27: los flujos anteriores usan los 3 vistos buenos de salida; los 5 (con Calidad y Auxiliar) en test_v27.py
         set_param("vistos_buenos_salida", ["SEGURIDAD", "CHOFER", "LIDER_ALMACEN"])
+        # V31: los flujos anteriores compran MP en los datos de demostración y no usan stock de seguridad; las reglas
+        # nuevas (no se compra PT, MQ ni MP; stock de seguridad activo) se prueban en test_v31.py
+        set_param("prefijos_producidos", [])
+        set_param("usar_stock_seguridad", False)
         SessionLocal().commit()
         yield app
         SessionLocal.remove()
