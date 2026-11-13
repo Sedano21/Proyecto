@@ -1,9 +1,9 @@
-{% extends "base.html" %}{% from "_m.html" import b, csrf, ic, empty, paginacion %}
+{% extends "base.html" %}{% from "_m.html" import b, csrf, ic, empty, paginacion, buscador_lista %}
 {% block content %}<div class="page-head"><div><h1>Disponibilidad del personal</h1><p class="sub">Vacaciones, descanso médico, faltas justificadas o injustificadas</p></div>
 {% if can('personal.ausencias') %}<button class="btn" data-open="dlg-aus">{{ ic('plus') }} Registrar ausencia</button>{% endif %}</div>
 <p class="note small">Una ausencia impide asignar a la persona en rutas, trabajos o limpieza en esas fechas, avisa a Distribución si ya tenía rutas (con los clientes que lleva) y completa sola la asistencia del colaborador.</p>
 <form method="get" class="row card noprint"><div><label>Desde</label><input type="date" name="desde" value="{{ desde.isoformat() }}"></div><div><label>Hasta</label><input type="date" name="hasta" value="{{ hasta.isoformat() }}"></div>
-<div><label>Área</label><select name="area"><option value="">(todas)</option>{% for a in areas %}<option {{ 'selected' if a == area }}>{{ a }}</option>{% endfor %}</select></div><div><button class="sec">Filtrar</button></div></form>
+<div><label>Área</label><select name="area"><option value="">(todas)</option>{% for a in areas %}<option {{ 'selected' if a == area }}>{{ a }}</option>{% endfor %}</select></div><div><button class="sec">Filtrar</button></div></form>{{ buscador_lista() }}
 {% if resumen %}<div class="kpis">{% for ar, tipos_ in resumen.items() %}<div class="kpi"><b>{{ tipos_.values()|sum }} días</b><span>{{ ar }}</span><small>{% for k, v in tipos_.items() %}{{ tipos[k] }} {{ v }}{{ ' · ' if not loop.last }}{% endfor %}</small></div>{% endfor %}</div>{% endif %}
 <div class="tw"><table class="small apilable"><tr><th>Persona</th><th>Área</th><th>Tipo</th><th>Desde</th><th>Hasta</th><th>Motivo</th><th>Sustento</th><th></th></tr>
 {% for a in rows %}<tr><td data-label="Persona"><b>{{ a.nombre }}</b></td><td data-label="Área">{{ a.area }}</td><td data-label="Tipo"><span class="b {{ 'ALTA' if a.tipo == 'FALTA_INJUSTIFICADA' else ('MEDIA' if a.tipo.startswith('FALTA') else 'info') }}">{{ tipos[a.tipo] }}</span></td>

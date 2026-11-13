@@ -30,3 +30,6 @@
 {% if p.page < p.pages %}<a href="{{ p.url(p.page + 1) }}" aria-label="Página siguiente">›</a>{% endif %}
 <span class="pag-por">{% for x in (25, 50, 100) %}{% if x == p.por %}<span class="act" title="por página">{{ x }}</span>{% else %}<a href="{{ p.url(1, por=x) }}" title="{{ x }} por página">{{ x }}</a>{% endif %}{% endfor %}</span>
 </span></nav>{% elif p %}<nav class="pag"><span class="pag-info">{{ p.total }} {{ nombre if p.total != 1 or not nombre.endswith("s") else nombre[:-1] }}</span></nav>{% endif %}{% endmacro %}
+
+{# V31: buscador de texto para las listas (busca con Enter o con la lupa; conserva los demás filtros) #}
+{% macro buscador_lista(texto='Buscar en la lista') %}<form method="get" class="card row buscador-lista noprint" role="search">{% for k, vs in request.args.lists() %}{% if k not in ('buscar', 'page') %}{% for v in vs %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}{% endif %}{% endfor %}<div class="grow"><label for="buscar-lista">Buscar</label><input id="buscar-lista" type="search" name="buscar" value="{{ request.args.get('buscar', '') }}" placeholder="{{ texto }}" autocomplete="off"></div></form>{% endmacro %}

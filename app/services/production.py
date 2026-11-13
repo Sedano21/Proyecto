@@ -263,6 +263,9 @@ def purchase_missing_materials(req, user=None):
         if q <= 1e-9 or db().get(Product, m["componente"]) is None:
             continue
         fecha = req.fecha_requerida or (req.order.fecha_compromiso if req.order else None)
+        from .purchasing import es_producido
+        if es_producido(db().get(Product, m["componente"])):
+            continue  # V31: MP y demás que fabrica la empresa: se producen (reposición), no se compran
         r = create_request(None, m["componente"], round(q, 4), fecha, origen="PRODUCCION", order=req.order, sistema=True)
         extra = f" Para producir {req.product_code} × {req.cantidad:g} (solicitud de producción #{req.id})."
         if extra not in (r.motivo or ""):

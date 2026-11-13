@@ -38,8 +38,8 @@ TIPOS_SAP = {"OV": "Órdenes de venta abiertas", "CLIENTES": "Clientes", "PRODUC
 # V29: lecturas de SAP que no son cargas: facturas y notas de crédito, órdenes de fabricación ligadas a OV, órdenes de
 # venta y de servicio del periodo (demanda) y balance de peso de las órdenes de fabricación
 EXTRAS = {"FACTURAS": "Facturas y notas de crédito", "SERVICIOS": "Órdenes de fabricación ligadas a OV",
-          "ORDENES": "Órdenes de venta y de servicio del periodo", "BALANCE_OF": "Balance de peso de órdenes de fabricación",
-          "RESERVAS": "Facturas de reserva sin entrega"}
+          "ORDENES": "Órdenes (abiertas y cerradas), guías y consumos desde julio", "BALANCE_OF": "Balance de peso de órdenes de fabricación",
+          "RESERVAS": "Facturas de reserva sin entrega", "ACTUALIZAR": "Actualización con SAP (lo que cambió)"}
 MAX_PAGINAS = 400
 
 
@@ -559,6 +559,8 @@ def scheduled_sync(ahora=None):
         tipos.append("BALANCE_OF")  # V29: el balance de peso de las OF se revisa solo (pedido de la empresa)
     if param("sap_reservas_automatico", True) and "RESERVAS" not in tipos:
         tipos.insert(0, "RESERVAS")  # V30: antes de las OV, para no cerrar las que tienen factura de reserva por entregar
+    if param("sap_historial_automatico", True) and "ORDENES" not in tipos:
+        tipos.append("ORDENES")  # V31: órdenes abiertas y cerradas, guías y consumos desde julio (solo lo que cambió)
     for tipo in tipos:
         if tipo in EXTRAS:  # V29: lecturas que no son cargas, con el mismo intervalo
             j = job_state(tipo)
@@ -1224,7 +1226,7 @@ def sync_background(app, tipo, user, upload_dir):
             try:
                 u = db().get(User, uid)
                 if tipo in EXTRAS:
-                    res = sync_extra(tipo, u)
+                    res = actualizar_todo(u, upload_dir) if tipo == "ACTUALIZAR" else sync_extra(tipo, u)
                     db().commit()
                     _job_set(tipo, {"estado": "OK", "inicio": inicio, "fin": datetime.now().isoformat(timespec="seconds"),
                                     "usuario": u.nombre, "resumen": res})
@@ -1390,9 +1392,9 @@ def sync_extra(tipo, user, sl=None):
         return sync_facturas(user, sl)
     if tipo == "SERVICIOS":
         return sync_servicios(user, sl)
-    if tipo == "ORDENES":
-        from .sap_v29 import sync_ordenes
-        return sync_ordenes(user, sl)
+    if tipo == "ORDENES":  # V31: historial desde julio, incremental
+        from .sap_v31 import sync_historial
+        return sync_historial(user, sl)
     if tipo == "BALANCE_OF":
         from .balance_of import sync as sync_balance
         return sync_balance(user, sl)
@@ -1400,3 +1402,29 @@ def sync_extra(tipo, user, sl=None):
         from .facturas_reserva import sync as sync_reservas
         return sync_reservas(user, sl)
     raise BusinessError("Tipo de dato de SAP no válido.")
+
+
+def actualizar_todo(user, upload_dir):
+    """V31: botón «Actualizar con SAP»: trae solo lo que cambió en SAP para que el módulo no quede desfasado antes de
+    registrar una OV, subir guías, etc. Facturas de reserva, los datos de «sap_sync_tipos» (OV, clientes, artículos,
+    guías…: solo crea una carga si SAP cambió desde la anterior; se aplica sola si el tipo está en «sap_autoconfirmar»),
+    el historial de órdenes y guías desde julio (incremental) y facturas. Las cargas quedan a nombre de SAP_SYNC_USER."""
+    from sqlalchemy import select as _sel
+    from ..db import db
+    from ..models import User
+    u = db().execute(_sel(User).where(User.username == os.environ.get("SAP_SYNC_USER", ""))).scalars().first() or user
+    res = {}
+    for tipo in ["RESERVAS"] + [t for t in (param("sap_sync_tipos", []) or []) if t in TIPOS_SAP] + ["ORDENES", "FACTURAS"]:
+        try:
+            with db().begin_nested():
+                if tipo in EXTRAS:
+                    r = sync_extra(tipo, u)
+                    res[tipo] = "ok"
+                else:
+                    b = sync(tipo, u, upload_dir, solo_si_cambia=True)
+                    res[tipo] = "sin cambios" if b is None else f"carga #{b.id} ({b.estado.lower()})"
+        except SapConnectionError:
+            raise
+        except BusinessError as e:
+            res[tipo] = f"error: {str(e)[:150]}"
+    return res

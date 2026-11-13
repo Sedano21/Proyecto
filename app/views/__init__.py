@@ -361,7 +361,17 @@ def alerts():
     if f["type_code"] and f["type_code"] not in codes:
         f["type_code"] = None
     # solo los tipos de su área o que se comunican con ella; V20: las cerradas, de los últimos 30 días (salvo filtro de estado)
-    rows = alert_svc.inbox(g.user, dias_cerradas=int(request.args.get("dias") or 30), **f)
+    # V31: filtro por fechas (desde/hasta de creación); con «desde» se incluyen también las cerradas de ese rango
+    from .common import f_date
+    desde, hasta = f_date("desde"), f_date("hasta")
+    if desde and hasta and hasta < desde:
+        desde, hasta = hasta, desde
+    dias = int(request.args.get("dias") or 30)
+    if desde:
+        dias = max(dias, (date.today() - desde).days + 1)
+    rows = alert_svc.inbox(g.user, dias_cerradas=dias, **f)
+    if desde or hasta:
+        rows = [a for a in rows if (not desde or a.creado_ts.date() >= desde) and (not hasta or a.creado_ts.date() <= hasta)]
     naturaleza = request.args.get("naturaleza") or ""
     if naturaleza in ("TAREA", "INFORMATIVA"):
         rows = [a for a in rows if alert_svc.nature_for(g.user, a) == naturaleza]
@@ -373,7 +383,11 @@ def alerts():
             key = (a.area if agrupar == "area" else a.type.grupo if agrupar == "grupo" else a.type.nombre, a.prioridad)
             grupos.setdefault(key, []).append(a)
         grupos = dict(sorted(grupos.items(), key=lambda kv: (alert_svc.PRIORIDAD_ORDEN.get(kv[0][1], 9), kv[0][0])))
-    return render_template("alerts.html", rows=rows if agrupar else paginate(rows), f=f, tipos=tipos, agrupar=agrupar, grupos=grupos,
+    if agrupar and request.args.get("buscar"):
+        from .common import coincide
+        grupos = {k: [a for a in v if coincide(a, request.args["buscar"])] for k, v in grupos.items()}
+        grupos = {k: v for k, v in grupos.items() if v}
+    return render_template("alerts.html", desde=desde, hasta=hasta, rows=rows if agrupar else paginate(rows), f=f, tipos=tipos, agrupar=agrupar, grupos=grupos,
                            areas=sorted({t.area for t in tipos}), grupos_tipo=sorted({t.grupo for t in tipos}),
                            estados=alert_svc.ESTADOS, estado_txt=alert_svc.ESTADO_TXT, naturaleza=naturaleza)
 

@@ -3093,3 +3093,26 @@ ALERT_TYPES += [
                "SUPERV_CALIDAD", "JEFE_CALIDAD"], "DEFINIDO", V30,
      "Un día antes y el mismo día de la fecha de liberación de la fumigación, para organizar la salida del contenedor.", False),
 ]
+# ------------------------------------------------------------------ V31 (13-nov-2026)
+V31 = "Observaciones V31 (13-nov-2026)"
+PARAMS += [
+    ("sap_historial_desde", "2026-07-01", "str", "Integración SAP",
+     "Desde qué fecha se leen de SAP las órdenes (abiertas y cerradas), guías y consumos de producción para el análisis.",
+     "DEFINIDO", V31),
+    ("sap_historial_automatico", True, "bool", "Integración SAP",
+     "Actualizar solo, con la sincronización, el historial de órdenes, guías y consumos (solo lo que cambió en SAP).",
+     "DEFINIDO", V31),
+]
+PARAMS += [
+    ("prefijos_producidos", ["PT", "MQ", "MP"], "list", "Compras",
+     "Prefijos de los artículos que fabrica la empresa: no se compran; su reposición es una pre-solicitud de producción.",
+     "DEFINIDO", V31),
+]
+# V31: la empresa pidió que la reposición sume el stock de seguridad (con el 30 % de su Excel actual)
+PARAMS_CAMBIO.append(("usar_stock_seguridad", False, True, f"{V31}: la reposición suma el stock de seguridad"))
+PARAMS = [(k, (True if k == "usar_stock_seguridad" else v), *rest) for k, v, *rest in PARAMS]
+ALERT_TYPES += [
+    ("PRODUCCION_REPOSICION", "Pre-solicitud de producción por reposición (antes del quiebre)", "Producción", "Solicitudes",
+     "MEDIA", ["JEFE_PRODUCCION", "ASIST_PRODUCCION", "JEFE_OPERACIONES"], "DEFINIDO", V31,
+     "PT, MQ o MP con stock que no cubre las OV pendientes, el consumo durante el plazo y el stock de seguridad.", False),
+]

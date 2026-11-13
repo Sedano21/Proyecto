@@ -136,25 +136,25 @@
     mostrar(subeArchivo ? 'Subiendo y procesando el archivo…' : 'Guardando…');
   }, false);
 
-  // ---------------------------------------------------------------- V26: los filtros buscan mientras se escribe
-  // Al escribir en el buscador de una lista (formulario GET) se filtra solo, sin pulsar «Buscar». Donde la lista se
-  // recarga por partes el cursor no se mueve; en las demás pantallas, al recargar se devuelve el cursor al buscador.
-  var tVivo = null;
+  // ---------------------------------------------------------------- V31: el buscador busca con Enter o con la lupa
+  // (V26 buscaba mientras se escribía; la empresa pidió escribir tranquilo y buscar al pulsar Enter o la lupa)
   function esFiltro(el) {
     var f = el && el.form;
     return f && (f.getAttribute('method') || 'get').toLowerCase() === 'get' && !f.hasAttribute('data-sin-vivo') && !el.closest('dialog');
   }
-  document.addEventListener('input', function (e) {
-    var el = e.target;
-    if (!el.matches || !el.matches('input[type=search], input[type=text], input:not([type])') || el.hasAttribute('list') || !esFiltro(el)) return;
-    var v = el.value.trim();
-    if (v.length === 1) return;  // desde 2 letras (o al borrar todo)
-    clearTimeout(tVivo);
-    tVivo = setTimeout(function () {
-      if (!listasDe(document).length) { try { sessionStorage.setItem('filtroVivo', JSON.stringify({ p: location.pathname, n: el.name })); } catch (_) { /* sin almacenamiento */ } }
-      if (el.form.requestSubmit) el.form.requestSubmit(); else el.form.submit();
-    }, 450);
-  });
+  function ponerLupas(raiz) {
+    (raiz || document).querySelectorAll('form input[type=search], form input[name=q], form input[name=buscar]').forEach(function (el) {
+      if (el.dataset.lupa || !esFiltro(el) || el.closest('[data-sin-lupa]')) return;
+      el.dataset.lupa = '1';
+      var b = document.createElement('button');
+      b.type = 'submit'; b.className = 'lupa'; b.title = 'Buscar'; b.setAttribute('aria-label', 'Buscar');
+      b.innerHTML = '<svg class="ic" aria-hidden="true" focusable="false"><use href="#i-search"/></svg>';
+      var caja = document.createElement('span'); caja.className = 'buscador';
+      el.parentNode.insertBefore(caja, el); caja.appendChild(el); caja.appendChild(b);
+    });
+  }
+  window.ponerLupas = ponerLupas;
+  if (document.readyState !== 'loading') ponerLupas(); else document.addEventListener('DOMContentLoaded', function () { ponerLupas(); });
   document.addEventListener('change', function (e) {  // listas desplegables y fechas del filtro: también al instante
     var el = e.target;
     if (!el.matches || !el.matches('select, input[type=date], input[type=checkbox]') || !esFiltro(el) || !listasDe(document).length) return;

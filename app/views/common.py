@@ -293,6 +293,11 @@ def install(app):
     app.jinja_env.globals["notas_credito_ov"] = lambda o: __import__("app.services.notas_credito_ov", fromlist=["x"]).de_orden(o)
     # V30: canales para filtrar los indicadores (los de las listas de precios, agregados y asignados) y «(sin canal)»
     app.jinja_env.globals["canales_filtro"] = lambda: sorted(__import__("app.services.prices", fromlist=["x"]).canales()) + ["(sin canal)"]
+    # V31: estado del botón «Actualizar con SAP» de la barra superior (None si SAP no está configurado)
+    def _sap_act():
+        from ..services import sap_sl
+        return sap_sl.job_state("ACTUALIZAR") if sap_sl.configured() else None
+    app.jinja_env.globals["sap_actualizacion"] = _sap_act
     app.jinja_env.globals["sim_cargada"] = lambda: __import__("app.services.simulacion", fromlist=["x"]).hay_simulacion()
     app.jinja_env.globals["centros_costo"] = lambda: __import__("app.services.centros_costo", fromlist=["x"]).lista()
     app.jinja_env.globals["es_video"] = lambda n: __import__("app.services.distribution", fromlist=["x"]).es_video(n)
@@ -422,6 +427,11 @@ def paginate(fuente, por=None):
         page = max(1, int(request.args.get("page") or 1))
     except ValueError:
         page = 1
+    buscar = (request.args.get("buscar") or "").strip()
+    if buscar:  # V31: buscador de texto en las listas (todas las palabras, sin importar mayúsculas ni tildes)
+        if not isinstance(fuente, (list, tuple)):
+            fuente = list(db().execute(fuente.limit(5000)).scalars())
+        fuente = [x for x in fuente if coincide(x, buscar)]
     if isinstance(fuente, (list, tuple)):
         total = len(fuente)
         page = min(page, max(1, -(-total // por)))
@@ -431,3 +441,46 @@ def paginate(fuente, por=None):
     page = min(page, max(1, -(-total // por)))
     items = list(db().execute(fuente.limit(por).offset((page - 1) * por)).scalars())
     return Pagina(items, page, por, total)
+
+
+def _norm(t):
+    import unicodedata
+    return "".join(c for c in unicodedata.normalize("NFD", str(t)) if unicodedata.category(c) != "Mn").upper()
+
+
+_RELACIONES = ("customer", "order", "product", "lot", "user", "vendedor", "warehouse", "route", "vehicle", "driver",
+               "proveedor", "supplier", "request")
+
+
+def coincide(obj, texto):
+    """V31: True si todas las palabras del texto aparecen en los datos del registro (sus columnas y los nombres de sus
+    relaciones principales: cliente, OV, producto, lote, usuario, almacén…)."""
+    partes = []
+
+    def tomar(o, profundidad=0):
+        if o is None:
+            return
+        if isinstance(o, dict):
+            partes.append(str(o))
+            return
+        tabla = getattr(o, "__table__", None)
+        if tabla is None:
+            partes.append(str(o))
+            return
+        for c in tabla.columns:
+            v = getattr(o, c.key, None)
+            if v not in (None, ""):
+                partes.append(str(v))
+        if profundidad == 0:
+            for r in _RELACIONES:
+                try:
+                    rel = getattr(o, r, None)
+                except Exception:  # noqa: BLE001
+                    rel = None
+                if rel is not None and not isinstance(rel, (list, str, int, float)):
+                    tomar(rel, 1)
+    tomar(obj)
+    for l in (getattr(obj, "lines", None) or [])[:200] if isinstance(getattr(obj, "lines", None), list) else []:
+        partes.append(f"{getattr(l, 'product_code', '')} {getattr(getattr(l, 'product', None), 'descripcion', '') or ''}")
+    base = _norm(" ".join(partes))
+    return all(w in base for w in _norm(texto).split())

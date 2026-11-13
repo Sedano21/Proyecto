@@ -1,32 +1,37 @@
 {% extends "base.html" %}{% from "_m.html" import b, ic, empty, csrf %}
-{% block content %}<div class="page-head"><div><h1>{{ {'VENTA': 'Órdenes de venta', 'SERVICIO': 'Órdenes de servicio', 'TODAS': 'Órdenes de venta y de servicio'}[clase] }} abiertas vs guías de SAP</h1>
-<p class="sub">Despachos completos, incompletos (parciales) o sin despacho según SAP, a la fecha de la última lectura, y si lo guiado cuadra con lo entregado en cada orden.
-Fuente: la última carga de <b>Órdenes de venta abiertas</b>{% if res.ov_batch %} (#{{ res.ov_batch.id }}, {{ res.ov_batch.ts.strftime('%d/%m/%Y %H:%M') }}){% endif %}
-y de <b>Entregas (guías)</b>{% if res.guias_batch %} (#{{ res.guias_batch.id }}, {{ res.guias_batch.ts.strftime('%d/%m/%Y %H:%M') }}){% else %} (aún no se trajeron){% endif %}.
-Se actualizan solas con la sincronización con SAP o al traerlas en <a href="{{ url_for('alm.sap_sync') }}">Integración SAP</a>.</p></div>
-<div>{% if res.filas %}<a class="btn sec small" href="{{ url_for('alm.sap_dispatch_check', salida='xlsx', clase=clase) }}">{{ ic('download') }} Excel</a>{% endif %}</div></div>
-<div class="tabs noprint">{% for k, t in [('VENTA', 'Órdenes de venta'), ('SERVICIO', 'Órdenes de servicio'), ('TODAS', 'Todas')] %}<a class="{{ 'on' if clase == k }}" href="{{ url_for('alm.sap_dispatch_check', clase=k) }}">{{ t }}{% if k != 'TODAS' %} ({{ res.por_clase.get(k, 0) if res.por_clase else 0 }}){% endif %}</a>{% endfor %}</div>
+{% block content %}{% set h = res.historial %}{% set sit_txt = {'ABIERTAS': 'abiertas', 'CERRADAS': 'cerradas', 'TODAS': 'abiertas y cerradas'}[sit] if h else 'abiertas' %}
+<div class="page-head"><div><h1>{{ {'VENTA': 'Órdenes de venta', 'SERVICIO': 'Órdenes de servicio', 'TODAS': 'Órdenes de venta y de servicio'}[clase] }} {{ sit_txt }} vs guías de SAP</h1>
+<p class="sub">Despachos completos, incompletos (parciales) o sin despacho según SAP y si lo guiado cuadra con lo entregado en cada orden.
+{% if h %}Fuente: órdenes y guías de SAP desde el {{ res.historial_desde }} (abiertas y cerradas), leídas el {{ res.historial_ts }}; se actualizan solas con la sincronización o con «Actualizar con SAP» (solo trae lo que cambió).
+{% else %}Fuente: la última carga de <b>Órdenes de venta abiertas</b>{% if res.ov_batch %} (#{{ res.ov_batch.id }}, {{ res.ov_batch.ts.strftime('%d/%m/%Y %H:%M') }}){% endif %}
+y de <b>Entregas (guías)</b>{% if res.guias_batch %} (#{{ res.guias_batch.id }}, {{ res.guias_batch.ts.strftime('%d/%m/%Y %H:%M') }}){% else %} (aún no se trajeron){% endif %}. Para ver también las cerradas y filtrar por mes, traiga el historial de SAP desde julio.{% endif %}</p></div>
+<div class="row">{% if configurado and job_hist.estado != 'EN_CURSO' %}<form method="post" action="{{ url_for('alm.sap_sync') }}">{{ csrf() }}<input type="hidden" name="tipo" value="ORDENES"><input type="hidden" name="volver" value="{{ request.full_path.rstrip('?') }}"><button class="btn sec small">{{ ic('refresh') }} {{ 'Actualizar historial' if h else 'Traer historial desde julio' }}</button></form>{% elif job_hist.estado == 'EN_CURSO' %}<span class="small"><span class="spin-sm" aria-hidden="true"></span> trayendo el historial de SAP…</span><script>setTimeout(function(){ location.reload(); }, 10000);</script>{% endif %}
+{% if res.filas %}<a class="btn sec small" href="{{ url_for('alm.sap_dispatch_check', salida='xlsx', clase=clase, mes=mes, sit=sit) }}">{{ ic('download') }} Excel</a>{% endif %}</div></div>
+{% if job_hist.estado == 'ERROR' %}<div class="card err small">No se pudo traer el historial: {{ job_hist.error }}</div>{% endif %}
+<div class="tabs noprint">{% for k, t in [('VENTA', 'Órdenes de venta'), ('SERVICIO', 'Órdenes de servicio'), ('TODAS', 'Todas')] %}<a class="{{ 'on' if clase == k }}" href="{{ url_for('alm.sap_dispatch_check', clase=k, mes=mes, sit=sit) }}">{{ t }}{% if k != 'TODAS' %} ({{ res.por_clase.get(k, 0) if res.por_clase else 0 }}){% endif %}</a>{% endfor %}</div>
+{% if h %}<form method="get" class="card row noprint"><input type="hidden" name="clase" value="{{ clase }}"><div><label>Mes de la orden</label><select name="mes"><option value="">Todos (desde {{ res.historial_desde }})</option>{% for m in meses|reverse %}<option value="{{ m }}" {{ 'selected' if mes == m }}>{{ m[5:] }}/{{ m[:4] }}</option>{% endfor %}</select></div>
+<div><label>Situación en SAP</label><select name="sit">{% for k, t in [('ABIERTAS', 'Abiertas'), ('CERRADAS', 'Cerradas'), ('TODAS', 'Abiertas y cerradas')] %}<option value="{{ k }}" {{ 'selected' if sit == k }}>{{ t }}</option>{% endfor %}</select></div><div><button class="sec">Ver</button></div></form>{% endif %}
 {% if clase == 'SERVICIO' and not series_servicio %}<div class="card warn small">Aún no está configurado qué serie de SAP corresponde a las <b>órdenes de servicio</b> (parámetro <code>sap_series_orden_servicio</code>). Hasta configurarlo, aquí solo aparecen las órdenes de tipo servicio de SAP.</div>{% endif %}
 <div class="card row small"><div class="grow"><b>Órdenes de fabricación</b> de SAP ligadas a órdenes (su origen es la orden):
 {% if job.estado == 'EN_CURSO' %}<span class="spin-sm" aria-hidden="true"></span> trayendo de SAP desde {{ job.inicio[11:16] }}…<script>setTimeout(function(){ location.reload(); }, 10000);</script>
 {% elif job.estado == 'ERROR' %}<span class="err">no se pudo traer: {{ job.error }}</span>
 {% elif res.servicios_ts %}última lectura {{ res.servicios_ts|replace('T', ' ') }}{% else %}aún no se trajeron{% endif %}</div>
 {% if configurado and job.estado != 'EN_CURSO' %}<form method="post" action="{{ url_for('alm.sap_sync') }}">{{ csrf() }}<input type="hidden" name="tipo" value="SERVICIOS"><input type="hidden" name="volver" value="{{ request.full_path.rstrip('?') }}"><button class="btn sec small">{{ ic('download') }} Traer de SAP</button></form>{% endif %}</div>
-{% if not res.ov_batch %}{{ empty('Aún no se trajeron de SAP las órdenes abiertas y las entregas (guías).', 'truck') }}{% else %}
+{% if not res.ov_batch and not h %}{{ empty('Aún no se trajeron de SAP las órdenes abiertas y las entregas (guías).', 'truck') }}{% else %}
 {% set t = res.tot %}
 <div class="kpis">
-<a class="kpi {{ 'on' if estado == '' }}" href="{{ url_for('alm.sap_dispatch_check', clase=clase) }}"><span>Abiertas</span><b>{{ t.TOTAL or 0 }}</b></a>
-<a class="kpi warn" href="{{ url_for('alm.sap_dispatch_check', estado='PARCIAL', clase=clase) }}"><span>Incompletas (parciales)</span><b>{{ t.PARCIAL or 0 }}</b></a>
-<a class="kpi ok" href="{{ url_for('alm.sap_dispatch_check', estado='COMPLETO', clase=clase) }}"><span>Completas (sin cerrar en SAP)</span><b>{{ t.COMPLETO or 0 }}</b></a>
-<a class="kpi" href="{{ url_for('alm.sap_dispatch_check', estado='SIN_DESPACHO', clase=clase) }}"><span>Sin despacho</span><b>{{ t.SIN_DESPACHO or 0 }}</b></a>
-<a class="kpi err" href="{{ url_for('alm.sap_dispatch_check', estado='ALERTA', clase=clase) }}"><span>Con observación</span><b>{{ t.CON_ALERTA or 0 }}</b></a>
+<a class="kpi {{ 'on' if estado == '' }}" href="{{ url_for('alm.sap_dispatch_check', clase=clase, mes=mes, sit=sit) }}"><span>{{ sit_txt|capitalize }}</span><b>{{ t.TOTAL or 0 }}</b></a>
+<a class="kpi warn" href="{{ url_for('alm.sap_dispatch_check', estado='PARCIAL', clase=clase, mes=mes, sit=sit) }}"><span>Incompletas (parciales)</span><b>{{ t.PARCIAL or 0 }}</b></a>
+<a class="kpi ok" href="{{ url_for('alm.sap_dispatch_check', estado='COMPLETO', clase=clase, mes=mes, sit=sit) }}"><span>{{ 'Completas' if h and sit != 'ABIERTAS' else 'Completas (sin cerrar en SAP)' }}</span><b>{{ t.COMPLETO or 0 }}</b></a>
+<a class="kpi" href="{{ url_for('alm.sap_dispatch_check', estado='SIN_DESPACHO', clase=clase, mes=mes, sit=sit) }}"><span>Sin despacho</span><b>{{ t.SIN_DESPACHO or 0 }}</b></a>
+<a class="kpi err" href="{{ url_for('alm.sap_dispatch_check', estado='ALERTA', clase=clase, mes=mes, sit=sit) }}"><span>Con observación</span><b>{{ t.CON_ALERTA or 0 }}</b></a>
 </div>
 <p class="noprint"><button type="button" class="btn sec small" data-tg-all>Desplegar todo</button></p>
-<div class="tw"><table class="small"><tr><th></th><th>Orden</th><th>Cliente</th><th>Compromiso</th><th>Estado</th></tr>
+<div class="tw"><table class="small"><tr><th></th><th>Orden</th><th>Cliente</th><th>{{ 'Emisión / compromiso' if h else 'Compromiso' }}</th><th>Estado</th></tr>
 {% for f in filas %}<tr><td><button type="button" class="tg" data-tg="d{{ loop.index }}" aria-expanded="false" title="Ver el detalle de la orden {{ f.ov }}" aria-label="Ver el detalle de la orden {{ f.ov }}">+</button></td>
 <td><b>{{ f.ov }}</b>{% if clase == 'TODAS' %} {{ b('SERVICIO' if f.clase == 'SERVICIO' else 'VENTA', 'info') }}{% endif %}{% if f.serie %} <span class="muted">serie {{ f.serie }}</span>{% endif %}{% if f.alertas %} <span class="err" title="{{ f.alertas|join(' ') }}">⚠ {{ f.alertas|length }}</span>{% endif %}</td>
-<td>{{ f.cliente }}</td><td>{{ f.fecha }}</td>
-<td>{{ b({'PARCIAL': 'INCOMPLETO', 'COMPLETO': 'COMPLETO', 'SIN_DESPACHO': 'SIN DESPACHO'}[f.estado], {'PARCIAL': 'warn', 'COMPLETO': 'ok', 'SIN_DESPACHO': 'info'}[f.estado]) }}</td></tr>
+<td>{{ f.cliente }}</td><td>{% if f.emision %}{{ f.emision }} / {% endif %}{{ f.fecha }}</td>
+<td>{{ b({'PARCIAL': 'INCOMPLETO', 'COMPLETO': 'COMPLETO', 'SIN_DESPACHO': 'SIN DESPACHO'}[f.estado], {'PARCIAL': 'warn', 'COMPLETO': 'ok', 'SIN_DESPACHO': 'info'}[f.estado]) }}{% if f.sap %} <span class="muted small">{{ 'abierta' if f.sap == 'ABIERTA' else 'cerrada' }} en SAP</span>{% endif %}</td></tr>
 <tr class="det" id="d{{ loop.index }}" hidden><td></td><td colspan="4">
 {% for a in f.alertas %}<div class="small err">{{ a }}</div>{% endfor %}
 <div class="tw"><table class="small apilable"><tr><th>Producto</th><th class="r">Solicitado</th><th class="r">Entregado (SAP)</th><th class="r">Pendiente</th><th class="r">Nota de crédito</th><th class="r">Guiado</th></tr>

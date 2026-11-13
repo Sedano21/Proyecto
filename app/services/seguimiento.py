@@ -193,7 +193,25 @@ def service_month(ref=None, customer_id=None, vendedor_id=None, desde=None, hast
 
     def pct(a, b):
         return round(100 * a / b, 1) if b else None
-    return {"desde": ini, "hasta": fin, "universo": len(filas), "filas": filas,
+    # V31: OTIF día a día: por cada día del periodo hasta hoy, las OV comprometidas ese día y el acumulado a esa fecha
+    # (se evalúa lo que ya debía salir; lo que aún está en plazo no baja el indicador)
+    diario, acum = [], {"n": 0, "otif": 0, "a_tiempo": 0, "completo": 0}
+    d = ini
+    while d <= min(fin, hoy):
+        dia = [f for f in filas if f["o"].fecha_compromiso == d and f["evaluable"]]
+        for k in ("otif", "a_tiempo", "completo"):
+            acum[k] += sum(1 for f in dia if f[k])
+        acum["n"] += len(dia)
+        diario.append({"fecha": d, "n": len(dia), "otif": pct(sum(1 for f in dia if f["otif"]), len(dia)),
+                       "on_time": pct(sum(1 for f in dia if f["a_tiempo"]), len(dia)),
+                       "in_full": pct(sum(1 for f in dia if f["completo"]), len(dia)),
+                       "otif_acum": pct(acum["otif"], acum["n"]), "n_acum": acum["n"]})
+        d += timedelta(days=1)
+    ev_ok = sum(1 for f in evaluables if f["otif"])
+    return {"desde": ini, "hasta": fin, "universo": len(filas), "filas": filas, "diario": diario,
+            "otif_fecha": pct(ev_ok, len(evaluables)), "otif_fecha_n": (ev_ok, len(evaluables)),
+            "on_time_fecha": pct(sum(1 for f in evaluables if f["a_tiempo"]), len(evaluables)),
+            "in_full_fecha": pct(sum(1 for f in evaluables if f["completo"]), len(evaluables)),
             "otif": pct(sum(1 for f in filas if f["otif"]), len(filas)), "otif_n": (sum(1 for f in filas if f["otif"]), len(filas)),
             "on_time": pct(sum(1 for f in filas if f["a_tiempo"]), len(filas)), "on_time_n": (sum(1 for f in filas if f["a_tiempo"]), len(filas)),
             "in_full": pct(sum(1 for f in filas if f["completo"]), len(filas)), "in_full_n": (sum(1 for f in filas if f["completo"]), len(filas)),

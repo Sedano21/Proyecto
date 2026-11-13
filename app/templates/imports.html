@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% from "_m.html" import b, csrf, paginacion %}{% from "_market.html" import market_form %}
+{% extends "base.html" %}{% from "_m.html" import b, csrf, paginacion, buscador_lista %}{% from "_market.html" import market_form %}
 {% block content %}<h1>Importaciones</h1>
 <p class="muted small">Primera etapa: seguimiento por fases configurables con fechas y recordatorios; alerta de fase fuera de fecha; aviso de llegada a Almacén y Logística y de modificaciones al Gerente General Adjunto (IF §11).</p>
 {% if can('importaciones.gestionar') %}<form method="post" class="card">{{ csrf() }}<div class="row"><div><label>Referencia</label><input name="referencia" required></div><div><label>Proveedor</label><input name="proveedor" required></div>
@@ -7,6 +7,6 @@
 <div><label>N° contenedor</label><input name="contenedor" size="12"></div><div><label>Tipo</label><select name="tipo_contenedor"><option value="">(—)</option><option>20'</option><option>40'</option><option>40' HC</option><option>Carga suelta</option></select></div>
 <div><label>Almacén donde se almacenará</label><select name="warehouse_code">{% for w in whs %}<option value="{{ w.code }}">{{ w.code }} {{ w.nombre }}</option>{% endfor %}</select></div><div><button>Registrar</button></div></div>
 <datalist id="prods">{% for p in prods %}<option value="{{ p.code }}">{{ p.descripcion }}</option>{% endfor %}</datalist></form>{% endif %}
-<div data-lista id="lista-imports"><table><tr><th>Referencia</th><th>Proveedor</th><th>Artículo</th><th class="r">Cantidad</th><th>Llegada estimada</th><th>Estado</th><th>Fases</th></tr>
+{{ buscador_lista() }}<div data-lista id="lista-imports"><table><tr><th>Referencia</th><th>Proveedor</th><th>Artículo</th><th class="r">Cantidad</th><th>Llegada estimada</th><th>Estado</th><th>Fases</th></tr>
 {% for s in rows %}<tr><td><a href="{{ url_for('buy.import_detail', sid=s.id) }}">{{ s.referencia }}</a></td><td>{{ s.proveedor }}</td><td>{{ s.product_code }} {{ pd(s.product_code) }}</td><td class="r">{{ s.cantidad|n }}</td><td>{{ s.fecha_llegada_estimada|d }}</td><td>{{ b(s.estado) }}</td><td>{{ s.phases|selectattr('fecha_real')|list|length }}/{{ s.phases|length }}</td></tr>{% else %}<tr><td colspan="7" class="muted">Sin importaciones</td></tr>{% endfor %}</table>{{ paginacion(rows) }}</div>{% if can('importaciones.gestionar') %}<details class="card"><summary><b>Registrar precio de importación (para el análisis de mercado)</b></summary>{{ market_form({'IMPORTACION': 'Importación'}, fija='IMPORTACION', volver=request.path, titulo='Nuevo precio') }}</details>{% endif %}
 {% endblock %}

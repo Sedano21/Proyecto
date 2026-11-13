@@ -262,6 +262,31 @@ def forecast_view(desde_mes=None, meses=3):
 
 
 # ------------------------------------------------------------------ stock sin rotación
+def ultimas_salidas():
+    """V31: última salida por producto, separada en VENTA (historial de ventas cargado, guías de SAP y despachos del
+    módulo) y PRODUCCIÓN (consumos para producción: emisiones de SAP a órdenes de fabricación y el historial de
+    consumo cargado). El granel y la materia prima rotan tanto si se venden como si se usan para producir.
+    {producto: {"venta": fecha, "produccion": fecha}}"""
+    from ..models import SalesOrderLine, SapMovement
+    out = defaultdict(dict)
+
+    def poner(code, tipo, f):
+        if code and f and (out[code].get(tipo) is None or f > out[code][tipo]):
+            out[code][tipo] = f
+    for code, origen, f in db().execute(select(SalesHistory.product_code, SalesHistory.origen, func.max(SalesHistory.fecha))
+                                        .group_by(SalesHistory.product_code, SalesHistory.origen)):
+        poner(code, "produccion" if (origen or "").upper().startswith("CONSUMO") else "venta", f)
+    for code, tipo, f in db().execute(select(SapMovement.product_code, SapMovement.tipo, func.max(SapMovement.fecha))
+                                      .group_by(SapMovement.product_code, SapMovement.tipo)):
+        poner(code, "produccion" if tipo == "CONSUMO" else "venta", f)
+    for code, ts in db().execute(select(SalesOrderLine.product_code, func.max(SalesOrder.salida_ts))
+                                 .join(SalesOrder, SalesOrder.id == SalesOrderLine.order_id)
+                                 .where(SalesOrder.salida_ts.is_not(None), SalesOrderLine.despachado > 0)
+                                 .group_by(SalesOrderLine.product_code)):
+        poner(code, "venta", ts.date() if hasattr(ts, "date") else ts)
+    return out
+
+
 def no_rotation(dias=None, hoy=None):
     hoy = hoy or date.today()
     dias = int(dias or param("dias_sin_rotacion", 90) or 90)
@@ -269,15 +294,16 @@ def no_rotation(dias=None, hoy=None):
     stock = defaultdict(float)
     for lot in db().execute(select(StockLot).where(StockLot.cantidad > 0)).scalars():
         stock[lot.product_code] += lot.cantidad
-    ultima = dict(db().execute(select(SalesHistory.product_code, func.max(SalesHistory.fecha))
-                               .group_by(SalesHistory.product_code)).all())
+    sal = ultimas_salidas()
     out = []
     for code, q in sorted(stock.items()):
-        u = ultima.get(code)
+        v, pr = sal.get(code, {}).get("venta"), sal.get(code, {}).get("produccion")
+        u = max([x for x in (v, pr) if x] or [None]) if (v or pr) else None
         if u is None or u < desde:
             p = db().get(Product, code)
             out.append({"code": code, "descripcion": p.descripcion if p else "", "tipo": p.tipo if p else "", "stock": round(q, 2),
-                        "ultima_salida": u, "dias": (hoy - u).days if u else None})
+                        "ultima_salida": u, "ultima_venta": v, "ultima_produccion": pr,
+                        "dias": (hoy - u).days if u else None})
     return {"dias": dias, "filas": out}
 
 
@@ -647,15 +673,30 @@ def rotation_ranking(dias=None, hoy=None, top=20, almacen=None):
                 continue
             x = dict(x, stock=round(sum(l.cantidad for l in ls), 2))
         ingreso = min([l.fecha_admision for l in ls if l.fecha_admision] or [None]) if ls else None
+        # sin ninguna salida registrada, los días se cuentan desde que el lote más antiguo ingresó al almacén
         dias_sin = x["dias"] if x["dias"] is not None else ((hoy - ingreso).days if ingreso else None)
-        kg_u = (p.peso_kg or (1.0 if (p.um or "").upper().startswith("K") else 0)) if p else 0
+        desde_ingreso = x["dias"] is None and ingreso is not None
+        from .stock import product_kind
+        # V31: granel y materia prima se manejan en kg; si el artículo no tiene peso por unidad, no se inventa
+        kg_u = (p.peso_kg or (1.0 if (p.um or "").upper().startswith("K") or product_kind(p) in ("GR", "MP") else 0)) if p else 0
         kg = round(x["stock"] * kg_u, 1)
-        venc = min([l.fecha_venc for l in ls if l.fecha_venc] or [None])
+        vigentes = [l.fecha_venc for l in ls if l.fecha_venc and l.fecha_venc >= hoy]
+        vencidos = [l for l in ls if l.fecha_venc and l.fecha_venc < hoy]
+        venc = min(vigentes) if vigentes else None
         dias_venc = (venc - hoy).days if venc else None
+        cant_vencida = round(sum(l.cantidad for l in vencidos), 2)
+        venc_mas_antiguo = min([l.fecha_venc for l in vencidos] or [None])
         c = cost_per_kg(p) if p else None
         pmin, pmax = _rango_precio(p, kg_u) if p else (None, None)
         quienes = sorted(compradores.get(x["code"], {}).items(), key=lambda t: -t[1])[:3]
-        if dias_venc is not None and dias_venc <= 60:
+        if vencidos and cant_vencida >= x["stock"] - 1e-9:
+            reco = (f"Vencido desde el {venc_mas_antiguo:%d/%m/%Y} ({(hoy - venc_mas_antiguo).days} días): no se puede vender "
+                    "como vigente. Que Calidad lo evalúe (reproceso, uso en producción, venta como subproducto o baja) y "
+                    "confirmar en SAP si el stock y la fecha son correctos.")
+        elif vencidos:
+            reco = (f"{cant_vencida:g} de {x['stock']:g} ya vencido (desde el {venc_mas_antiguo:%d/%m/%Y}): separarlo para que "
+                    f"Calidad lo evalúe" + (f"; lo vigente vence en {dias_venc} días." if dias_venc is not None else "."))
+        elif dias_venc is not None and dias_venc <= 60:
             reco = f"Vence en {dias_venc} días: liquidar con precio especial o promoción por volumen esta semana."
         elif quienes:
             reco = "Ofrecer a quienes lo compraron en el último año: " + ", ".join(n for n, _ in quienes) + "."
@@ -663,7 +704,9 @@ def rotation_ranking(dias=None, hoy=None, top=20, almacen=None):
             reco = "Nunca tuvo salida: proponerlo como «producto del mes», muestra comercial o combo con un producto líder."
         else:
             reco = "Incluirlo en la próxima campaña y revisar el precio frente al mercado."
-        filas.append(dict(x, dias_sin=dias_sin, duracion=_duracion(dias_sin), kg=kg, vence=venc, dias_venc=dias_venc,
+        filas.append(dict(x, dias_sin=dias_sin, duracion=_duracion(dias_sin), kg=kg if kg_u else None, vence=venc,
+                          dias_venc=dias_venc, desde_ingreso=desde_ingreso, cant_vencida=cant_vencida,
+                          venc_mas_antiguo=venc_mas_antiguo,
                           valor=round(kg * c, 2) if c and kg else None, compradores=quienes, recomendacion=reco,
                           ingreso=ingreso,
                           # V24: valor a precio de venta (el mínimo de las listas vigentes) y al máximo del SKU
@@ -678,7 +721,7 @@ def rotation_ranking(dias=None, hoy=None, top=20, almacen=None):
     for i, f in enumerate(por_cantidad, start=1):
         f["rank_cantidad"] = i
     return {"dias": base["dias"], "total": len(filas), "por_tiempo": por_tiempo, "por_cantidad": por_cantidad,
-            "kg_total": round(sum(f["kg"] for f in filas), 1),
+            "kg_total": round(sum(f["kg"] or 0 for f in filas), 1), "sin_peso": sum(1 for f in filas if f["kg"] is None),
             "valor_total": round(sum(f["valor"] or 0 for f in filas), 2), "almacen": almacen or "",
             "venta_total": round(sum(f["valor_venta"] or 0 for f in filas), 2),
             "max_total": round(sum(f["valor_max"] or 0 for f in filas), 2)}

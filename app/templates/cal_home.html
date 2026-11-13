@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% from "_m.html" import b, csrf, paginacion %}
+{% extends "base.html" %}{% from "_m.html" import b, csrf, paginacion, buscador_lista %}
 {% block content %}<div class="page-head"><div><h1>Calidad</h1></div>
 <div><a class="btn" href="{{ url_for('cal.inbox') }}">Bandeja</a> <a class="btn sec" href="{{ url_for('cal.line') }}">En la línea y merma</a> <a class="btn sec" href="{{ url_for('cal.materials') }}">Material y saldo por línea</a> <a class="btn sec" href="{{ url_for('cal.management') }}">Inspecciones, visitas, quejas y NC</a></div></div>
 <div class="section-title">Líneas en proceso de producción ({{ en_proceso|length }})</div>
@@ -46,7 +46,7 @@
 <div class="grow"><label>Tipos de formato (uno o varios)</label><div id="ftipos">{% for x in (sel or ['']) %}<div class="dynrow row"><div class="grow"><select name="formato" aria-label="Tipo de formato" style="width:100%"><option value="">(todos)</option>{% for k, n in nombres.items() %}<option value="{{ k }}" {{ 'selected' if k == x }}>{{ n }}</option>{% endfor %}</select></div><div><button type="button" class="ibtn" data-delrow aria-label="Quitar tipo">×</button></div></div>{% endfor %}</div>
 <button type="button" class="sec small" data-addrow="#ftipos">+ Agregar otro tipo</button></div>
 <div><button class="sec">Filtrar</button> <button class="sec" formaction="{{ url_for('cal.records_report') }}" name="salida" value="pdf">PDF</button> <button class="sec" formaction="{{ url_for('cal.records_report') }}" name="salida" value="xlsx">Excel</button> <a class="small" href="{{ url_for('cal.home') }}">limpiar</a></div></div></form>
-<div data-lista id="lista-registros"><table><tr><th>#</th><th>Fecha</th><th>Formato</th><th>Producto / lote</th><th>Resultado</th><th>Usuario</th></tr>
+{{ buscador_lista() }}<div data-lista id="lista-registros"><table><tr><th>#</th><th>Fecha</th><th>Formato</th><th>Producto / lote</th><th>Resultado</th><th>Usuario</th></tr>
 {% for r in recs %}<tr><td><a href="{{ url_for('cal.record_detail', rid=r.id) }}">{{ r.id }}</a></td><td>{{ r.fecha|d }}</td><td>{{ nombres.get(r.formato, r.formato) }}</td><td>{{ r.product_code or '' }} {{ r.lote }}</td><td>{{ b(r.resultado) }}</td><td>{{ r.user.nombre if r.user }}</td></tr>{% else %}<tr><td colspan="6" class="muted">Sin registros con ese filtro.</td></tr>{% endfor %}</table>{{ paginacion(recs, "registros") }}</div>
 <h2>Consolidado de formatos (Excel)</h2>
 <div class="grid g2"><form method="get" action="{{ url_for('cal.consolidated') }}" class="card"><h3>Exportar</h3><p class="small muted">Un libro con una hoja por formato y un resumen. Se exporta lo filtrado arriba (o los últimos 30 días).</p>

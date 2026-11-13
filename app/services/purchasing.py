@@ -1,4 +1,5 @@
 """Compras nacionales (IF §10) y análisis de reposición (IF §7)."""
+from collections import defaultdict
 import math
 from datetime import date, timedelta
 
@@ -80,6 +81,9 @@ def create_request(user, product_code, cantidad, fecha_necesidad=None, origen="A
         raise BusinessError("En la primera etapa las solicitudes de compra nacen en Almacén (IF §7, §10.1).")
     if db().get(Product, product_code) is None:
         raise BusinessError("Producto no existe.")
+    if es_producido(db().get(Product, product_code)):  # V31: PT, MQ y MP los produce la empresa
+        raise BusinessError(f"{product_code} es un producto que fabrica la empresa (PT, MQ o MP): no se compra. Genere una "
+                            "solicitud de producción; se compran el granel, los insumos y lo demás.")
     if cantidad is None or cantidad <= 0:
         raise BusinessError("Cantidad inválida.")
     if param("agrupar_presolicitudes_compra", True):
@@ -398,15 +402,38 @@ def lead_time_for(product, ref=None):
     return lt, ("estacional" if seasonal else "normal")
 
 
-def analyze_product(product, ref=None):
-    """Análisis de reposición (IF §7). Usa solo datos disponibles; informa los faltantes de datos."""
+def es_producido(product):
+    """V31: PT, MQ y MP los fabrica la empresa (no se compran); se compran el granel, los insumos y lo demás."""
+    if product is None:
+        return False
+    pref = [str(x).strip().upper() for x in (param("prefijos_producidos", ["PT", "MQ", "MP"]) or []) if str(x).strip()]
+    return any(product.code.upper().startswith(x) for x in pref)
+
+
+def _salidas_periodo(code, desde, ref):
+    """V31: salidas del periodo: el historial cargado y, si no lo hay, las guías y consumos de producción leídos de SAP."""
+    from ..models import SapMovement
+    s = db()
+    hist = s.execute(select(func.coalesce(func.sum(SalesHistory.cantidad), 0)).where(
+        SalesHistory.product_code == code, SalesHistory.fecha >= desde, SalesHistory.fecha < ref)).scalar() or 0
+    if hist:
+        return float(hist), "historial cargado"
+    sap = s.execute(select(func.coalesce(func.sum(SapMovement.cantidad), 0)).where(
+        SapMovement.product_code == code, SapMovement.fecha >= desde, SapMovement.fecha < ref)).scalar() or 0
+    return float(sap), "guías y consumos de SAP"
+
+
+def analyze_product(product, ref=None, demanda_produccion=0.0):
+    """Análisis de reposición (IF §7). Usa solo datos disponibles; informa los faltantes de datos.
+    V31: se anticipa al quiebre (punto de pedido): consumo durante el plazo + faltante de OV pendientes + stock mínimo +
+    stock de seguridad + lo que se necesita para producir (demanda_produccion) − disponible − en camino."""
     ref = ref or date.today()
     s = db()
     out = {"producto": product.code, "descripcion": product.descripcion, "avisos": []}
     periodo = product.periodo_analisis_dias or param("periodo_analisis_dias", 15) or 15
     desde = ref - timedelta(days=int(periodo))
-    salidas = s.execute(select(func.coalesce(func.sum(SalesHistory.cantidad), 0)).where(
-        SalesHistory.product_code == product.code, SalesHistory.fecha >= desde, SalesHistory.fecha < ref)).scalar() or 0
+    salidas, fuente = _salidas_periodo(product.code, desde, ref)
+    out["fuente_consumo"] = fuente
     consumo_diario = salidas / periodo if periodo else 0
     # período: días completos anteriores a la fecha de análisis
     out.update({"periodo_dias": periodo, "salidas_periodo": salidas, "consumo_diario": consumo_diario})
@@ -448,10 +475,10 @@ def analyze_product(product, ref=None):
     if param("usar_stock_seguridad", False):
         seg = consumo_diario * 30 * float(param("factor_stock_seguridad", 0.3) or 0)
     demanda_lead = consumo_diario * lead_total
-    necesidad = demanda_lead + falt_ov + stock_min + seg - disponible - en_camino
+    necesidad = demanda_lead + falt_ov + stock_min + seg + (demanda_produccion or 0) - disponible - en_camino
     out.update({"plazo_dias": plazo, "margen_dias": margen, "lead_total": lead_total, "disponible": disponible,
                 "reservado": reservado, "faltante_ov": falt_ov, "en_camino": en_camino, "stock_minimo": stock_min,
-                "stock_seguridad": seg, "demanda_durante_plazo": demanda_lead,
+                "stock_seguridad": seg, "demanda_durante_plazo": demanda_lead, "demanda_produccion": demanda_produccion or 0,
                 "necesidad": max(necesidad, 0), "cantidad_sugerida": math.ceil(max(necesidad, 0))})
     if consumo_diario > 0:
         dias_cobertura = max(disponible - falt_ov, 0) / consumo_diario
@@ -468,20 +495,69 @@ def analyze_product(product, ref=None):
     return out
 
 
-def run_replenishment(user=None, product_codes=None, ref=None):
-    """Genera alertas y solicitudes preliminares (BORRADOR, para que Almacén revise y envíe)."""
+def _candidatos(product_codes=None):
+    """Productos a revisar: los configurados (categoría de reposición o stock mínimo) y, V31, todo PT, MQ, MP y GR con
+    stock o con OV pendientes."""
+    from ..models import StockLot
+    from .stock import product_kind
     s = db()
-    q = select(Product).where((Product.categoria_reposicion != "") | (Product.stock_minimo.is_not(None)))
     if product_codes:
-        q = select(Product).where(Product.code.in_(product_codes))
+        return list(s.execute(select(Product).where(Product.code.in_(product_codes))).scalars())
+    out = {p.code: p for p in s.execute(select(Product).where(
+        (Product.categoria_reposicion != "") | (Product.stock_minimo.is_not(None)))).scalars()}
+    con_mov = {c for (c,) in s.execute(select(StockLot.product_code).where(StockLot.cantidad > 0).distinct())}
+    for o in s.execute(select(SalesOrder).where(SalesOrder.estado.notin_(ORDEN_ESTADOS_CERRADOS))).scalars():
+        con_mov |= {l.product_code for l in o.lines if l.activa}
+    for p in s.execute(select(Product).where(Product.code.in_(con_mov or {""}))).scalars():
+        if es_producido(p) or product_kind(p) == "GR":
+            out.setdefault(p.code, p)
+    return list(out.values())
+
+
+def _orden_produccion(p):
+    """PT y MQ primero (su lista de materiales pide MP y granel), luego MP (pide granel) y al final lo que se compra."""
+    c = p.code.upper()
+    return 0 if c.startswith(("PT", "MQ")) else 1 if es_producido(p) else 2
+
+
+def run_replenishment(user=None, product_codes=None, ref=None):
+    """Reposición anticipada (antes del quiebre de stock), V31:
+    - PT, MQ y MP (los fabrica la empresa): si el stock libre no cubre las OV pendientes + el consumo durante el plazo +
+      el stock mínimo y de seguridad, se genera una PRE-SOLICITUD DE PRODUCCIÓN (borrador para el Jefe de Producción) y
+      su lista de materiales se suma a la necesidad de sus componentes;
+    - lo que se compra (granel, insumos, envases…): PRE-SOLICITUD DE COMPRA (borrador para Almacén), con lo mismo más lo
+      que hace falta para producir.
+    Devuelve las pre-solicitudes de compra creadas (las de producción quedan en el resumen de la alerta)."""
+    from .production import create_request as crear_produccion, material_requirements
+    from ..models import ProductionRequest
+    s = db()
     creadas = []
-    for p in s.execute(q).scalars():
-        a = analyze_product(p, ref)
+    demanda_comp = defaultdict(float)
+    for p in sorted(_candidatos(product_codes), key=lambda x: (_orden_produccion(x), x.code)):
+        a = analyze_product(p, ref, demanda_comp.get(p.code, 0.0))
         if not a["requiere_compra"]:
+            continue
+        analisis = {k: (v.isoformat() if isinstance(v, date) else v) for k, v in a.items()}
+        if es_producido(p):
+            req = material_requirements(p.code, a["cantidad_sugerida"])
+            for m in req.get("materiales", []):
+                demanda_comp[m["componente"]] += float(m.get("requerido") or 0)
+            abierta = s.execute(select(ProductionRequest).where(ProductionRequest.product_code == p.code,
+                                                                ProductionRequest.origen == "REPOSICION",
+                                                                ProductionRequest.estado == "BORRADOR")).scalars().first()
+            if abierta:
+                abierta.cantidad = a["cantidad_sugerida"]
+                abierta.fecha_requerida = a.get("fecha_necesidad")
+                abierta.analisis = req
+                continue
+            r = crear_produccion(p.code, a["cantidad_sugerida"], user, fecha_requerida=a.get("fecha_necesidad"),
+                                 origen="REPOSICION", observacion=_motivo(a, "producir"))
+            alerts.emit("PRODUCCION_REPOSICION", f"Pre-solicitud de producción: {p.code} × {a['cantidad_sugerida']:g}",
+                        _motivo(a, "producir") + f" Pre-solicitud #{r.id} en borrador para revisión del Jefe de Producción.",
+                        "ProductionRequest", r.id, dedup_key=f"REPO_PROD:{p.code}", creado_por=user)
             continue
         abierta = s.execute(select(PurchaseRequest).where(PurchaseRequest.product_code == p.code,
                                                           PurchaseRequest.estado.in_(("BORRADOR",)))).scalars().first()
-        analisis = {k: (v.isoformat() if isinstance(v, date) else v) for k, v in a.items()}
         if abierta:
             abierta.cantidad = a["cantidad_sugerida"]
             abierta.analisis = analisis
@@ -491,10 +567,24 @@ def run_replenishment(user=None, product_codes=None, ref=None):
                            analisis=analisis, enviar=False)
         creadas.append(r)
         alerts.emit("REPOSICION_SUGERIDA", f"Reposición sugerida: {p.code} × {a['cantidad_sugerida']:g}",
-                    f"Fecha estimada de necesidad: {a.get('fecha_necesidad') or '-'}; límite de pedido: "
-                    f"{a.get('fecha_limite_pedido') or '-'}. Solicitud preliminar #{r.id} en borrador para revisión de Almacén.",
-                    "PurchaseRequest", r.id, dedup_key=f"REPOSICION:{p.code}", creado_por=user)
+                    _motivo(a, "comprar") + f" Fecha estimada de necesidad: {a.get('fecha_necesidad') or '-'}; límite de "
+                    f"pedido: {a.get('fecha_limite_pedido') or '-'}. Solicitud preliminar #{r.id} en borrador para revisión "
+                    "de Almacén.", "PurchaseRequest", r.id, dedup_key=f"REPOSICION:{p.code}", creado_por=user)
     return creadas
+
+
+def _motivo(a, que):
+    partes = [f"OV pendientes sin reservar {a['faltante_ov']:g}"] if a.get("faltante_ov") else []
+    if a.get("demanda_durante_plazo"):
+        partes.append(f"consumo durante el plazo {a['demanda_durante_plazo']:.0f} ({a.get('fuente_consumo', '')})")
+    if a.get("demanda_produccion"):
+        partes.append(f"para producir {a['demanda_produccion']:g}")
+    if a.get("stock_minimo"):
+        partes.append(f"stock mínimo {a['stock_minimo']:g}")
+    if a.get("stock_seguridad"):
+        partes.append(f"stock de seguridad {a['stock_seguridad']:.0f}")
+    return (f"Hay que {que} {a['cantidad_sugerida']:g} antes de quedarse sin stock: " + ", ".join(partes or ["stock bajo"])
+            + f"; libre {a['disponible']:g}, en camino {a['en_camino']:g}.")
 
 
 def abc_classes(ref=None):

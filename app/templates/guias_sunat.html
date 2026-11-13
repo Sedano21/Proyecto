@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% from "_m.html" import csrf, ic, empty, b, paginacion %}
+{% extends "base.html" %}{% from "_m.html" import csrf, ic, empty, b, paginacion, buscador_lista %}
 {% block content %}<div class="page-head"><div><h1>Guías emitidas en SUNAT (regularización)</h1>
 <p class="sub">Si la guía se emitió directamente en SUNAT (por ejemplo, cuando SAP falló), súbala aquí: el sistema lee serie y número, destinatario, placa y los productos con lote, FP, FV y cantidad. Se une a su OV, el Jefe de Operaciones indica si el producto ya se descontó del inventario y se envía a SAP sin volver a digitarla.</p></div></div>
 {% if can('guias.sunat_cargar') %}<form method="post" enctype="multipart/form-data" class="card row">{{ csrf() }}<input type="hidden" name="accion" value="cargar">
@@ -10,7 +10,7 @@
 <div class="meta small"><span>Emitida {{ gd.fecha_emision.strftime('%d/%m/%Y') if gd.fecha_emision }} · traslado {{ gd.fecha_traslado.strftime('%d/%m/%Y') if gd.fecha_traslado }}</span>
 <span>{{ gd.destinatario or '—' }} (RUC {{ gd.destinatario_ruc or '—' }})</span><span>{{ gd.motivo }}</span>{% if gd.placa %}<span>Placa {{ gd.placa }}</span>{% endif %}
 {% if gd.archivo %}<a href="{{ url_for('main.evidence', name=gd.archivo) }}" target="_blank">ver archivo</a>{% endif %}</div>
-<div class="tw"><table class="small"><tr><th>Código</th><th>Descripción</th><th>Lote</th><th>FP</th><th>FV</th><th class="r">Cantidad</th><th>UM</th></tr>
+{{ buscador_lista() }}<div class="tw"><table class="small"><tr><th>Código</th><th>Descripción</th><th>Lote</th><th>FP</th><th>FV</th><th class="r">Cantidad</th><th>UM</th></tr>
 {% for x in gd.lineas %}<tr><td>{{ x.codigo }}</td><td>{{ x.descripcion }}</td><td>{{ x.lote or '—' }}</td><td>{{ x.fp }}</td><td>{{ x.fv }}</td><td class="r">{{ x.cantidad|n }}</td><td>{{ x.um }}</td></tr>{% endfor %}</table></div>
 {% if gd.order %}<p class="small">OV: <a href="{{ url_for('com.order_detail', oid=gd.order.id) }}">{{ gd.order.numero }}</a> · {{ gd.order.customer.nombre }}{% if gd.sap_ov %} · OV en SAP {{ gd.sap_ov }}{% endif %}</p>
 {% elif can('guias.sunat_cargar') %}<form method="post" class="row">{{ csrf() }}<input type="hidden" name="accion" value="unir"><input type="hidden" name="id" value="{{ gd.id }}">

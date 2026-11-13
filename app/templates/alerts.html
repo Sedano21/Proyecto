@@ -10,6 +10,9 @@
   <div><label for="fa_grp">Grupo</label><select id="fa_grp" name="grupo"><option value="">(todos)</option>{% for gname in grupos_tipo %}<option {{ 'selected' if f.grupo==gname }}>{{ gname }}</option>{% endfor %}</select></div>
   <div class="grow"><label for="fa_tipo">Tipo</label><select id="fa_tipo" name="type_code"><option value="">(todos)</option>{% for t in tipos %}<option value="{{ t.code }}" {{ 'selected' if f.type_code==t.code }}>{{ t.nombre }}</option>{% endfor %}</select></div>
   <div><label for="fa_agr">Agrupar por</label><select id="fa_agr" name="agrupar"><option value="">(no agrupar)</option><option value="area" {{ 'selected' if agrupar=='area' }}>Área + urgencia</option><option value="grupo" {{ 'selected' if agrupar=='grupo' }}>Grupo + urgencia</option><option value="tipo" {{ 'selected' if agrupar=='tipo' }}>Tipo + urgencia</option></select></div>
+  <div><label for="fa_desde">Desde</label><input id="fa_desde" type="date" name="desde" value="{{ desde.isoformat() if desde }}"></div>
+  <div><label for="fa_hasta">Hasta</label><input id="fa_hasta" type="date" name="hasta" value="{{ hasta.isoformat() if hasta }}"></div>
+  <div class="grow"><label for="fa_buscar">Buscar</label><input id="fa_buscar" type="search" name="buscar" value="{{ request.args.get('buscar', '') }}" placeholder="título, número, OV, lote…"></div>
   <div><button>Aplicar</button> <a class="btn sec" href="{{ url_for('main.alerts') }}">Limpiar</a></div>
 </form>
 <div id="live-alerts" data-live data-lista><p class="small muted">{{ rows.total if rows.total is defined else rows|length }} alerta(s). <span class="live-note">Se actualiza sola cuando otro destinatario interactúa.</span></p>

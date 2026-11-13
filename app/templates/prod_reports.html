@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% from "_m.html" import b, csrf, ic, empty, paginacion %}
+{% extends "base.html" %}{% from "_m.html" import b, csrf, ic, empty, paginacion, buscador_lista %}
 {% block content %}<div class="card-head"><h1 style="flex:1">Partes de producción</h1>
 {% if can('produccion.liquidar') %}<button class="btn" data-open="dlg-parte">{{ ic('plus') }} Nuevo parte</button>{% endif %}</div>
 <p class="seg small"><a class="on" href="{{ url_for('prod.reports') }}">Partes</a><a href="{{ url_for('prod.monitor') }}">Monitoreo en tiempo real</a><a href="{{ url_for('prod.plan') }}">Planeamiento</a><a href="{{ url_for('prod.liquidations') }}">Liquidaciones</a></p>
@@ -57,7 +57,7 @@
 <form class="row card" method="get"><div><label>Desde</label><input type="date" name="desde" value="{{ desde.isoformat() }}"></div><div><label>Hasta</label><input type="date" name="hasta" value="{{ f.get('hasta','') }}"></div>
 <div><label>Línea</label><select name="linea"><option value="">(todas)</option>{% for c, n, _ in lineas %}<option value="{{ c }}" {{ 'selected' if f.get('linea') == c }}>{{ c }}</option>{% endfor %}</select></div>
 <div><label>Estado</label><select name="estado"><option value="">(todos)</option>{% for e in estados if e != 'PROGRAMADO' %}<option {{ 'selected' if f.get('estado') == e }}>{{ e }}</option>{% endfor %}</select></div><div><button class="sec">Filtrar</button></div></form>
-<div data-lista id="lista-prod_reports">{% if rows %}<div class="cards">{% for r in rows %}{% set ind = r.indicadores or {} %}
+{{ buscador_lista() }}<div data-lista id="lista-prod_reports">{% if rows %}<div class="cards">{% for r in rows %}{% set ind = r.indicadores or {} %}
 <article class="xcard st-{{ r.estado|replace(' ','_')|replace('.','') }}"><div class="xcard-head"><b><a href="{{ url_for('prod.part_detail', pid=r.id) }}">{{ r.linea }} · {{ r.product_code }}</a></b>{{ b(r.estado|replace(' ','_')) }}
 {% if can('produccion.liquidar') and r.estado not in no_editables and r.estado != 'BLOQUEADO' %}<button class="ibtn" data-open="dlg-editar" data-set-parte-id="{{ r.id }}" data-set-fecha="{{ r.fecha.isoformat() }}" data-set-cantidad="{{ r.peso_entrada_kg }}" data-set-titulo="{{ r.linea }} {{ r.product_code }}" aria-label="Editar fecha y cantidad" title="Editar fecha y cantidad">{{ ic('edit') }}</button>{% endif %}</div>
 <div class="meta"><span>{{ r.fecha|d }}</span><span>OF {{ r.of or '-' }}</span><span>lote {{ r.lote or '-' }}</span><span>{{ r.peso_entrada_kg|n }} kg MP</span></div>

@@ -2754,3 +2754,23 @@ class SapReserveInvoiceLine(Base):
     # aprobación de la Jefatura de Producción para usarla en la preprogramación: {estado APROBADA/RECHAZADA, user, ts, motivo}
     aprobacion: Mapped[dict] = mapped_column(JSON, default=dict)
     ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+
+class SapMovement(Base):
+    """V31 (13-nov-2026): movimientos de salida leídos de SAP desde «sap_historial_desde» (julio): guías (entregas a
+    clientes) y consumos de producción (emisiones a órdenes de fabricación). Sirven para la conciliación de órdenes
+    abiertas y cerradas con sus guías y para la rotación (venta y producción). Una fila por línea de documento."""
+    __tablename__ = "sap_movimientos"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    clave: Mapped[str] = mapped_column(String(50), unique=True)  # tipo:DocEntry:línea
+    tipo: Mapped[str] = mapped_column(String(10), index=True)  # GUIA / CONSUMO
+    docentry: Mapped[int] = mapped_column(Integer, index=True)
+    documento: Mapped[str] = mapped_column(String(40), default="")  # serie-correlativo o número
+    fecha: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
+    ov_numero: Mapped[str] = mapped_column(String(30), default="", index=True)
+    orden_fabricacion: Mapped[str] = mapped_column(String(30), default="")
+    factura: Mapped[str] = mapped_column(String(40), default="")
+    cliente: Mapped[str] = mapped_column(String(200), default="")
+    product_code: Mapped[str] = mapped_column(String(30), default="", index=True)
+    cantidad: Mapped[float] = mapped_column(Float, default=0)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)

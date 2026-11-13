@@ -816,3 +816,8 @@ button.tg:hover{background:var(--cp-verde-50,#eaf6ef)}
 tr.det>td{background:var(--surface-2,#f7f8f6);padding:10px 12px}
 tr.det table{margin:0;background:var(--surface,#fff)}
 tr.det[hidden]{display:none!important}
+/* V31: buscador con lupa (busca con Enter o con la lupa) */
+.buscador{display:flex;align-items:stretch;width:100%}
+.buscador>input{flex:1;min-width:0;border-top-right-radius:0;border-bottom-right-radius:0}
+button.lupa{margin:0;padding:0 12px;border-top-left-radius:0;border-bottom-left-radius:0;display:inline-flex;align-items:center;justify-content:center}
+button.lupa .ic{width:18px;height:18px}

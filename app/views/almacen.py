@@ -499,6 +499,9 @@ def sap_sync():
         elif tipo == "ORDENES":  # V29: órdenes de venta y de servicio del periodo (demanda)
             if not g.perms & {"ov.importar", "ov.ver", "demanda.analisis", "dashboard.ver"}:
                 abort(403)
+        elif tipo == "ACTUALIZAR":  # V31: «Actualizar con SAP» desde la barra superior
+            if not g.perms & {"ov.ver", "ov.importar", "stock.ver", "distribucion.ver", "produccion.ver", "facturas.cargar"}:
+                abort(403)
         elif tipo == "RESERVAS":  # V30: facturas de reserva sin entrega
             if not g.perms & {"facturas_reserva.ver", "facturas_reserva.aprobar"}:
                 abort(403)
@@ -572,7 +575,15 @@ def sap_dispatch_check():
     from ..services import despachos_sap as ds
     clase = request.args.get("clase", "VENTA")
     clase = clase if clase in ("VENTA", "SERVICIO", "TODAS") else "VENTA"
-    res = ds.conciliar(clase=None if clase == "TODAS" else clase)
+    # V31: con el historial de SAP (desde julio) se ven las órdenes abiertas y cerradas, por mes
+    from ..services import sap_v31
+    mes = request.args.get("mes", "")
+    situacion = request.args.get("sit", "ABIERTAS")
+    situacion = situacion if situacion in ("ABIERTAS", "CERRADAS", "TODAS") else "ABIERTAS"
+    if sap_v31.tiene_historial():
+        res = ds.conciliar_historial(mes if len(mes) == 7 else "", None if clase == "TODAS" else clase, situacion)
+    else:
+        res = ds.conciliar(clase=None if clase == "TODAS" else clase)
     if request.args.get("salida") == "xlsx":
         return Response(ds.excel(res), mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         headers={"Content-Disposition": "attachment; filename=ov_vs_guias_sap.xlsx"})
@@ -582,5 +593,6 @@ def sap_dispatch_check():
     job = sap_sl.job_state("SERVICIOS")
     from ..services.core import param
     return render_template("sap_despachos.html", res=res, filas=filas, estado=estado, job=job, clase=clase,
+                           mes=mes, sit=situacion, meses=ds.meses_historial(), job_hist=sap_sl.job_state("ORDENES"),
                            series_servicio=param("sap_series_orden_servicio", []) or [],
                            configurado=sap_sl.configured())
