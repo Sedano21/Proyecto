@@ -126,3 +126,4 @@ Corrección de la ronda anterior, según su indicación:
   - tarjetas de alertas por área;
   - expedientes con el buscador del cliente al costado;
   - lista de OV con fechas, mes y orden.
+- Suite completa: **624 pruebas, todas pasan**.
