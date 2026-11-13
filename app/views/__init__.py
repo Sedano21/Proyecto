@@ -387,7 +387,22 @@ def alerts():
         from .common import coincide
         grupos = {k: [a for a in v if coincide(a, request.args["buscar"])] for k, v in grupos.items()}
         grupos = {k: v for k, v in grupos.items() if v}
-    return render_template("alerts.html", desde=desde, hasta=hasta, rows=rows if agrupar else paginate(rows), f=f, tipos=tipos, agrupar=agrupar, grupos=grupos,
+    # V32: sin filtros se ven tarjetas por área (en rojo si tiene urgentes); al tocar una se despliega su lista
+    filtros_activos = any(request.args.get(k) for k in ("estado", "area", "prioridad", "grupo", "type_code", "naturaleza",
+                                                        "agrupar", "buscar", "desde", "hasta", "vista"))
+    tarjetas = []
+    if not filtros_activos:
+        por_area = {}
+        for a in rows:
+            t = por_area.setdefault(a.area or "Sin área", {"area": a.area or "Sin área", "total": 0, "alta": 0, "tareas": 0,
+                                                            "abiertas": 0})
+            t["total"] += 1
+            abierta = a.estado not in alert_svc.CERRADOS
+            t["abiertas"] += 1 if abierta else 0
+            t["alta"] += 1 if abierta and a.prioridad == "ALTA" else 0
+            t["tareas"] += 1 if abierta and alert_svc.nature_for(g.user, a) == "TAREA" else 0
+        tarjetas = sorted(por_area.values(), key=lambda t: (-t["alta"], -t["tareas"], -t["abiertas"], t["area"]))
+    return render_template("alerts.html", desde=desde, hasta=hasta, tarjetas=tarjetas, rows=rows if agrupar else paginate(rows), f=f, tipos=tipos, agrupar=agrupar, grupos=grupos,
                            areas=sorted({t.area for t in tipos}), grupos_tipo=sorted({t.grupo for t in tipos}),
                            estados=alert_svc.ESTADOS, estado_txt=alert_svc.ESTADO_TXT, naturaleza=naturaleza)
 

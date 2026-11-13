@@ -1,7 +1,7 @@
-{% extends "base.html" %}{% from "_m.html" import b, ic, empty, csrf %}
+{% extends "base.html" %}{% from "_m.html" import b, ic, empty, csrf, paginacion %}
 {% block content %}{% set c = d.comparativo %}{% set cu = d.cumplimiento %}{% set rq = d.requerimiento %}{% set pr = d.produccion %}{% set ds = d.distribucion %}
 <div class="dir-head"><h1>Demanda proyectada y requerimiento · {{ d.mes }}</h1><p>Operaciones · Informe para Gerencia y Directorio · {{ d.hoy|d }} · Base: proyección de Comercial, lista de materiales, stock, OV e historial de ventas del sistema</p></div>
-<form method="get" class="card row noprint"><div><label>Mes</label><select name="mes" onchange="this.form.desde.value='';this.form.hasta.value=''">{% for m in meses %}<option {{ 'selected' if m == d.mes }}>{{ m }}</option>{% endfor %}</select></div>
+<form method="get" class="card row noprint"><div><label for="dm-mes">Mes</label><input id="dm-mes" type="month" name="mes" value="{{ d.mes }}" required onchange="this.form.desde.value='';this.form.hasta.value=''"></div>
 <div><label>Desde</label><input type="date" name="desde" value="{{ d.rango[0].isoformat() }}"></div><div><label>Hasta</label><input type="date" name="hasta" value="{{ d.rango[1].isoformat() }}"></div>
 <div><label>Cumplimiento por</label><select name="gran">{% for k, t in [('SEMANA','Semana'),('DIA','Día'),('MES','Mes')] %}<option value="{{ k }}" {{ 'selected' if gran == k }}>{{ t }}</option>{% endfor %}</select></div>
 <input type="hidden" name="clase" value="{{ clase }}"><div><button class="sec">Ver</button></div><div class="grow"></div><div><a class="btn sec" href="?mes={{ d.mes }}&gran={{ gran }}&desde={{ d.rango[0].isoformat() }}&hasta={{ d.rango[1].isoformat() }}&clase={{ clase }}&formato=pdf">{{ ic('download') }} PDF</a> <a class="btn sec" href="?mes={{ d.mes }}&gran={{ gran }}&desde={{ d.rango[0].isoformat() }}&hasta={{ d.rango[1].isoformat() }}&clase={{ clase }}&formato=xlsx">{{ ic('download') }} Excel</a></div></form>
@@ -20,13 +20,13 @@
 <div class="kpis">{% for k, nombre, cls in [('ABIERTA', 'Abiertas (sin despacho)', 'warn'), ('INCOMPLETA', 'Incompletas (parciales)', 'err'), ('CERRADA', 'Cerradas (completas)', 'ok')] %}
 <a class="kpi {{ cls }} {{ 'on' if cat_f == k }}" href="{{ qs }}&clase={{ clase }}&ov={{ '' if cat_f == k else k }}#ejecucion"><span>{{ nombre }}</span><b>{{ ej.tot[k].n }}</b><small>pedido {{ ej.tot[k].pedido_kg|n }} kg · despachado {{ ej.tot[k].despachado_kg|n }} kg</small></a>{% endfor %}
 {% for k, nombre in [('VENTA', 'Órdenes de venta'), ('SERVICIO', 'Órdenes de servicio')] %}{% set t = ej.por_clase[k] %}<div class="kpi"><span>{{ nombre }}</span><b>{{ t.n }}</b><small>pedido {{ t.pedido_kg|n }} kg · despachado {{ t.despachado_kg|n }} kg · desviación {{ t.desviacion_kg|n }} kg</small></div>{% endfor %}</div>
-{% set fil = ej.filas|selectattr('categoria', 'equalto', cat_f)|list if cat_f else ej.filas %}
+{% set fil = ej_pag %}
 {% if fil %}<div class="tw"><table class="small apilable"><tr><th>Orden</th><th>Clase</th><th>Cliente</th><th>Compromiso</th><th>Estado</th><th>Situación</th><th class="r">Pedido</th><th class="r">Despachado</th><th class="r">Avance</th><th class="r">kg pedido</th><th class="r">kg despachado</th></tr>
-{% for x in fil[:300] %}<tr><td data-label="Orden">{% if x.o.oid %}<a href="{{ url_for('com.order_detail', oid=x.o.oid) }}">{{ x.o.numero }}</a>{% else %}{{ x.o.numero }}{% endif %}{% if x.o.fuente == 'SAP' %} <span class="muted small">SAP</span>{% endif %}</td><td data-label="Clase">{{ 'Servicio' if x.o.clase == 'SERVICIO' else 'Venta' }}</td><td data-label="Cliente">{{ x.o.cliente }}</td><td data-label="Compromiso">{{ x.o.fecha|d }}</td>
+{% for x in fil %}<tr><td data-label="Orden">{% if x.o.oid %}<a href="{{ url_for('com.order_detail', oid=x.o.oid) }}">{{ x.o.numero }}</a>{% else %}{{ x.o.numero }}{% endif %}{% if x.o.fuente == 'SAP' %} <span class="muted small">SAP</span>{% endif %}</td><td data-label="Clase">{{ 'Servicio' if x.o.clase == 'SERVICIO' else 'Venta' }}</td><td data-label="Cliente">{{ x.o.cliente }}</td><td data-label="Compromiso">{{ x.o.fecha|d }}</td>
 <td data-label="Estado">{{ x.o.estado|lower|replace('_', ' ') }}</td><td data-label="Situación">{{ b({'ABIERTA': 'ABIERTA', 'INCOMPLETA': 'INCOMPLETA', 'CERRADA': 'CERRADA'}[x.categoria], {'ABIERTA': 'warn', 'INCOMPLETA': 'err', 'CERRADA': 'ok'}[x.categoria]) }}</td>
 <td class="r" data-label="Pedido">{{ x.pedido|n }}</td><td class="r" data-label="Despachado">{{ x.despachado|n }}</td><td class="r" data-label="Avance">{{ x.avance if x.avance is not none else '—' }}{{ ' %' if x.avance is not none }}</td>
 <td class="r" data-label="kg pedido">{{ x.pedido_kg|n }}</td><td class="r" data-label="kg despachado">{{ x.despachado_kg|n }}</td></tr>{% endfor %}</table></div>
-{% if fil|length > 300 %}<p class="small muted">Se muestran las primeras 300 de {{ fil|length }} órdenes.</p>{% endif %}{% else %}{{ empty('No hay órdenes en el periodo con ese filtro.', 'cart') }}{% endif %}</section>
+{{ paginacion(fil, "órdenes") }}{% else %}{{ empty('No hay órdenes en el periodo con ese filtro.', 'cart') }}{% endif %}</section>
 
 <section class="card msg-clave"><h3>Mensaje clave</h3><ul>{% for m in d.mensajes %}<li>{{ m }}</li>{% endfor %}</ul></section>
 

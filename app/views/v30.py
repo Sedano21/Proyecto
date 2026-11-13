@@ -41,6 +41,8 @@ def inactive_customers():
     ver = request.args.get("ver", "PENDIENTES")
     ver = ver if ver in ("PENDIENTES", "EXCLUIDOS", "INCLUIDOS") else "PENDIENTES"
     d = v30.inactivos(ver=ver)
+    from .common import paginate
+    d["filas"] = paginate(d["filas"])  # V32
     return render_template("v30_clientes_inactivos.html", d=d, ver=ver)
 
 
@@ -60,7 +62,11 @@ def reserve_invoices():
         filas = [x for x in filas if q in (x.cliente or "").upper() or q in x.product_code.upper() or q in x.numero.upper()
                  or q in (x.ov_numero or "")]
     from ..services.core import param
-    return render_template("v30_facturas_reserva.html", filas=filas, q=q, job=sap_sl.job_state("RESERVAS"),
+    from .common import paginate
+    total_pend = sum(x.pendiente for x in filas)
+    n_fact = len({x.numero for x in filas})
+    filas = paginate(filas)  # V32
+    return render_template("v30_facturas_reserva.html", filas=filas, total_pend=total_pend, n_fact=n_fact, q=q, job=sap_sl.job_state("RESERVAS"),
                            ult=param("sap_reservas_ultimo", {}) or {}, configurado=sap_sl.configured(),
                            puede_traer=bool(g.perms & {"facturas_reserva.ver", "facturas_reserva.aprobar"}),
                            puede_aprobar="facturas_reserva.aprobar" in g.perms)

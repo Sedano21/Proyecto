@@ -34,8 +34,10 @@ def customer_docs(cid):
         abort(403)
     d = v30.documentos_cliente(c, f_date("desde"), f_date("hasta"))
     ver = request.args.get("ver", "guias")
-    return render_template("v30_docs_cliente.html", c=c, d=d, ver=ver if ver in ("guias", "facturas", "notas") else "guias",
-                           f=request.args)
+    ver = ver if ver in ("guias", "facturas", "notas") else "guias"
+    from .common import paginate
+    lista = paginate(d[{"guias": "guias", "facturas": "facturas", "notas": "notas_credito"}[ver]])  # V32
+    return render_template("v30_docs_cliente.html", c=c, d=d, ver=ver, lista=lista, f=request.args)
 
 
 @bp.route("/expedientes/<int:cid>/<fecha>")

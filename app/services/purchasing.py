@@ -81,9 +81,9 @@ def create_request(user, product_code, cantidad, fecha_necesidad=None, origen="A
         raise BusinessError("En la primera etapa las solicitudes de compra nacen en Almacén (IF §7, §10.1).")
     if db().get(Product, product_code) is None:
         raise BusinessError("Producto no existe.")
-    if es_producido(db().get(Product, product_code)):  # V31: PT, MQ y MP los produce la empresa
-        raise BusinessError(f"{product_code} es un producto que fabrica la empresa (PT, MQ o MP): no se compra. Genere una "
-                            "solicitud de producción; se compran el granel, los insumos y lo demás.")
+    if es_no_comprable(db().get(Product, product_code)):  # V32: el PT lo fabrica la empresa: no se compra
+        raise BusinessError(f"{product_code} es producto terminado que fabrica la empresa: no se compra. Genere una "
+                            "solicitud de producción. Se compra el granel y, eventualmente, MP o MQ.")
     if cantidad is None or cantidad <= 0:
         raise BusinessError("Cantidad inválida.")
     if param("agrupar_presolicitudes_compra", True):
@@ -407,6 +407,15 @@ def es_producido(product):
     if product is None:
         return False
     pref = [str(x).strip().upper() for x in (param("prefijos_producidos", ["PT", "MQ", "MP"]) or []) if str(x).strip()]
+    return any(product.code.upper().startswith(x) for x in pref)
+
+
+def es_no_comprable(product):
+    """V32: lo que nunca se compra (por defecto, el PT). Compras adquiere el granel y, eventualmente, MP o MQ; su
+    reposición normal es una pre-solicitud de producción (es_producido)."""
+    if product is None:
+        return False
+    pref = [str(x).strip().upper() for x in (param("compras_no_comprables", ["PT"]) or []) if str(x).strip()]
     return any(product.code.upper().startswith(x) for x in pref)
 
 

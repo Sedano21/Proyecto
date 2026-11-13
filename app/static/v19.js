@@ -154,6 +154,27 @@
     });
   }
   window.ponerLupas = ponerLupas;
+  // V32: la «X» de un buscador vacía la búsqueda y vuelve a buscar (limpia lo filtrado)
+  document.addEventListener('search', function (e) {
+    var el = e.target;
+    if (!el.matches || !el.matches('input[type=search]') || el.classList.contains('select-search') || el.value || !esFiltro(el)) return;
+    if (el.form.requestSubmit) el.form.requestSubmit(); else el.form.submit();
+  }, true);
+  // V32: en las listas con buscador, el encabezado «Fecha…» ordena de últimas a primeras o al revés
+  function encabezadosFecha() {
+    if (!document.querySelector('form.buscador-lista')) return;
+    document.querySelectorAll('[data-lista] th, .tbl th, .tw th').forEach(function (th) {
+      if (th.dataset.orden || !/fecha|comprometida|emisi[oó]n|creada|llegada|vence/i.test(th.textContent)) return;
+      th.dataset.orden = '1';
+      var url = new URL(location.href), act = url.searchParams.get('orden');
+      url.searchParams.set('orden', act === 'desc' ? 'asc' : 'desc'); url.searchParams.delete('page');
+      var a = document.createElement('a'); a.href = url.toString(); a.className = 'orden-fecha';
+      a.title = act === 'desc' ? 'Ordenar de las primeras a las últimas' : 'Ordenar de las últimas a las primeras';
+      a.textContent = th.textContent.trim() + (act === 'desc' ? ' ↓' : act === 'asc' ? ' ↑' : ' ↕');
+      th.textContent = ''; th.appendChild(a);
+    });
+  }
+  if (document.readyState !== 'loading') encabezadosFecha(); else document.addEventListener('DOMContentLoaded', encabezadosFecha);
   if (document.readyState !== 'loading') ponerLupas(); else document.addEventListener('DOMContentLoaded', function () { ponerLupas(); });
   document.addEventListener('change', function (e) {  // listas desplegables y fechas del filtro: también al instante
     var el = e.target;

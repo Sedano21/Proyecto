@@ -40,6 +40,7 @@ def app():
         # V31: los flujos anteriores compran MP en los datos de demostración y no usan stock de seguridad; las reglas
         # nuevas (no se compra PT, MQ ni MP; stock de seguridad activo) se prueban en test_v31.py
         set_param("prefijos_producidos", [])
+        set_param("compras_no_comprables", [])
         set_param("usar_stock_seguridad", False)
         SessionLocal().commit()
         yield app

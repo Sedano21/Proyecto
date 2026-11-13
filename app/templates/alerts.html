@@ -15,6 +15,10 @@
   <div class="grow"><label for="fa_buscar">Buscar</label><input id="fa_buscar" type="search" name="buscar" value="{{ request.args.get('buscar', '') }}" placeholder="título, número, OV, lote…"></div>
   <div><button>Aplicar</button> <a class="btn sec" href="{{ url_for('main.alerts') }}">Limpiar</a></div>
 </form>
+{% if tarjetas %}<h2 class="sec-title">Por área</h2><p class="small muted">Toque un área para ver su lista de alertas y tareas. En rojo, las que tienen alertas urgentes abiertas; en amarillo, las que tienen tareas por atender.</p>
+<div class="area-cards">{% for t in tarjetas %}<a class="area-card {{ 'err' if t.alta else ('warn' if t.tareas else 'ok') }}" href="{{ url_for('main.alerts', area=t.area) }}"><b>{{ t.area }}</b><span class="n">{{ t.abiertas }}</span><small>{{ t.alta }} urgente(s) · {{ t.tareas }} tarea(s) · {{ t.total }} en total</small></a>{% endfor %}</div>
+<p><a class="btn sec small" href="{{ url_for('main.alerts', vista='lista') }}">Ver todas en una sola lista</a></p>
+{% else %}{% if f.area %}<p class="small"><a href="{{ url_for('main.alerts') }}">← Todas las áreas</a></p>{% endif %}
 <div id="live-alerts" data-live data-lista><p class="small muted">{{ rows.total if rows.total is defined else rows|length }} alerta(s). <span class="live-note">Se actualiza sola cuando otro destinatario interactúa.</span></p>
 {% macro tabla(lista) %}<div class="tw"><table class="stack"><thead><tr><th>Urgencia</th><th>Qué ocurrió</th><th>Naturaleza</th><th>Área</th><th>Estado</th><th>Responsable</th><th>Fecha</th></tr></thead><tbody>
 {% for a in lista %}{% set tarea = es_tarea(a) %}<tr>
@@ -26,5 +30,5 @@
 {% else %}<tr><td colspan="7">{{ empty('No hay alertas con estos filtros.', 'bell') }}</td></tr>{% endfor %}</tbody></table></div>{% endmacro %}
 {% if agrupar %}{% for key, lista in grupos.items() %}<div class="card"><div class="card-head"><h3>{{ key[0] }} {{ b(key[1]) }}</h3><span class="muted small">{{ lista|length }}</span></div>{{ tabla(lista) }}</div>{% else %}{{ empty('No hay alertas con estos filtros.', 'bell') }}{% endfor %}
 {% else %}<div class="card" style="padding:0;overflow:hidden">{{ tabla(rows) }}</div>{{ paginacion(rows, "alertas") }}{% endif %}
-</div>
+</div>{% endif %}
 {% endblock %}

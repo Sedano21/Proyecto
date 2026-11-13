@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">{% if user %}<meta name="csrf" content="{{ csrf_token() }}">{% endif %}
 <title>{% block title %}Módulo de Operaciones{% endblock %} · Corporación Productiva</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23007a3d'/%3E%3Cpath d='M10 23V9h6.5a4.5 4.5 0 0 1 0 9H10' fill='none' stroke='%23fff' stroke-width='3'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=1.2.9">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=1.3.0">
 <script>try{if(localStorage.getItem('cp-nav')==='min')document.documentElement.classList.add('nav-min')}catch(e){}</script>
 </head>
 <body{% if user %} data-alertas="{{ url_for('main.alerts_status') }}"{% endif %}>
@@ -307,10 +307,10 @@ d.addEventListener('change',function(e){if(e.target.matches('[data-dest]'))f();}
 })();
 </script>
 <script src="{{ url_for('static', filename='app.js') }}?v=1.0.1"></script>
-<script src="{{ url_for('static', filename='ux.js') }}?v=1.1.0"></script>
+<script src="{{ url_for('static', filename='ux.js') }}?v=1.1.0.32"></script>
 <script src="{{ url_for('static', filename='v14.js') }}?v=1.0"></script>
 <script src="{{ url_for('static', filename='v18.js') }}?v=1.0"></script>
-{{ velo() }}<script src="{{ url_for('static', filename='v19.js') }}?v=1.3"></script>
+{{ velo() }}<script src="{{ url_for('static', filename='v19.js') }}?v=1.4"></script>
 {% if user %}<script src="{{ url_for('static', filename='v20.js') }}?v=1.1"></script>{% endif %}
 {% if user %}<script src="{{ url_for('static', filename='v30.js') }}?v=1.0"></script>{% endif %}
 </body>

@@ -32,6 +32,8 @@ def demand():
     d["ejecucion"] = dm.ejecucion(desde, hasta, clase or None)
     d["rango"] = (desde, hasta)
     cat_f = request.args.get("ov", "")
+    from .common import paginate  # V32: la ejecución del periodo con paginador
+    ej_pag = paginate([x for x in d["ejecucion"]["filas"] if not cat_f or x["categoria"] == cat_f])
     meses = [dm._mes_rel(f"{hoy:%Y-%m}", k) for k in (-3, -2, -1, 0, 1, 2)]
     from ..services import charts
     fs = d["cumplimiento"]["filas"]
@@ -41,7 +43,7 @@ def demand():
                           title="Proyectado vs pedido vs despachado")
     from ..services import sap_sl
     from flask import g
-    html = render_template("v23_demanda.html", d=d, meses=meses, gran=gran, graf=graf, cat_f=cat_f, clase=clase,
+    html = render_template("v23_demanda.html", d=d, meses=meses, gran=gran, graf=graf, cat_f=cat_f, clase=clase, ej_pag=ej_pag,
                            puede_sap=sap_sl.configured() and bool(g.perms & {"ov.importar", "ov.ver", "demanda.analisis"}),
                            job_ord=sap_sl.job_state("ORDENES"))
     formato = request.args.get("formato")

@@ -513,9 +513,9 @@ def alternatives_for_order(order):
         req = material_requirements(line.product_code, falt)
         if req["bom_encontrada"]:
             item["produccion"] = req
-        # d) compra (artículos sin lista de materiales). V31: PT, MQ y MP los fabrica la empresa: no se compran
-        from .purchasing import es_producido
-        if not req["bom_encontrada"] and not es_producido(product):
+        # d) compra (artículos sin lista de materiales). V32: el PT no se compra (MP y MQ, eventualmente sí)
+        from .purchasing import es_no_comprable
+        if not req["bom_encontrada"] and not es_no_comprable(product):
             item["compra"] = {"cantidad": falt, "kind": product_kind(product)}
         out.append(item)
     return out

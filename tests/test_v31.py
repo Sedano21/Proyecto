@@ -95,15 +95,11 @@ def test_historial_sap_desde_julio(app, s, U):
 
 
 def test_actualizar_con_sap(app, s, U, monkeypatch):
-    from app.services import sap_sl
-    from app.services.core import set_param
+    """V32: sin el vigilante, el botón hace en segundo plano la misma revisión forzada del vigilante."""
+    from app.services import sap_sl, sap_vigia
     llamadas = []
-    monkeypatch.setattr(sap_sl, "sync_extra", lambda tipo, u, sl=None: llamadas.append(tipo) or {})
-    monkeypatch.setattr(sap_sl, "sync", lambda tipo, u, d, sl=None, autoconfirmar=None, solo_si_cambia=False: llamadas.append(tipo))
-    set_param("sap_sync_tipos", ["OV", "DESPACHOS"])
-    res = sap_sl.actualizar_todo(U("coord.ventas"), "/tmp")
-    assert llamadas == ["RESERVAS", "OV", "DESPACHOS", "ORDENES", "FACTURAS"]
-    assert res["OV"] == "sin cambios"
+    monkeypatch.setattr(sap_vigia, "ciclo", lambda u, d, forzar=False, sl=None: llamadas.append(forzar) or {"OV": "ok"})
+    assert sap_sl.actualizar_todo(U("coord.ventas"), "/tmp") == {"OV": "ok"} and llamadas == [True]
 
 
 def test_rotacion_con_produccion_vencidos_y_kg(app, s):
@@ -144,10 +140,11 @@ def test_compras_no_pt_mq_mp_y_reposicion_anticipada(app, s, U, new_order):
     valores = {k: v for k, v, *_ in PARAMS}
     assert valores["prefijos_producidos"] == ["PT", "MQ", "MP"] and valores["usar_stock_seguridad"] is True
     set_param("prefijos_producidos", ["PT", "MQ", "MP"])
+    set_param("compras_no_comprables", ["PT"])
     set_param("usar_stock_seguridad", True)
-    for code in ("PT-901", "MP-901"):
-        with pytest.raises(BusinessError, match="fabrica la empresa"):
-            purchasing.create_request(U("coord.almacen"), code, 10)
+    with pytest.raises(BusinessError, match="fabrica la empresa"):
+        purchasing.create_request(U("coord.almacen"), "PT-901", 10)
+    assert purchasing.create_request(U("coord.almacen"), "MP-902", 10).id  # V32: la MP se compra eventualmente
     assert param("usar_stock_seguridad") is True
     new_order([("PT-901", 500000)])  # OV grande sin stock suficiente
     creadas = purchasing.run_replenishment(U("coord.almacen"), product_codes=["PT-901", "MP-901", "EN-901", "GR-901"])
@@ -156,7 +153,7 @@ def test_compras_no_pt_mq_mp_y_reposicion_anticipada(app, s, U, new_order):
     assert pr.estado == "BORRADOR" and pr.cantidad > 0 and "antes de quedarse sin stock" in pr.observacion
     assert alerts_of(s, "PRODUCCION_REPOSICION")
     compras = {r.product_code for r in s.query(PurchaseRequest).filter_by(origen="REPOSICION")}
-    assert "PT-901" not in compras and "MP-901" not in compras  # lo que se fabrica no se compra
+    assert "PT-901" not in compras and "MP-901" not in compras  # su reposición es producción, no compra
     assert all(not purchasing.es_producido(r.product) for r in creadas)
 
 

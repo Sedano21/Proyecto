@@ -122,17 +122,35 @@
   document.addEventListener('blur', function (e) { if (e.target.matches && e.target.matches('[data-hora]')) checkHora(e.target); }, true);
 
   /* 5. selector con búsqueda */
+  /* V32: el buscador va al costado de la lista; elige la opción que mejor coincide con lo escrito (exacta, luego la que
+     empieza igual, luego la que lo contiene) y la «X» del buscador limpia la elección y, en un filtro, vuelve a buscar */
+  function norm(t) { return (t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim(); }
   $all('select[data-search]').forEach(function (sel) {
     var q = document.createElement('input');
     q.type = 'search'; q.placeholder = sel.getAttribute('data-search') || 'Buscar…'; q.className = 'select-search';
     q.setAttribute('aria-label', q.placeholder);
-    sel.parentNode.insertBefore(q, sel);
+    var caja = document.createElement('div'); caja.className = 'sel-buscar';
+    sel.parentNode.insertBefore(caja, sel); caja.appendChild(q); caja.appendChild(sel);
     var opts = $all('option', sel);
-    q.addEventListener('input', function () {
-      var t = q.value.trim().toLowerCase(), first = null;
-      opts.forEach(function (o) { var ok = !o.value || o.text.toLowerCase().indexOf(t) >= 0; o.hidden = !ok; if (ok && o.value && !first) first = o; });
-      if (t && first && (sel.selectedOptions[0] || {}).hidden !== false) sel.value = first.value;
+    function elegir() {
+      var t = norm(q.value), exacta = null, empieza = null, contiene = null;
+      opts.forEach(function (o) {
+        var x = norm(o.text), ok = !o.value || !t || x.indexOf(t) >= 0;
+        o.hidden = !ok;
+        if (!o.value || !t) return;
+        if (x === t && !exacta) exacta = o; else if (x.indexOf(t) === 0 && !empieza) empieza = o; else if (x.indexOf(t) >= 0 && !contiene) contiene = o;
+      });
+      var mejor = exacta || empieza || contiene;
+      if (t && mejor) sel.value = mejor.value;
+      if (!t) { var vacia = opts.filter(function (o) { return !o.value; })[0]; if (vacia) sel.value = ''; }
+    }
+    q.addEventListener('input', elegir);
+    q.addEventListener('search', function () {  // Enter o la «X»
+      elegir();
+      var f = sel.form;
+      if (f && (f.getAttribute('method') || 'get').toLowerCase() === 'get') { if (f.requestSubmit) f.requestSubmit(); else f.submit(); }
     });
+    q.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); q.dispatchEvent(new Event('search')); } });
   });
 
   /* 6. validación en tiempo real del producto y el paquete */

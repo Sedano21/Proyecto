@@ -57,7 +57,7 @@ R80=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "http://$DOMINIO/logi
 [ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 http://127.0.0.1:8000/login)" = 200 ] && ok "gunicorn responde en local" || falla "gunicorn no responde en 127.0.0.1:8000"
 
 titulo "5. Servicios"
-for s in operaciones caddy postgresql; do
+for s in operaciones operaciones-sap caddy postgresql; do
   systemctl is-active -q "$s" && ok "Servicio $s activo" || falla "Servicio $s NO activo"
   systemctl is-enabled -q "$s" && ok "Servicio $s arranca solo al reiniciar" || falla "Servicio $s no habilitado al arranque"
 done

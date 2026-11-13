@@ -525,6 +525,9 @@ def scheduled_sync(ahora=None):
     minutos = int(os.environ.get("SAP_SYNC_MIN", "0") or 0)
     if minutos <= 0 or not configured():
         return 0
+    from .sap_vigia import vivo
+    if vivo():  # V32: el vigilante de SAP (servicio aparte) ya sincroniza cada minuto
+        return 0
     ahora = ahora or datetime.now()
     horario = (param("sap_sync_horario", "06:00-21:00") or "").strip()  # V8 (S07): cada minuto de 06:00 a 21:00
     if horario and "-" in horario:
@@ -1312,7 +1315,7 @@ def rows_facturas(sl, desde=None):
     return filas
 
 
-def sync_facturas(user, sl=None):
+def sync_facturas(user, sl=None, desde=None):
     """Registra en Finanzas las facturas y notas de crédito de SAP (crea las nuevas y actualiza monto y saldo de las
     existentes: SAP es la fuente oficial). Primero las notas de crédito y después las facturas, para que el saldo final
     de cada factura sea el de SAP. Devuelve el resumen."""
@@ -1322,10 +1325,10 @@ def sync_facturas(user, sl=None):
     try:
         if propio:
             sl.login()
-        filas = rows_facturas(sl)
+        filas = rows_facturas(sl, desde)
         try:  # V29: notas de crédito sobre OV por despachar (si falla, las facturas se registran igual)
             from .sap_v29 import rows_nc_ov
-            nc_ov, nc_error = rows_nc_ov(sl), ""
+            nc_ov, nc_error = rows_nc_ov(sl, desde), ""
         except BusinessError as e:
             nc_ov, nc_error = [], str(e)
     finally:
@@ -1405,26 +1408,11 @@ def sync_extra(tipo, user, sl=None):
 
 
 def actualizar_todo(user, upload_dir):
-    """V31: botón «Actualizar con SAP»: trae solo lo que cambió en SAP para que el módulo no quede desfasado antes de
-    registrar una OV, subir guías, etc. Facturas de reserva, los datos de «sap_sync_tipos» (OV, clientes, artículos,
-    guías…: solo crea una carga si SAP cambió desde la anterior; se aplica sola si el tipo está en «sap_autoconfirmar»),
-    el historial de órdenes y guías desde julio (incremental) y facturas. Las cargas quedan a nombre de SAP_SYNC_USER."""
+    """V31/V32: botón «Actualizar con SAP» cuando el vigilante no está corriendo: la misma revisión que hace el vigilante
+    (solo lo que cambió), forzada."""
     from sqlalchemy import select as _sel
     from ..db import db
     from ..models import User
+    from .sap_vigia import ciclo
     u = db().execute(_sel(User).where(User.username == os.environ.get("SAP_SYNC_USER", ""))).scalars().first() or user
-    res = {}
-    for tipo in ["RESERVAS"] + [t for t in (param("sap_sync_tipos", []) or []) if t in TIPOS_SAP] + ["ORDENES", "FACTURAS"]:
-        try:
-            with db().begin_nested():
-                if tipo in EXTRAS:
-                    r = sync_extra(tipo, u)
-                    res[tipo] = "ok"
-                else:
-                    b = sync(tipo, u, upload_dir, solo_si_cambia=True)
-                    res[tipo] = "sin cambios" if b is None else f"carga #{b.id} ({b.estado.lower()})"
-        except SapConnectionError:
-            raise
-        except BusinessError as e:
-            res[tipo] = f"error: {str(e)[:150]}"
-    return res
+    return ciclo(u, upload_dir, forzar=True)

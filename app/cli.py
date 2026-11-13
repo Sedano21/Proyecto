@@ -12,6 +12,7 @@
     python -m app.cli cargas          # últimas cargas (tipo, estado, filas con error) y quién las confirma
     python -m app.cli carga <n>       # errores y advertencias de la carga n.° n
     python -m app.cli sap-diagnostico # lectura de SAP, maestros, almacenes, cola de OV y estado de la conexión
+    python -m app.cli sap-vigilar     # vigilante de SAP (servicio operaciones-sap): cada minuto trae solo lo que cambió
     python -m app.cli sap-series      # series de las órdenes de venta en SAP y cuáles cuentan como órdenes de servicio
     python -m app.cli sap-consulta-stock  # crea en SAP la consulta guardada del stock por lote (solo la consulta)
     python -m app.cli eliminar-usuario <usuario> [--confirmar]  # borra un usuario creado por error (o lo da de baja si tiene registros)
@@ -271,6 +272,11 @@ def main(argv):
             if r["ejemplo"]:
                 print("Ejemplo:", r["ejemplo"])
             print("Ahora: python -m app.cli sap-traer STOCK <usuario de Almacén> y confirmar la carga en Almacén → Cargas de archivos.")
+        elif cmd == "sap-vigilar":
+            # V32: corre siempre (servicio operaciones-sap); «--una-vez» hace una sola revisión
+            from .services import sap_vigia
+            print("Vigilante de SAP iniciado", flush=True)
+            sap_vigia.vigilar(app, una_vez="--una-vez" in argv)
         elif cmd == "sap-series":
             # V29: para decidir qué serie es de órdenes de servicio (parámetro sap_series_orden_servicio). Solo lee.
             from collections import Counter

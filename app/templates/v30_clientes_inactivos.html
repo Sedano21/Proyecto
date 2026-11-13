@@ -1,14 +1,14 @@
-{% extends "base.html" %}{% from "_m.html" import b, ic, empty, csrf %}
+{% extends "base.html" %}{% from "_m.html" import b, ic, empty, csrf, paginacion, buscador_lista %}
 {% block content %}<div class="page-head"><div><h1>Clientes sin movimiento</h1>
 <p class="sub">Clientes sin ningún pedido ni movimiento (OV, facturas, notas de crédito o cotizaciones) desde hace más de {{ d.meses }} meses (antes del {{ d.limite|d }}), o sin ningún movimiento registrado. Decida si se <b>excluyen</b> (dejan de ofrecerse al registrar OV), se <b>incluyen</b> (se mantienen; vuelven a revisarse si pasan otros {{ d.meses }} meses sin movimiento) o se <b>editan</b>. Si un cliente excluido vuelve a tener un pedido de SAP, se incluye solo.</p></div></div>
 <div class="tabs noprint">{% for k, t in [('PENDIENTES', 'Por revisar'), ('EXCLUIDOS', 'Excluidos'), ('INCLUIDOS', 'Incluidos (mantenidos)')] %}<a class="{{ 'on' if ver == k }}" href="?ver={{ k }}">{{ t }}</a>{% endfor %}</div>
-{% if d.filas %}<form method="post">{{ csrf() }}
+{{ buscador_lista('cliente, RUC o grupo', fecha=false) }}{% if d.filas %}<form method="post">{{ csrf() }}
 <div class="card row noprint"><div class="grow"><label>Motivo (obligatorio para excluir)</label><input name="motivo" placeholder="p. ej. empresa cerrada, sin contacto desde 2024…"></div>
 <div><button name="accion" value="EXCLUIR" class="danger" data-confirm="¿Excluir los clientes marcados?">Excluir marcados</button> <button name="accion" value="INCLUIR" class="sec">Incluir (mantener) marcados</button></div></div>
 <div class="tw"><table class="small apilable"><tr><th><input type="checkbox" data-checkall="cid" aria-label="Marcar todos"></th><th>Cliente</th><th>RUC</th><th>Grupo / canal</th><th>Último movimiento</th><th class="r">Meses</th><th>Decisión</th><th></th></tr>
 {% for x in d.filas %}{% set c = x.c %}<tr><td><input type="checkbox" name="cid" value="{{ c.id }}" aria-label="Marcar {{ c.nombre }}"></td><td data-label="Cliente"><b>{{ c.nombre }}</b>{% if c.codigo_sap %} <span class="muted">{{ c.codigo_sap }}</span>{% endif %}</td><td data-label="RUC">{{ c.ruc }}</td><td data-label="Grupo / canal">{{ c.grupo or '—' }}{% if c.canal_precio %} · {{ c.canal_precio }}{% endif %}</td>
 <td data-label="Último movimiento">{{ x.ultimo|d if x.ultimo else 'sin movimientos registrados' }}</td><td class="r" data-label="Meses">{{ x.meses if x.meses is not none else '—' }}</td>
 <td data-label="Decisión">{% if x.decision.estado %}{{ b(x.decision.estado, 'warn' if x.decision.estado == 'EXCLUIDO' else 'ok') }} <span class="muted">{{ x.decision.user }} · {{ x.decision.ts|replace('T', ' ') }}{% if x.decision.motivo %} · {{ x.decision.motivo }}{% endif %}</span>{% else %}—{% endif %}</td>
-<td><a class="btn sec small" href="{{ url_for('com.customer_card', cid=c.id) }}">{{ ic('edit') }} Editar</a></td></tr>{% endfor %}</table></div></form>
+<td><a class="btn sec small" href="{{ url_for('com.customer_card', cid=c.id) }}">{{ ic('edit') }} Editar</a></td></tr>{% endfor %}</table></div></form>{{ paginacion(d.filas, "clientes") }}
 {% else %}{{ empty('No hay clientes en esta lista.', 'users') }}{% endif %}
 {% endblock %}

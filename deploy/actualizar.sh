@@ -33,8 +33,13 @@ app ".venv/bin/alembic upgrade head"
 app ".venv/bin/python -m app.cli init"
 app ".venv/bin/python -m app.cli esquema" || echo "!! Revise las diferencias de esquema indicadas arriba"
 install -m 644 "$DIR/deploy/operaciones.service" /etc/systemd/system/operaciones.service
+# V32: vigilante de SAP en su propio servicio (cada minuto trae de SAP solo lo que cambió)
+if [ -f "$DIR/deploy/operaciones-sap.service" ]; then
+  install -m 644 "$DIR/deploy/operaciones-sap.service" /etc/systemd/system/operaciones-sap.service
+fi
 systemctl daemon-reload
 systemctl restart operaciones
+if [ -f /etc/systemd/system/operaciones-sap.service ]; then systemctl enable -q operaciones-sap; systemctl restart operaciones-sap; fi
 for i in $(seq 1 20); do
   if curl -fs -o /dev/null http://127.0.0.1:8000/login; then echo "OK $(date '+%F %T') en ${NUEVO:0:7}"; exit 0; fi
   sleep 3

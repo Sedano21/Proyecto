@@ -3105,7 +3105,8 @@ PARAMS += [
 ]
 PARAMS += [
     ("prefijos_producidos", ["PT", "MQ", "MP"], "list", "Compras",
-     "Prefijos de los artículos que fabrica la empresa: no se compran; su reposición es una pre-solicitud de producción.",
+     "Prefijos de los artículos que fabrica la empresa: su reposición automática es una pre-solicitud de producción (MP y "
+     "MQ se pueden comprar eventualmente; ver «compras_no_comprables»).",
      "DEFINIDO", V31),
 ]
 # V31: la empresa pidió que la reposición sume el stock de seguridad (con el 30 % de su Excel actual)
@@ -3115,4 +3116,12 @@ ALERT_TYPES += [
     ("PRODUCCION_REPOSICION", "Pre-solicitud de producción por reposición (antes del quiebre)", "Producción", "Solicitudes",
      "MEDIA", ["JEFE_PRODUCCION", "ASIST_PRODUCCION", "JEFE_OPERACIONES"], "DEFINIDO", V31,
      "PT, MQ o MP con stock que no cubre las OV pendientes, el consumo durante el plazo y el stock de seguridad.", False),
+]
+# ------------------------------------------------------------------ V32 (13-nov-2026)
+V32 = "Observaciones V32 (13-nov-2026)"
+PARAMS += [
+    ("compras_no_comprables", ["PT"], "list", "Compras",
+     "Prefijos de artículos que no se compran (el PT lo fabrica la empresa). Compras adquiere el granel y, eventualmente, "
+     "MP o MQ (con su orden de compra); la reposición normal de PT, MQ y MP es una pre-solicitud de producción.",
+     "DEFINIDO", V32),
 ]

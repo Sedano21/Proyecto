@@ -515,6 +515,12 @@ def sap_sync():
         volver = request.form.get("volver", "")
         volver = volver if volver.startswith("/") and not volver.startswith("//") else url_for("alm.sap_sync")
         nombre = sap_sl.TIPOS_SAP.get(tipo) or sap_sl.EXTRAS.get(tipo, tipo)
+        from ..services import sap_vigia
+        if tipo == "ACTUALIZAR" and sap_vigia.vivo():  # V32: lo atiende el vigilante de SAP en segundos
+            if sap_sl.job_state("ACTUALIZAR").get("estado") == "EN_CURSO":
+                return act(lambda: None, "Ya se está actualizando con SAP; en unos segundos se ve el resultado.", volver)
+            return act(lambda: sap_vigia.pedir_actualizacion(g.user),
+                       "Actualizando con SAP: se trae solo lo que cambió; en unos segundos se ve el resultado.", volver)
         return act(lambda: sap_sl.sync_background(app_obj, tipo, g.user, current_app.config["UPLOAD_DIR"]),
                    f"Trayendo {nombre.lower()} de SAP… puede tardar unos minutos; esta página se actualiza sola.", volver)
     tipos = [(t, n) for t, n in sap_sl.TIPOS_SAP.items() if SPECS[t]["perm"] in g.perms]
@@ -589,6 +595,8 @@ def sap_dispatch_check():
                         headers={"Content-Disposition": "attachment; filename=ov_vs_guias_sap.xlsx"})
     estado = request.args.get("estado", "")
     filas = [f for f in res["filas"] if not estado or f["estado"] == estado or (estado == "ALERTA" and f["alertas"])]
+    from .common import paginate
+    filas = paginate(filas)  # V32: listas largas con paginador
     from ..services import sap_sl
     job = sap_sl.job_state("SERVICIOS")
     from ..services.core import param

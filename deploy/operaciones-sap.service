@@ -1,0 +1,20 @@
+[Unit]
+Description=Modulo de Operaciones - vigilante de SAP (cada minuto trae solo lo que cambio)
+After=network-online.target postgresql.service operaciones.service
+Wants=network-online.target
+
+[Service]
+User=operaciones
+Group=operaciones
+WorkingDirectory=/opt/operaciones
+EnvironmentFile=/etc/operaciones/operaciones.env
+Environment=CHECK_INTERVAL_MIN=0
+ExecStart=/opt/operaciones/.venv/bin/python -m app.cli sap-vigilar
+Restart=always
+RestartSec=10
+NoNewPrivileges=true
+ProtectSystem=full
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

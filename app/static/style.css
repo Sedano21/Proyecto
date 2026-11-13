@@ -406,6 +406,10 @@ dialog.modal::backdrop,dialog.drawer::backdrop{background:rgba(16,24,20,.45)}
 .live-check{display:flex;flex-direction:column;gap:4px;margin:8px 0}.chk{font-size:12.5px;padding:4px 8px;border-radius:var(--r-sm);background:var(--surface)}
 .chk.good{background:var(--okbg);color:var(--ok)}.chk.bad{background:#fdecec;color:var(--err)}
 .select-search{display:block;width:100%;margin-bottom:4px}
+/* V32: buscador al costado de la lista */
+.sel-buscar{display:flex;gap:6px;align-items:stretch;flex-wrap:nowrap}.sel-buscar>.select-search,.sel-buscar>.buscador{flex:1 1 45%;margin:0;min-width:120px}.sel-buscar>select{flex:1 1 55%;min-width:140px}
+@media (max-width:560px){.sel-buscar{flex-wrap:wrap}}
+a.orden-fecha{color:inherit;text-decoration:none;white-space:nowrap}a.orden-fecha:hover{text-decoration:underline}
 .seg{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden}.seg a{padding:6px 14px;color:var(--ink-2)}.seg a.on{background:var(--cp-verde-700);color:#fff}
 .meter{height:8px;border-radius:4px;background:var(--surface);overflow:hidden}.meter i{display:block;height:100%;background:var(--cp-verde)}
 .meter.bad i{background:var(--err)}
@@ -821,3 +825,10 @@ tr.det[hidden]{display:none!important}
 .buscador>input{flex:1;min-width:0;border-top-right-radius:0;border-bottom-right-radius:0}
 button.lupa{margin:0;padding:0 12px;border-top-left-radius:0;border-bottom-left-radius:0;display:inline-flex;align-items:center;justify-content:center}
 button.lupa .ic{width:18px;height:18px}
+/* V32: alertas por área */
+.area-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px;margin:8px 0 14px}
+.area-card{display:flex;flex-direction:column;gap:2px;padding:14px 16px;border-radius:12px;border:1px solid var(--line);background:var(--surface,#fff);color:inherit;text-decoration:none;border-left:6px solid var(--ok,#1a7f45)}
+.area-card:hover{box-shadow:0 2px 8px rgba(0,0,0,.08);text-decoration:none}
+.area-card .n{font-size:1.8rem;font-weight:700;line-height:1.1}
+.area-card.err{border-left-color:var(--err,#c0392b);background:#fdecea}.area-card.err .n{color:var(--err,#c0392b)}
+.area-card.warn{border-left-color:var(--warn,#c98a00);background:#fff7e0}

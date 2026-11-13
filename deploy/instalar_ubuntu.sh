@@ -34,6 +34,7 @@ echo ">> Complete /etc/operaciones/operaciones.env (SECRET_KEY, DATABASE_URL, SA
 echo "   sudo bash /opt/operaciones/deploy/app.sh '.venv/bin/alembic upgrade head && .venv/bin/python -m app.cli init'"
 
 install -m 644 /opt/operaciones/deploy/operaciones.service /etc/systemd/system/operaciones.service
+install -m 644 /opt/operaciones/deploy/operaciones-sap.service /etc/systemd/system/operaciones-sap.service  # V32
 # Actualización automática desde GitHub: se instala, pero se ACTIVA a mano (docs/43 §8)
 install -m 644 /opt/operaciones/deploy/operaciones-actualizar.service /etc/systemd/system/operaciones-actualizar.service
 install -m 644 /opt/operaciones/deploy/operaciones-actualizar.timer /etc/systemd/system/operaciones-actualizar.timer
@@ -44,7 +45,7 @@ systemctl restart postgresql
 install -m 644 /opt/operaciones/deploy/logrotate-operaciones /etc/logrotate.d/operaciones
 sed "s/DOMINIO/$DOMINIO/" /opt/operaciones/deploy/Caddyfile > /etc/caddy/Caddyfile
 systemctl daemon-reload
-systemctl enable operaciones caddy
+systemctl enable operaciones operaciones-sap caddy
 systemctl restart caddy
 # Respaldo diario de la base y de los archivos (03:00), 14 días
 cat > /etc/cron.d/operaciones-respaldo <<CRON

@@ -1,10 +1,10 @@
-{% extends "base.html" %}{% from "_m.html" import b, ic, empty, csrf %}
+{% extends "base.html" %}{% from "_m.html" import b, ic, empty, csrf, paginacion, buscador_lista %}
 {% block content %}<div class="page-head"><div><h1>Facturas de reserva sin entrega</h1>
 <p class="sub">Facturas de reserva de SAP con mercadería aún por entregar (solo lectura de SAP){% if ult.ts %}, leídas el {{ ult.ts|replace('T', ' ') }}{% endif %}. Mientras una OV tenga saldo en su factura de reserva, el módulo la mantiene abierta aunque SAP cierre la OV.
 La Jefatura de Producción aprueba cuáles entran a la <b>preprogramación de producción</b> (si su OV ya está abierta en el módulo, su faltante entra por la OV y no se cuenta dos veces).</p></div>
 <div>{% if configurado and puede_traer %}{% if job.estado == 'EN_CURSO' %}<span class="small"><span class="spin-sm" aria-hidden="true"></span> trayendo de SAP…</span><script>setTimeout(function(){ location.reload(); }, 10000);</script>{% else %}<form method="post" action="{{ url_for('alm.sap_sync') }}">{{ csrf() }}<input type="hidden" name="tipo" value="RESERVAS"><input type="hidden" name="volver" value="{{ request.full_path.rstrip('?') }}"><button class="btn sec">{{ ic('download') }} Traer de SAP</button></form>{% endif %}{% endif %}</div></div>
 {% if job.estado == 'ERROR' %}<div class="card err small">No se pudo traer de SAP: {{ job.error }}</div>{% endif %}
-<form method="get" class="card row noprint"><div class="grow"><label>Buscar</label><input type="search" name="q" value="{{ q }}" placeholder="cliente, producto, factura u OV"></div><div><button class="sec">Buscar</button></div></form>
+{{ buscador_lista('cliente, producto, factura u OV', campo='fecha_entrega') }}
 {% if filas %}<form method="post">{{ csrf() }}
 {% if puede_aprobar %}<div class="card row noprint"><div class="grow"><label>Motivo (obligatorio para no considerarlas)</label><input name="motivo"></div>
 <div><button name="accion" value="aprobar">Aprobar para la preprogramación</button> <button name="accion" value="rechazar" class="sec">No considerar</button></div></div>{% endif %}
@@ -13,6 +13,6 @@ La Jefatura de Producción aprueba cuáles entran a la <b>preprogramación de pr
 <td data-label="Factura"><b>{{ x.numero }}</b></td><td data-label="Fecha">{{ x.fecha|d }}</td><td data-label="Entrega">{{ x.fecha_entrega|d if x.fecha_entrega else '—' }}</td><td data-label="Cliente">{{ x.cliente }}</td><td data-label="OV">{{ x.ov_numero or '—' }}</td>
 <td data-label="Producto">{{ x.product_code }} <span class="muted">{{ x.descripcion or pd(x.product_code) }}</span></td><td class="r" data-label="Facturado">{{ x.cantidad|n }}</td><td class="r" data-label="Por entregar"><b>{{ x.pendiente|n }}</b></td>
 <td data-label="Preprogramación">{% set a = x.aprobacion or {} %}{% if a.estado == 'APROBADA' %}{{ b('APROBADA', 'ok') }}{% elif a.estado == 'RECHAZADA' %}{{ b('NO SE CONSIDERA', 'info') }}{% else %}{{ b('POR APROBAR', 'warn') }}{% endif %}{% if a.user %}<br><span class="muted">{{ a.user }} · {{ a.ts|replace('T', ' ') }}{% if a.motivo %} · {{ a.motivo }}{% endif %}</span>{% endif %}</td></tr>{% endfor %}</table></div></form>
-<p class="small muted">Total por entregar: {{ filas|sum(attribute='pendiente')|n }} en {{ filas|map(attribute='numero')|unique|list|length }} factura(s).</p>
+{{ paginacion(filas, "líneas") }}<p class="small muted">Total por entregar: {{ total_pend|n }} en {{ n_fact }} factura(s).</p>
 {% else %}{{ empty('No hay facturas de reserva con mercadería por entregar' ~ (' con esa búsqueda' if q else '') ~ '.', 'file') }}{% endif %}
 {% endblock %}

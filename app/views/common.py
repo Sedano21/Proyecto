@@ -428,10 +428,18 @@ def paginate(fuente, por=None):
     except ValueError:
         page = 1
     buscar = (request.args.get("buscar") or "").strip()
-    if buscar:  # V31: buscador de texto en las listas (todas las palabras, sin importar mayúsculas ni tildes)
+    f_desde, f_hasta, orden = _rango_lista()
+    if buscar or f_desde or f_hasta or orden:  # V31/V32: buscador, rango de fechas y orden por fecha en las listas
         if not isinstance(fuente, (list, tuple)):
             fuente = list(db().execute(fuente.limit(5000)).scalars())
-        fuente = [x for x in fuente if coincide(x, buscar)]
+        if buscar:
+            fuente = [x for x in fuente if coincide(x, buscar)]
+        campo = _campo_fecha(fuente)
+        if campo and (f_desde or f_hasta):
+            fuente = [x for x in fuente if _en_rango(_valor_fecha(x, campo), f_desde, f_hasta)]
+        if campo and orden in ("asc", "desc"):
+            from datetime import date as _d
+            fuente = sorted(fuente, key=lambda x: _valor_fecha(x, campo) or _d.min, reverse=orden == "desc")
     if isinstance(fuente, (list, tuple)):
         total = len(fuente)
         page = min(page, max(1, -(-total // por)))
@@ -460,8 +468,12 @@ def coincide(obj, texto):
     def tomar(o, profundidad=0):
         if o is None:
             return
-        if isinstance(o, dict):
-            partes.append(str(o))
+        if isinstance(o, dict):  # V32: filas armadas como diccionario (pueden traer registros dentro)
+            for v in o.values():
+                if getattr(v, "__table__", None) is not None and profundidad == 0:
+                    tomar(v, 1)
+                elif not isinstance(v, (dict,)) and getattr(v, "__table__", None) is None:
+                    partes.append(str(v))
             return
         tabla = getattr(o, "__table__", None)
         if tabla is None:
@@ -484,3 +496,65 @@ def coincide(obj, texto):
         partes.append(f"{getattr(l, 'product_code', '')} {getattr(getattr(l, 'product', None), 'descripcion', '') or ''}")
     base = _norm(" ".join(partes))
     return all(w in base for w in _norm(texto).split())
+
+
+# ------------------------------------------------------------------ V32: fechas en las listas
+CAMPOS_FECHA = ("fecha_compromiso", "fecha", "fecha_emision", "fecha_entrega", "fecha_necesidad", "fecha_requerida",
+                "fecha_llegada", "creado_ts", "ts")
+
+
+def _rango_lista():
+    """(desde, hasta, orden) del filtro de fechas de las listas: f_desde/f_hasta (calendario) o f_mes (AAAA-MM)."""
+    from datetime import date as _d
+    import calendar
+
+    def leer(k):
+        try:
+            return _d.fromisoformat((request.args.get(k) or "")[:10]) if request.args.get(k) else None
+        except ValueError:
+            return None
+    desde, hasta = leer("f_desde"), leer("f_hasta")
+    mes = (request.args.get("f_mes") or "").strip()
+    if len(mes) == 7 and not (desde or hasta):
+        try:
+            y, m = int(mes[:4]), int(mes[5:7])
+            desde, hasta = _d(y, m, 1), _d(y, m, calendar.monthrange(y, m)[1])
+        except ValueError:
+            pass
+    if desde and hasta and hasta < desde:
+        desde, hasta = hasta, desde
+    orden = (request.args.get("orden") or "").lower()
+    return desde, hasta, orden if orden in ("asc", "desc") else ""
+
+
+def _valor_fecha(x, campo):
+    v = x.get(campo) if isinstance(x, dict) else getattr(x, campo, None)
+    if v is None:
+        return None
+    if hasattr(v, "date") and callable(v.date):
+        return v.date()
+    if isinstance(v, str):
+        from datetime import date as _d
+        try:
+            return _d.fromisoformat(v[:10])
+        except ValueError:
+            return None
+    return v
+
+
+def _campo_fecha(filas):
+    pedido = request.args.get("f_campo") or ""
+    muestra = filas[0] if filas else None
+    if muestra is None:
+        return None
+    candidatos = ([pedido] if pedido in CAMPOS_FECHA else []) + list(CAMPOS_FECHA)
+    for c in candidatos:
+        if (isinstance(muestra, dict) and c in muestra) or (not isinstance(muestra, dict) and hasattr(type(muestra), c)):
+            return c
+    return None
+
+
+def _en_rango(v, desde, hasta):
+    if v is None:
+        return False
+    return (not desde or v >= desde) and (not hasta or v <= hasta)
