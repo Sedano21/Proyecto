@@ -18,7 +18,9 @@ from ..models import AreaDayOff, PickingTask, ProductionRequest, Route, now
 from . import alerts
 from .core import BusinessError, audit, has_perm, param, roles_of
 
-AREAS = ("Producción", "Almacén", "Distribución", "Mantenimiento", "Limpieza")
+# V33: también Comercial, Calidad, Logística, Compras y Administración y Finanzas (pueden registrarse varias a la vez)
+AREAS = ("Producción", "Almacén", "Distribución", "Mantenimiento", "Limpieza", "Comercial", "Calidad", "Logística",
+         "Compras", "Administración y Finanzas")
 
 
 def areas_de(user):
@@ -86,7 +88,7 @@ def _campo(tipo):
             "LIMPIEZA": "fecha"}[tipo]
 
 
-def registrar(user, area, fecha, motivo):
+def registrar(user, area, fecha, motivo, avisar=True):
     if area not in areas_de(user):
         raise BusinessError("Su perfil no registra días no laborables para esa área.")
     if fecha is None:
@@ -102,12 +104,58 @@ def registrar(user, area, fecha, motivo):
     db().add(d)
     db().flush()
     n = len(afectados(area, fecha))
+    if not avisar:
+        audit(user, "DIA_NO_LABORABLE", "AreaDayOff", d.id, {"area": area, "fecha": fecha.isoformat(), "motivo": motivo})
+        return d
     alerts.emit("DIA_NO_LABORABLE", f"{area} no labora el {fecha:%d/%m/%Y}",
                 f"Motivo: {motivo}. " + (f"Hay {n} programación(es) de ese día por replanificar." if n else
                                           "No había nada programado ese día."),
                 "AreaDayOff", d.id, creado_por=user, dedup_key=f"DIA_OFF:{area}:{fecha.isoformat()}")
     audit(user, "DIA_NO_LABORABLE", "AreaDayOff", d.id, {"area": area, "fecha": fecha.isoformat(), "motivo": motivo})
     return d
+
+
+def registrar_varios(user, areas, fecha, motivo):
+    """V33: una o varias áreas (o todas las que el perfil gestiona) no laboran la misma fecha. Se avisa a todas las
+    áreas, no solo a las afectadas, para que nadie programe ni registre OV para ese día."""
+    propias = areas_de(user)
+    if not areas:
+        raise BusinessError("Elija al menos un área (o «Todas las áreas»).")
+    if "*" in areas:
+        areas = propias
+    creados, ya = [], []
+    for a in areas:
+        if a not in propias:
+            raise BusinessError(f"Su perfil no registra días no laborables para {a}.")
+        if fecha is not None and es_no_laborable(a, fecha):
+            ya.append(a)
+            continue
+        creados.append(registrar(user, a, fecha, motivo, avisar=False))
+    if not creados:
+        raise BusinessError("Esas áreas ya tienen registrado ese día como no laborable.")
+    nombres = ", ".join(d.area for d in creados)
+    todas = set(d.area for d in creados) >= set(AREAS)
+    bloquea = [a for a in (param("dias_no_laborables_bloquean_ov", ["Almacén", "Distribución"]) or []) if a in nombres]
+    titulo = f"La empresa no labora el {fecha:%d/%m/%Y}" if todas else f"{nombres}: no labora(n) el {fecha:%d/%m/%Y}"
+    alerts.emit("DIA_NO_LABORABLE", titulo,
+                f"Motivo: {(motivo or '').strip()}. Áreas: {nombres}."
+                + (f" No se pueden registrar OV con despacho ese día ({', '.join(bloquea)} no labora)." if bloquea else "")
+                + " Lo programado se replanifica en Días no laborables.",
+                "AreaDayOff", creados[0].id, creado_por=user,
+                extra_roles=list(param("dias_no_laborables_avisar_roles", []) or []),
+                dedup_key=f"DIA_OFF:{fecha.isoformat()}:{nombres}"[:120])
+    return creados
+
+
+def bloquea_ov(fecha):
+    """V33: motivo si no se puede comprometer un despacho ese día (un área de despacho no labora), o None."""
+    if fecha is None:
+        return None
+    areas = param("dias_no_laborables_bloquean_ov", ["Almacén", "Distribución"]) or []
+    for d in db().execute(select(AreaDayOff).where(AreaDayOff.fecha == fecha, AreaDayOff.activo.is_(True),
+                                                   AreaDayOff.area.in_(areas))).scalars():
+        return f"El {fecha:%d/%m/%Y} {d.area} no labora ({d.motivo}): elija otra fecha de despacho."
+    return None
 
 
 def anular(user, d):

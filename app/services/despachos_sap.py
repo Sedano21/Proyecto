@@ -182,7 +182,7 @@ def meses_historial(hoy=None):
     return out
 
 
-def conciliar_historial(mes="", clase=None, situacion="ABIERTAS"):
+def conciliar_historial(mes="", clase=None, situacion="ABIERTAS", desde=None, hasta=None):
     """Órdenes de SAP desde julio (abiertas y cerradas) frente a sus guías de SAP. mes = «AAAA-MM» de la fecha de la
     orden (emisión) o vacío (todos); situacion = ABIERTAS, CERRADAS o TODAS (en SAP)."""
     from .core import param
@@ -196,6 +196,10 @@ def conciliar_historial(mes="", clase=None, situacion="ABIERTAS"):
         ini = date(int(mes[:4]), int(mes[5:7]), 1)
         fin = (ini.replace(day=28) + __import__("datetime").timedelta(days=4)).replace(day=1)
         q = q.where(SapOrderLine.fecha >= ini, SapOrderLine.fecha < fin)
+    if desde:  # V33: rango de fechas de emisión (filtro de la lista)
+        q = q.where(SapOrderLine.fecha >= desde)
+    if hasta:
+        q = q.where(SapOrderLine.fecha <= hasta)
     ordenes = {}
     for r in s.execute(q.order_by(SapOrderLine.fecha, SapOrderLine.docnum, SapOrderLine.id)).scalars():
         o = ordenes.setdefault(r.docnum, {"ov": r.docnum, "cliente": r.cliente, "fecha": r.fecha_entrega.isoformat() if r.fecha_entrega else "",

@@ -280,6 +280,10 @@ def create_order(user, numero, customer_id, fecha_compromiso, lines, urgente=Fal
     fuera_de_corte = ""
     if origen == "MODULO" and not regularizacion:
         check_not_past(fecha_compromiso, hora_cita)
+        from .dias_no_laborables import bloquea_ov  # V33: el área de despacho no labora ese día
+        motivo_dia = bloquea_ov(fecha_compromiso)
+        if motivo_dia:
+            raise BusinessError(motivo_dia)
         try:
             check_cutoff(fecha_compromiso, productos=[ln["product_code"].strip() for ln in lines])
         except BusinessError as e:  # V7: no se pierde lo digitado; queda como borrador
@@ -585,6 +589,10 @@ def _apply_changes(order, user, changes):
             check_cutoff(fc, productos=prods)
         if isinstance(fc, str):
             fc = date.fromisoformat(fc)
+        if fc != order.fecha_compromiso and order.origen == "MODULO":
+            from .dias_no_laborables import bloquea_ov  # V33: no se mueve el despacho a un día que no se labora
+            if bloquea_ov(fc):
+                raise BusinessError(bloquea_ov(fc))
         if fc != order.fecha_compromiso:
             check_not_past(fc)
         order.fecha_compromiso = fc

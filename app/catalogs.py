@@ -3125,3 +3125,29 @@ PARAMS += [
      "MP o MQ (con su orden de compra); la reposición normal de PT, MQ y MP es una pre-solicitud de producción.",
      "DEFINIDO", V32),
 ]
+# ------------------------------------------------------------------ V33 (14-nov-2026)
+V33 = "Observaciones V33 (14-nov-2026)"
+_DNL_V27 = {"JEFE_PRODUCCION": ["Producción"], "JEFE_LOGISTICA": ["Almacén", "Distribución"], "COORD_LOGISTICA": ["Almacén"],
+            "COORD_DISTRIBUCION": ["Distribución"], "JEFE_MANTENIMIENTO": ["Mantenimiento", "Limpieza"],
+            "JEFE_OPERACIONES": ["*"], "GERENCIA_GENERAL": ["*"], "GERENTE_GENERAL_ADJUNTO": ["*"], "SISTEMAS": ["*"]}
+_DNL_V33 = dict(_DNL_V27, JEFE_LOGISTICA=["Almacén", "Distribución", "Logística", "Compras"], JEFE_VENTAS=["Comercial"],
+                COORD_VENTAS=["Comercial"], GERENTE_COMERCIAL=["Comercial"], JEFE_CALIDAD=["Calidad"],
+                COMPRAS=["Compras"], JEFE_ADMIN_FINANZAS=["Administración y Finanzas"],
+                GERENTE_ADMIN_FINANZAS=["Administración y Finanzas"])
+PARAMS_CAMBIO.append(("dias_no_laborables_areas_por_rol", _DNL_V27, _DNL_V33,
+                      f"{V33}: también Comercial, Calidad, Logística, Compras y Administración y Finanzas"))
+PARAMS = [(k, (_DNL_V33 if k == "dias_no_laborables_areas_por_rol" else v), *rest) for k, v, *rest in PARAMS]
+PARAMS += [
+    ("dias_no_laborables_bloquean_ov", ["Almacén", "Distribución"], "list", "Operaciones",
+     "Si alguna de estas áreas no labora un día, no se pueden registrar OV (ni mover su fecha) con despacho ese día.",
+     "PROPUESTO", V33),
+    ("dias_no_laborables_avisar_roles",
+     ["JEFE_OPERACIONES", "JEFE_PRODUCCION", "JEFE_LOGISTICA", "COORD_LOGISTICA", "COORD_ALMACEN", "SUPERV_ALMACEN",
+      "COORD_DISTRIBUCION", "JEFE_VENTAS", "COORD_VENTAS", "EJECUTIVO_VENTAS", "JEFE_CALIDAD", "JEFE_MANTENIMIENTO",
+      "COMPRAS", "GERENCIA_OPERACIONES"], "list", "Operaciones",
+     "Perfiles a los que se avisa cuando una o varias áreas no laboran un día.", "PROPUESTO", V33),
+]
+for _r in ("JEFE_VENTAS", "COORD_VENTAS", "GERENTE_COMERCIAL", "JEFE_CALIDAD", "COMPRAS", "JEFE_ADMIN_FINANZAS",
+           "GERENTE_ADMIN_FINANZAS"):  # V33: también registran el día no laborable de su área
+    if _r in ROLE_PERMISSIONS and not any(p[0] == "dias.no_laborables" for p in ROLE_PERMISSIONS[_r]):
+        ROLE_PERMISSIONS[_r].append(("dias.no_laborables", "DEFINIDO", V33))

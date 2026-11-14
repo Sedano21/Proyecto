@@ -164,7 +164,7 @@
   function encabezadosFecha() {
     if (!document.querySelector('form.buscador-lista')) return;
     document.querySelectorAll('[data-lista] th, .tbl th, .tw th').forEach(function (th) {
-      if (th.dataset.orden || !/fecha|comprometida|emisi[oó]n|creada|llegada|vence/i.test(th.textContent)) return;
+      if (th.dataset.orden || th.hasAttribute('data-sin-orden') || !/fecha|comprometida|emisi[oó]n|creada|llegada|vence/i.test(th.textContent)) return;
       th.dataset.orden = '1';
       var url = new URL(location.href), act = url.searchParams.get('orden');
       url.searchParams.set('orden', act === 'desc' ? 'asc' : 'desc'); url.searchParams.delete('page');

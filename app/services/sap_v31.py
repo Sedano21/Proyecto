@@ -26,6 +26,8 @@ def historial_desde():
 
 
 HASTA_ABIERTO = date(2099, 12, 31)
+# V33: al cambiar lo que se guarda (p. ej. las órdenes de servicio), la siguiente lectura vuelve a traer todo una vez
+HISTORIAL_VERSION = 2
 
 
 def _f(v):
@@ -48,14 +50,27 @@ def rows_ordenes(sl, desde, cambios_desde=None):
     out = []
     for o in sl.get_all("Orders", {"$filter": filtro,
                                    "$select": "DocNum,DocDate,DocDueDate,CardName,DocumentStatus,Cancelled,DocType,Series,"
-                                              "DocumentLines"}):
+                                              "Comments,DocumentLines"}):
         estado = "CANCELADA" if o.get("Cancelled") == "tYES" else ("CERRADA" if o.get("DocumentStatus") == "bost_Close"
                                                                     else "ABIERTA")
         clase, serie = clase_de(o), nombre_serie(o)
         lineas = o.get("DocumentLines") or []
+        servicio = o.get("DocType") == "dDocument_Service"
         for ln in lineas or [{}]:
             q = float(ln.get("Quantity") or 0)
             pend = float(ln.get("RemainingOpenQuantity") or 0)
+            if servicio or not ln.get("ItemCode"):
+                # V33: las órdenes de SERVICIO de SAP no tienen artículo (la línea es un servicio con su cuenta): se
+                # guardan como «SERVICIO» con su descripción; se dan por atendidas cuando la línea o la orden se cierra
+                q = q or 1.0
+                cerrada = ln.get("LineStatus") == "bost_Close" or estado == "CERRADA"
+                out.append({"docnum": str(o.get("DocNum")), "clase": "SERVICIO" if servicio else clase, "serie": serie[:40],
+                            "fecha": str(o.get("DocDate") or "")[:10], "fecha_entrega": str(o.get("DocDueDate") or "")[:10],
+                            "cliente": (o.get("CardName") or "")[:200], "estado": estado, "producto": "SERVICIO",
+                            "descripcion": (ln.get("ItemDescription") or o.get("Comments") or "Servicio")[:200],
+                            "cantidad": q, "entregado": q if cerrada and estado != "CANCELADA" else 0.0,
+                            "linea_cerrada": cerrada})
+                continue
             out.append({"docnum": str(o.get("DocNum")), "clase": clase, "serie": serie[:40],
                         "fecha": str(o.get("DocDate") or "")[:10], "fecha_entrega": str(o.get("DocDueDate") or "")[:10],
                         "cliente": (o.get("CardName") or "")[:200], "estado": estado,
@@ -148,7 +163,8 @@ def sync_historial(user, sl=None, completo=False):
     desde = historial_desde()
     ult = param("sap_ordenes_ultimo", {}) or {}
     previo = _f(ult.get("desde"))
-    completo = completo or not ult.get("ts") or previo != desde or not ult.get("historial")
+    completo = (completo or not ult.get("ts") or previo != desde or not ult.get("historial")
+                or ult.get("version") != HISTORIAL_VERSION)
     cambios = None
     if not completo:
         try:
@@ -172,7 +188,7 @@ def sync_historial(user, sl=None, completo=False):
             sl.logout()
     guardar_ordenes(ordenes, completo)
     guardar_movimientos(movs, completo, ("GUIA", "CONSUMO") if not consumo_err else ("GUIA",))
-    res = {"desde": desde.isoformat(), "hasta": HASTA_ABIERTO.isoformat(), "historial": True,
+    res = {"desde": desde.isoformat(), "hasta": HASTA_ABIERTO.isoformat(), "historial": True, "version": HISTORIAL_VERSION,
            "modo": "completa" if completo else f"cambios desde {cambios:%d/%m/%Y}",
            "ordenes": len({f["docnum"] for f in ordenes}), "lineas": len(ordenes),
            "servicio": len({f["docnum"] for f in ordenes if f["clase"] == "SERVICIO"}),

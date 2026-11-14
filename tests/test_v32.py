@@ -96,8 +96,13 @@ def test_alertas_por_area(app, s):
     html = c.get("/alertas").get_data(as_text=True)
     assert 'class="area-card err"' in html and "Ver todas en una sola lista" in html
     assert "Alerta ficticia V32" not in html  # primero las tarjetas
-    html = c.get("/alertas?area=Almac%C3%A9n").get_data(as_text=True)
-    assert "Alerta ficticia V32 de almacén" in html and "Todas las áreas" in html
+    assert "Por proceso" in html
+    from app.services.alerts import proceso_de
+    from app.models import AlertType
+    pr = proceso_de(s.get(AlertType, "REPOSICION_SUGERIDA"))
+    from urllib.parse import quote
+    html = c.get(f"/alertas?proceso={quote(pr)}").get_data(as_text=True)
+    assert "Alerta ficticia V32 de almacén" in html and "Todos los procesos" in html
     assert "Alerta ficticia V32" in c.get("/alertas?vista=lista").get_data(as_text=True)
 
 

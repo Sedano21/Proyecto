@@ -587,7 +587,10 @@ def sap_dispatch_check():
     situacion = request.args.get("sit", "ABIERTAS")
     situacion = situacion if situacion in ("ABIERTAS", "CERRADAS", "TODAS") else "ABIERTAS"
     if sap_v31.tiene_historial():
-        res = ds.conciliar_historial(mes if len(mes) == 7 else "", None if clase == "TODAS" else clase, situacion)
+        from .common import _rango_lista
+        f_desde, f_hasta, _orden = _rango_lista()  # V33: un solo filtro de fechas (emisión): desde/hasta o mes
+        res = ds.conciliar_historial(mes if len(mes) == 7 else "", None if clase == "TODAS" else clase, situacion,
+                                     f_desde, f_hasta)
     else:
         res = ds.conciliar(clase=None if clase == "TODAS" else clase)
     if request.args.get("salida") == "xlsx":

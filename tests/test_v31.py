@@ -83,8 +83,9 @@ def test_historial_sap_desde_julio(app, s, U):
     assert [f["ov"] for f in ds.conciliar_historial(situacion="ABIERTAS")["filas"]] == ["7002"]
     assert [f["ov"] for f in ds.conciliar_historial("2026-07", situacion="TODAS")["filas"]] == ["7001"]
     c = _cliente(app, "jefe.logistica")
-    html = c.get("/almacen/cargas/sap/despachos?sit=CERRADAS&mes=2026-07").get_data(as_text=True)
-    assert "cerradas vs guías de SAP" in html and "7001" in html and "Mes de la orden" in html
+    html = c.get("/almacen/cargas/sap/despachos?sit=CERRADAS&f_mes=2026-07").get_data(as_text=True)
+    assert "cerradas vs guías de SAP" in html and "7001" in html and 'name="f_mes"' in html
+    assert "7002" not in c.get("/almacen/cargas/sap/despachos?sit=TODAS&f_mes=2026-07").get_data(as_text=True)
     # la segunda lectura solo pide lo que cambió
     sl2 = _SLHist()
     r2 = sap_v31.sync_historial(U("sistemas"), sl=sl2)

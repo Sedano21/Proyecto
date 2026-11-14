@@ -15,10 +15,10 @@
   <div class="grow"><label for="fa_buscar">Buscar</label><input id="fa_buscar" type="search" name="buscar" value="{{ request.args.get('buscar', '') }}" placeholder="título, número, OV, lote…"></div>
   <div><button>Aplicar</button> <a class="btn sec" href="{{ url_for('main.alerts') }}">Limpiar</a></div>
 </form>
-{% if tarjetas %}<h2 class="sec-title">Por área</h2><p class="small muted">Toque un área para ver su lista de alertas y tareas. En rojo, las que tienen alertas urgentes abiertas; en amarillo, las que tienen tareas por atender.</p>
-<div class="area-cards">{% for t in tarjetas %}<a class="area-card {{ 'err' if t.alta else ('warn' if t.tareas else 'ok') }}" href="{{ url_for('main.alerts', area=t.area) }}"><b>{{ t.area }}</b><span class="n">{{ t.abiertas }}</span><small>{{ t.alta }} urgente(s) · {{ t.tareas }} tarea(s) · {{ t.total }} en total</small></a>{% endfor %}</div>
+{% if tarjetas %}<h2 class="sec-title">Por proceso</h2><p class="small muted">Toque un proceso (compras, stock y movimientos, pedidos…) para ver su lista de alertas y tareas. En rojo, los que tienen alertas urgentes abiertas; en amarillo, los que tienen tareas por atender.</p>
+<div class="area-cards">{% for t in tarjetas %}<a class="area-card {{ 'err' if t.alta else ('warn' if t.tareas else 'ok') }}" href="{{ url_for('main.alerts', proceso=t.area) }}"><b>{{ t.area }}</b><span class="n">{{ t.abiertas }}</span><small>{{ t.alta }} urgente(s) · {{ t.tareas }} tarea(s) · {{ t.total }} en total</small></a>{% endfor %}</div>
 <p><a class="btn sec small" href="{{ url_for('main.alerts', vista='lista') }}">Ver todas en una sola lista</a></p>
-{% else %}{% if f.area %}<p class="small"><a href="{{ url_for('main.alerts') }}">← Todas las áreas</a></p>{% endif %}
+{% else %}{% if proceso or f.area %}<p class="small"><a href="{{ url_for('main.alerts') }}">← Todos los procesos</a>{% if proceso %} · <b>{{ proceso }}</b>{% endif %}</p>{% endif %}
 <div id="live-alerts" data-live data-lista><p class="small muted">{{ rows.total if rows.total is defined else rows|length }} alerta(s). <span class="live-note">Se actualiza sola cuando otro destinatario interactúa.</span></p>
 {% macro tabla(lista) %}<div class="tw"><table class="stack"><thead><tr><th>Urgencia</th><th>Qué ocurrió</th><th>Naturaleza</th><th>Área</th><th>Estado</th><th>Responsable</th><th>Fecha</th></tr></thead><tbody>
 {% for a in lista %}{% set tarea = es_tarea(a) %}<tr>

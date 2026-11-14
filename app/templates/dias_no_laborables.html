@@ -1,8 +1,8 @@
 {% extends "base.html" %}{% from "_m.html" import csrf, ic, empty, b %}
 {% block content %}<div class="page-head"><div><h1>Días no laborables por área</h1>
-<p class="sub">Si su área no va a operar un día (inventario, mantenimiento general, capacitación…), regístrelo aquí: la programación no usará ese día y lo que ya estaba programado se pasa, todo junto, al siguiente día hábil (o a la fecha que elija).</p></div></div>
+<p class="sub">Si una o varias áreas (o toda la empresa) no van a operar un día (inventario, mantenimiento general, capacitación, feriado interno…), regístrelo aquí: se avisa a todas las áreas, la programación no usará ese día, no se pueden registrar OV con despacho ese día si no labora Almacén o Distribución, y lo que ya estaba programado se pasa, todo junto, al siguiente día hábil (o a la fecha que elija).</p></div></div>
 <form method="post" class="card row">{{ csrf() }}<input type="hidden" name="accion" value="registrar">
-<div><label class="req">Área</label><select name="area" required>{% for a in areas %}<option>{{ a }}</option>{% endfor %}</select></div>
+<div class="grow"><label class="req">Áreas que no laboran</label><div class="row small">{% if areas|length > 1 %}<label><input type="checkbox" name="area" value="*"> <b>Todas las áreas</b></label>{% endif %}{% for a in areas %}<label><input type="checkbox" name="area" value="{{ a }}"> {{ a }}</label>{% endfor %}</div></div>
 <div><label class="req">Fecha</label><input type="date" name="fecha" min="{{ today.isoformat() }}" required></div>
 <div class="grow"><label class="req">Motivo</label><input name="motivo" required placeholder="p. ej. inventario general, fumigación de planta, capacitación"></div>
 <div><button>{{ ic('calendar') }} Registrar</button></div></form>

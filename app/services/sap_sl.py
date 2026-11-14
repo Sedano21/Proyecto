@@ -222,6 +222,8 @@ def rows_ov(sl):
     series = {}
     filas = []
     for o in ords:
+        if o.get("DocType") == "dDocument_Service":
+            continue  # V33: las órdenes de servicio no se preparan ni se despachan desde el almacén (van en el historial)
         bp = bps.get(o.get("CardCode"), {})
         clase, serie = clase_de(o, series), nombre_serie(o, series)
         for ln in o.get("DocumentLines") or []:

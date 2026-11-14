@@ -215,6 +215,9 @@ def _conformidad(stop, u):
     updir = current_app.config["UPLOAD_DIR"]
     firma = dsvc.save_signature(f.get("firma", ""), updir, f"ov{stop.order.numero}")
     foto = dsvc.save_upload(request.files.get("foto"), updir, f"foto_{stop.order.numero}")
+    # V33: solo la guía de remisión firmada de esta parada: foto o PDF y el número de la guía, que debe coincidir
+    from ..services.v33 import verificar_guia_firmada
+    verificar_guia_firmada(stop, request.files.get("guia"), f.get("guia_numero_adjunta", ""))
     guia = dsvc.save_upload(request.files.get("guia"), updir, f"guia_{stop.order.numero}")
     entregas = {k[4:]: v for k, v in f.items() if k.startswith("ent_") and v != ""}
     foto_rec = dsvc.save_upload(request.files.get("receptor_foto"), updir, f"receptor_{stop.order.numero}")

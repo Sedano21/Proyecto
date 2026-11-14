@@ -659,3 +659,39 @@ def gerencia_bandeja(user):
         ar["tipos"] = sorted(ar["tipos"].values(), key=lambda t: (PRIORIDAD_ORDEN.get(t["prioridad"], 9), -t["n"]))
     return {"prioritarias": prioritarias, "areas_prioritarias": sorted(prio), "accion": accion, "informativas": areas,
             "n_informativas": len(resto)}
+
+
+# ------------------------------------------------------------------ V33: alertas agrupadas por proceso
+_PROCESO_GRUPO = [
+    ("SAP y sistemas", {"Integración SAP", "Conciliación SAP", "Marcha blanca", "Chat", "Tickets"}),
+    ("Compras e importaciones", {"Compras", "Precios", "Contratos", "Seguimiento", "Abastecimiento", "Terceros"}),
+    ("Stock y movimientos", {"Stock", "Movimientos", "Traslados", "Inventario", "Diferencias de inventario",
+                             "Faltantes y cobertura", "Recepción", "Cargas"}),
+    ("Pedidos (OV)", {"OV", "Órdenes de venta", "Cambios de OV", "Estados de pedidos", "Compromiso de entrega"}),
+    ("Preparación y despacho", {"Preparación", "Rutas", "Guías", "Carga", "Documentos", "Programación", "Flota",
+                                "Incidencias", "Devoluciones"}),
+    ("Producción", {"Programa", "Parte de producción", "Merma", "Lista de materiales", "Liquidación", "Liquidaciones",
+                    "Solicitudes a producción", "Producción"}),
+    ("Calidad y fumigación", {"Fumigación", "Fumigación y no utilizables", "Inspecciones", "Saneamiento", "Certificados",
+                              "Calidad"}),
+    ("Finanzas y cobranza", {"Cobranza", "Costos", "Presupuesto", "Condición de pago", "Notas de crédito"}),
+    ("Comercial", {"Clientes", "Objetivos", "Indicadores", "Precios de mercado", "Comportamiento de clientes"}),
+    ("Mantenimiento y limpieza", {"Trabajos", "Limpieza", "Mantenimiento"}),
+]
+_PROCESO_AREA = {"Compras": "Compras e importaciones", "Importaciones": "Compras e importaciones",
+                 "Almacén": "Stock y movimientos", "Logística": "Stock y movimientos", "Comercial": "Pedidos (OV)",
+                 "Distribución": "Preparación y despacho", "Seguridad": "Preparación y despacho",
+                 "Producción": "Producción", "Calidad": "Calidad y fumigación", "Finanzas": "Finanzas y cobranza",
+                 "Facturación": "Finanzas y cobranza", "Mantenimiento": "Mantenimiento y limpieza",
+                 "Sistemas": "SAP y sistemas"}
+PROCESOS = [p for p, _ in _PROCESO_GRUPO] + ["Gerencia y planificación"]
+
+
+def proceso_de(t):
+    """Proceso al que pertenece un tipo de alerta (para las tarjetas de Alertas y tareas)."""
+    if t is None:
+        return "Gerencia y planificación"
+    for nombre, grupos in _PROCESO_GRUPO:
+        if t.grupo in grupos:
+            return nombre
+    return _PROCESO_AREA.get(t.area, "Gerencia y planificación")

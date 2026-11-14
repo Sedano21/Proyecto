@@ -388,21 +388,25 @@ def alerts():
         grupos = {k: [a for a in v if coincide(a, request.args["buscar"])] for k, v in grupos.items()}
         grupos = {k: v for k, v in grupos.items() if v}
     # V32: sin filtros se ven tarjetas por área (en rojo si tiene urgentes); al tocar una se despliega su lista
+    # V33: las tarjetas agrupan por PROCESO (Compras e importaciones, Stock y movimientos, Pedidos…)
+    proceso = request.args.get("proceso") or ""
+    if proceso:
+        rows = [a for a in rows if alert_svc.proceso_de(a.type) == proceso]
     filtros_activos = any(request.args.get(k) for k in ("estado", "area", "prioridad", "grupo", "type_code", "naturaleza",
-                                                        "agrupar", "buscar", "desde", "hasta", "vista"))
+                                                        "agrupar", "buscar", "desde", "hasta", "vista", "proceso"))
     tarjetas = []
     if not filtros_activos:
         por_area = {}
         for a in rows:
-            t = por_area.setdefault(a.area or "Sin área", {"area": a.area or "Sin área", "total": 0, "alta": 0, "tareas": 0,
-                                                            "abiertas": 0})
+            pr = alert_svc.proceso_de(a.type)
+            t = por_area.setdefault(pr, {"area": pr, "total": 0, "alta": 0, "tareas": 0, "abiertas": 0})
             t["total"] += 1
             abierta = a.estado not in alert_svc.CERRADOS
             t["abiertas"] += 1 if abierta else 0
             t["alta"] += 1 if abierta and a.prioridad == "ALTA" else 0
             t["tareas"] += 1 if abierta and alert_svc.nature_for(g.user, a) == "TAREA" else 0
         tarjetas = sorted(por_area.values(), key=lambda t: (-t["alta"], -t["tareas"], -t["abiertas"], t["area"]))
-    return render_template("alerts.html", desde=desde, hasta=hasta, tarjetas=tarjetas, rows=rows if agrupar else paginate(rows), f=f, tipos=tipos, agrupar=agrupar, grupos=grupos,
+    return render_template("alerts.html", desde=desde, hasta=hasta, tarjetas=tarjetas, proceso=proceso, rows=rows if agrupar else paginate(rows), f=f, tipos=tipos, agrupar=agrupar, grupos=grupos,
                            areas=sorted({t.area for t in tipos}), grupos_tipo=sorted({t.grupo for t in tipos}),
                            estados=alert_svc.ESTADOS, estado_txt=alert_svc.ESTADO_TXT, naturaleza=naturaleza)
 
@@ -1209,8 +1213,10 @@ def days_off():
         f = request.form
         acc = f.get("accion")
         if acc == "registrar":
-            return act(lambda: dnl.registrar(g.user, f.get("area", ""), f_date("fecha"), f.get("motivo", "")),
-                       lambda d: f"{d.area}: el {d.fecha:%d/%m/%Y} queda como día no laborable.", back)
+            areas = f.getlist("area")  # V33: una, varias o «Todas las áreas» (*)
+            return act(lambda: dnl.registrar_varios(g.user, areas, f_date("fecha"), f.get("motivo", "")),
+                       lambda ds: f"{', '.join(d.area for d in ds)}: el {ds[0].fecha:%d/%m/%Y} queda como día no laborable. "
+                       "Se avisó a todas las áreas.", back)
         d = db().get(AreaDayOff, int(f.get("id") or 0)) or abort(404)
         if acc == "replanificar":
             return act(lambda: dnl.replanificar(g.user, d, f_date("destino"), f.getlist("item") or None),
