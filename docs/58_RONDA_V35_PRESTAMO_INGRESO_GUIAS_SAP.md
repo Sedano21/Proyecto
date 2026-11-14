@@ -143,3 +143,18 @@ Con la cuenta y el tipo de operación ya aceptados, la localización de SAP pide
 
 **Prueba:** `test_folio_de_la_entrada_con_el_prefijo_de_logistica`.
 - Suite completa V40: **637 pruebas, todas pasan**.
+
+## 10. V41 — Guía SUNAT a SAP: «(15) Debe indicar el tipo de operación de inventarios»
+
+El préstamo ya quedó en SAP (entrada de mercancías creada desde el módulo). Al enviar luego la guía regularizada, la
+localización pedía también en la **entrega** el tipo de operación de inventarios.
+
+- Al enviar, el sistema lee las últimas 30 entregas de SAP (preferentemente de la misma serie de guía, p. ej. EG07) y
+  copia los campos de usuario de tipo u operación (`U_…OPER…`, `U_…TIPO…`) con su valor más usado, en la cabecera y en
+  las líneas. No se inventan valores: si no hay entregas con esos campos, se envía como antes y la pantalla lo indica.
+- El folio de la entrega ya era la serie y número de la guía SUNAT.
+- El error de SAP ya no se muestra dos veces en la tarjeta de la guía; se indica qué valores se enviaron.
+- No verificado contra la base real de SAP.
+
+**Prueba:** `test_guia_sunat_lleva_el_tipo_de_operacion_de_las_entregas`.
+- Suite completa V41: **638 pruebas, todas pasan**.

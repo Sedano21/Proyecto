@@ -245,3 +245,43 @@ def test_folio_de_la_entrada_con_el_prefijo_de_logistica(app, s, U, monkeypatch)
     assert "FolioNumber" not in SLf.body["DocumentLines"][0]
     html = _cliente(app, "jefe.operaciones").get("/operacion/ingresos-mercaderia").get_data(as_text=True)
     assert "Prefijo de folio" in html and "último 41" in html
+
+
+def test_guia_sunat_lleva_el_tipo_de_operacion_de_las_entregas(app, s, U, new_order, monkeypatch):
+    """V41: «(15) Debe indicar el tipo de operación de inventarios» al enviar la guía: se copia el de las entregas de SAP."""
+    from app.models import SunatGuide
+    from app.services import guias_sunat as gs
+    from app.services import sap_sl
+    from app.services.core import BusinessError
+    o = new_order([("PT-901", 4)])
+    g = SunatGuide(serie="EG07", numero="448", lineas=[{"codigo": "PT-901", "descripcion": "x", "lote": "264005DV",
+                                                        "cantidad": 4}], sap_ov="1636328", order_id=o.id, archivo="",
+                   estado="REGISTRADA", inventario={}, sap={})
+    s.add(g)
+    s.commit()
+
+    class SL:
+        cfg = {"company": "ZZZ_CORPRODUC_TEST260826"}
+        body = None
+
+        def get_all(self, path, params=None):
+            if path == "DeliveryNotes":
+                return [{"DocEntry": 5, "FolioPrefixString": "EG07", "U_EXX_TIPOOPER": "01", "U_EXX_TIPOV": "Orden de venta",
+                         "DocumentLines": [{"U_EXX_TIPOPERDET": "01"}]},
+                        {"DocEntry": 4, "FolioPrefixString": "EG07", "U_EXX_TIPOOPER": "01", "U_OTRO": "z"},
+                        {"DocEntry": 3, "FolioPrefixString": "T001", "U_EXX_TIPOOPER": "99"}]
+            return [{"DocEntry": 77, "DocNum": 1636328, "CardCode": "C1", "DocumentLines": [
+                {"LineNum": 0, "ItemCode": "PT-901", "RemainingOpenQuantity": 4}]}]
+
+        def _req(self, method, path, body=None, headers=None):
+            SL.body = body
+            if not body.get("U_EXX_TIPOOPER"):
+                raise BusinessError("SAP respondió 400: (15) Debe indicar el tipo de operación de inventarios.")
+            return {"DocEntry": 901, "DocNum": 3002}
+    monkeypatch.setattr(sap_sl, "write_enabled", lambda cfg=None: None)
+    monkeypatch.setattr(gs, "_req", lambda u: None)
+    gs.enviar_sap(U("jefe.operaciones"), g, sl=SL())
+    s.commit()
+    assert g.sap["estado"] == "OK" and SL.body["U_EXX_TIPOOPER"] == "01" and SL.body["U_EXX_TIPOV"] == "Orden de venta"
+    assert "U_OTRO" not in SL.body and SL.body["DocumentLines"][0]["U_EXX_TIPOPERDET"] == "01"
+    assert SL.body["FolioPrefixString"] == "EG07" and SL.body["FolioNumber"] == 448

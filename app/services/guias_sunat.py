@@ -309,6 +309,32 @@ def _consumir_reserva(g, lot, cantidad):
 
 
 # ------------------------------------------------------------------ SAP
+def campos_de_entregas(sl, serie=""):
+    """V41: la localización de SAP exige en la entrega el tipo de operación de inventarios (campos de usuario como
+    U_EXX_TIPOOPER). Logística no los escribe a mano: quedan en sus entregas. Se toman de las últimas 30 entregas de
+    SAP (de la misma serie de guía si las hay) los campos U_ de tipo u operación con su valor más usado.
+    {"cabecera": {campo: valor}, "lineas": {campo: valor}}"""
+    import re
+    from collections import Counter
+    try:
+        docs = sl.get_all("DeliveryNotes", {"$orderby": "DocEntry desc", "$top": "30"})[:30]
+    except Exception:  # noqa: BLE001  (sin lectura posible: se envía sin estos campos, como antes)
+        return {}
+    misma = [d for d in docs if isinstance(d, dict) and str(d.get("FolioPrefixString") or "") == str(serie)]
+    docs = misma or [d for d in docs if isinstance(d, dict)]
+
+    def mas_usados(filas):
+        c, orig = {}, {}
+        for f in filas:
+            for k, v in f.items():
+                if k.startswith("U_") and v not in (None, "") and re.search(r"OPER|TPO|TIPO", k, re.I):
+                    c.setdefault(k, Counter())[str(v)] += 1
+                    orig[(k, str(v))] = v  # se envía con el mismo tipo de dato que tiene en SAP
+        return {k: orig[(k, x.most_common(1)[0][0])] for k, x in c.items()}
+    return {"cabecera": mas_usados(docs),
+            "lineas": mas_usados([ln for d in docs for ln in d.get("DocumentLines") or [] if isinstance(ln, dict)])}
+
+
 def enviar_sap(user, g, sl=None):
     """Crea en SAP la entrega (guía) basada en la OV de SAP, con la serie y el número de SUNAT y los lotes."""
     from . import sap_sl
@@ -380,9 +406,16 @@ def enviar_sap(user, g, sl=None):
                 "FolioPrefixString": g.serie, "FolioNumber": int(g.numero),
                 "Comments": f"Guía emitida en SUNAT {g.serie}-{g.numero} (regularizada desde el módulo de operaciones)",
                 "DocumentLines": lines}
+        udf = campos_de_entregas(sl, g.serie)  # V41: tipo de operación de la localización, como en las entregas de SAP
+        for k, v in udf.get("cabecera", {}).items():
+            body.setdefault(k, v)
+        for k, v in udf.get("lineas", {}).items():
+            for d in lines:
+                d.setdefault(k, v)
         r = sl._req("POST", "DeliveryNotes", body)
     except BusinessError as e:
-        g.sap = {"estado": "ERROR", "error": str(e)[:500], "ts": now().isoformat(timespec="minutes")}
+        g.sap = {"estado": "ERROR", "error": str(e)[:500], "ts": now().isoformat(timespec="minutes"),
+                 **({"udf": udf} if locals().get("udf") else {})}
         audit(user, "GUIA_SUNAT_SAP_ERROR", "SunatGuide", g.id, g.sap)
         if es_inventario_negativo(str(e)):
             pedir_prestamo(user, g, str(e))
@@ -394,7 +427,7 @@ def enviar_sap(user, g, sl=None):
             except BusinessError:
                 pass
     g.sap = {"estado": "OK", "docentry": r.get("DocEntry"), "docnum": r.get("DocNum"), "user": user.nombre,
-             "ts": now().isoformat(timespec="minutes")}
+             "ts": now().isoformat(timespec="minutes"), **({"udf": udf} if udf else {})}
     g.estado = "ENVIADA_SAP"
     audit(user, "GUIA_SUNAT_SAP", "SunatGuide", g.id, g.sap)
     return g
