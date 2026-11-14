@@ -125,3 +125,5 @@ La cuenta contable ya pasó. Ahora lo que rechaza es una **validación de la loc
 **Qué hacer:** pulsar **«Leer campos de SAP»** y luego **«Reintentar en SAP»** en el ingreso #1. El sistema completa el tipo de operación con el de Logística.
 
 **Prueba:** `test_tipo_de_operacion_sugerido_por_las_entradas_de_logistica`.
+
+- Suite completa V39: **636 pruebas, todas pasan**.
