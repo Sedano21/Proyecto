@@ -67,8 +67,8 @@ def mensaje_error(err):
     e = err or ""
     if "Inventory account is not defined" in e or "AccountCode" in e:
         return (e + " · SAP necesita la CUENTA CONTABLE de compensación para la entrada de mercancías (no es el costo). "
-                "Pida a Contabilidad la cuenta que usan para los préstamos, escríbala en «Cuenta contable» (o en "
-                "Parámetros → ingreso_mercaderia_cuenta para que quede por defecto) y pulse «Reintentar en SAP».")
+                "Escriba la cuenta tal como la ve en SAP (p. ej. 2841119-00-00): el sistema la convierte a su código "
+                "interno. Luego pulse «Reintentar en SAP».")
     return e
 
 
@@ -116,6 +116,41 @@ def _reenviar_guia(user, ing, guia, sl):
             ing.sap = dict(ing.sap, guia_error=str(e)[:300])
 
 
+def resolver_cuenta(sl, texto):
+    """V37: con el plan de cuentas segmentado, SAP muestra la cuenta como «2841119-00-00», pero el Service Layer espera
+    su código interno (p. ej. «_SYS00000000315»). Se busca en el plan de cuentas por el código tal como se escribió, por
+    el formato visible y por el formato sin separadores. Devuelve (código interno, nombre)."""
+    import re
+    t = (texto or "").strip()
+    if not t:
+        return "", ""
+    sin_sep = re.sub(r"[^0-9A-Za-z]", "", t)
+    candidatos = [("Code", t), ("FormatCode", t), ("FormatCode", sin_sep)]
+    if sin_sep != t:
+        candidatos.append(("Code", sin_sep))
+    sin_permiso = True
+    for campo, valor in candidatos:
+        try:
+            filas = sl.get_all("ChartOfAccounts", {"$filter": f"{campo} eq '{valor}'", "$select": "Code,Name,FormatCode"})
+            sin_permiso = False
+        except BusinessError:
+            filas = []
+        if filas:
+            return filas[0].get("Code") or t, filas[0].get("Name") or ""
+    try:  # el formato visible puede tener otros separadores: se compara sin separadores entre las cuentas con ese inicio
+        filas = sl.get_all("ChartOfAccounts", {"$filter": f"startswith(FormatCode, '{sin_sep[:4]}')",
+                                               "$select": "Code,Name,FormatCode"})
+        for f in filas:
+            if re.sub(r"[^0-9A-Za-z]", "", f.get("FormatCode") or "") == sin_sep:
+                return f.get("Code"), f.get("Name") or ""
+    except BusinessError:
+        pass
+    if sin_permiso:  # el usuario de integración no puede leer el plan de cuentas: se envía tal como se escribió
+        return t, ""
+    raise BusinessError(f"La cuenta {t} no se encontró en el plan de cuentas de SAP (ni como código interno ni como "
+                        "formato). Verifique el número con Contabilidad.")
+
+
 def enviar(user, ing, sl=None):
     from . import sap_sl
     propio = sl is None
@@ -126,6 +161,8 @@ def enviar(user, ing, sl=None):
         motivo = sap_sl.write_enabled(sl.cfg)
         if motivo:
             raise BusinessError(motivo)
+        cuenta_txt = ((ing.sap or {}).get("cuenta") or param("ingreso_mercaderia_cuenta", "") or "").strip()
+        cuenta, cuenta_nombre = resolver_cuenta(sl, cuenta_txt) if cuenta_txt else ("", "")
         lineas = []
         for x in ing.lineas:
             d = {"ItemCode": x["codigo"], "Quantity": x["cantidad"], "WarehouseCode": ing.almacen,
@@ -134,7 +171,6 @@ def enviar(user, ing, sl=None):
                                        **({"ExpiryDate": x["fv"]} if x.get("fv") else {}))]}
             if x.get("precio"):
                 d["UnitPrice"] = x["precio"]
-            cuenta = ((ing.sap or {}).get("cuenta") or param("ingreso_mercaderia_cuenta", "") or "").strip()
             if cuenta:
                 d["AccountCode"] = cuenta
             lineas.append(d)
@@ -155,6 +191,7 @@ def enviar(user, ing, sl=None):
                 pass
     ing.estado = "EN_SAP"
     ing.sap = {"docentry": r.get("DocEntry"), "docnum": r.get("DocNum"), "ts": now().isoformat(timespec="minutes"),
+               **({"cuenta_sap": cuenta, "cuenta_nombre": cuenta_nombre} if cuenta else {}),
                **({"cuenta": ing.sap["cuenta"]} if (ing.sap or {}).get("cuenta") else {})}
     audit(user, "INGRESO_MERCADERIA_SAP", "GoodsReceipt", ing.id, ing.sap)
     if ing.guia_id:

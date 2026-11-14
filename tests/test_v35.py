@@ -108,10 +108,17 @@ def test_ingreso_sin_cuenta_contable_y_reintento(app, s, U, monkeypatch):
         cfg = {"company": "ZZZ_CORPRODUC_TEST260826"}
         body = None
 
+        def get_all(self, path, params=None):  # plan de cuentas segmentado: «2841119-00-00» → código interno
+            assert path == "ChartOfAccounts"
+            f = params["$filter"]
+            if "FormatCode eq '28411190000'" in f or "FormatCode eq '2841119-00-00'" in f:
+                return [{"Code": "_SYS00000000315", "Name": "Préstamos de mercadería", "FormatCode": "28411190000"}]
+            return []
+
         def _req(self, method, path, body=None, headers=None):
             from app.services.core import BusinessError
             SLc.body = body
-            if not body["DocumentLines"][0].get("AccountCode"):
+            if body["DocumentLines"][0].get("AccountCode") != "_SYS00000000315":
                 raise BusinessError("SAP respondió 400: Inventory account is not defined [DocumentLines.AccountCode][line: 1]")
             return {"DocEntry": 5, "DocNum": 70}
     r = ingresos_sap.registrar(U("jefe.operaciones"), date.today(), "ALM-001", "Préstamo de prueba",
@@ -119,8 +126,11 @@ def test_ingreso_sin_cuenta_contable_y_reintento(app, s, U, monkeypatch):
     s.commit()
     assert r.estado == "ERROR" and "CUENTA CONTABLE" in ingresos_sap.mensaje_error(r.sap["error"])
     assert "UnitPrice" not in SLc.body["DocumentLines"][0]  # el préstamo va sin costo
-    ingresos_sap.reintentar(U("jefe.operaciones"), r, "6911101", sl=SLc())
+    ingresos_sap.reintentar(U("jefe.operaciones"), r, "9999999-99-99", sl=SLc())
+    assert r.estado == "ERROR" and "no se encontró en el plan de cuentas" in r.sap["error"]
+    ingresos_sap.reintentar(U("jefe.operaciones"), r, "2841119-00-00", sl=SLc())
     s.commit()
-    assert r.estado == "EN_SAP" and SLc.body["DocumentLines"][0]["AccountCode"] == "6911101" and r.sap["cuenta"] == "6911101"
+    assert r.estado == "EN_SAP" and SLc.body["DocumentLines"][0]["AccountCode"] == "_SYS00000000315"
+    assert r.sap["cuenta"] == "2841119-00-00" and r.sap["cuenta_nombre"] == "Préstamos de mercadería"
     html = _cliente(app, "jefe.operaciones").get("/operacion/ingresos-mercaderia").get_data(as_text=True)
     assert "Cuenta contable de compensación" in html and "Costo unitario" not in html

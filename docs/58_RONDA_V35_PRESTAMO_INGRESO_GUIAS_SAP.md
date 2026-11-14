@@ -74,3 +74,18 @@ Pruebas con datos ficticios.
 3. Pulsar **«Reintentar en SAP»**.
 
 **Prueba agregada:** `test_ingreso_sin_cuenta_contable_y_reintento`. SAP rechaza el ingreso sin cuenta, el reintento con la cuenta pasa y el préstamo va sin costo.
+
+## 6. Ajuste V37: la cuenta «2841119-00-00» seguía dando el mismo error
+
+**Causa:** el plan de cuentas de SAP está **segmentado**.
+- «2841119-00-00» es el código **visible** de la cuenta.
+- El Service Layer espera su **código interno**, distinto del visible (p. ej. «_SYS00000000315»).
+- Con el código visible, SAP no encuentra la cuenta y responde otra vez «Inventory account is not defined».
+
+**Corrección:**
+- El sistema busca la cuenta en el **plan de cuentas de SAP**, por el código interno, el formato visible o el formato sin separadores, y envía el **código interno**.
+- La cuenta se sigue escribiendo tal como se ve en SAP. Si no existe, el ingreso lo dice.
+- Al quedar en SAP, el ingreso guarda el código interno y el nombre de la cuenta.
+- Si el usuario de integración no tiene permiso para leer el plan de cuentas, se envía tal como se escribió.
+
+**Qué hacer:** pulsar **«Reintentar en SAP»** en los ingresos #1 y #2, con 2841119-00-00. No hace falta digitar nada más.
