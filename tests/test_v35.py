@@ -134,3 +134,40 @@ def test_ingreso_sin_cuenta_contable_y_reintento(app, s, U, monkeypatch):
     assert r.sap["cuenta"] == "2841119-00-00" and r.sap["cuenta_nombre"] == "Préstamos de mercadería"
     html = _cliente(app, "jefe.operaciones").get("/operacion/ingresos-mercaderia").get_data(as_text=True)
     assert "Cuenta contable de compensación" in html and "Costo unitario" not in html
+
+
+def test_ingreso_con_tipo_de_operacion_de_la_localizacion(app, s, U, monkeypatch):
+    """V38: la localización de SAP exige «(59) Debe indicar el tipo de operación de inventarios»: se leen los campos de
+    usuario de la entrada (UserFieldsMD) y se elige el valor."""
+    from app.services import ingresos_sap, sap_sl
+    monkeypatch.setattr(sap_sl, "write_enabled", lambda cfg=None: None)
+
+    class SLt:
+        cfg = {"company": "ZZZ_CORPRODUC_TEST260826"}
+        body = None
+
+        def get_all(self, path, params=None):
+            if path == "UserFieldsMD" and "OIGN" in params["$filter"]:
+                return [{"Name": "TIPO_OPER", "TableName": "OIGN", "Description": "Tipo Operación", "Mandatory": "tNO",
+                         "ValidValuesMD": [{"Value": "16", "Description": "Saldo inicial"},
+                                           {"Value": "99", "Description": "Otros"}]},
+                        {"Name": "OTRO", "TableName": "OIGN", "Description": "Observación libre", "Mandatory": "tNO"}]
+            return []
+
+        def _req(self, method, path, body=None, headers=None):
+            from app.services.core import BusinessError
+            SLt.body = body
+            if not body.get("U_TIPO_OPER"):
+                raise BusinessError("SAP respondió 400: (59) Debe indicar el tipo de operación de inventarios.")
+            return {"DocEntry": 6, "DocNum": 71}
+    r = ingresos_sap.registrar(U("jefe.operaciones"), date.today(), "ALM-001", "Préstamo",
+                               [{"codigo": "PT-901", "lote": "264005DV", "cantidad": 4}], sl=SLt())
+    s.commit()
+    assert r.estado == "ERROR" and "TIPO DE OPERACIÓN" in ingresos_sap.mensaje_error(r.sap["error"])
+    campos = ingresos_sap.campos_sap()  # se leyeron solos al fallar
+    assert [c["nombre"] for c in campos] == ["U_TIPO_OPER"] and campos[0]["valores"][1] == ["99", "Otros"]
+    html = _cliente(app, "jefe.operaciones").get("/operacion/ingresos-mercaderia").get_data(as_text=True)
+    assert 'name="udf_U_TIPO_OPER"' in html and "99 · Otros" in html
+    ingresos_sap.reintentar(U("jefe.operaciones"), r, udf={"U_TIPO_OPER": "99"}, sl=SLt())
+    s.commit()
+    assert r.estado == "EN_SAP" and SLt.body["U_TIPO_OPER"] == "99"

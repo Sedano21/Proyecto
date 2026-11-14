@@ -334,16 +334,29 @@ def goods_receipts():
         filas = [{"codigo": c, "lote": l, "cantidad": q, "fp": fp, "fv": fv}
                  for c, l, q, fp, fv in zip(f.getlist("codigo"), f.getlist("lote"), f.getlist("cantidad"),
                                             f.getlist("fp"), f.getlist("fv"))]
+        udf = {k[4:]: v for k, v in f.items() if k.startswith("udf_")}  # V38: campos que pide la localización de SAP
         try:
+            if f.get("accion") == "leer_campos":
+                if "stock.ingreso_sap" not in g.perms:
+                    abort(403)
+                n = len(ing.campos_sap(refrescar=True))
+                db().commit()
+                flash(f"Se leyeron de SAP {n} campo(s) de la entrada de mercancías.", "ok")
+                return redirect(back + "#nuevo")
             if f.get("accion") == "reintentar":  # V36: reintentar en SAP sin volver a digitar
-                r = ing.reintentar(g.user, db().get(GoodsReceipt, int(f.get("id") or 0)) or abort(404), f.get("cuenta", ""))
+                r = ing.reintentar(g.user, db().get(GoodsReceipt, int(f.get("id") or 0)) or abort(404), f.get("cuenta", ""),
+                                   udf=udf)
             else:
                 r = ing.registrar(g.user, f.get("fecha"), f.get("almacen"), f.get("motivo"), filas, guia,
-                                  cuenta=f.get("cuenta", ""))
+                                  cuenta=f.get("cuenta", ""), udf=udf)
             db().commit()
         except BusinessError as e:
             db().rollback()
             flash(str(e), "error")
+            return redirect(back)
+        except Exception as e:  # noqa: BLE001  (sin conexión con SAP al leer los campos)
+            db().rollback()
+            flash(f"No se pudo leer de SAP: {e}", "error")
             return redirect(back)
         if r.estado == "EN_SAP":
             flash(f"Ingreso #{r.id} registrado en SAP (entrada {r.sap.get('docnum')})."
@@ -360,5 +373,7 @@ def goods_receipts():
     from ..services.core import param
     return render_template("v35_ingresos.html", ingresos=ingresos, pendientes=pendientes, guia=guia, almacenes=almacenes,
                            cuenta_def=param("ingreso_mercaderia_cuenta", "") or "", msg_error=ing.mensaje_error,
+                           campos=(param("ingreso_mercaderia_campos_sap", {}) or {}).get("campos") or [],
+                           udf_def=param("ingreso_mercaderia_valores", {}) or {},
                            productos=productos, hoy=__import__("datetime").date.today(),
                            puede="stock.ingreso_sap" in g.perms)

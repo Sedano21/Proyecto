@@ -3172,3 +3172,11 @@ PARAMS += [
      "Cuenta contable de compensación para los ingresos de mercadería a SAP. Vacío: la cuenta por defecto de SAP.",
      "PENDIENTE", V35),
 ]
+PARAMS += [
+    ("ingreso_mercaderia_campos_sap", {}, "dict", "Integración SAP",
+     "Campos de usuario de la entrada de mercancías leídos de SAP (tipo de operación, etc.). Lo escribe el sistema.",
+     "DEFINIDO", V35),
+    ("ingreso_mercaderia_valores", {}, "dict", "Integración SAP",
+     "Valores por defecto de esos campos para los ingresos de mercadería (préstamos), p. ej. {\"U_TIPO_OPER\": \"99\"}.",
+     "PENDIENTE", V35),
+]

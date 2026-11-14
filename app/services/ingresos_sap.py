@@ -62,9 +62,50 @@ def lineas_de(form_lineas):
     return out
 
 
+# ------------------------------------------------------------------ V38: campos de usuario de SAP de la entrada
+def campos_sap(sl=None, refrescar=False):
+    """Campos de usuario de la entrada de mercancías (cabecera OIGN y líneas IGN1) que la localización de SAP exige, como
+    el «tipo de operación de inventarios» (código de SUNAT). Se leen de SAP (UserFieldsMD) con sus valores válidos y
+    se guardan en «ingreso_mercaderia_campos_sap». [{nombre, tabla, descripcion, obligatorio, valores: [[v, d]]}]"""
+    import re
+    from .core import set_param
+    cache = param("ingreso_mercaderia_campos_sap", {}) or {}
+    if cache.get("campos") is not None and not refrescar:
+        return cache["campos"]
+    from . import sap_sl
+    propio = sl is None
+    sl = sl or sap_sl.ServiceLayer()
+    campos = []
+    try:
+        if propio:
+            sl.login()
+        for tabla in ("OIGN", "IGN1"):
+            for f in sl.get_all("UserFieldsMD", {"$filter": f"TableName eq '{tabla}'"}):
+                desc = f.get("Description") or ""
+                oblig = f.get("Mandatory") == "tYES"
+                if not (oblig or re.search(r"operaci|motivo|tipo", desc, re.I)):
+                    continue
+                campos.append({"nombre": "U_" + f.get("Name", ""), "tabla": tabla, "descripcion": desc,
+                               "obligatorio": oblig, "defecto": f.get("DefaultValue") or "",
+                               "valores": [[v.get("Value"), v.get("Description") or v.get("Value")]
+                                           for v in (f.get("ValidValuesMD") or [])]})
+    finally:
+        if propio:
+            try:
+                sl.logout()
+            except BusinessError:
+                pass
+    set_param("ingreso_mercaderia_campos_sap", {"ts": now().isoformat(timespec="minutes"), "campos": campos})
+    return campos
+
+
 def mensaje_error(err):
     """Explicación del error de SAP para la Jefatura de Operaciones."""
     e = err or ""
+    if "tipo de operaci" in e.lower():
+        return (e + " · La localización de SAP exige el TIPO DE OPERACIÓN de inventario (código de SUNAT) en la entrada. "
+                "Elíjalo en «Datos que pide SAP» (si la lista está vacía, pulse «Leer campos de SAP») y pulse «Reintentar en SAP». "
+                "Pregunte a Contabilidad cuál usan para los préstamos.")
     if "Inventory account is not defined" in e or "AccountCode" in e:
         return (e + " · SAP necesita la CUENTA CONTABLE de compensación para la entrada de mercancías (no es el costo). "
                 "Escriba la cuenta tal como la ve en SAP (p. ej. 2841119-00-00): el sistema la convierte a su código "
@@ -72,7 +113,7 @@ def mensaje_error(err):
     return e
 
 
-def registrar(user, fecha, almacen, motivo, lineas, guia=None, sl=None, cuenta=""):
+def registrar(user, fecha, almacen, motivo, lineas, guia=None, sl=None, cuenta="", udf=None):
     """Registra el ingreso y lo envía a SAP. Si está unido a una guía con préstamo pendiente, la vuelve a enviar."""
     if not has_perm(user, "stock.ingreso_sap"):
         raise BusinessError("El ingreso de mercadería a SAP lo registra la Jefatura de Operaciones.")
@@ -84,7 +125,8 @@ def registrar(user, fecha, almacen, motivo, lineas, guia=None, sl=None, cuenta="
         raise BusinessError("Indique el motivo (p. ej. préstamo para registrar la guía SUNAT EG07-457).")
     ing = GoodsReceipt(fecha=_fecha(fecha) or date.today(), almacen=almacen, motivo=motivo, lineas=lineas_de(lineas),
                        guia_id=guia.id if guia else None, user_id=user.id,
-                       sap={"cuenta": (cuenta or "").strip()} if (cuenta or "").strip() else {})
+                       sap=dict({"cuenta": (cuenta or "").strip()} if (cuenta or "").strip() else {},
+                                **({"udf": {k: v for k, v in udf.items() if v}} if udf else {})))
     db().add(ing)
     db().flush()
     audit(user, "INGRESO_MERCADERIA", "GoodsReceipt", ing.id, {"almacen": almacen, "lineas": ing.lineas, "motivo": motivo})
@@ -93,7 +135,7 @@ def registrar(user, fecha, almacen, motivo, lineas, guia=None, sl=None, cuenta="
     return ing
 
 
-def reintentar(user, ing, cuenta="", sl=None):
+def reintentar(user, ing, cuenta="", sl=None, udf=None):
     """V36: vuelve a enviar a SAP un ingreso que SAP rechazó (p. ej. tras definir la cuenta contable)."""
     if not has_perm(user, "stock.ingreso_sap"):
         raise BusinessError("El ingreso de mercadería a SAP lo registra la Jefatura de Operaciones.")
@@ -101,6 +143,8 @@ def reintentar(user, ing, cuenta="", sl=None):
         raise BusinessError("Ese ingreso ya está en SAP.")
     if (cuenta or "").strip():
         ing.sap = dict(ing.sap or {}, cuenta=cuenta.strip())
+    if udf:
+        ing.sap = dict(ing.sap or {}, udf={k: v for k, v in udf.items() if v})
     enviar(user, ing, sl)
     _reenviar_guia(user, ing, ing.guia, sl)
     return ing
@@ -176,11 +220,30 @@ def enviar(user, ing, sl=None):
             lineas.append(d)
         body = {"DocDate": ing.fecha.isoformat(), "Comments": f"Ingreso desde el módulo de operaciones: {ing.motivo}"[:254],
                 "DocumentLines": lineas}
+        # V38: campos de usuario que exige la localización (p. ej. tipo de operación de inventarios): los elegidos en el
+        # ingreso o, si no, los valores por defecto de «ingreso_mercaderia_valores»
+        udf = dict(param("ingreso_mercaderia_valores", {}) or {}, **((ing.sap or {}).get("udf") or {}))
+        lineas_campo = {c["nombre"] for c in (param("ingreso_mercaderia_campos_sap", {}) or {}).get("campos", [])
+                        if c.get("tabla") == "IGN1"}
+        for k, v in udf.items():
+            if not v:
+                continue
+            if k in lineas_campo:
+                for d in lineas:
+                    d[k] = v
+            else:
+                body[k] = v
         r = sl._req("POST", "InventoryGenEntries", body)
     except BusinessError as e:
         ing.estado = "ERROR"
         ing.sap = {"error": str(e)[:500], "ts": now().isoformat(timespec="minutes"),
-                   **({"cuenta": ing.sap["cuenta"]} if (ing.sap or {}).get("cuenta") else {})}
+                   **({"cuenta": ing.sap["cuenta"]} if (ing.sap or {}).get("cuenta") else {}),
+                   **({"udf": ing.sap["udf"]} if (ing.sap or {}).get("udf") else {})}
+        if "tipo de operaci" in str(e).lower() and not (param("ingreso_mercaderia_campos_sap", {}) or {}).get("campos"):
+            try:  # se leen de SAP los campos que pide, para mostrarlos en la pantalla
+                campos_sap(sl, refrescar=True)
+            except Exception:  # noqa: BLE001
+                pass
         audit(user, "INGRESO_MERCADERIA_ERROR", "GoodsReceipt", ing.id, ing.sap)
         return ing
     finally:
@@ -191,6 +254,7 @@ def enviar(user, ing, sl=None):
                 pass
     ing.estado = "EN_SAP"
     ing.sap = {"docentry": r.get("DocEntry"), "docnum": r.get("DocNum"), "ts": now().isoformat(timespec="minutes"),
+               **({"udf": udf} if udf else {}),
                **({"cuenta_sap": cuenta, "cuenta_nombre": cuenta_nombre} if cuenta else {}),
                **({"cuenta": ing.sap["cuenta"]} if (ing.sap or {}).get("cuenta") else {})}
     audit(user, "INGRESO_MERCADERIA_SAP", "GoodsReceipt", ing.id, ing.sap)

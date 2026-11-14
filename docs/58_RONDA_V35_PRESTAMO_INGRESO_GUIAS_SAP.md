@@ -89,3 +89,20 @@ Pruebas con datos ficticios.
 - Si el usuario de integración no tiene permiso para leer el plan de cuentas, se envía tal como se escribió.
 
 **Qué hacer:** pulsar **«Reintentar en SAP»** en los ingresos #1 y #2, con 2841119-00-00. No hace falta digitar nada más.
+
+## 7. Ajuste V38: «(59) Debe indicar el tipo de operación de inventarios»
+
+La cuenta contable ya pasó. Ahora lo que rechaza es una **validación de la localización peruana de su SAP**: la entrada de mercancías debe llevar el **tipo de operación de inventario**, el código de la tabla 12 de SUNAT. Es un **campo de usuario** de SAP; en la OV se ve en el panel izquierdo como «Tipo Operación».
+
+**Cómo se resolvió:**
+- El sistema **lee de SAP los campos de usuario** de la entrada de mercancías, de la cabecera y de las líneas: el tipo de operación y los demás que SAP marca como obligatorios o que tratan de tipo o motivo. Los lee con sus **valores válidos**.
+- La lectura se hace sola cuando SAP rechaza por este motivo, o con el botón **«Leer campos de SAP»**.
+- En el formulario y en «Reintentar en SAP» aparece **«Datos que pide SAP»**, con una lista para elegir el valor, p. ej. «99 · Otros». Se envía en el campo exacto de SAP.
+- Se puede dejar un valor por defecto en Parámetros → `ingreso_mercaderia_valores`, p. ej. `{"U_XXXX": "99"}`, para no elegirlo cada vez.
+
+**Qué hacer:**
+1. Pulsar **«Leer campos de SAP»**, si la lista aún no aparece.
+2. Preguntar a Contabilidad **qué tipo de operación usan para los préstamos**.
+3. Elegirlo en el ingreso #1 o #2 y pulsar **«Reintentar en SAP»**.
+
+**Prueba:** `test_ingreso_con_tipo_de_operacion_de_la_localizacion`. SAP rechaza sin el tipo de operación, se leen sus valores y el reintento con «99» pasa.
