@@ -106,3 +106,22 @@ La cuenta contable ya pasó. Ahora lo que rechaza es una **validación de la loc
 3. Elegirlo en el ingreso #1 o #2 y pulsar **«Reintentar en SAP»**.
 
 **Prueba:** `test_ingreso_con_tipo_de_operacion_de_la_localizacion`. SAP rechaza sin el tipo de operación, se leen sus valores y el reintento con «99» pasa.
+
+## 8. Ajuste V39: tipo de operación tomado de lo que usa Logística
+
+**Lo que respondió la empresa:**
+- La cuenta 2841119-00-00 es «EXISTENCIAS POR REVISAR 11.26». Su lista de cuentas no se sube al repositorio.
+- El error de la cuenta ya no aparece: la conversión al código interno funcionó.
+- Para los préstamos, Logística **no escribe ningún código**: solo producto, lote, cantidad, FP y FV.
+
+**Interpretación:** SAP completa solo el tipo de operación en sus entradas, con un valor por defecto o una búsqueda formateada de la localización. Por el Service Layer nadie lo completa, por eso la validación (59) lo rechaza.
+
+**Corrección:**
+- Al leer los campos de SAP, el sistema también lee las **últimas 30 entradas de mercancías de SAP** y toma el **tipo de operación que quedó registrado** (el más usado). Lo usa **por defecto**, sin que nadie lo elija.
+- La pantalla muestra «(Logística usa X)». Se puede cambiar en el ingreso o fijar en `ingreso_mercaderia_valores`.
+- Si el usuario de integración no tiene permiso para leer los metadatos de los campos, el campo se deduce de esos mismos documentos.
+- La lectura se repite sola cada vez que SAP rechaza por el tipo de operación.
+
+**Qué hacer:** pulsar **«Leer campos de SAP»** y luego **«Reintentar en SAP»** en el ingreso #1. El sistema completa el tipo de operación con el de Logística.
+
+**Prueba:** `test_tipo_de_operacion_sugerido_por_las_entradas_de_logistica`.

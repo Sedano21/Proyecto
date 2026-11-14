@@ -80,15 +80,42 @@ def campos_sap(sl=None, refrescar=False):
         if propio:
             sl.login()
         for tabla in ("OIGN", "IGN1"):
-            for f in sl.get_all("UserFieldsMD", {"$filter": f"TableName eq '{tabla}'"}):
+            try:
+                metas = sl.get_all("UserFieldsMD", {"$filter": f"TableName eq '{tabla}'"})
+            except BusinessError:
+                metas = []
+            for f in metas:
                 desc = f.get("Description") or ""
                 oblig = f.get("Mandatory") == "tYES"
-                if not (oblig or re.search(r"operaci|motivo|tipo", desc, re.I)):
+                if not (oblig or re.search(r"operaci|motivo|tipo", desc, re.I) or re.search(r"OPER|TPO", f.get("Name", ""))):
                     continue
                 campos.append({"nombre": "U_" + f.get("Name", ""), "tabla": tabla, "descripcion": desc,
                                "obligatorio": oblig, "defecto": f.get("DefaultValue") or "",
                                "valores": [[v.get("Value"), v.get("Description") or v.get("Value")]
                                            for v in (f.get("ValidValuesMD") or [])]})
+        # V39: lo que Logística deja en sus propias entradas de mercancías (p. ej. los préstamos): SAP completa el tipo
+        # de operación aunque nadie lo escriba. Se toman las últimas entradas y se sugiere el valor más usado.
+        try:
+            recientes = sl.get_all("InventoryGenEntries", {"$orderby": "DocEntry desc", "$top": "30"})[:30]
+        except BusinessError:
+            recientes = []
+        from collections import Counter
+        conocidos = {c["nombre"] for c in campos}
+        if not campos:  # sin metadatos legibles: se deducen de los documentos (campos U_ de tipo u operación con valor)
+            for d in recientes:
+                for k, v in d.items():
+                    if k.startswith("U_") and v not in (None, "") and re.search(r"OPER|TPO|TIPO", k, re.I) and k not in conocidos:
+                        campos.append({"nombre": k, "tabla": "OIGN", "descripcion": k[2:], "obligatorio": False,
+                                       "defecto": "", "valores": []})
+                        conocidos.add(k)
+        for c in campos:
+            if c["tabla"] == "OIGN":
+                usados = Counter(str(d.get(c["nombre"])) for d in recientes if d.get(c["nombre"]) not in (None, ""))
+            else:
+                usados = Counter(str(ln.get(c["nombre"])) for d in recientes for ln in d.get("DocumentLines") or []
+                                 if ln.get(c["nombre"]) not in (None, ""))
+            c["usados"] = usados.most_common(5)
+            c["sugerido"] = usados.most_common(1)[0][0] if usados else (c.get("defecto") or "")
     finally:
         if propio:
             try:
@@ -104,8 +131,8 @@ def mensaje_error(err):
     e = err or ""
     if "tipo de operaci" in e.lower():
         return (e + " · La localización de SAP exige el TIPO DE OPERACIÓN de inventario (código de SUNAT) en la entrada. "
-                "Elíjalo en «Datos que pide SAP» (si la lista está vacía, pulse «Leer campos de SAP») y pulse «Reintentar en SAP». "
-                "Pregunte a Contabilidad cuál usan para los préstamos.")
+                "El sistema ya leyó de SAP el que queda en las entradas de Logística y lo propone en «Datos que pide SAP»: "
+                "pulse «Reintentar en SAP». Si la lista sigue vacía, pulse «Leer campos de SAP».")
     if "Inventory account is not defined" in e or "AccountCode" in e:
         return (e + " · SAP necesita la CUENTA CONTABLE de compensación para la entrada de mercancías (no es el costo). "
                 "Escriba la cuenta tal como la ve en SAP (p. ej. 2841119-00-00): el sistema la convierte a su código "
@@ -222,7 +249,10 @@ def enviar(user, ing, sl=None):
                 "DocumentLines": lineas}
         # V38: campos de usuario que exige la localización (p. ej. tipo de operación de inventarios): los elegidos en el
         # ingreso o, si no, los valores por defecto de «ingreso_mercaderia_valores»
-        udf = dict(param("ingreso_mercaderia_valores", {}) or {}, **((ing.sap or {}).get("udf") or {}))
+        # orden: lo elegido en el ingreso > el valor por defecto del parámetro > el que usa Logística en SAP (sugerido)
+        sugeridos = {c["nombre"]: c.get("sugerido") for c in (param("ingreso_mercaderia_campos_sap", {}) or {}).get("campos", [])
+                     if c.get("sugerido")}
+        udf = dict(sugeridos, **(param("ingreso_mercaderia_valores", {}) or {}), **((ing.sap or {}).get("udf") or {}))
         lineas_campo = {c["nombre"] for c in (param("ingreso_mercaderia_campos_sap", {}) or {}).get("campos", [])
                         if c.get("tabla") == "IGN1"}
         for k, v in udf.items():
@@ -239,7 +269,7 @@ def enviar(user, ing, sl=None):
         ing.sap = {"error": str(e)[:500], "ts": now().isoformat(timespec="minutes"),
                    **({"cuenta": ing.sap["cuenta"]} if (ing.sap or {}).get("cuenta") else {}),
                    **({"udf": ing.sap["udf"]} if (ing.sap or {}).get("udf") else {})}
-        if "tipo de operaci" in str(e).lower() and not (param("ingreso_mercaderia_campos_sap", {}) or {}).get("campos"):
+        if "tipo de operaci" in str(e).lower():
             try:  # se leen de SAP los campos que pide, para mostrarlos en la pantalla
                 campos_sap(sl, refrescar=True)
             except Exception:  # noqa: BLE001

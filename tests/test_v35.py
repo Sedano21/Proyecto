@@ -171,3 +171,38 @@ def test_ingreso_con_tipo_de_operacion_de_la_localizacion(app, s, U, monkeypatch
     ingresos_sap.reintentar(U("jefe.operaciones"), r, udf={"U_TIPO_OPER": "99"}, sl=SLt())
     s.commit()
     assert r.estado == "EN_SAP" and SLt.body["U_TIPO_OPER"] == "99"
+
+
+def test_tipo_de_operacion_sugerido_por_las_entradas_de_logistica(app, s, U, monkeypatch):
+    """V39: Logística no escribe el tipo de operación (SAP lo completa): se toma el valor de sus últimas entradas."""
+    from app.services import ingresos_sap, sap_sl
+    monkeypatch.setattr(sap_sl, "write_enabled", lambda cfg=None: None)
+
+    class SLl:
+        cfg = {"company": "ZZZ_CORPRODUC_TEST260826"}
+        body = None
+
+        def get_all(self, path, params=None):
+            if path == "UserFieldsMD":
+                from app.services.core import BusinessError
+                raise BusinessError("SAP respondió 403: sin permiso")  # sin acceso a los metadatos
+            if path == "InventoryGenEntries":
+                return [{"DocEntry": 3, "U_SYP_TPOOPER": "16"}, {"DocEntry": 2, "U_SYP_TPOOPER": "16"},
+                        {"DocEntry": 1, "U_SYP_TPOOPER": "99"}]
+            return []
+
+        def _req(self, method, path, body=None, headers=None):
+            from app.services.core import BusinessError
+            SLl.body = body
+            if not body.get("U_SYP_TPOOPER"):
+                raise BusinessError("SAP respondió 400: (59) Debe indicar el tipo de operación de inventarios.")
+            return {"DocEntry": 7, "DocNum": 72}
+    r = ingresos_sap.registrar(U("jefe.operaciones"), date.today(), "ALM-001", "Préstamo",
+                               [{"codigo": "PT-901", "lote": "264005DV", "cantidad": 4}], sl=SLl())
+    s.commit()
+    assert r.estado == "ERROR"
+    c = ingresos_sap.campos_sap()[0]
+    assert c["nombre"] == "U_SYP_TPOOPER" and c["sugerido"] == "16"
+    ingresos_sap.reintentar(U("jefe.operaciones"), r, sl=SLl())  # sin elegir nada: usa el de Logística
+    s.commit()
+    assert r.estado == "EN_SAP" and SLl.body["U_SYP_TPOOPER"] == "16"
