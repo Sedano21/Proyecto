@@ -69,6 +69,7 @@ def test_filtros_de_ordenes_vs_guias(app, s, U):
     html = c.get("/almacen/cargas/sap/despachos?clase=TODAS&sit=TODAS&f_desde=2026-11-10&f_hasta=2026-11-30").get_data(as_text=True)
     assert "9505" in html and "9315" not in html  # 9315 se emitió el 04/11
     assert html.count('type="month"') == 1  # un solo filtro de mes
+    assert 'name="sit"' in html and html.count('class="tabs') == 1  # la situación es un filtro, no otra fila de pestañas
     assert "data-sin-orden" in html  # sin flecha en «Emisión / compromiso»
     html = c.get("/almacen/cargas/sap/despachos?clase=TODAS&sit=TODAS&buscar=9315").get_data(as_text=True)
     assert "9315" in html and "9505" not in html
@@ -150,3 +151,39 @@ def test_guia_firmada_del_conductor(app, s):
     with pytest.raises(BusinessError, match="no es la guía"):
         verificar_guia_firmada(st, _Archivo("g.pdf", otra, "application/pdf"), "T001-12345")
     assert verificar_guia_firmada(st, _Archivo("g.pdf", buena, "application/pdf"), "T001-12345")
+
+
+def test_guia_sunat_mismo_producto_en_dos_lotes_va_en_una_linea(app, s, U, new_order, monkeypatch):
+    """V34: SAP rechazaba «Invalid value [DocumentLines.BaseLine]» porque se mandaban dos líneas con la misma línea de OV."""
+    from app.models import SunatGuide
+    from app.services import guias_sunat as gs
+    from app.services import sap_sl
+    o = new_order([("PT-901", 20)])
+    g = SunatGuide(serie="EG07", numero="457", lineas=[
+        {"codigo": "PT-901", "descripcion": "x", "lote": "251026VG", "cantidad": 12},
+        {"codigo": "PT-901", "descripcion": "x", "lote": "091117VG", "cantidad": 8},
+        {"codigo": "PT-902", "descripcion": "y", "lote": "071011AS", "cantidad": 5}], sap_ov="1636305", order_id=o.id,
+        archivo="", estado="REGISTRADA", inventario={}, sap={})
+    s.add(g)
+    s.commit()
+
+    class SL:
+        cfg = {"company": "ZZZ_CORPRODUC_TEST260826"}
+        enviado = None
+
+        def get_all(self, path, params=None):
+            return [{"DocEntry": 10, "DocNum": 1636305, "CardCode": "C1", "DocumentLines": [
+                        {"LineNum": 0, "ItemCode": "PT-999", "RemainingOpenQuantity": 1}]},  # otra serie, mismo número
+                    {"DocEntry": 77, "DocNum": 1636305, "CardCode": "C1", "DocumentLines": [
+                        {"LineNum": 0, "ItemCode": "PT-901", "RemainingOpenQuantity": 20},
+                        {"LineNum": 1, "ItemCode": "PT-902", "RemainingOpenQuantity": 5}]}]
+
+        def _req(self, method, path, body=None, headers=None):
+            SL.enviado = body
+            return {"DocEntry": 900, "DocNum": 3001}
+    monkeypatch.setattr(sap_sl, "write_enabled", lambda cfg=None: None)
+    monkeypatch.setattr(gs, "_req", lambda u: None)
+    gs.enviar_sap(U("asist.distribucion"), g, sl=SL())
+    lineas = SL.enviado["DocumentLines"]
+    assert [(d["BaseEntry"], d["BaseLine"], d["Quantity"]) for d in lineas] == [(77, 0, 20), (77, 1, 5)]
+    assert [b["Quantity"] for b in lineas[0]["BatchNumbers"]] == [12, 8]

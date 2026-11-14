@@ -176,10 +176,12 @@
   }
   if (document.readyState !== 'loading') encabezadosFecha(); else document.addEventListener('DOMContentLoaded', encabezadosFecha);
   if (document.readyState !== 'loading') ponerLupas(); else document.addEventListener('DOMContentLoaded', function () { ponerLupas(); });
-  document.addEventListener('change', function (e) {  // listas desplegables y fechas del filtro: también al instante
+  document.addEventListener('change', function (e) {  // listas desplegables, fechas y mes del filtro: también al instante
     var el = e.target;
-    if (!el.matches || !el.matches('select, input[type=date], input[type=checkbox]') || !esFiltro(el) || !listasDe(document).length) return;
-    if (el.form.requestSubmit) el.form.requestSubmit();
+    if (!el.matches || !el.matches('select, input[type=date], input[type=month], input[type=checkbox]') || !esFiltro(el)) return;
+    // V34: también en las pantallas sin lista que se recarga por partes (p. ej. órdenes vs guías): antes no filtraba
+    if (!listasDe(document).length && !el.closest('form.buscador-lista, form.filters, form.card')) return;
+    if (el.form.requestSubmit) el.form.requestSubmit(); else el.form.submit();
   });
   (function volverAlBuscador() {
     var d = null;

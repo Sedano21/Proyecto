@@ -499,7 +499,7 @@ def coincide(obj, texto):
 
 
 # ------------------------------------------------------------------ V32: fechas en las listas
-CAMPOS_FECHA = ("fecha_compromiso", "fecha", "fecha_emision", "fecha_entrega", "fecha_necesidad", "fecha_requerida",
+CAMPOS_FECHA = ("fecha_compromiso", "fecha", "fecha_emision", "fecha_traslado", "fecha_entrega", "fecha_necesidad", "fecha_requerida",
                 "fecha_llegada", "creado_ts", "ts", "emision")
 
 

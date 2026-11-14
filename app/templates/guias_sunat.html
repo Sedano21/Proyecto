@@ -4,13 +4,13 @@
 {% if can('guias.sunat_cargar') %}<form method="post" enctype="multipart/form-data" class="card row">{{ csrf() }}<input type="hidden" name="accion" value="cargar">
 <div class="grow"><label class="req">PDF de SUNAT o XML de la guía (puede subir varias)</label><input type="file" name="archivos" accept=".pdf,.xml" multiple required></div>
 <div><button>{{ ic('upload') }} Cargar guías</button></div></form>{% endif %}
-{% for gd in guias %}<section class="card"><div class="card-head"><h3>Guía {{ gd.serie }}-{{ gd.numero }}</h3>
+{{ buscador_lista('serie, número, destinatario, OV o producto', campo='fecha_emision') }}{% for gd in guias %}<section class="card"><div class="card-head"><h3>Guía {{ gd.serie }}-{{ gd.numero }}</h3>
 <span>{% if gd.sap.estado == 'OK' %}{{ b('EN SAP', 'ok') }}{% elif gd.sap.estado == 'ERROR' %}{{ b('ERROR SAP', 'err') }}{% else %}{{ b('POR ENVIAR A SAP', 'warn') }}{% endif %}
 {% if gd.inventario.decision == 'DESCONTADO' %}{{ b('STOCK DESCONTADO', 'ok') }}{% elif gd.inventario.decision == 'YA_DESCONTADO' %}{{ b('YA ESTABA DESCONTADO', 'info') }}{% else %}{{ b('INVENTARIO POR DECIDIR', 'warn') }}{% endif %}</span></div>
 <div class="meta small"><span>Emitida {{ gd.fecha_emision.strftime('%d/%m/%Y') if gd.fecha_emision }} · traslado {{ gd.fecha_traslado.strftime('%d/%m/%Y') if gd.fecha_traslado }}</span>
 <span>{{ gd.destinatario or '—' }} (RUC {{ gd.destinatario_ruc or '—' }})</span><span>{{ gd.motivo }}</span>{% if gd.placa %}<span>Placa {{ gd.placa }}</span>{% endif %}
 {% if gd.archivo %}<a href="{{ url_for('main.evidence', name=gd.archivo) }}" target="_blank">ver archivo</a>{% endif %}</div>
-{{ buscador_lista() }}<div class="tw"><table class="small"><tr><th>Código</th><th>Descripción</th><th>Lote</th><th>FP</th><th>FV</th><th class="r">Cantidad</th><th>UM</th></tr>
+<div class="tw"><table class="small"><tr><th>Código</th><th>Descripción</th><th>Lote</th><th>FP</th><th>FV</th><th class="r">Cantidad</th><th>UM</th></tr>
 {% for x in gd.lineas %}<tr><td>{{ x.codigo }}</td><td>{{ x.descripcion }}</td><td>{{ x.lote or '—' }}</td><td>{{ x.fp }}</td><td>{{ x.fv }}</td><td class="r">{{ x.cantidad|n }}</td><td>{{ x.um }}</td></tr>{% endfor %}</table></div>
 {% if gd.order %}<p class="small">OV: <a href="{{ url_for('com.order_detail', oid=gd.order.id) }}">{{ gd.order.numero }}</a> · {{ gd.order.customer.nombre }}{% if gd.sap_ov %} · OV en SAP {{ gd.sap_ov }}{% endif %}</p>
 {% elif can('guias.sunat_cargar') %}<form method="post" class="row">{{ csrf() }}<input type="hidden" name="accion" value="unir"><input type="hidden" name="id" value="{{ gd.id }}">

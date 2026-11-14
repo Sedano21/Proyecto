@@ -171,6 +171,7 @@ def test_guia_sunat_ov_inventario_y_sap(app, s, U, new_order, tmp_path, monkeypa
     m, path, body = SL.enviado
     assert (m, path) == ("POST", "DeliveryNotes") and body["FolioPrefixString"] == "EG07" and body["FolioNumber"] == 124
     assert body["DocumentLines"][0]["BaseEntry"] == 77 and body["DocumentLines"][0]["BatchNumbers"][0]["BatchNumber"] == "900001AA"
+    assert len({d["BaseLine"] for d in body["DocumentLines"]}) == len(body["DocumentLines"])  # V34: una línea por línea de OV
     assert g.estado == "ENVIADA_SAP" and g.sap["docnum"] == 3001
     html = _cliente(app, "asist.distribucion").get("/operacion/guias-sunat").get_data(as_text=True)
     assert "EG07-124" in html and "EN SAP" in html

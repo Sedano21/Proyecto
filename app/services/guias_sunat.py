@@ -328,20 +328,53 @@ def enviar_sap(user, g, sl=None):
         ords = sl.get_all("Orders", {"$filter": f"DocNum eq {int(g.sap_ov)}", "$select": "DocEntry,DocNum,CardCode,DocumentLines"})
         if not ords:
             raise BusinessError(f"No se encontró la OV {g.sap_ov} en SAP.")
-        ov = ords[0]
+        # V34: el número de OV se repite entre series: se toma la que tiene saldo abierto de los productos de la guía
+        codigos = {x["codigo"] for x in g.lineas}
+
+        def _cubre(o):
+            abiertos = {ln.get("ItemCode") for ln in o.get("DocumentLines") or [] if float(ln.get("RemainingOpenQuantity") or 0) > 0}
+            return len(codigos & abiertos)
+        ov = max(ords, key=_cubre)
         abiertas = {}
         for ln in ov.get("DocumentLines") or []:
             abiertas.setdefault(ln.get("ItemCode"), []).append(ln)
-        lines = []
+        # V34: una sola línea de entrega por línea de la OV (SAP no acepta dos líneas con la misma BaseLine); los lotes
+        # del mismo producto van juntos en BatchNumbers. Si la OV tiene el producto en varias líneas, se reparte por saldo.
+        por_linea, orden = {}, []
+        saldo = {}
         for x in g.lineas:
+            cant = float(x["cantidad"] or 0)
             cand = [ln for ln in abiertas.get(x["codigo"], []) if float(ln.get("RemainingOpenQuantity") or 0) > 0]
             if not cand:
                 raise BusinessError(f"La OV {g.sap_ov} no tiene saldo abierto de {x['codigo']} en SAP.")
-            ln = cand[0]
             lot_mod = _lote_modulo(x["codigo"], x.get("lote") or "", 0)
             lote_sap = lot_mod[0].lote if lot_mod else (x.get("lote") or "").upper()
-            lines.append({"BaseType": 17, "BaseEntry": ov["DocEntry"], "BaseLine": ln["LineNum"], "Quantity": x["cantidad"],
-                          "BatchNumbers": [{"BatchNumber": lote_sap, "Quantity": x["cantidad"]}] if lote_sap else []})
+            for ln in cand:
+                if cant <= 1e-9:
+                    break
+                k = ln["LineNum"]
+                libre = saldo.setdefault(k, float(ln.get("RemainingOpenQuantity") or 0))
+                usar = min(cant, libre) if ln is not cand[-1] else cant  # lo que exceda va en la última línea (SAP avisa)
+                if usar <= 1e-9:
+                    continue
+                if k not in por_linea:
+                    por_linea[k] = {"BaseType": 17, "BaseEntry": ov["DocEntry"], "BaseLine": k, "Quantity": 0.0,
+                                    "BatchNumbers": []}
+                    orden.append(k)
+                d = por_linea[k]
+                d["Quantity"] = round(d["Quantity"] + usar, 6)
+                if lote_sap:
+                    b = next((b for b in d["BatchNumbers"] if b["BatchNumber"] == lote_sap), None)
+                    if b:
+                        b["Quantity"] = round(b["Quantity"] + usar, 6)
+                    else:
+                        d["BatchNumbers"].append({"BatchNumber": lote_sap, "Quantity": usar})
+                saldo[k] = libre - usar
+                cant -= usar
+        lines = [por_linea[k] for k in orden]
+        for d in lines:
+            if not d["BatchNumbers"]:
+                d.pop("BatchNumbers")
         body = {"CardCode": ov["CardCode"], "DocDate": (g.fecha_traslado or g.fecha_emision or date.today()).isoformat(),
                 "FolioPrefixString": g.serie, "FolioNumber": int(g.numero),
                 "Comments": f"Guía emitida en SUNAT {g.serie}-{g.numero} (regularizada desde el módulo de operaciones)",
