@@ -27,7 +27,7 @@ def historial_desde():
 
 HASTA_ABIERTO = date(2099, 12, 31)
 # V33: al cambiar lo que se guarda (p. ej. las órdenes de servicio), la siguiente lectura vuelve a traer todo una vez
-HISTORIAL_VERSION = 2
+HISTORIAL_VERSION = 3  # V42: también los ingresos de producción (liquidaciones de SAP)
 
 
 def _f(v):
@@ -138,6 +138,25 @@ def rows_consumos(sl, desde, cambios_desde=None):
     return out
 
 
+def rows_producciones(sl, desde, cambios_desde=None):
+    """V42: liquidaciones de SAP: entradas de mercancía con líneas basadas en una orden de fabricación (BaseType 202),
+    es decir, el producto que la producción ingresó al almacén."""
+    filtro = f"DocDate ge '{desde.isoformat()}'"
+    if cambios_desde:
+        filtro += f" and UpdateDate ge '{cambios_desde.isoformat()}'"
+    out = []
+    for d in sl.get_all("InventoryGenEntries", {"$filter": filtro, "$select": "DocEntry,DocNum,DocDate,DocumentLines"}):
+        for ln in d.get("DocumentLines") or []:
+            if ln.get("BaseType") != 202 or not ln.get("ItemCode"):
+                continue
+            out.append({"clave": f"PRODUCCION:{d['DocEntry']}:{ln.get('LineNum', 0)}", "tipo": "PRODUCCION",
+                        "docentry": d["DocEntry"], "documento": str(d.get("DocNum") or ""),
+                        "fecha": str(d.get("DocDate") or "")[:10], "ov": "", "of": str(ln.get("BaseEntry") or ""),
+                        "factura": "", "cliente": "", "producto": ln["ItemCode"][:30],
+                        "cantidad": float(ln.get("Quantity") or 0)})
+    return out
+
+
 def guardar_movimientos(filas, completo, tipos=("GUIA", "CONSUMO")):
     s = db()
     if completo:
@@ -183,19 +202,28 @@ def sync_historial(user, sl=None, completo=False):
             consumo_err = ""
         except Exception as e:  # noqa: BLE001  (sin permiso de lectura de salidas: las guías y órdenes se guardan igual)
             consumo_err = str(e)[:200]
+        try:
+            movs += rows_producciones(sl, desde, cambios)
+            prod_err = ""
+        except Exception as e:  # noqa: BLE001  (sin lectura de entradas: lo demás se guarda igual)
+            prod_err = str(e)[:200]
     finally:
         if propio:
             sl.logout()
     guardar_ordenes(ordenes, completo)
-    guardar_movimientos(movs, completo, ("GUIA", "CONSUMO") if not consumo_err else ("GUIA",))
+    tipos = ("GUIA",) + (() if consumo_err else ("CONSUMO",)) + (() if prod_err else ("PRODUCCION",))
+    guardar_movimientos(movs, completo, tipos)
     res = {"desde": desde.isoformat(), "hasta": HASTA_ABIERTO.isoformat(), "historial": True, "version": HISTORIAL_VERSION,
            "modo": "completa" if completo else f"cambios desde {cambios:%d/%m/%Y}",
            "ordenes": len({f["docnum"] for f in ordenes}), "lineas": len(ordenes),
            "servicio": len({f["docnum"] for f in ordenes if f["clase"] == "SERVICIO"}),
            "guias": len({m["docentry"] for m in movs if m["tipo"] == "GUIA"}),
-           "consumos": len({m["docentry"] for m in movs if m["tipo"] == "CONSUMO"})}
+           "consumos": len({m["docentry"] for m in movs if m["tipo"] == "CONSUMO"}),
+           "producciones": len({m["docentry"] for m in movs if m["tipo"] == "PRODUCCION"})}
     if consumo_err:
         res["consumos_error"] = consumo_err
+    if prod_err:
+        res["producciones_error"] = prod_err
     from .guias_sunat import conciliar_con_sap  # V35: guías SUNAT del módulo que ya están en SAP
     res["guias_sunat_en_sap"] = conciliar_con_sap()
     set_param("sap_ordenes_ultimo", dict(res, ts=now().isoformat(timespec="minutes")), user)

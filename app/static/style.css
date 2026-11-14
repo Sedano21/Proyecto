@@ -832,3 +832,45 @@ button.lupa .ic{width:18px;height:18px}
 .area-card .n{font-size:1.8rem;font-weight:700;line-height:1.1}
 .area-card.err{border-left-color:var(--err,#c0392b);background:#fdecea}.area-card.err .n{color:var(--err,#c0392b)}
 .area-card.warn{border-left-color:var(--warn,#c98a00);background:#fff7e0}
+/* V42: tarjetas de indicador que se abren con un clic */
+a.kpi,.kpi-clic{cursor:pointer;transition:border-color .15s,transform .15s}
+a.kpi:hover,.kpi-clic:hover{border-color:var(--cp-verde);transform:translateY(-1px)}
+a.kpi::after,.kpi-clic::after{content:"›";position:absolute;right:12px;top:10px;color:var(--muted);font-size:18px;line-height:1}
+.kpi-clic:focus-visible{outline:2px solid var(--cp-verde);outline-offset:2px}
+.resaltado{outline:2px solid var(--cp-verde);outline-offset:3px;transition:outline-color .6s}
+/* V42: planeamiento por línea */
+.lineas-plan{display:grid;gap:10px;margin-bottom:16px}
+.linea-plan>summary{display:grid;grid-template-columns:minmax(140px,1fr) auto;gap:6px 16px;align-items:center;cursor:pointer;list-style:none}
+.linea-plan>summary::-webkit-details-marker{display:none}
+.linea-plan>summary::before{content:"+";position:absolute;right:16px;top:12px;font-weight:700;color:var(--muted)}
+.linea-plan[open]>summary::before{content:"−"}
+.linea-plan{position:relative}.linea-plan.bajo{box-shadow:inset 3px 0 0 var(--err),var(--sh)}
+.lp-datos{display:flex;gap:14px;flex-wrap:wrap;padding-right:24px}.lp-meter{grid-column:1/-1}
+/* V42: selección de varios almacenes con chips */
+.multi-sel{position:relative}.multi-sel>summary{list-style:none;cursor:pointer;border:1px solid var(--line);border-radius:8px;padding:8px 32px 8px 10px;background:var(--panel);min-width:220px;position:relative}
+.multi-sel>summary::after{content:"▾";position:absolute;right:10px;top:8px;color:var(--muted)}
+.multi-sel>summary::-webkit-details-marker{display:none}
+.multi-op{position:absolute;z-index:20;margin-top:4px;background:var(--panel);border:1px solid var(--line);border-radius:8px;box-shadow:var(--sh);padding:8px;display:grid;gap:6px;max-height:300px;overflow:auto;min-width:260px}
+.multi-op label{display:flex;gap:8px;align-items:center;font-weight:400;margin:0}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+/* V42: casillas en cuadrícula (p. ej. áreas que no laboran) */
+.check-grid-box{border:0;padding:0;margin:0 0 12px}.check-grid-box legend{font-size:13px;font-weight:600;margin-bottom:8px;padding:0}
+.check-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px}
+.check-pill{display:flex!important;align-items:center;gap:8px;margin:0!important;padding:9px 12px;border:1px solid var(--line);border-radius:10px;background:var(--panel);cursor:pointer;font-weight:500;font-size:14px;line-height:1.2;width:auto}
+.check-pill input{width:18px!important;height:18px;margin:0;flex:none;accent-color:var(--cp-verde)}
+.check-pill span{flex:1;min-width:0;overflow-wrap:anywhere}
+.check-pill:has(input:checked){border-color:var(--cp-verde);background:var(--cp-verde-50,#eef7ee)}
+.check-pill.todas{display:inline-flex!important;margin-bottom:8px!important}
+.row-end{align-self:flex-end}
+/* V42: grupos por cliente (picking) */
+.grupos-cliente{display:grid;gap:10px}
+.grupo-cli>summary{display:flex;flex-wrap:wrap;gap:6px 18px;align-items:center;cursor:pointer;list-style:none;padding-right:24px;position:relative}
+.grupo-cli>summary::-webkit-details-marker{display:none}
+.grupo-cli>summary::after{content:"+";position:absolute;right:0;top:0;font-weight:700;color:var(--muted)}
+.grupo-cli[open]>summary::after{content:"−"}
+.grupo-cli.alerta{box-shadow:inset 3px 0 0 var(--err),var(--sh)}
+.gc-nombre{flex:1 1 220px}.gc-datos{display:flex;gap:14px;flex-wrap:wrap;align-items:center}
+.gc-fecha{margin:14px 0 8px;font-size:14px;display:flex;gap:6px;align-items:center}
+.multi-op label{display:grid!important;grid-template-columns:18px 1fr;gap:8px;align-items:center;text-align:left;margin:0!important;font-weight:400;cursor:pointer;padding:4px 2px}
+.multi-op input[type=checkbox]{width:18px!important;height:18px;margin:0;accent-color:var(--cp-verde)}
+.lineas-plan>.card{margin:0}

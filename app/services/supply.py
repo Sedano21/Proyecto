@@ -654,8 +654,11 @@ def rotation_ranking(dias=None, hoy=None, top=20, almacen=None):
     base = no_rotation(dias, hoy)
     lots = defaultdict(list)
     q = select(StockLot).where(StockLot.cantidad > 0)
-    if almacen:  # A02: consolidado, con filtro por almacén
-        q = q.where(StockLot.warehouse_code == almacen)
+    # A02: consolidado, con filtro por almacén; V42: uno o varios almacenes
+    almacenes = [a for a in ([almacen] if isinstance(almacen, str) else list(almacen or [])) if a]
+    almacen = almacenes
+    if almacenes:
+        q = q.where(StockLot.warehouse_code.in_(almacenes))
     for lot in db().execute(q).scalars():
         lots[lot.product_code].append(lot)
     compradores = defaultdict(lambda: defaultdict(float))
@@ -722,9 +725,40 @@ def rotation_ranking(dias=None, hoy=None, top=20, almacen=None):
         f["rank_cantidad"] = i
     return {"dias": base["dias"], "total": len(filas), "por_tiempo": por_tiempo, "por_cantidad": por_cantidad,
             "kg_total": round(sum(f["kg"] or 0 for f in filas), 1), "sin_peso": sum(1 for f in filas if f["kg"] is None),
-            "valor_total": round(sum(f["valor"] or 0 for f in filas), 2), "almacen": almacen or "",
+            "valor_total": round(sum(f["valor"] or 0 for f in filas), 2), "almacen": ",".join(almacenes),
+            "almacenes": almacenes, "por_vencer": por_vencer(lots, hoy, {f["code"] for f in filas}),
             "venta_total": round(sum(f["valor_venta"] or 0 for f in filas), 2),
             "max_total": round(sum(f["valor_max"] or 0 for f in filas), 2)}
+
+
+def por_vencer(lots, hoy, sin_rotacion=()):
+    """V42: stock que vence en los próximos 3 meses (≤ 90 días) y entre 3 y 6 meses (91 a 180 días), por producto,
+    en los almacenes elegidos (con o sin rotación; se marca si además no rota)."""
+    out = {"3": [], "6": []}
+    for code, ls in lots.items():
+        tramos = {"3": [], "6": []}
+        for l in ls:
+            if not l.fecha_venc or l.fecha_venc < hoy:
+                continue
+            d = (l.fecha_venc - hoy).days
+            if d <= 90:
+                tramos["3"].append(l)
+            elif d <= 180:
+                tramos["6"].append(l)
+        for k, xs in tramos.items():
+            if not xs:
+                continue
+            p = db().get(Product, code)
+            kg_u = (p.peso_kg or (1.0 if (p.um or "").upper().startswith("K") else 0)) if p else 0
+            q = round(sum(l.cantidad for l in xs), 2)
+            prox = min(l.fecha_venc for l in xs)
+            out[k].append({"code": code, "descripcion": p.descripcion if p else "", "cantidad": q,
+                           "kg": round(q * kg_u, 1) if kg_u else None, "vence": prox, "dias": (prox - hoy).days,
+                           "lotes": sorted({f"{l.lote} · {l.warehouse_code} · {l.fecha_venc:%d/%m/%Y}" for l in xs}),
+                           "sin_rotacion": code in sin_rotacion})
+    for k in out:
+        out[k].sort(key=lambda x: x["vence"])
+    return out
 
 
 def _rango_precio(p, kg_u):

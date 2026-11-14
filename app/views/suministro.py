@@ -76,7 +76,8 @@ def demand_change(fid):
 @bp.route("/rotacion")
 @perm_required("rotacion.ver")
 def rotation():
-    d = ssvc.rotation_ranking(request.args.get("dias") or None, almacen=request.args.get("almacen") or None)
+    sel = [a for x in request.args.getlist("almacen") for a in x.split(",") if a]  # V42: varios almacenes
+    d = ssvc.rotation_ranking(request.args.get("dias") or None, almacen=sel)
     almacenes = list(db().execute(select(Warehouse).where(Warehouse.habilitado.is_(True)).order_by(Warehouse.code)).scalars())
     return render_template("rotation.html", d=d, ver_costos="costos.ver" in g.perms, frente=request.args.get("frente", "tiempo"),
                            almacenes=almacenes)

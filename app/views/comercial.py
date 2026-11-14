@@ -63,8 +63,20 @@ def orders():
     pend = list(db().execute(select(OVChangeRequest).where(OVChangeRequest.estado == "PENDIENTE")).scalars())
     pend = [r for r in pend if osvc.can_authorize_change(g.user, r.order) or r.solicitado_por == g.user.id]
     from ..services.stock import line_reserved
+    vista = request.args.get("vista", "lista")
+    por_cliente = []
+    if vista == "cliente":  # V42: primero los clientes; al entrar, sus OV
+        from collections import defaultdict as _dd
+        gr = _dd(list)
+        for o in rows:
+            gr[o.customer].append(o)
+        por_cliente = sorted(({"cliente": c, "ovs": ovs, "n": len(ovs),
+                               "vencidas": sum(1 for o in ovs if o.fecha_compromiso and o.fecha_compromiso < date.today()
+                                               and o.estado not in ("DESPACHADA", "ENTREGADA", "CANCELADA")),
+                               "proxima": min([o.fecha_compromiso for o in ovs if o.fecha_compromiso] or [None])}
+                              for c, ovs in gr.items()), key=lambda x: (x["proxima"] or date.max, x["cliente"].nombre if x["cliente"] else ""))
     return render_template("ov_list.html", rows=paginate(rows), estado=estado or "", estado_stock=stock or "", pend=pend,
-                           reservado=line_reserved)
+                           reservado=line_reserved, vista=vista, por_cliente=por_cliente)
 
 
 @bp.route("/api/precio")

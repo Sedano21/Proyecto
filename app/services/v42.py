@@ -1,0 +1,54 @@
+"""V42 (14-nov-2026): alerta de capacidad de producción por línea y planeamiento agrupado por línea."""
+from collections import defaultdict
+from datetime import timedelta
+
+from . import alerts
+from .core import param
+
+
+def check_capacidad_lineas(hoy):
+    """Avisa a la Jefatura de Operaciones y de Producción cuando una línea (grupo de capacidad) usa menos del
+    «capacidad_alerta_umbral» (80 %) de su capacidad: lo ejecutado en los últimos «capacidad_alerta_dias» días
+    (hasta ayer) y lo programado para los próximos días. Una alerta por línea y semana."""
+    from .production import capacity_vs_plan
+    umbral = float(param("capacidad_alerta_umbral", 80) or 80)
+    dias = int(param("capacidad_alerta_dias", 7) or 7)
+    atras = capacity_vs_plan(hoy - timedelta(days=dias), hoy - timedelta(days=1))
+    adelante = {f["grupo"]: f for f in capacity_vs_plan(hoy, hoy + timedelta(days=dias - 1))["filas"]}
+    semana = hoy.isocalendar()
+    n = 0
+    for f in atras["filas"]:
+        if not f["capacidad"]:
+            continue
+        prox = adelante.get(f["grupo"]) or {}
+        bajo_ej = f["pct_ejecutada"] is not None and f["pct_ejecutada"] < umbral
+        bajo_pr = prox.get("pct_programada") is not None and prox["pct_programada"] < umbral and prox.get("capacidad")
+        if not (bajo_ej or bajo_pr):
+            continue
+        partes = []
+        if bajo_ej:
+            partes.append(f"últimos {dias} días: {f['pct_ejecutada']:g} % ejecutado ({f['ejecutada']:,.0f} de "
+                          f"{f['capacidad']:,.0f} kg)")
+        if bajo_pr:
+            partes.append(f"próximos {dias} días: {prox['pct_programada']:g} % programado ({prox['programada']:,.0f} de "
+                          f"{prox['capacidad']:,.0f} kg)")
+        alerts.emit("CAPACIDAD_BAJA", f"Línea {f['grupo']} por debajo del {umbral:g} % de su capacidad",
+                    "; ".join(partes) + ". Revise la programación, la demanda y las paradas de la línea.",
+                    "Linea", f["grupo"], dedup_key=f"CAPACIDAD_BAJA:{f['grupo']}:{semana[0]}-{semana[1]}")
+        n += 1
+    return f"{n} línea(s) bajo {umbral:g} %"
+
+
+def plan_por_linea(entradas, capa):
+    """Agrupa la programación por línea (grupo de capacidad) para verla línea por línea."""
+    grupo_de = {l: g["grupo"] for g in (param("capacidad_lineas", []) or []) for l in g.get("lineas", [])}
+    por = defaultdict(list)
+    for e in entradas:
+        por[grupo_de.get(e.line_code, e.line_code or "Sin línea")].append(e)
+    out = []
+    for f in capa["filas"]:
+        out.append(dict(f, entradas=por.pop(f["grupo"], [])))
+    for g, es in sorted(por.items()):
+        out.append({"grupo": g, "proceso": "", "capacidad": 0, "programada": 0, "ejecutada": 0, "pct_programada": None,
+                    "pct_ejecutada": None, "cumplimiento": None, "entradas": es})
+    return out

@@ -352,7 +352,44 @@ def produccion(desde=None, hasta=None):
             "liquidaciones": len(liqs), "serie_kg": [(f"{d:%d/%m}", round(dia_kg[d], 1)) for d in dias],
             "serie_und": [(f"{d:%d/%m}", dia_und[d]) for d in dias],
             "productos": sorted(((k, v[0], v[1]) for k, v in prod.items()), key=lambda x: -x[2])[:15],
-            "lineas": lin, "plan": plan, "merma": merma[:40], "programados": programados, "recomendaciones": reco}
+            "lineas": lin, "plan": plan, "merma": merma[:40], "programados": programados, "recomendaciones": reco,
+            "mes": produccion_fuentes(desde, hasta, partes)}
+
+
+def produccion_fuentes(desde, hasta, partes=None):
+    """V42: producción del periodo por fuente: liquidaciones de SAP (entradas de producción, del historial de SAP),
+    partes registrados en el módulo y lo de hoy en tiempo real."""
+    from ..models import ProductionReport, SapMovement
+    s = db()
+    if partes is None:
+        partes = list(s.execute(select(ProductionReport).where(ProductionReport.fecha >= desde, ProductionReport.fecha <= hasta,
+                                                               ProductionReport.estado != "PROGRAMADO")).scalars())
+    movs = list(s.execute(select(SapMovement).where(SapMovement.tipo == "PRODUCCION", SapMovement.fecha >= desde,
+                                                    SapMovement.fecha <= hasta)).scalars())
+    pesos = {p.code: p for p in s.execute(select(Product).where(Product.code.in_({m.product_code for m in movs} or {""}))).scalars()}
+
+    def kg(code, q):
+        p = pesos.get(code)
+        return q * (p.peso_kg or (1 if (p.um or "").upper().startswith("K") else 0)) if p else 0
+    por_prod = defaultdict(lambda: [0.0, 0.0])
+    for m in movs:
+        por_prod[m.product_code][0] += m.cantidad or 0
+        por_prod[m.product_code][1] += kg(m.product_code, m.cantidad or 0)
+    hoy = date.today()
+    por_linea = defaultdict(lambda: [0.0, 0.0, 0])
+    for r in partes:
+        x = por_linea[r.linea]
+        x[0] += r.peso_entrada_kg or 0
+        x[1] += r.granel_kg or 0
+        x[2] += 1
+    return {"sap_kg": round(sum(v[1] for v in por_prod.values()), 1), "sap_unidades": sum(v[0] for v in por_prod.values()),
+            "sap_docs": len({m.docentry for m in movs}), "sap_ordenes": len({m.orden_fabricacion for m in movs}),
+            "sap_productos": sorted(((c, v[0], round(v[1], 1)) for c, v in por_prod.items()), key=lambda x: -x[2])[:20],
+            "modulo_kg": round(sum(r.peso_entrada_kg or 0 for r in partes), 1),
+            "modulo_salida_kg": round(sum(r.granel_kg or 0 for r in partes), 1), "modulo_partes": len(partes),
+            "modulo_lineas": sorted(((k, round(v[0], 1), round(v[1], 1), v[2]) for k, v in por_linea.items()), key=lambda x: -x[1]),
+            "hoy_kg": round(sum(r.peso_entrada_kg or 0 for r in partes if r.fecha == hoy), 1),
+            "hoy_partes": sum(1 for r in partes if r.fecha == hoy)}
 
 
 # ------------------------------------------------------------------ distribución

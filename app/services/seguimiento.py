@@ -156,7 +156,7 @@ def month_bounds(ref=None):
     return ini, fin
 
 
-def service_month(ref=None, customer_id=None, vendedor_id=None, desde=None, hasta=None, canal=""):
+def service_month(ref=None, customer_id=None, vendedor_id=None, desde=None, hasta=None, canal="", fuente=None):
     """OTIF, fill rate y a tiempo (on time) sobre el universo de OV cargadas cuya fecha comprometida cae en el mes en
     curso (o en el rango dado), sin las canceladas. Cada indicador trae el detalle de sus OV.
     V23 (fórmula de la empresa): la base de los tres indicadores son todas las OV que se subieron y corresponden
@@ -166,6 +166,14 @@ def service_month(ref=None, customer_id=None, vendedor_id=None, desde=None, hast
     - OTIF: OV que salieron a tiempo y completas / OV del universo.
     - Fill rate (unidades): unidades despachadas / unidades pedidas de las OV con salida; también por líneas."""
     ini, fin = (desde, hasta) if desde and hasta else month_bounds(ref)
+    # V42: con el historial de SAP, OTIF, on time, in full y fill rate se calculan comparando las OV de SAP con sus
+    # guías (las OV del módulo no siempre registran la salida: el despacho se hace en SAP)
+    from .core import param
+    fuente = fuente or param("otif_fuente", "SAP") or "SAP"
+    if fuente == "SAP" and not vendedor_id:
+        from .sap_v31 import tiene_historial
+        if tiene_historial():
+            return service_month_sap(ini, fin, customer_id, canal)
     q = _con_lineas(select(SalesOrder)).where(SalesOrder.fecha_compromiso >= ini, SalesOrder.fecha_compromiso <= fin,
                                  SalesOrder.estado.notin_(("CANCELADA", "BORRADOR", "REGULARIZACION_OBSERVADA")))
     if customer_id:
@@ -188,6 +196,11 @@ def service_month(ref=None, customer_id=None, vendedor_id=None, desde=None, hast
         filas.append({"o": o, "pedido": ped, "despachado": des, "completo": completo, "a_tiempo": a_tiempo,
                       "salio": bool(o.salida_ts), "evaluable": vencida, "otif": completo and a_tiempo,
                       "lineas": len(act), "lineas_ok": sum(1 for l in act if o.salida_ts and (l.despachado or 0) >= l.cantidad - 1e-9)})
+    return dict(_metricas(filas, ini, fin), fuente="MODULO")
+
+
+def _metricas(filas, ini, fin):
+    hoy = date.today()
     salieron = [f for f in filas if f["salio"]]
     evaluables = [f for f in filas if f["evaluable"]]
 
@@ -222,10 +235,95 @@ def service_month(ref=None, customer_id=None, vendedor_id=None, desde=None, hast
             "pendientes": sum(1 for f in filas if not f["salio"])}
 
 
+class _Ref:
+    def __init__(self, **kw):
+        self.__dict__.update(kw)
+
+
+def service_month_sap(ini, fin, customer_id=None, canal=""):
+    """V42: nivel de servicio con las OV de venta de SAP (abiertas y cerradas) cuya fecha de entrega cae en el periodo,
+    comparadas con sus guías (entregas) de SAP. Misma fórmula de la empresa (V23):
+    - Salida de la OV: su primera guía. On time: la primera guía es hasta la fecha de entrega.
+    - In full: lo guiado cubre lo pedido en todos sus productos.
+    - OTIF: lo guiado HASTA la fecha de entrega cubre todo lo pedido.
+    - Fill rate: unidades guiadas (hasta lo pedido) ÷ unidades pedidas de las OV con guía; también por líneas."""
+    from ..models import Customer, SapMovement, SapOrderLine
+    q = select(SapOrderLine).where(SapOrderLine.fecha_entrega >= ini, SapOrderLine.fecha_entrega <= fin,
+                                   SapOrderLine.estado != "CANCELADA", SapOrderLine.clase != "SERVICIO")
+    cli = None
+    if customer_id:
+        cli = db().get(Customer, int(customer_id))
+        q = q.where(SapOrderLine.cliente == (cli.nombre if cli else ""))
+    ovs = defaultdict(list)
+    for ln in db().execute(q).scalars():
+        ovs[ln.docnum].append(ln)
+    guias = defaultdict(list)
+    docs = list(ovs)
+    for i in range(0, len(docs), 500):
+        for m in db().execute(select(SapMovement).where(SapMovement.tipo == "GUIA",
+                                                        SapMovement.ov_numero.in_(docs[i:i + 500]))).scalars():
+            guias[m.ov_numero].append(m)
+    canal_de = {}
+    if canal:
+        from .margin import channel
+        nombres = {ls[0].cliente for ls in ovs.values()}
+        for c in db().execute(select(Customer).where(Customer.nombre.in_(list(nombres) or [""]))).scalars():
+            canal_de[c.nombre] = channel(c)
+    hoy = date.today()
+    filas = []
+    for docnum, lineas in ovs.items():
+        cab = lineas[0]
+        if canal and canal_de.get(cab.cliente) != canal:
+            continue
+        pedido = defaultdict(float)
+        for ln in lineas:
+            pedido[ln.product_code] += ln.cantidad or 0
+        gs = sorted(guias.get(docnum, []), key=lambda m: (m.fecha or date.max))
+        guiado, a_fecha = defaultdict(float), defaultdict(float)
+        for m in gs:
+            guiado[m.product_code] += m.cantidad or 0
+            if m.fecha and cab.fecha_entrega and m.fecha <= cab.fecha_entrega:
+                a_fecha[m.product_code] += m.cantidad or 0
+        salio = bool(gs)
+        primera = gs[0].fecha if gs else None
+        completo = salio and all(guiado[p] >= q - 1e-9 for p, q in pedido.items())
+        a_tiempo = salio and primera is not None and cab.fecha_entrega is not None and primera <= cab.fecha_entrega
+        otif = salio and all(a_fecha[p] >= q - 1e-9 for p, q in pedido.items())
+        ref = _Ref(id=None, numero=docnum, customer=_Ref(nombre=cab.cliente), fecha_compromiso=cab.fecha_entrega,
+                   salida_ts=datetime.combine(primera, datetime.min.time()) if primera else None,
+                   guias=sorted({m.documento for m in gs}), sap=True)
+        filas.append({"o": ref, "pedido": sum(pedido.values()),
+                      "despachado": sum(min(guiado[p], q) for p, q in pedido.items()) if salio else 0,
+                      "completo": completo, "a_tiempo": a_tiempo, "salio": salio,
+                      "evaluable": (cab.fecha_entrega or hoy) < hoy or salio, "otif": otif, "lineas": len(pedido),
+                      "lineas_ok": sum(1 for p, q in pedido.items() if guiado[p] >= q - 1e-9) if salio else 0})
+    filas.sort(key=lambda f: (f["o"].fecha_compromiso or date.min, f["o"].numero))
+    return dict(_metricas(filas, ini, fin), fuente="SAP")
+
+
+def nivel_comercial_sap(desde, hasta):
+    """V42: el nivel de servicio de SAP con el formato del tablero comercial; None si no hay historial de SAP."""
+    from .core import param
+    from .sap_v31 import tiene_historial
+    if (param("otif_fuente", "SAP") or "SAP") != "SAP" or not tiene_historial():
+        return None
+    d = service_month_sap(desde, hasta)
+    filas = d["filas"]
+    hoy = date.today()
+    fallas = [{"numero": f["o"].numero, "id": None, "cliente": f["o"].customer.nombre, "fecha": f["o"].fecha_compromiso,
+               "salida": f["o"].salida_ts, "a_tiempo": f["a_tiempo"], "completo": f["completo"], "estado": "SAP"}
+              for f in filas if not f["otif"] and (f["salio"] or (f["o"].fecha_compromiso or hoy) < hoy)]
+    return {"n": d["universo"], "salieron": sum(1 for f in filas if f["salio"]), "en_plazo": d["en_plazo"],
+            "on_time": d["on_time"], "in_full": d["in_full"], "otif": d["otif"], "fill_unidades": d["fill_rate"],
+            "fill_lineas": d["fill_rate_lineas"], "conteos": (d["on_time_n"][0], d["in_full_n"][0], d["otif_n"][0], d["universo"]),
+            "fallas": sorted(fallas, key=lambda x: x["fecha"] or date.min), "base": "MES", "fuente": "SAP"}
+
+
 def customer_compliance(customer_id, dias=90):
     """Cumplimiento con el cliente (últimos «dias»): para que Logística y Almacén lo vean antes de responder «no cumple»."""
     hasta = date.today()
-    d = service_month(customer_id=customer_id, desde=hasta - timedelta(days=dias), hasta=hasta + timedelta(days=30))
+    d = service_month(customer_id=customer_id, desde=hasta - timedelta(days=dias), hasta=hasta + timedelta(days=30),
+                      fuente="MODULO")
     ult = sorted([f for f in d["filas"] if f["salio"]], key=lambda f: f["o"].salida_ts, reverse=True)[:8]
     no_cumple = sum(1 for f in d["filas"] if (f["o"].compromiso or {}).get("estado") == "NO_CUMPLE")
     return {"dias": dias, "otif": d["otif"], "otif_n": d["otif_n"], "on_time": d["on_time"], "fill_rate": d["fill_rate"],

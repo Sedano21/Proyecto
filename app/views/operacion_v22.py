@@ -299,6 +299,9 @@ def sunat_guides():
             return act(lambda: gs.decidir_inventario(g.user, gd, f.get("decision"), f.get("nota", "")),
                        lambda x: "Inventario: " + ("descontado del lote." if x.inventario["decision"] == "DESCONTADO" else
                                                    "ya estaba descontado (no se cambió el stock)."), back)
+        if acc == "corregir_inventario":
+            return act(lambda: gs.corregir_inventario(g.user, gd, f.get("motivo", "")),
+                       lambda x: "Decisión de inventario anulada (lo descontado volvió al lote). Decida de nuevo.", back)
         if acc == "sap":
             # V35: si SAP la rechaza se guarda el error (y el préstamo, si es por inventario negativo) para verlo después
             from flask import flash

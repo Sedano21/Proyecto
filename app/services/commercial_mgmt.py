@@ -194,6 +194,10 @@ def gestion(desde=None, hasta=None, filtros=None, ver_costos=False, user=None):
     hasta_nivel = max(hasta, fin_de_mes(hasta)) if hasta.month == hoy.month and hasta.year == hoy.year else hasta
     base_nivel = [o for o in _filtrar(base_mes(desde, hasta_nivel), f) if _lineas(o, tipo)]
     nivel = _nivel(base_nivel, tipo)
+    if not any(f.get(x) for x in ("clientes", "canales", "vendedores")):
+        # V42: sin filtros, el nivel general se mide con las OV de SAP frente a sus guías (si hay historial de SAP)
+        from .seguimiento import nivel_comercial_sap
+        nivel = nivel_comercial_sap(desde, hasta_nivel) or nivel
     # por vendedor, canal y cliente
     grupos = {"vendedor": defaultdict(list), "canal": defaultdict(list), "cliente": defaultdict(list)}
     for o in ovs:

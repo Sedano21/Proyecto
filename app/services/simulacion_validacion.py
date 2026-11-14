@@ -161,11 +161,11 @@ def validar(run=None, app=None):
     # 6. indicadores del sistema (las mismas funciones que alimentan los tableros)
     from .seguimiento import service_month
     k = kpis.compute(run.desde, run.hasta)
-    serv = service_month(desde=run.desde, hasta=run.hasta)
+    serv = service_month(desde=run.desde, hasta=run.hasta, fuente="MODULO")
     evolucion = []
     d = run.desde
     while d <= run.hasta:
-        x = service_month(desde=d, hasta=d)
+        x = service_month(desde=d, hasta=d, fuente="MODULO")
         evolucion.append({"fecha": d.isoformat(), "universo": x.get("universo"), "otif": x.get("otif"),
                           "on_time": x.get("on_time"), "in_full": x.get("in_full")})
         d += timedelta(days=1)

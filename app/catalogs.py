@@ -3180,3 +3180,30 @@ PARAMS += [
      "Valores por defecto de esos campos para los ingresos de mercadería (préstamos), p. ej. {\"U_TIPO_OPER\": \"99\"}.",
      "PENDIENTE", V35),
 ]
+# ------------------------------------------------------------------ V42 (14-nov-2026)
+V42 = "Observaciones V42 (14-nov-2026)"
+for _code, _n, _m, _t, _roles in [
+        ("guias.corregir_inventario", "Corregir la decisión de inventario de una guía SUNAT (si hubo una equivocación)",
+         "Operaciones", "edicion", ["JEFE_OPERACIONES", "GERENCIA_OPERACIONES"]),
+]:
+    PERMISSIONS.append((_code, _n, _m, _t))
+    for _r in _roles:
+        if _r in ROLE_PERMISSIONS and not any(p[0] == _code for p in ROLE_PERMISSIONS[_r]):
+            ROLE_PERMISSIONS[_r].append((_code, "DEFINIDO", V42))
+ALERT_TYPES += [
+    ("CAPACIDAD_BAJA", "Línea de producción por debajo del 80 % de su capacidad", "Producción", "Capacidad", "MEDIA",
+     ["JEFE_OPERACIONES", "JEFE_PRODUCCION"], "DEFINIDO", V42,
+     "Lo ejecutado en los últimos días o lo programado para los próximos días en una línea está por debajo del umbral "
+     "de su capacidad (kg/día × jornadas).", False),
+]
+PARAMS += [
+    ("otif_fuente", "SAP", "str", "Indicadores",
+     "De dónde se calculan OTIF, on time, in full y fill rate: «SAP» (OV de venta de SAP frente a sus guías, si ya se "
+     "leyó el historial de SAP) o «MODULO» (salida registrada en el módulo).", "DEFINIDO", V42),
+    ("capacidad_alerta_umbral", 80, "float", "Producción",
+     "Porcentaje de la capacidad de una línea bajo el cual se avisa a la Jefatura de Operaciones y de Producción.",
+     "DEFINIDO", V42),
+    ("capacidad_alerta_dias", 7, "int", "Producción",
+     "Días que se miran hacia atrás (ejecutado) y hacia adelante (programado) para la alerta de capacidad.",
+     "PROPUESTO", V42),
+]

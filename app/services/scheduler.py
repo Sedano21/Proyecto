@@ -112,6 +112,7 @@ def _pasos(user, today):
         ("costo_reposicion", lambda: __import__("app.services.costos_v24", fromlist=["x"]).check_alerts(today)),
         ("ingreso_semanal", lambda: __import__("app.services.ingresos_semana", fromlist=["x"]).revisar_semana_cerrada(today)),
         ("fumigados", lambda: __import__("app.services.fumigados", fromlist=["x"]).revisar(today)),
+        ("capacidad_lineas_baja", lambda: __import__("app.services.v42", fromlist=["x"]).check_capacidad_lineas(today)),
         ("correo", lambda: flush_outbox()),
     ]
 

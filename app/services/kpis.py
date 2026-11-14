@@ -101,6 +101,14 @@ def compute(desde=None, hasta=None, canal=""):
     k["otif_salida"] = (round(100 * len(salida_ok) / len(salida_base), 1), len(salida_ok), len(salida_base)) if salida_base else None
     k["otif_entrega"] = (round(100 * len(entrega_ok) / len(entrega_base), 1), len(entrega_ok), len(entrega_base)) if entrega_base else None
     k.update(fill_rate(salida_base))
+    # V42: con historial de SAP, OTIF y fill rate a la salida se calculan con las OV de SAP frente a sus guías
+    if (desde and hasta) or not (desde or hasta):
+        from .seguimiento import service_month
+        sv = service_month(desde=desde, hasta=hasta, canal=canal) if desde and hasta else service_month(canal=canal)
+        if sv.get("fuente") == "SAP":
+            k["otif_salida"] = (sv["otif"], sv["otif_n"][0], sv["otif_n"][1]) if sv["universo"] else None
+            k["fill_rate_unidades"], k["fill_rate_lineas"] = sv["fill_rate"], sv["fill_rate_lineas"]
+            k["otif_fuente"] = "SAP"
     evaluadas = [o for o in abiertas if o.estado_stock != "SIN_EVALUAR"]
     k["cobertura_unidades_prom"] = round(sum(o.cobertura_unidades for o in evaluadas) / len(evaluadas), 1) if evaluadas else None
     k["cobertura_lineas_prom"] = round(sum(o.cobertura_lineas for o in evaluadas) / len(evaluadas), 1) if evaluadas else None

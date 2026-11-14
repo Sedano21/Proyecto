@@ -288,9 +288,36 @@ def decidir_inventario(user, g, decision, nota=""):
                 detalle.append({"producto": x["codigo"], "lote": lot.lote, "almacen": lot.warehouse_code, "cantidad": tomado})
                 _consumir_reserva(g, lot, tomado)
     g.inventario = {"decision": "DESCONTADO" if decision == "DESCONTAR" else "YA_DESCONTADO", "detalle": detalle,
-                    "nota": (nota or "").strip(), "user": user.nombre, "ts": now().isoformat(timespec="minutes")}
+                    "nota": (nota or "").strip(), "user": user.nombre, "ts": now().isoformat(timespec="minutes"),
+                    **({"historial": g.inventario["historial"]} if (g.inventario or {}).get("historial") else {})}
     alerts.close_by_system(f"GUIA_SUNAT_INV:{g.id}", "Inventario decidido")
     audit(user, "GUIA_SUNAT_INVENTARIO", "SunatGuide", g.id, g.inventario)
+    return g
+
+
+def corregir_inventario(user, g, motivo):
+    """V42: la Gerencia o Jefatura de Operaciones corrige una decisión de inventario equivocada. Si se había descontado
+    del lote, se devuelve lo descontado a los mismos lotes; la guía vuelve a «inventario por decidir» y se decide de nuevo.
+    No se permite si la guía ya está registrada en SAP."""
+    from ..models import StockLot as _SL
+    if not has_perm(user, "guias.corregir_inventario"):
+        raise BusinessError("La corrección la hace la Gerencia o la Jefatura de Operaciones.")
+    if not (g.inventario or {}).get("decision"):
+        raise BusinessError("Esta guía aún no tiene decisión de inventario.")
+    if (g.sap or {}).get("estado") == "OK":
+        raise BusinessError("La guía ya está registrada en SAP: la corrección se hace en SAP.")
+    if not (motivo or "").strip():
+        raise BusinessError("Indique el motivo de la corrección.")
+    previa = dict(g.inventario)
+    for d in previa.get("detalle") or []:
+        lot = db().execute(select(_SL).where(_SL.product_code == d["producto"], _SL.lote == d["lote"],
+                                             _SL.warehouse_code == d["almacen"])).scalars().first()
+        if lot is not None:
+            lot.cantidad = round((lot.cantidad or 0) + float(d["cantidad"]), 6)
+    hist = list(previa.pop("historial", []) or [])
+    hist.append(dict(previa, corregido_por=user.nombre, motivo=motivo.strip(), corregido_ts=now().isoformat(timespec="minutes")))
+    g.inventario = {"historial": hist}
+    audit(user, "GUIA_SUNAT_INVENTARIO_CORREGIDO", "SunatGuide", g.id, {"previa": previa, "motivo": motivo})
     return g
 
 
@@ -327,7 +354,8 @@ def campos_de_entregas(sl, serie=""):
         c, orig = {}, {}
         for f in filas:
             for k, v in f.items():
-                if k.startswith("U_") and v not in (None, "") and re.search(r"OPER|TPO|TIPO", k, re.I):
+                # V42: también el «tipo de documento» de la pestaña Finanzas (campo estándar Indicator de SAP)
+                if (k == "Indicator" or k.startswith("U_") and re.search(r"OPER|TPO|TIPO", k, re.I)) and v not in (None, ""):
                     c.setdefault(k, Counter())[str(v)] += 1
                     orig[(k, str(v))] = v  # se envía con el mismo tipo de dato que tiene en SAP
         return {k: orig[(k, x.most_common(1)[0][0])] for k, x in c.items()}
