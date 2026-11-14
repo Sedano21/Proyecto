@@ -171,6 +171,16 @@ def comparativo(mes):
     for h in s.execute(select(SalesHistory).where(SalesHistory.fecha >= ini_hist, SalesHistory.fecha <= fin_hist)).scalars():
         p = prods.get(h.product_code)
         ventas[_mes(h.fecha)][segmento(p) if p else "Producto terminado"] += _kg(p, h.cantidad)
+    # V43: lo despachado según las guías de SAP (historial de SAP); para los meses que SAP tiene, manda SAP (no se suma
+    # a las ventas cargadas, para no contar dos veces)
+    from ..models import SapMovement
+    sap = defaultdict(lambda: defaultdict(float))
+    for m in s.execute(select(SapMovement).where(SapMovement.tipo == "GUIA", SapMovement.fecha >= ini_hist,
+                                                 SapMovement.fecha <= fin_hist)).scalars():
+        p = prods.get(m.product_code)
+        sap[_mes(m.fecha)][segmento(p) if p else "Producto terminado"] += _kg(p, m.cantidad or 0)
+    for mes_sap, segs in sap.items():
+        ventas[mes_sap] = segs
     m3 = [_mes_rel(mes, -k) for k in (1, 2, 3)]
     m12 = _mes_rel(mes, -12)
     seg_proy = defaultdict(float)
@@ -185,8 +195,9 @@ def comparativo(mes):
         prom3 = sum(ventas[m][sg] for m in m3) / 3
         f = {"segmento": sg, "sku": n_sku[sg], "proyectado_kg": round(seg_proy[sg], 1), "prom3_kg": round(prom3, 1),
              "anio_ant_kg": round(ventas[m12][sg], 1)}
-        f["var_prom3"] = _pct(f["proyectado_kg"] - prom3, prom3)
-        f["var_anio"] = _pct(f["proyectado_kg"] - f["anio_ant_kg"], f["anio_ant_kg"])
+        # V43: sin proyección del tipo no hay variación que mostrar (no es una «caída de 100 %»)
+        f["var_prom3"] = _pct(f["proyectado_kg"] - prom3, prom3) if f["proyectado_kg"] else None
+        f["var_anio"] = _pct(f["proyectado_kg"] - f["anio_ant_kg"], f["anio_ant_kg"]) if f["proyectado_kg"] else None
         if f["proyectado_kg"] or prom3:
             filas.append(f)
     total = sum(seg_proy.values())
@@ -198,7 +209,8 @@ def comparativo(mes):
         f["pct"] = _pct(f["proyectado_kg"], total)
     top = sorted(((c, prods.get(c), q) for c, q in proy.items()), key=lambda x: -_kg(x[1], x[2]))[:10]
     return {"mes": mes, "total_kg": round(total, 1), "sku": len(proy), "prom3_kg": round(prom3, 1),
-            "var_prom3": _pct(total - prom3, prom3), "anio_ant_kg": round(anio, 1), "var_anio": _pct(total - anio, anio),
+            "var_prom3": _pct(total - prom3, prom3) if total else None, "anio_ant_kg": round(anio, 1),
+            "var_anio": _pct(total - anio, anio) if total else None,
             "max_mes": maximo[0], "max_kg": round(maximo[1], 1), "filas": filas,
             "top": [{"code": c, "descripcion": p.descripcion if p else "", "segmento": segmento(p) if p else "",
                      "cantidad": round(q, 1), "kg": round(_kg(p, q), 1)} for c, p, q in top]}

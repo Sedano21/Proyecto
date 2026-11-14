@@ -74,7 +74,7 @@ def test_historial_sap_desde_julio(app, s, U):
     r = sap_v31.sync_historial(U("sistemas"), sl=sl)
     s.commit()
     assert r["modo"] == "completa" and r["ordenes"] == 2 and r["guias"] == 2 and r["consumos"] == 1
-    assert any("2026-07-01" in f for p, f in sl.filtros if p == "Orders")
+    assert any(sap_v31.historial_desde().isoformat() in f for p, f in sl.filtros if p == "Orders")  # V43: desde 2025-01-01
     assert s.query(SapMovement).filter_by(tipo="CONSUMO").one().product_code == "GR-901"
     todas = ds.conciliar_historial(situacion="TODAS")
     por = {f["ov"]: f for f in todas["filas"]}

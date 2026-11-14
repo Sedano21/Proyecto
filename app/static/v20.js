@@ -109,7 +109,8 @@
     var caja = t.parentElement;
     t.classList.remove('apilada');
     var ancho = caja.clientWidth || caja.getBoundingClientRect().width;
-    if (ancho && t.scrollWidth > ancho + 4) t.classList.add('apilada');
+    // V43: en computadora la tabla se desplaza dentro de su recuadro (no se desarma en tarjetas); se apila solo en celular
+    if (ancho && t.scrollWidth > ancho + 4 && window.innerWidth < 760) t.classList.add('apilada');
   }
   var obs = 'ResizeObserver' in window ? new ResizeObserver(function (es) {
     es.forEach(function (e) { e.target.querySelectorAll(':scope > table').forEach(ajustar); });

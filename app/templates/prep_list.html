@@ -2,8 +2,12 @@
 {% block content %}
 <h1>Preparación por prioridad y corte</h1>
 <p class="muted small">Solo pedidos con cobertura completa o con despacho parcial aprobado. Los cortes organizan la preparación, no la evaluación ni la reserva (IF §5). Tiempos iniciales (proceso actual, provisionales): {% for k,v in tiempos.items() %}{{ k|lower }} {{ v }}; {% endfor %}</p>
-{% for corte, lista in cortes.items() %}<h2>Corte {{ corte }}</h2>
-<table><tr><th>Prioridad</th><th>OV</th><th>Cliente</th><th>Comprometida</th><th>Urg.</th><th>Cobertura</th><th>Kg</th><th>Avance</th><th>Estado</th></tr>
-{% for o in lista %}<tr><td>{{ loop.index }}</td><td><a href="{{ url_for('com.picking', oid=o.id) }}">{{ o.numero }}</a></td><td>{{ o.customer.nombre }}</td><td>{{ o.fecha_compromiso|d }}</td><td>{{ '⚑' if o.urgente }}</td><td>{{ b(o.estado_stock) }} {{ b(o.decision_parcial) }}</td><td class="r">{{ peso(o)|n }}</td><td>{{ bar(progress(o)) }}{{ progress(o) }}%</td><td>{{ b(o.estado) }}</td></tr>{% endfor %}</table>
+<p class="small muted">Agrupado por cliente dentro de cada corte: abra un cliente para ver sus OV por fecha de despacho. Las OV de un mismo cliente y fecha se preparan en un solo picking («Programación de picking» → cliente → «Un solo picking»).</p>
+{% for corte, lista in cortes.items() %}<h2>Corte {{ corte }}</h2><div class="grupos-cliente">
+{% for cli, ovs in lista|groupby('customer.nombre') %}{% set kg = namespace(t=0) %}{% for o in ovs %}{% set kg.t = kg.t + (peso(o) or 0) %}{% endfor %}
+<details class="card grupo-cli {{ 'alerta' if ovs|selectattr('urgente')|list }}" {{ 'open' if lista|length <= 3 }}><summary><span class="gc-nombre"><b>{{ cli }}</b></span><span class="gc-datos small"><span><b>{{ ovs|length }}</b> OV</span><span>{{ kg.t|n }} kg</span>{% if ovs|selectattr('urgente')|list %}<span class="b ALTA">urgente</span>{% endif %}<span>desde {{ (ovs|map(attribute='fecha_compromiso')|min)|d }}</span><a class="small" href="{{ url_for('alm.picking_schedule', vista='semana', cliente=ovs[0].customer_id) }}">ver su picking</a></span></summary>
+{% for fecha, del_dia in ovs|sort(attribute='fecha_compromiso')|groupby('fecha_compromiso') %}<div class="gc-fecha"><h4>Despacho {{ fecha|d }} <span class="muted small">· {{ del_dia|length }} OV</span></h4></div>
+<div class="tw"><table class="small"><tr><th>OV</th><th>Urg.</th><th>Cobertura</th><th class="r">Kg</th><th>Avance</th><th>Estado</th></tr>
+{% for o in del_dia %}<tr><td><a href="{{ url_for('com.picking', oid=o.id) }}">{{ o.numero }}</a></td><td>{{ '⚑' if o.urgente }}</td><td>{{ b(o.estado_stock) }} {{ b(o.decision_parcial) }}</td><td class="r">{{ peso(o)|n }}</td><td>{{ bar(progress(o)) }}{{ progress(o) }}%</td><td>{{ b(o.estado) }}</td></tr>{% endfor %}</table></div>{% endfor %}</details>{% endfor %}</div>
 {% else %}<p class="muted">No hay pedidos listos para preparar.</p>{% endfor %}
 {% endblock %}

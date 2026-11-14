@@ -1,0 +1,29 @@
+{% extends "base.html" %}{% from "_m.html" import csrf, b, ic %}
+{% block content %}<div class="page-head"><div><h1>Picking de {{ cli.nombre }}</h1>
+<p class="sub">Despacho del <b>{{ dia|d }}</b> · almacén <b>{{ almacen }}</b> · {{ ts|length }} OV en un solo picking. Se pickea una sola vez la suma de cada producto y lote; el sistema lo reparte entre las OV.</p></div>
+<div>{{ b(res.estado) }}</div></div>
+<div class="card"><h3>OV incluidas</h3><div class="ov-chips">{% for t in ts %}<a class="chip" href="{{ url_for('alm.picking_task', tid=t.id) }}" title="Ver el picking de esta OV">OV <b>{{ t.order.numero }}</b> · {{ avance[t.id]|round|int }} % · {{ t.estado|replace('_', ' ')|lower }}</a>{% endfor %}</div>
+<p class="small muted">Asignado a: {% for i in res.asignados %}{{ usuarios[i].nombre if i in usuarios }}{{ ', ' if not loop.last }}{% else %}<span class="b ALTA">sin asignar</span>{% endfor %}</p></div>
+
+{% if asigna and res.estado != 'LISTO' %}<details class="card" {{ 'open' if not res.asignados }}><summary><b>1. Asignar el picking</b> <span class="muted small">(a todas las OV a la vez)</span></summary>
+<form method="post" class="stack-form">{{ csrf() }}<input type="hidden" name="accion" value="asignar">
+<div class="check-grid">{% for u in personal %}<label class="check-pill"><input type="checkbox" name="persona" value="{{ u.id }}" {{ 'checked' if u.id in res.asignados }}><span>{{ u.nombre }} <span class="muted small">{{ u.role.nombre }}</span></span></label>{% else %}<p class="muted small">No hay personal con este almacén asignado.</p>{% endfor %}</div>
+<div class="row"><div class="grow"><label for="pc-com">Comentario</label><input id="pc-com" name="comentario"></div><div class="row-end"><button>Guardar asignación</button></div></div></form></details>{% endif %}
+
+{% if res.sin_validar %}<div class="card warn"><div class="row"><div class="grow small">La planificación pre-asignada (lotes reservados) de {{ res.sin_validar|length }} OV ({{ res.sin_validar|join(', ') }}) aún no está validada: revise la lista de abajo y valídela una sola vez para todas.</div>
+{% if can('preparacion.registrar') %}<form method="post" class="row-end">{{ csrf() }}<input type="hidden" name="accion" value="validar_plan"><button>{{ ic('check') }} Validar la planificación</button></form>{% endif %}</div></div>{% endif %}
+{% if res.estado == 'PROGRAMADO' %}<form class="card" method="post" enctype="multipart/form-data">{{ csrf() }}<input type="hidden" name="accion" value="iniciar"><h3>2. Iniciar el picking</h3>
+<div class="row"><div class="grow"><label class="req" for="pc-f1">Foto al iniciar</label><input id="pc-f1" type="file" name="foto" accept="image/*" capture="environment" required></div><div class="row-end"><button>Iniciar las {{ ts|length }} OV</button></div></div></form>{% endif %}
+
+<div class="card" id="lista"><h3>{{ '3. ' if res.estado != 'LISTO' }}Lista para pickear (consolidada)</h3>
+<p class="small muted">Una fila por producto y lote. «Total» es la suma de las OV del cliente; abra «por OV» para ver de qué OV sale. Registre lo que pickeó: se reparte entre las OV en orden.</p>
+<div class="tw"><table class="small apilable"><tr><th>Producto</th><th>Lote</th><th>FP / FV</th><th>Ubicación</th><th class="r">Total</th><th class="r">Bultos</th><th class="r">Pickeado</th><th class="r">Falta</th><th>Registrar</th></tr>
+{% for f in filas %}<tr class="{{ 'ok' if f.pendiente <= 0 }}"><td data-label="Producto"><b>{{ f.producto }}</b> {{ f.descripcion }}<details class="small"><summary>por OV ({{ f.detalle|length }})</summary>{% for d in f.detalle %}<div>OV {{ d.ov }}: {{ d.cantidad|n }}{% if d.hecho %} · pickeado {{ d.hecho|n }}{% endif %}</div>{% endfor %}</details></td>
+<td data-label="Lote"><b>{{ f.lote }}</b></td><td data-label="FP / FV">{{ f.fp|d if f.fp else '—' }} / {{ f.fv|d if f.fv else '—' }}</td><td data-label="Ubicación">{{ f.ubicacion or '—' }}</td>
+<td data-label="Total" class="r"><b>{{ f.total|n }}</b></td><td data-label="Bultos" class="r">{{ f.bultos|n if f.bultos is not none else '—' }}</td><td data-label="Pickeado" class="r">{{ f.hecho|n }}</td><td data-label="Falta" class="r">{{ f.pendiente|n }}</td>
+<td data-label="Registrar">{% if res.estado == 'EN_PROCESO' and f.pendiente > 0 %}<form method="post" class="row nowrap">{{ csrf() }}<input type="hidden" name="accion" value="registrar"><input type="hidden" name="producto" value="{{ f.producto }}"><input type="hidden" name="lote" value="{{ f.lote }}"><input type="number" name="cantidad" step="any" min="0" max="{{ f.pendiente }}" value="{{ f.pendiente }}" style="width:90px" aria-label="Cantidad pickeada"><input type="number" name="bultos" step="any" min="0" placeholder="bultos" style="width:80px" aria-label="Bultos"><button class="small">Registrar</button></form>{% elif f.pendiente <= 0 %}{{ b('LISTO') }}{% else %}<span class="muted small">inicie el picking</span>{% endif %}</td></tr>
+{% else %}<tr><td colspan="9" class="muted">Las OV no tienen lotes reservados en este almacén.</td></tr>{% endfor %}</table></div></div>
+
+{% if res.estado == 'EN_PROCESO' %}<form class="card" method="post" enctype="multipart/form-data" data-confirm="¿Marcar las {{ ts|length }} OV como listas para el despacho?">{{ csrf() }}<input type="hidden" name="accion" value="listo"><h3>4. Todo listo para el despacho</h3>
+<div class="row"><div class="grow"><label class="req" for="pc-f2">Foto de la mercadería lista</label><input id="pc-f2" type="file" name="foto" accept="image/*" capture="environment" required></div><div class="grow"><label for="pc-obs">Observación</label><input id="pc-obs" name="observacion"></div><div class="row-end"><button>Marcar listas</button></div></div></form>{% endif %}
+{% endblock %}

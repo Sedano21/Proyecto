@@ -3207,3 +3207,9 @@ PARAMS += [
      "Días que se miran hacia atrás (ejecutado) y hacia adelante (programado) para la alerta de capacidad.",
      "PROPUESTO", V42),
 ]
+# ------------------------------------------------------------------ V43 (14-nov-2026)
+V43 = "Observaciones V43 (14-nov-2026)"
+# el usuario autorizó leer el historial de SAP que haga falta para comparar con el mismo mes del año anterior
+PARAMS_CAMBIO.append(("sap_historial_desde", "2026-07-01", "2025-01-01",
+                      f"{V43}: historial de SAP desde enero de 2025 para comparar con el año anterior"))
+PARAMS = [(k, ("2025-01-01" if k == "sap_historial_desde" else v), *rest) for k, v, *rest in PARAMS]

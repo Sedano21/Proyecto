@@ -436,6 +436,51 @@ def picking_task(tid):
                            opciones_lote=lambda l: pk.lot_options(t, l, todos=True), free=free_qty)
 
 
+@bp.route("/picking/cliente/<int:cid>/<fecha>/<almacen>", methods=["GET", "POST"])
+@perm_required("preparacion.registrar", "picking.asignar", "tareas.ejecutar")
+def picking_customer(cid, fecha, almacen):
+    """V43: un solo picking para todas las OV de un cliente con el mismo despacho (fecha y almacén)."""
+    from datetime import date as _date
+    from ..models import Customer
+    from ..services import picking as pk
+    from ..services import picking_cliente as pc
+    from ..services.distribution import save_upload
+    try:
+        dia = _date.fromisoformat(fecha)
+    except ValueError:
+        abort(404)
+    cli = db().get(Customer, cid) or abort(404)
+    ts = pc.tareas(cid, dia, almacen)
+    if not ts:
+        abort(404)
+    asigna = "picking.asignar" in g.perms
+    if not asigna and not any(g.user.id in (t.asignados or []) for t in ts):
+        abort(403)
+    back = url_for("alm.picking_customer", cid=cid, fecha=fecha, almacen=almacen)
+    if request.method == "POST":
+        f = request.form
+        up = current_app.config["UPLOAD_DIR"]
+        acc = f.get("accion")
+        fn = {
+            "validar_plan": lambda: pc.validar_plan(g.user, ts),
+            "asignar": lambda: pc.asignar(g.user, ts, f.getlist("persona"), None, f.get("comentario", ""),
+                                          f.getlist("reporta")),
+            "iniciar": lambda: pc.iniciar(g.user, ts, save_upload(request.files.get("foto"), up, f"pickcli{cid}_ini")),
+            "registrar": lambda: pc.registrar(g.user, ts, f.get("producto", ""), f.get("lote", ""), f_float("cantidad", True),
+                                              f_float("bultos")),
+            "listo": lambda: pc.finalizar(g.user, ts, save_upload(request.files.get("foto"), up, f"pickcli{cid}_fin"),
+                                          f.get("observacion", "")),
+        }.get(acc) or abort(400)
+        msg = {"validar_plan": "Planificación validada para todas las OV.", "asignar": "Asignación guardada para todas las OV.", "iniciar": "Picking iniciado para todas las OV.",
+               "registrar": "Registrado y repartido entre las OV.", "listo": "Todas las OV listas para el despacho."}[acc]
+        return act(fn, msg, back + ("#lista" if acc in ("iniciar", "registrar") else ""))
+    filas = pc.consolidado(ts)
+    from ..services.orders import prep_progress
+    return render_template("picking_cliente.html", cli=cli, dia=dia, almacen=almacen, ts=ts, filas=filas,
+                           res=pc.resumen(ts), asigna=asigna, personal=pk.staff(almacen), usuarios=pk.users_by_id(),
+                           avance={t.id: prep_progress(t.order) for t in ts})
+
+
 @bp.route("/picking/formato")
 @perm_required("preparacion.registrar", "picking.asignar", "tareas.ejecutar")
 def picking_format():
@@ -598,12 +643,22 @@ def sap_dispatch_check():
                         headers={"Content-Disposition": "attachment; filename=ov_vs_guias_sap.xlsx"})
     estado = request.args.get("estado", "")
     filas = [f for f in res["filas"] if not estado or f["estado"] == estado or (estado == "ALERTA" and f["alertas"])]
+    por_cliente = []
+    if request.args.get("vista") == "cliente":  # V43: primero los clientes; al entrar, sus órdenes
+        from collections import Counter, defaultdict
+        gr = defaultdict(list)
+        for f in filas:
+            gr[f["cliente"] or "(sin cliente)"].append(f)
+        por_cliente = sorted(({"cliente": c, "n": len(fs), "estados": Counter(f["estado"] for f in fs),
+                               "alertas": sum(1 for f in fs if f["alertas"])} for c, fs in gr.items()),
+                             key=lambda x: (-x["estados"].get("PARCIAL", 0) - x["estados"].get("SIN_DESPACHO", 0), x["cliente"]))
     from .common import paginate
     filas = paginate(filas)  # V32: listas largas con paginador
     from ..services import sap_sl
     job = sap_sl.job_state("SERVICIOS")
     from ..services.core import param
     return render_template("sap_despachos.html", res=res, filas=filas, estado=estado, job=job, clase=clase,
+                           vista=request.args.get("vista", ""), por_cliente=por_cliente,
                            mes=mes, sit=situacion, meses=ds.meses_historial(), job_hist=sap_sl.job_state("ORDENES"),
                            series_servicio=param("sap_series_orden_servicio", []) or [],
                            configurado=sap_sl.configured())

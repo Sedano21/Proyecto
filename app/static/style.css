@@ -870,7 +870,14 @@ a.kpi::after,.kpi-clic::after{content:"›";position:absolute;right:12px;top:10p
 .grupo-cli[open]>summary::after{content:"−"}
 .grupo-cli.alerta{box-shadow:inset 3px 0 0 var(--err),var(--sh)}
 .gc-nombre{flex:1 1 220px}.gc-datos{display:flex;gap:14px;flex-wrap:wrap;align-items:center}
-.gc-fecha{margin:14px 0 8px;font-size:14px;display:flex;gap:6px;align-items:center}
+.gc-fecha{margin:14px 0 8px;display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center}.gc-fecha h4{margin:0;font-size:14px;display:flex;gap:6px;align-items:center;flex:1 1 auto}
+.ov-chips{display:flex;flex-wrap:wrap;gap:6px}.nowrap{flex-wrap:nowrap!important;gap:6px}.stack-form{display:grid;gap:10px;margin-top:10px}
 .multi-op label{display:grid!important;grid-template-columns:18px 1fr;gap:8px;align-items:center;text-align:left;margin:0!important;font-weight:400;cursor:pointer;padding:4px 2px}
 .multi-op input[type=checkbox]{width:18px!important;height:18px;margin:0;accent-color:var(--cp-verde)}
 .lineas-plan>.card{margin:0}
+/* V43: comparación con el año anterior */
+.comparar-anio{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:baseline}.comparar-anio .cmp{white-space:nowrap}
+.chart-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}.chart-scroll svg{display:block;width:100%;height:auto}
+.chart-nota{margin:2px 0 0}
+
+a.kpi,.kpi-clic{padding-right:30px}

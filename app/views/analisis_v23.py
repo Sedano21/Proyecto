@@ -37,7 +37,9 @@ def demand():
     meses = [dm._mes_rel(f"{hoy:%Y-%m}", k) for k in (-3, -2, -1, 0, 1, 2)]
     from ..services import charts
     fs = d["cumplimiento"]["filas"]
-    graf = charts.columns([f["periodo"] for f in fs], [("Proyectado", [f["proyectado_kg"] for f in fs]),
+    # V43: en el eje, solo el inicio del periodo (dd/mm, o el mes): el rango completo está en la tabla
+    etiqueta = (lambda f: f"{f['desde']:%m/%Y}") if gran == "MES" else (lambda f: f"{f['desde']:%d/%m}")
+    graf = charts.columns([etiqueta(f) for f in fs], [("Proyectado", [f["proyectado_kg"] for f in fs]),
                                                        ("Pedido (OV)", [f["pedido_kg"] for f in fs]),
                                                        ("Despachado", [f["despachado_kg"] for f in fs])], "kg",
                           title="Proyectado vs pedido vs despachado")

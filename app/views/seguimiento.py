@@ -71,7 +71,19 @@ def service():
     if ver in filtros:
         filas = [x for x in filas if filtros[ver](x)]
     clientes = list(db().execute(select(Customer).order_by(Customer.nombre)).scalars())
-    return render_template("seg_servicio.html", d=d, filas=filas, ver=ver, f=request.args, clientes=clientes, canal=canal)
+    anterior = None
+    if d.get("fuente") == "SAP":  # V43: el mismo periodo del año anterior, con el historial de SAP
+        def _menos_un_anio(x):
+            try:
+                return x.replace(year=x.year - 1)
+            except ValueError:
+                return x.replace(year=x.year - 1, day=28)
+        anterior = seg.service_month_sap(_menos_un_anio(d["desde"]), _menos_un_anio(d["hasta"]),
+                                         request.args.get("cliente") or None, canal)
+        if not anterior["universo"]:
+            anterior = dict(anterior, vacio=True)
+    return render_template("seg_servicio.html", d=d, filas=filas, ver=ver, f=request.args, clientes=clientes, canal=canal,
+                           anterior=anterior)
 
 
 @bp.route("/desempeno")

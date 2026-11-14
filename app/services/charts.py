@@ -54,11 +54,15 @@ def line(series, unit="", height=220, width=640, title=""):
     for k in range(5):
         v = vmin + (vmax - vmin) * k / 4
         out.append(f'<line x1="{L}" x2="{width - R}" y1="{y(v):.1f}" y2="{y(v):.1f}" class="grid"/>'
-                   f'<text x="{L - 6}" y="{y(v) + 4:.1f}" class="ax" text-anchor="end">{_fmt(v, 0 if vmax - vmin >= 4 else 1)}</text>')
-    paso = max(1, len(labels) // 8)
+                   f'<text x="{L - 6}" y="{y(v) + 4:.1f}" class="ax" text-anchor="end">{escape(_corto(v)) if vmax - vmin >= 4 else _fmt(v, 1)}</text>')
+    # V43: se muestran tantas etiquetas como quepan sin encimarse (según su largo); la última solo si no choca
+    largo = max(len(str(lb)) for lb in labels) * 6.2 + 10
+    caben = max(int(w / largo), 1)
+    paso = max(1, -(-len(labels) // caben))
     for i, lb in enumerate(labels):
-        if i % paso == 0 or i == len(labels) - 1:
-            out.append(f'<text x="{x(i):.1f}" y="{height - 8}" class="ax" text-anchor="middle">{escape(str(lb))}</text>')
+        if i % paso == 0 or (i == len(labels) - 1 and (i % paso) * w / n >= largo):
+            ancla = "start" if i == 0 else ("end" if i == len(labels) - 1 else "middle")  # V43: sin cortar en los bordes
+            out.append(f'<text x="{x(i):.1f}" y="{height - 8}" class="ax" text-anchor="{ancla}">{escape(str(lb))}</text>')
     for si, (name, pts) in enumerate(series):
         c = SERIES[si]
         d = " ".join(f"{'M' if i == 0 else 'L'}{x(i):.1f},{y(v):.1f}" for i, (_, v) in enumerate(pts) if v is not None)
@@ -104,36 +108,81 @@ def kpi(valor, etiqueta, sub="", unidad=""):
                   f'{escape(unidad)}</b><span>{escape(etiqueta)}</span>{f"<small>{escape(sub)}</small>" if sub else ""}</div>')
 
 
+def _corto(v):
+    """V43: número compacto para rótulos sobre columnas (1 234 567 → 1,2 M; 147 632 → 148 k; 0,5 → 0,5)."""
+    if v is None:
+        return ""
+    a = abs(v)
+    if a >= 1_000_000:
+        return f"{v / 1_000_000:.1f} M".replace(".", ",")
+    if a >= 10_000:
+        return f"{v / 1000:.0f} k"
+    if a >= 1000:
+        return f"{v / 1000:.1f} k".replace(".", ",")
+    return f"{v:.0f}" if a >= 10 or float(v).is_integer() else f"{v:.1f}".replace(".", ",")
+
+
 def columns(labels, series, unit="", width=640, height=240, title="", colors=None):
-    """Columnas verticales agrupadas: labels [str], series [(nombre, [valores])]. Valor sobre cada columna y leyenda."""
+    """Columnas verticales agrupadas: labels [str], series [(nombre, [valores])].
+    V43: nada se encima. El valor va sobre la columna solo si cabe (número compacto, sin ceros); si no cabe, queda en
+    el tooltip y en la tabla. Las etiquetas del eje se espacian o se inclinan según el ancho, y la leyenda va debajo."""
     if not labels or not series:
         return Markup('<p class="muted small">Sin datos para el periodo.</p>')
     pal = colors or SERIES
-    vmax = _nice_max(max([v or 0 for _, vals in series for v in vals] + [1]))
-    T, B, L, R = 22, 46, 8, 8
+    vals_all = [v or 0 for _, vals in series for v in vals]
+    if not any(vals_all):
+        return Markup('<p class="muted small">Sin datos para el periodo.</p>')
+    vmax = _nice_max(max(vals_all + [1]))
+    n = len(labels)
+    L, R = 46, 8
+    gw = (width - L - R) / n
+    bw = min(34, max((gw - 10) / len(series), 3))
+    largo = max(len(str(lb)) for lb in labels)
+    inclinar = largo * 6.2 > gw - 4
+    B = (int(min(largo, 16) * 4.2) + 22) if inclinar else 30
+    T = 18
+    leyenda = len(series) > 1
+    height = max(height, 150 + B)
     ph = height - T - B
-    gw = (width - L - R) / len(labels)
-    bw = min(34, (gw - 12) / len(series))
-    out = [f'<svg class="chart" viewBox="0 0 {width} {height}" role="img" aria-label="{escape(title or "Gráfico de columnas")}">',
-           f'<line x1="{L}" x2="{width - R}" y1="{T + ph}" y2="{T + ph}" class="grid"/>']
+    minimo = min(int(n * len(series) * 9 + L + R), 1100)  # en pantallas angostas se desplaza en lugar de apretarse
+    out = [f'<div class="chart-scroll"><svg class="chart" viewBox="0 0 {width} {height}" style="min-width:{minimo}px" '
+           f'role="img" aria-label="{escape(title or "Gráfico de columnas")}">']
+    for k in range(5):  # eje y con cuadrícula tenue (la escala no depende de los rótulos sobre las columnas)
+        v = vmax * k / 4
+        yy = T + ph - v / vmax * ph
+        out.append(f'<line x1="{L}" x2="{width - R}" y1="{yy:.1f}" y2="{yy:.1f}" class="grid"/>'
+                   f'<text x="{L - 6}" y="{yy + 4:.1f}" class="ax" text-anchor="end">{escape(_corto(v))}</text>')
+    paso = 1
+    if inclinar:
+        paso = max(1, int(14 / max(gw, 1)) + 1) if gw < 14 else 1
     for i, lb in enumerate(labels):
         x0 = L + i * gw + (gw - bw * len(series)) / 2
         for j, (nombre, vals) in enumerate(series):
             v = vals[i] or 0
             h = max(v / vmax * ph, 1 if v else 0)
             x = x0 + j * bw
-            out.append(f'<rect x="{x:.1f}" y="{T + ph - h:.1f}" width="{bw - 3:.1f}" height="{h:.1f}" rx="3" fill="{pal[j % len(pal)]}">'
-                       f'<title>{escape(str(lb))} · {escape(nombre)}: {_fmt(v, 2)} {escape(unit)}</title></rect>'
-                       f'<text x="{x + (bw - 3) / 2:.1f}" y="{T + ph - h - 4:.1f}" class="val" text-anchor="middle">{_fmt(v)}</text>')
-        lbl = str(lb) if len(str(lb)) <= 14 else str(lb)[:13] + "…"
-        out.append(f'<text x="{L + i * gw + gw / 2:.1f}" y="{T + ph + 16}" class="ax" text-anchor="middle">{escape(lbl)}</text>')
-    if len(series) > 1:
-        x = L
-        for j, (nombre, _) in enumerate(series):
-            out.append(f'<rect x="{x}" y="{height - 14}" width="10" height="10" rx="2" fill="{pal[j % len(pal)]}"/>'
-                       f'<text x="{x + 14}" y="{height - 5}" class="ax">{escape(nombre)}</text>')
-            x += 18 + 8 * len(nombre)
-    out.append("</svg>")
+            out.append(f'<rect x="{x:.1f}" y="{T + ph - h:.1f}" width="{max(bw - 2, 2):.1f}" height="{h:.1f}" rx="3" '
+                       f'fill="{pal[j % len(pal)]}"><title>{escape(str(lb))} · {escape(nombre)}: {_fmt(v, 2)} {escape(unit)}'
+                       f'</title></rect>')
+            txt = _corto(v)
+            if v and len(txt) * 6.2 <= bw + 2:
+                out.append(f'<text x="{x + (bw - 2) / 2:.1f}" y="{T + ph - h - 4:.1f}" class="val" text-anchor="middle">'
+                           f'{escape(txt)}</text>')
+        if i % paso:
+            continue
+        lbl = str(lb) if len(str(lb)) <= 16 else str(lb)[:15] + "…"
+        cx = L + i * gw + gw / 2 + (4 if inclinar else 0)
+        if inclinar:
+            out.append(f'<text x="{cx:.1f}" y="{T + ph + 12}" class="ax" text-anchor="end" '
+                       f'transform="rotate(-40 {cx:.1f} {T + ph + 12})">{escape(lbl)}</text>')
+        else:
+            out.append(f'<text x="{cx:.1f}" y="{T + ph + 16}" class="ax" text-anchor="middle">{escape(lbl)}</text>')
+    out.append("</svg></div>")
+    if leyenda:
+        out.append('<div class="legend">' + "".join(f'<span><i style="background:{pal[j % len(pal)]}"></i>{escape(nm)}</span>'
+                                                    for j, (nm, _) in enumerate(series)) + "</div>")
+    out.append('<p class="small muted chart-nota">Pase el cursor (o toque) una columna para ver su valor exacto.</p>'
+               if any(v and len(_corto(v)) * 6.2 > bw + 2 for v in vals_all) else "")
     return Markup("".join(out))
 
 

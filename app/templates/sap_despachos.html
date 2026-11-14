@@ -25,6 +25,9 @@ y de <b>Entregas (guías)</b>{% if res.guias_batch %} (#{{ res.guias_batch.id }}
 <a class="kpi err" href="{{ url_for('alm.sap_dispatch_check', estado='ALERTA', clase=clase, sit=sit, **keep) }}"><span>Con observación</span><b>{{ t.CON_ALERTA or 0 }}</b></a>
 </div>
 {% set _por = res.por_situacion or {} %}{{ buscador_lista('orden, cliente o producto', campo='emision' if h else '', filtros=([('sit', 'Situación en SAP', [('ABIERTAS', 'Abiertas (' ~ _por.get('ABIERTA', 0) ~ ')'), ('CERRADAS', 'Cerradas (' ~ _por.get('CERRADA', 0) ~ ')'), ('TODAS', 'Abiertas y cerradas')], sit)] if h else [])) }}<p class="noprint"><button type="button" class="btn sec small" data-tg-all>Desplegar todo</button></p>
+<p class="vista-sel noprint"><a class="btn small {{ 'sec' if vista == 'cliente' }}" href="{{ url_for('alm.sap_dispatch_check', clase=clase, sit=sit, **keep) }}">Por orden</a> <a class="btn small {{ 'sec' if vista != 'cliente' }}" href="{{ url_for('alm.sap_dispatch_check', clase=clase, sit=sit, vista='cliente', **keep) }}">Por cliente</a></p>
+{% if vista == 'cliente' %}<div class="cards">{% for x in por_cliente %}<a class="xcard {{ 'alerta' if x.estados.get('PARCIAL') or x.estados.get('SIN_DESPACHO') }}" href="{{ url_for('alm.sap_dispatch_check') }}?clase={{ clase }}&sit={{ sit }}&f_mes={{ keep.f_mes }}&f_desde={{ keep.f_desde }}&f_hasta={{ keep.f_hasta }}&buscar={{ x.cliente|urlencode }}"><div class="xcard-head"><b>{{ x.cliente }}</b></div>
+<div class="meta"><span><b>{{ x.n }}</b> órdenes</span>{% for e, k in x.estados.items() %}<span>{{ b(e) }} {{ k }}</span>{% endfor %}{% if x.alertas %}<span class="err">⚠ {{ x.alertas }}</span>{% endif %}</div></a>{% else %}<p class="muted">Sin órdenes.</p>{% endfor %}</div>{% else %}
 <div class="tw"><table class="small"><tr><th></th><th>Orden</th><th>Cliente</th><th data-sin-orden>{{ 'Emisión / compromiso' if h else 'Compromiso' }}</th><th>Estado</th></tr>
 {% for f in filas %}<tr><td><button type="button" class="tg" data-tg="d{{ loop.index }}" aria-expanded="false" title="Ver el detalle de la orden {{ f.ov }}" aria-label="Ver el detalle de la orden {{ f.ov }}">+</button></td>
 <td><b>{{ f.ov }}</b>{% if clase == 'TODAS' %} {{ b('SERVICIO' if f.clase == 'SERVICIO' else 'VENTA', 'info') }}{% endif %}{% if f.serie %} <span class="muted">serie {{ f.serie }}</span>{% endif %}{% if f.alertas %} <span class="err" title="{{ f.alertas|join(' ') }}">⚠ {{ f.alertas|length }}</span>{% endif %}</td>
@@ -40,5 +43,5 @@ y de <b>Entregas (guías)</b>{% if res.guias_batch %} (#{{ res.guias_batch.id }}
 · <b>Facturas:</b> {{ f.facturas|join(', ') or '—' }}
 {% if f.servicios %}· <b>Órdenes de fabricación:</b> {% for x in f.servicios %}OF {{ x.orden }} · {{ x.producto }} · {{ x.completado|n }}/{{ x.planificado|n }} · {{ x.estado|lower }}{{ '; ' if not loop.last }}{% endfor %}{% endif %}
 {% if f.modulo %}· <a href="{{ url_for('com.order_detail', oid=f.modulo.id) }}">ver en el módulo</a>{% endif %}</p></td></tr>
-{% else %}<tr><td colspan="5" class="muted">Sin órdenes en este filtro.</td></tr>{% endfor %}</table></div>{{ paginacion(filas, "órdenes") }}{% endif %}
+{% else %}<tr><td colspan="5" class="muted">Sin órdenes en este filtro.</td></tr>{% endfor %}</table></div>{{ paginacion(filas, "órdenes") }}{% endif %}{% endif %}
 {% endblock %}
