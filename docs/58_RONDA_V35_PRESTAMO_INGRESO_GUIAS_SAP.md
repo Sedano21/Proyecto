@@ -54,3 +54,4 @@ Pruebas con datos ficticios.
   - pantallas del préstamo y del ingreso;
   - guías SUNAT y OV que se actualizan con las guías de SAP.
 - Migración 0044 aplicada sobre una base nueva: la base coincide con el código.
+- Suite completa: **633 pruebas, todas pasan**.
