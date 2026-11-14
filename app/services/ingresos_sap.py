@@ -116,6 +116,18 @@ def campos_sap(sl=None, refrescar=False):
                                  if ln.get(c["nombre"]) not in (None, ""))
             c["usados"] = usados.most_common(5)
             c["sugerido"] = usados.most_common(1)[0][0] if usados else (c.get("defecto") or "")
+        # V40: la localización también exige el folio (prefijo y número) de la entrada. Se propone el prefijo que usa
+        # Logística; el número, si se deja vacío, es el siguiente al último de ese prefijo (se calcula al enviar).
+        prefijos = Counter(str(d["FolioPrefixString"]) for d in recientes if d.get("FolioPrefixString"))
+        pref = prefijos.most_common(1)[0][0] if prefijos else ""
+        nums = [int(d["FolioNumber"]) for d in recientes if str(d.get("FolioPrefixString") or "") == pref
+                and str(d.get("FolioNumber") or "").isdigit()]
+        campos.append({"nombre": "FolioPrefixString", "tabla": "FOLIO", "descripcion": "Prefijo de folio",
+                       "obligatorio": True, "defecto": "", "valores": [], "usados": prefijos.most_common(5),
+                       "sugerido": pref})
+        campos.append({"nombre": "FolioNumber", "tabla": "FOLIO", "descripcion": "Número de folio", "obligatorio": True,
+                       "defecto": "", "valores": [], "usados": [], "sugerido": "",
+                       "ultimo": max(nums) if nums else None})
     finally:
         if propio:
             try:
@@ -133,6 +145,11 @@ def mensaje_error(err):
         return (e + " · La localización de SAP exige el TIPO DE OPERACIÓN de inventario (código de SUNAT) en la entrada. "
                 "El sistema ya leyó de SAP el que queda en las entradas de Logística y lo propone en «Datos que pide SAP»: "
                 "pulse «Reintentar en SAP». Si la lista sigue vacía, pulse «Leer campos de SAP».")
+    if "folio" in e.lower():
+        return (e + " · La localización de SAP exige el FOLIO de la entrada (prefijo y número). El sistema propone en "
+                "«Datos que pide SAP» el prefijo que usa Logística; si deja el número vacío, toma el siguiente al último "
+                "de ese prefijo en SAP. Pulse «Leer campos de SAP» y luego «Reintentar en SAP». Si no sabe qué prefijo "
+                "corresponde, pregúntelo a Logística o Contabilidad.")
     if "Inventory account is not defined" in e or "AccountCode" in e:
         return (e + " · SAP necesita la CUENTA CONTABLE de compensación para la entrada de mercancías (no es el costo). "
                 "Escriba la cuenta tal como la ve en SAP (p. ej. 2841119-00-00): el sistema la convierte a su código "
@@ -222,6 +239,18 @@ def resolver_cuenta(sl, texto):
                         "formato). Verifique el número con Contabilidad.")
 
 
+def siguiente_folio(sl, prefijo):
+    """V40: el número de folio siguiente al último de las entradas de mercancías de SAP con ese prefijo."""
+    p = str(prefijo).replace("'", "''")
+    try:
+        docs = sl.get_all("InventoryGenEntries", {"$filter": f"FolioPrefixString eq '{p}'", "$select": "DocEntry,FolioNumber",
+                                                  "$orderby": "FolioNumber desc", "$top": "1"})[:1]
+    except BusinessError:
+        docs = []
+    ult = docs[0].get("FolioNumber") if docs else None
+    return int(ult) + 1 if str(ult or "").isdigit() else 1
+
+
 def enviar(user, ing, sl=None):
     from . import sap_sl
     propio = sl is None
@@ -263,13 +292,20 @@ def enviar(user, ing, sl=None):
                     d[k] = v
             else:
                 body[k] = v
+        if body.get("FolioPrefixString") and not body.get("FolioNumber"):
+            body["FolioNumber"] = siguiente_folio(sl, body["FolioPrefixString"])
+        if body.get("FolioNumber"):
+            try:
+                body["FolioNumber"] = int(str(body["FolioNumber"]).strip())
+            except ValueError:
+                raise BusinessError("El número de folio debe ser un número entero.")
         r = sl._req("POST", "InventoryGenEntries", body)
     except BusinessError as e:
         ing.estado = "ERROR"
         ing.sap = {"error": str(e)[:500], "ts": now().isoformat(timespec="minutes"),
                    **({"cuenta": ing.sap["cuenta"]} if (ing.sap or {}).get("cuenta") else {}),
                    **({"udf": ing.sap["udf"]} if (ing.sap or {}).get("udf") else {})}
-        if "tipo de operaci" in str(e).lower():
+        if "tipo de operaci" in str(e).lower() or "folio" in str(e).lower():
             try:  # se leen de SAP los campos que pide, para mostrarlos en la pantalla
                 campos_sap(sl, refrescar=True)
             except Exception:  # noqa: BLE001

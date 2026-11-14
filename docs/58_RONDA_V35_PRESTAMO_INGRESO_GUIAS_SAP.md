@@ -127,3 +127,19 @@ La cuenta contable ya pasó. Ahora lo que rechaza es una **validación de la loc
 **Prueba:** `test_tipo_de_operacion_sugerido_por_las_entradas_de_logistica`.
 
 - Suite completa V39: **636 pruebas, todas pasan**.
+
+## 9. V40 — Folio de la entrada («(59) Debe completarse los campos Prefijo Folio y Número de Folio»)
+
+Con la cuenta y el tipo de operación ya aceptados, la localización de SAP pide el **folio** de la entrada de mercancías
+(`FolioPrefixString` y `FolioNumber`).
+
+- «Leer campos de SAP» (y cada error de folio) revisa las últimas 30 entradas de SAP y propone el **prefijo que usa
+  Logística**; muestra el último número de ese prefijo.
+- Si el número se deja vacío, al enviar se pide a SAP el último número de ese prefijo y se usa el **siguiente**. Se puede
+  escribir otro número a mano.
+- Si las entradas de Logística no tienen prefijo, el campo queda vacío y hay que escribir el que indique Logística o
+  Contabilidad (el sistema no lo inventa).
+- No verificado contra la base real de SAP.
+
+**Prueba:** `test_folio_de_la_entrada_con_el_prefijo_de_logistica`.
+- Suite completa V40: **637 pruebas, todas pasan**.

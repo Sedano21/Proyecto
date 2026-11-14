@@ -165,7 +165,7 @@ def test_ingreso_con_tipo_de_operacion_de_la_localizacion(app, s, U, monkeypatch
     s.commit()
     assert r.estado == "ERROR" and "TIPO DE OPERACIÓN" in ingresos_sap.mensaje_error(r.sap["error"])
     campos = ingresos_sap.campos_sap()  # se leyeron solos al fallar
-    assert [c["nombre"] for c in campos] == ["U_TIPO_OPER"] and campos[0]["valores"][1] == ["99", "Otros"]
+    assert [c["nombre"] for c in campos] == ["U_TIPO_OPER", "FolioPrefixString", "FolioNumber"] and campos[0]["valores"][1] == ["99", "Otros"]
     html = _cliente(app, "jefe.operaciones").get("/operacion/ingresos-mercaderia").get_data(as_text=True)
     assert 'name="udf_U_TIPO_OPER"' in html and "99 · Otros" in html
     ingresos_sap.reintentar(U("jefe.operaciones"), r, udf={"U_TIPO_OPER": "99"}, sl=SLt())
@@ -206,3 +206,42 @@ def test_tipo_de_operacion_sugerido_por_las_entradas_de_logistica(app, s, U, mon
     ingresos_sap.reintentar(U("jefe.operaciones"), r, sl=SLl())  # sin elegir nada: usa el de Logística
     s.commit()
     assert r.estado == "EN_SAP" and SLl.body["U_SYP_TPOOPER"] == "16"
+
+
+def test_folio_de_la_entrada_con_el_prefijo_de_logistica(app, s, U, monkeypatch):
+    """V40: «(59) Debe completarse los campos Prefijo Folio y Número de Folio»: prefijo de Logística y número siguiente."""
+    from app.services import ingresos_sap, sap_sl
+    from app.services.core import BusinessError
+    monkeypatch.setattr(sap_sl, "write_enabled", lambda cfg=None: None)
+
+    class SLf:
+        cfg = {"company": "ZZZ_CORPRODUC_TEST260826"}
+        body = None
+
+        def get_all(self, path, params=None):
+            if path == "UserFieldsMD":
+                return []
+            if path == "InventoryGenEntries" and "FolioPrefixString eq" in (params or {}).get("$filter", ""):
+                return [{"DocEntry": 3, "FolioNumber": 41}]
+            if path == "InventoryGenEntries":
+                return [{"DocEntry": 3, "U_SYP_TPOOPER": "16", "FolioPrefixString": "NI", "FolioNumber": 41},
+                        {"DocEntry": 2, "U_SYP_TPOOPER": "16", "FolioPrefixString": "NI", "FolioNumber": 40}]
+            return []
+
+        def _req(self, method, path, body=None, headers=None):
+            SLf.body = body
+            if not body.get("FolioPrefixString") or not body.get("FolioNumber"):
+                raise BusinessError("SAP respondió 400: (59) Debe completarse los campos Prefijo Folio y Número de Folio.")
+            return {"DocEntry": 8, "DocNum": 80}
+    r = ingresos_sap.registrar(U("jefe.operaciones"), date.today(), "ALM-001", "Préstamo",
+                               [{"codigo": "PT-901", "lote": "264005DV", "cantidad": 4}], sl=SLf())
+    s.commit()
+    assert r.estado == "ERROR" and "FOLIO" in ingresos_sap.mensaje_error(r.sap["error"])
+    por = {c["nombre"]: c for c in ingresos_sap.campos_sap()}
+    assert por["FolioPrefixString"]["sugerido"] == "NI" and por["FolioNumber"]["ultimo"] == 41
+    ingresos_sap.reintentar(U("jefe.operaciones"), r, sl=SLf())
+    s.commit()
+    assert r.estado == "EN_SAP" and SLf.body["FolioPrefixString"] == "NI" and SLf.body["FolioNumber"] == 42
+    assert "FolioNumber" not in SLf.body["DocumentLines"][0]
+    html = _cliente(app, "jefe.operaciones").get("/operacion/ingresos-mercaderia").get_data(as_text=True)
+    assert "Prefijo de folio" in html and "último 41" in html
