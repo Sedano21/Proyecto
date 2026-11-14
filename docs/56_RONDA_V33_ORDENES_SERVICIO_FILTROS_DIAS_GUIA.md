@@ -96,3 +96,4 @@ Quedó como lo indican:
   - días no laborables de varias áreas con aviso y bloqueo de OV;
   - guía firmada: número que no corresponde, tipo de archivo y PDF de otra guía.
 - Ajustes a pruebas anteriores: `test_v31` (filtro por mes del buscador) y `test_v32` (alertas por proceso).
+- Suite completa: **629 pruebas, todas pasan**.
