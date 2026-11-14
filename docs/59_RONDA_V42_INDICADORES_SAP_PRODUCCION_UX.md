@@ -75,3 +75,4 @@ cálculo anterior.
   las casillas); «Todas las áreas» marca todas.
 
 **Pruebas:** `tests/test_v42.py`.
+- Suite completa: **645 pruebas, todas pasan**.
