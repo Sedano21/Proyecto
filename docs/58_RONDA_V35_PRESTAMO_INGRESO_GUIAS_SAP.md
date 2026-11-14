@@ -55,3 +55,22 @@ Pruebas con datos ficticios.
   - guías SUNAT y OV que se actualizan con las guías de SAP.
 - Migración 0044 aplicada sobre una base nueva: la base coincide con el código.
 - Suite completa: **633 pruebas, todas pasan**.
+
+## 5. Ajuste V36: «Inventory account is not defined [DocumentLines.AccountCode]»
+
+**Qué significa el error:**
+- SAP no pide el costo: pide la **cuenta contable de compensación** de la entrada de mercancías.
+- En su SAP esa cuenta no está definida en la determinación de cuentas del almacén ni del grupo de artículos. Por eso, en una entrada de mercancías sin documento base, SAP exige indicarla en cada línea.
+
+**Qué cambió:**
+- Se quitó la columna de **costo**: el préstamo se ingresa sin costo, como lo hace la empresa, y SAP usa el costo del artículo.
+- Se agregó el campo **«Cuenta contable de compensación»**. Se puede dejar por defecto en Parámetros → `ingreso_mercaderia_cuenta`.
+- Cuando SAP rechaza un ingreso, la lista explica qué falta. El botón **«Reintentar en SAP»** lo vuelve a enviar con la cuenta, sin digitar de nuevo; si estaba unido a una guía, también la reenvía.
+- El mensaje de rechazo ahora se muestra como error y no como aviso verde.
+
+**Lo que hace falta de ustedes:**
+1. Pedir a **Contabilidad la cuenta que usan para los préstamos** cuando los registran en SAP.
+2. Registrarla en el parámetro o escribirla en el ingreso #1.
+3. Pulsar **«Reintentar en SAP»**.
+
+**Prueba agregada:** `test_ingreso_sin_cuenta_contable_y_reintento`. SAP rechaza el ingreso sin cuenta, el reintento con la cuenta pasa y el préstamo va sin costo.

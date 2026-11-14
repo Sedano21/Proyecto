@@ -329,23 +329,36 @@ def goods_receipts():
     back = url_for("v22.goods_receipts")
     guia = db().get(SunatGuide, int(request.values.get("guia") or 0)) if request.values.get("guia") else None
     if request.method == "POST":
+        from flask import flash
         f = request.form
-        filas = [{"codigo": c, "lote": l, "cantidad": q, "fp": fp, "fv": fv, "precio": pr}
-                 for c, l, q, fp, fv, pr in zip(f.getlist("codigo"), f.getlist("lote"), f.getlist("cantidad"),
-                                                f.getlist("fp"), f.getlist("fv"), f.getlist("precio"))]
-
-        def _do():
-            r = ing.registrar(g.user, f.get("fecha"), f.get("almacen"), f.get("motivo"), filas, guia)
-            return r
-        return act(_do, lambda r: (f"Ingreso #{r.id} registrado en SAP (entrada {r.sap.get('docnum')})."
-                                   + (" La guía se volvió a enviar a SAP." if r.guia_id and not r.sap.get('guia_error') else "")
-                                   + (f" La guía aún no pasa: {r.sap['guia_error']}" if r.sap.get("guia_error") else ""))
-                   if r.estado == "EN_SAP" else f"Ingreso #{r.id} guardado, pero SAP lo rechazó: {r.sap.get('error')}", back)
+        filas = [{"codigo": c, "lote": l, "cantidad": q, "fp": fp, "fv": fv}
+                 for c, l, q, fp, fv in zip(f.getlist("codigo"), f.getlist("lote"), f.getlist("cantidad"),
+                                            f.getlist("fp"), f.getlist("fv"))]
+        try:
+            if f.get("accion") == "reintentar":  # V36: reintentar en SAP sin volver a digitar
+                r = ing.reintentar(g.user, db().get(GoodsReceipt, int(f.get("id") or 0)) or abort(404), f.get("cuenta", ""))
+            else:
+                r = ing.registrar(g.user, f.get("fecha"), f.get("almacen"), f.get("motivo"), filas, guia,
+                                  cuenta=f.get("cuenta", ""))
+            db().commit()
+        except BusinessError as e:
+            db().rollback()
+            flash(str(e), "error")
+            return redirect(back)
+        if r.estado == "EN_SAP":
+            flash(f"Ingreso #{r.id} registrado en SAP (entrada {r.sap.get('docnum')})."
+                  + (" La guía se volvió a enviar a SAP." if r.guia_id and not r.sap.get("guia_error") else "")
+                  + (f" La guía aún no pasa: {r.sap['guia_error']}" if r.sap.get("guia_error") else ""), "ok")
+        else:
+            flash(f"Ingreso #{r.id} guardado, pero SAP lo rechazó: {ing.mensaje_error(r.sap.get('error'))}", "error")
+        return redirect(back)
     ingresos = paginate(list(db().execute(select(GoodsReceipt).order_by(GoodsReceipt.id.desc())).scalars()), 25)
     pendientes = [x for x in db().execute(select(SunatGuide)).scalars() if (x.prestamo or {}).get("estado") == "PENDIENTE"]
     almacenes = list(db().execute(select(Warehouse).where(Warehouse.habilitado.is_(True)).order_by(Warehouse.code)).scalars())
     from ..models import Product
     productos = list(db().execute(select(Product).order_by(Product.code)).scalars())
+    from ..services.core import param
     return render_template("v35_ingresos.html", ingresos=ingresos, pendientes=pendientes, guia=guia, almacenes=almacenes,
+                           cuenta_def=param("ingreso_mercaderia_cuenta", "") or "", msg_error=ing.mensaje_error,
                            productos=productos, hoy=__import__("datetime").date.today(),
                            puede="stock.ingreso_sap" in g.perms)

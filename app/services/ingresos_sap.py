@@ -62,7 +62,17 @@ def lineas_de(form_lineas):
     return out
 
 
-def registrar(user, fecha, almacen, motivo, lineas, guia=None, sl=None):
+def mensaje_error(err):
+    """Explicación del error de SAP para la Jefatura de Operaciones."""
+    e = err or ""
+    if "Inventory account is not defined" in e or "AccountCode" in e:
+        return (e + " · SAP necesita la CUENTA CONTABLE de compensación para la entrada de mercancías (no es el costo). "
+                "Pida a Contabilidad la cuenta que usan para los préstamos, escríbala en «Cuenta contable» (o en "
+                "Parámetros → ingreso_mercaderia_cuenta para que quede por defecto) y pulse «Reintentar en SAP».")
+    return e
+
+
+def registrar(user, fecha, almacen, motivo, lineas, guia=None, sl=None, cuenta=""):
     """Registra el ingreso y lo envía a SAP. Si está unido a una guía con préstamo pendiente, la vuelve a enviar."""
     if not has_perm(user, "stock.ingreso_sap"):
         raise BusinessError("El ingreso de mercadería a SAP lo registra la Jefatura de Operaciones.")
@@ -73,11 +83,30 @@ def registrar(user, fecha, almacen, motivo, lineas, guia=None, sl=None):
     if not motivo:
         raise BusinessError("Indique el motivo (p. ej. préstamo para registrar la guía SUNAT EG07-457).")
     ing = GoodsReceipt(fecha=_fecha(fecha) or date.today(), almacen=almacen, motivo=motivo, lineas=lineas_de(lineas),
-                       guia_id=guia.id if guia else None, user_id=user.id, sap={})
+                       guia_id=guia.id if guia else None, user_id=user.id,
+                       sap={"cuenta": (cuenta or "").strip()} if (cuenta or "").strip() else {})
     db().add(ing)
     db().flush()
     audit(user, "INGRESO_MERCADERIA", "GoodsReceipt", ing.id, {"almacen": almacen, "lineas": ing.lineas, "motivo": motivo})
     enviar(user, ing, sl)
+    _reenviar_guia(user, ing, guia, sl)
+    return ing
+
+
+def reintentar(user, ing, cuenta="", sl=None):
+    """V36: vuelve a enviar a SAP un ingreso que SAP rechazó (p. ej. tras definir la cuenta contable)."""
+    if not has_perm(user, "stock.ingreso_sap"):
+        raise BusinessError("El ingreso de mercadería a SAP lo registra la Jefatura de Operaciones.")
+    if ing.estado == "EN_SAP":
+        raise BusinessError("Ese ingreso ya está en SAP.")
+    if (cuenta or "").strip():
+        ing.sap = dict(ing.sap or {}, cuenta=cuenta.strip())
+    enviar(user, ing, sl)
+    _reenviar_guia(user, ing, ing.guia, sl)
+    return ing
+
+
+def _reenviar_guia(user, ing, guia, sl):
     if guia is not None and ing.estado == "EN_SAP":
         guia.prestamo = dict(guia.prestamo or {}, estado="INGRESADO", ingreso_id=ing.id)
         from . import guias_sunat as gs
@@ -85,7 +114,6 @@ def registrar(user, fecha, almacen, motivo, lineas, guia=None, sl=None):
             gs.enviar_sap(user, guia, sl=sl)
         except BusinessError as e:  # el ingreso queda hecho; la guía muestra su error y se reintenta
             ing.sap = dict(ing.sap, guia_error=str(e)[:300])
-    return ing
 
 
 def enviar(user, ing, sl=None):
@@ -106,7 +134,7 @@ def enviar(user, ing, sl=None):
                                        **({"ExpiryDate": x["fv"]} if x.get("fv") else {}))]}
             if x.get("precio"):
                 d["UnitPrice"] = x["precio"]
-            cuenta = (param("ingreso_mercaderia_cuenta", "") or "").strip()
+            cuenta = ((ing.sap or {}).get("cuenta") or param("ingreso_mercaderia_cuenta", "") or "").strip()
             if cuenta:
                 d["AccountCode"] = cuenta
             lineas.append(d)
@@ -115,7 +143,8 @@ def enviar(user, ing, sl=None):
         r = sl._req("POST", "InventoryGenEntries", body)
     except BusinessError as e:
         ing.estado = "ERROR"
-        ing.sap = {"error": str(e)[:500], "ts": now().isoformat(timespec="minutes")}
+        ing.sap = {"error": str(e)[:500], "ts": now().isoformat(timespec="minutes"),
+                   **({"cuenta": ing.sap["cuenta"]} if (ing.sap or {}).get("cuenta") else {})}
         audit(user, "INGRESO_MERCADERIA_ERROR", "GoodsReceipt", ing.id, ing.sap)
         return ing
     finally:
@@ -125,7 +154,8 @@ def enviar(user, ing, sl=None):
             except BusinessError:
                 pass
     ing.estado = "EN_SAP"
-    ing.sap = {"docentry": r.get("DocEntry"), "docnum": r.get("DocNum"), "ts": now().isoformat(timespec="minutes")}
+    ing.sap = {"docentry": r.get("DocEntry"), "docnum": r.get("DocNum"), "ts": now().isoformat(timespec="minutes"),
+               **({"cuenta": ing.sap["cuenta"]} if (ing.sap or {}).get("cuenta") else {})}
     audit(user, "INGRESO_MERCADERIA_SAP", "GoodsReceipt", ing.id, ing.sap)
     if ing.guia_id:
         alerts.close_by_system(f"PRESTAMO:{ing.guia_id}", f"Ingreso de mercadería #{ing.id} registrado en SAP")
