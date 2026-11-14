@@ -312,7 +312,8 @@ def _consumir_reserva(g, lot, cantidad):
 def enviar_sap(user, g, sl=None):
     """Crea en SAP la entrega (guía) basada en la OV de SAP, con la serie y el número de SUNAT y los lotes."""
     from . import sap_sl
-    _req(user)
+    if not has_perm(user, "stock.ingreso_sap"):  # V35: la Jefatura de Operaciones la reenvía tras el préstamo
+        _req(user)
     if not g.sap_ov:
         raise BusinessError("Primero una la guía a su OV (o indique el número de la OV en SAP).")
     if (g.sap or {}).get("estado") == "OK":
@@ -383,6 +384,8 @@ def enviar_sap(user, g, sl=None):
     except BusinessError as e:
         g.sap = {"estado": "ERROR", "error": str(e)[:500], "ts": now().isoformat(timespec="minutes")}
         audit(user, "GUIA_SUNAT_SAP_ERROR", "SunatGuide", g.id, g.sap)
+        if es_inventario_negativo(str(e)):
+            pedir_prestamo(user, g, str(e))
         raise
     finally:
         if propio:
@@ -395,3 +398,53 @@ def enviar_sap(user, g, sl=None):
     g.estado = "ENVIADA_SAP"
     audit(user, "GUIA_SUNAT_SAP", "SunatGuide", g.id, g.sap)
     return g
+
+
+
+# ------------------------------------------------------------------ V35 (14-nov-2026)
+def es_inventario_negativo(msg):
+    m = (msg or "").lower()
+    return "negative inventory" in m or "inventario negativo" in m or "falls into negative" in m
+
+
+def pedir_prestamo(user, g, error=""):
+    """SAP no acepta la guía porque el stock ya se descontó en SAP (p. ej. por un reconteo del mismo día): queda un
+    PRÉSTAMO pendiente y se avisa a la Jefatura de Operaciones, la Coordinación de Distribución y la Jefatura de Logística
+    para que se ingrese la mercadería (Ingreso de mercadería) y la guía pueda pasar a SAP."""
+    if (g.prestamo or {}).get("estado") == "PENDIENTE":
+        return g
+    g.prestamo = {"estado": "PENDIENTE", "error": (error or "")[:300], "ts": now().isoformat(timespec="minutes"),
+                  "lineas": [{"codigo": x["codigo"], "descripcion": x.get("descripcion", ""), "lote": x.get("lote", ""),
+                              "cantidad": x.get("cantidad"), "fp": x.get("fp", ""), "fv": x.get("fv", "")} for x in g.lineas]}
+    alerts.emit("PRESTAMO_STOCK", f"Guía {g.serie}-{g.numero}: SAP no tiene stock para registrarla (préstamo)",
+                "SAP rechazó la guía por inventario negativo: el stock ya se descontó en SAP (p. ej. por un reconteo). "
+                "Para que la guía pase a SAP, registre el ingreso de mercadería (préstamo) de: "
+                + "; ".join(f"{x['codigo']} lote {x.get('lote') or '—'} × {x.get('cantidad')}" for x in g.lineas[:10])
+                + ". El inventario del módulo no se toca: revise la decisión de inventario de la guía para no descontar dos "
+                  "veces.", "SunatGuide", g.id, prioridad="ALTA", dedup_key=f"PRESTAMO:{g.id}", creado_por=user)
+    audit(user, "GUIA_SUNAT_PRESTAMO", "SunatGuide", g.id, {"error": error[:300]})
+    return g
+
+
+def conciliar_con_sap():
+    """Las guías SUNAT del módulo que alguien ya registró en SAP (o que el módulo registró) quedan como «en SAP» con su
+    entrega, según las guías leídas de SAP (historial). Devuelve cuántas se actualizaron."""
+    from ..models import SapMovement, SunatGuide
+    n = 0
+    for g in db().execute(select(SunatGuide).where(SunatGuide.estado != "ANULADA")).scalars():
+        if (g.sap or {}).get("estado") == "OK":
+            continue
+        try:
+            folio = f"{g.serie.upper()}-{int(g.numero)}"
+        except ValueError:
+            folio = f"{g.serie.upper()}-{g.numero}"
+        m = db().execute(select(SapMovement).where(SapMovement.tipo == "GUIA", SapMovement.documento == folio)).scalars().first()
+        if m is None:
+            continue
+        g.sap = {"estado": "OK", "docentry": m.docentry, "docnum": "", "origen": "SAP", "ts": now().isoformat(timespec="minutes"),
+                 "nota": "Registrada en SAP (encontrada en las guías de SAP)"}
+        g.estado = "ENVIADA_SAP"
+        if (g.prestamo or {}).get("estado") == "PENDIENTE":
+            g.prestamo = dict(g.prestamo, estado="RESUELTO_EN_SAP")
+        n += 1
+    return n

@@ -133,6 +133,7 @@
       {{ nl(url_for('dist.routes'), 'route', 'Programación y rutas') }}
       {{ nl(url_for('v22.board'), 'clipboard', 'Cuadro de despacho y ruta manual') }}
       {% if can('guias.sunat_cargar') or can('guias.regularizar_inventario') %}{{ nl(url_for('v22.sunat_guides'), 'file', 'Guías SUNAT (regularización)') }}{% endif %}
+      {% if can('stock.ingreso_sap') or can('guias.regularizar_inventario') %}{{ nl(url_for('v22.goods_receipts'), 'box', 'Ingreso de mercadería a SAP') }}{% endif %}
       {% if ve('personal.ausencias') %}{{ nl(url_for('v22.absences'), 'calendar', 'Disponibilidad del personal') }}{% endif %}
       {% if ve('checklist.ver') %}{{ nl(url_for('dist.checklists'), 'check', 'Checklists vehiculares') }}{% endif %}
       {{ nl(url_for('dist.incidents'), 'alert', 'Incidencias') }}

@@ -298,6 +298,16 @@ def install(app):
         from ..services import sap_sl
         return sap_sl.job_state("ACTUALIZAR") if sap_sl.configured() else None
     app.jinja_env.globals["sap_actualizacion"] = _sap_act
+    # V35: guías de SAP relacionadas a una OV del módulo (por su número o el número que SAP le asignó)
+    def _guias_sap_ov(o):
+        from sqlalchemy import select as _s
+        from ..models import SapMovement
+        nums = [n for n in (getattr(o, "numero", ""), getattr(o, "sap_docnum", "")) if n]
+        if not nums:
+            return []
+        return list(db().execute(_s(SapMovement).where(SapMovement.tipo == "GUIA", SapMovement.ov_numero.in_(nums))
+                                 .order_by(SapMovement.fecha, SapMovement.documento)).scalars())
+    app.jinja_env.globals["guias_sap_ov"] = _guias_sap_ov
     app.jinja_env.globals["sim_cargada"] = lambda: __import__("app.services.simulacion", fromlist=["x"]).hay_simulacion()
     app.jinja_env.globals["centros_costo"] = lambda: __import__("app.services.centros_costo", fromlist=["x"]).lista()
     app.jinja_env.globals["es_video"] = lambda n: __import__("app.services.distribution", fromlist=["x"]).es_video(n)

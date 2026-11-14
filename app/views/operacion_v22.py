@@ -2,7 +2,7 @@
 («Reportar avería»), sugerencias de eficiencia, gastos por área y embudo comercial."""
 from datetime import date, timedelta
 
-from flask import Blueprint, Response, abort, current_app, g, render_template, request, url_for
+from flask import Blueprint, Response, abort, current_app, g, redirect, render_template, request, url_for
 from sqlalchemy import select
 
 from ..db import db
@@ -300,7 +300,52 @@ def sunat_guides():
                        lambda x: "Inventario: " + ("descontado del lote." if x.inventario["decision"] == "DESCONTADO" else
                                                    "ya estaba descontado (no se cambió el stock)."), back)
         if acc == "sap":
-            return act(lambda: gs.enviar_sap(g.user, gd), lambda x: f"Guía registrada en SAP (entrega {x.sap.get('docnum')}).", back)
+            # V35: si SAP la rechaza se guarda el error (y el préstamo, si es por inventario negativo) para verlo después
+            from flask import flash
+            from ..services.core import BusinessError
+            try:
+                x = gs.enviar_sap(g.user, gd)
+                db().commit()
+                flash(f"Guía registrada en SAP (entrega {x.sap.get('docnum')}).", "ok")
+            except BusinessError as e:
+                db().commit()
+                msg = str(e)
+                if (gd.prestamo or {}).get("estado") == "PENDIENTE":
+                    msg += (" · SAP ya no tiene ese stock (p. ej. se descontó por reconteo): se generó el PRÉSTAMO y se avisó "
+                            "a la Jefatura de Operaciones, Distribución y Logística para registrar el ingreso de mercadería.")
+                flash(msg, "error")
+            return redirect(back)
         abort(400)
     guias = list(db().execute(select(SunatGuide).order_by(SunatGuide.id.desc()).limit(200)).scalars())
     return render_template("guias_sunat.html", guias=paginate(guias, 25), cand={x.id: gs.candidatas(x) for x in guias if not x.order_id})
+
+
+@bp.route("/ingresos-mercaderia", methods=["GET", "POST"])
+@perm_required("stock.ingreso_sap", "guias.regularizar_inventario")
+def goods_receipts():
+    """V35: ingreso de mercadería a SAP (préstamo de stock para registrar una guía SUNAT y otros casos)."""
+    from ..models import GoodsReceipt, SunatGuide, Warehouse
+    from ..services import ingresos_sap as ing
+    back = url_for("v22.goods_receipts")
+    guia = db().get(SunatGuide, int(request.values.get("guia") or 0)) if request.values.get("guia") else None
+    if request.method == "POST":
+        f = request.form
+        filas = [{"codigo": c, "lote": l, "cantidad": q, "fp": fp, "fv": fv, "precio": pr}
+                 for c, l, q, fp, fv, pr in zip(f.getlist("codigo"), f.getlist("lote"), f.getlist("cantidad"),
+                                                f.getlist("fp"), f.getlist("fv"), f.getlist("precio"))]
+
+        def _do():
+            r = ing.registrar(g.user, f.get("fecha"), f.get("almacen"), f.get("motivo"), filas, guia)
+            return r
+        return act(_do, lambda r: (f"Ingreso #{r.id} registrado en SAP (entrada {r.sap.get('docnum')})."
+                                   + (" La guía se volvió a enviar a SAP." if r.guia_id and not r.sap.get('guia_error') else "")
+                                   + (f" La guía aún no pasa: {r.sap['guia_error']}" if r.sap.get("guia_error") else ""))
+                   if r.estado == "EN_SAP" else f"Ingreso #{r.id} guardado, pero SAP lo rechazó: {r.sap.get('error')}", back)
+    ingresos = paginate(list(db().execute(select(GoodsReceipt).order_by(GoodsReceipt.id.desc())).scalars()), 25)
+    pendientes = [x for x in db().execute(select(SunatGuide)).scalars() if (x.prestamo or {}).get("estado") == "PENDIENTE"]
+    almacenes = list(db().execute(select(Warehouse).where(Warehouse.habilitado.is_(True)).order_by(Warehouse.code)).scalars())
+    from ..models import Product
+    productos = list(db().execute(select(Product).order_by(Product.code)).scalars())
+    return render_template("v35_ingresos.html", ingresos=ingresos, pendientes=pendientes, guia=guia, almacenes=almacenes,
+                           productos=productos, hoy=__import__("datetime").date.today(),
+                           puede="stock.ingreso_sap" in g.perms)

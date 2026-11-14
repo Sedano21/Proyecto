@@ -196,6 +196,8 @@ def sync_historial(user, sl=None, completo=False):
            "consumos": len({m["docentry"] for m in movs if m["tipo"] == "CONSUMO"})}
     if consumo_err:
         res["consumos_error"] = consumo_err
+    from .guias_sunat import conciliar_con_sap  # V35: guías SUNAT del módulo que ya están en SAP
+    res["guias_sunat_en_sap"] = conciliar_con_sap()
     set_param("sap_ordenes_ultimo", dict(res, ts=now().isoformat(timespec="minutes")), user)
     audit(user, "SAP_HISTORIAL", "SapOrderLine", "", res)
     return res

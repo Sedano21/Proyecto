@@ -3151,3 +3151,24 @@ for _r in ("JEFE_VENTAS", "COORD_VENTAS", "GERENTE_COMERCIAL", "JEFE_CALIDAD", "
            "GERENTE_ADMIN_FINANZAS"):  # V33: también registran el día no laborable de su área
     if _r in ROLE_PERMISSIONS and not any(p[0] == "dias.no_laborables" for p in ROLE_PERMISSIONS[_r]):
         ROLE_PERMISSIONS[_r].append(("dias.no_laborables", "DEFINIDO", V33))
+# ------------------------------------------------------------------ V35 (14-nov-2026)
+V35 = "Observaciones V35 (14-nov-2026)"
+for _code, _n, _m, _t, _roles in [
+        ("stock.ingreso_sap", "Registrar ingresos de mercadería en SAP (p. ej. préstamo para una guía SUNAT)", "Operaciones",
+         "edicion", ["JEFE_OPERACIONES"]),
+]:
+    PERMISSIONS.append((_code, _n, _m, _t))
+    for _r in _roles:
+        if _r in ROLE_PERMISSIONS and not any(p[0] == _code for p in ROLE_PERMISSIONS[_r]):
+            ROLE_PERMISSIONS[_r].append((_code, "DEFINIDO", V35))
+ALERT_TYPES += [
+    ("PRESTAMO_STOCK", "Guía SUNAT sin stock en SAP: préstamo (ingreso de mercadería)", "Operaciones", "Guías", "ALTA",
+     ["JEFE_OPERACIONES", "COORD_DISTRIBUCION", "JEFE_LOGISTICA"], "DEFINIDO", V35,
+     "SAP rechazó la guía por inventario negativo (el stock ya se descontó, p. ej. por reconteo): registrar el ingreso "
+     "de mercadería para que la guía pase a SAP, sin descontar dos veces en el módulo.", False),
+]
+PARAMS += [
+    ("ingreso_mercaderia_cuenta", "", "str", "Integración SAP",
+     "Cuenta contable de compensación para los ingresos de mercadería a SAP. Vacío: la cuenta por defecto de SAP.",
+     "PENDIENTE", V35),
+]

@@ -1,0 +1,25 @@
+{% extends "base.html" %}{% from "_m.html" import b, ic, empty, csrf, paginacion %}
+{% block content %}<div class="page-head"><div><h1>Ingreso de mercadería a SAP</h1>
+<p class="sub">Entrada de mercancías en SAP que registra la Jefatura de Operaciones. Se usa sobre todo como <b>préstamo</b> cuando una guía emitida en SUNAT no pasa a SAP porque SAP ya descontó ese stock (p. ej. por un reconteo del mismo día: «inventario negativo»). Al registrarlo unido a la guía, la guía se vuelve a enviar a SAP. El stock del módulo no se toca aquí: lo actualiza la siguiente carga de stock de SAP.</p></div></div>
+{% if pendientes %}<div class="card warn"><h3>{{ ic('alert') }} Guías con préstamo pendiente</h3><ul>{% for p in pendientes %}<li>Guía <b>{{ p.serie }}-{{ p.numero }}</b> ({{ p.destinatario }}) — {{ p.prestamo.ts|replace('T', ' ') }}{% if puede %} · <a href="{{ url_for('v22.goods_receipts', guia=p.id) }}#nuevo">Registrar el ingreso para esta guía</a>{% endif %}</li>{% endfor %}</ul></div>{% endif %}
+{% if puede %}<form method="post" class="card" id="nuevo">{{ csrf() }}{% if guia %}<input type="hidden" name="guia" value="{{ guia.id }}">{% endif %}
+<h3>Nuevo ingreso{% if guia %} · préstamo para la guía {{ guia.serie }}-{{ guia.numero }}{% endif %}</h3>
+<div class="row"><div><label class="req">Fecha</label><input type="date" name="fecha" value="{{ hoy.isoformat() }}" required></div>
+<div><label class="req">Almacén de SAP</label><select name="almacen" required><option value="">(elija)</option>{% for w in almacenes %}<option value="{{ w.code }}">{{ w.code }} · {{ w.nombre }}</option>{% endfor %}</select></div>
+<div class="grow"><label class="req">Motivo</label><input name="motivo" required value="{{ ('Préstamo para registrar la guía SUNAT ' ~ guia.serie ~ '-' ~ guia.numero ~ ' (stock ya descontado en SAP por reconteo)') if guia }}"></div></div>
+<datalist id="prods">{% for p in productos %}<option value="{{ p.code }}">{{ p.descripcion }}</option>{% endfor %}</datalist>
+<div class="tw"><table class="small"><tr><th>Producto</th><th>Lote</th><th class="r">Cantidad</th><th>Fecha de producción</th><th>Fecha de vencimiento</th><th class="r">Costo unitario (opcional)</th></tr>
+{% set filas = guia.prestamo.lineas if guia and guia.prestamo and guia.prestamo.lineas else (guia.lineas if guia else []) %}
+{% for x in filas %}<tr><td><input name="codigo" list="prods" value="{{ x.codigo }}" required></td><td><input name="lote" value="{{ x.lote }}" required></td><td><input name="cantidad" type="number" step="any" min="0" value="{{ x.cantidad }}" required class="r"></td><td><input type="date" name="fp" value="{{ x.fp }}"></td><td><input type="date" name="fv" value="{{ x.fv }}"></td><td><input name="precio" type="number" step="any" min="0" class="r"></td></tr>{% endfor %}
+{% for i in range(3 if filas else 5) %}<tr><td><input name="codigo" list="prods"></td><td><input name="lote"></td><td><input name="cantidad" type="number" step="any" min="0" class="r"></td><td><input type="date" name="fp"></td><td><input type="date" name="fv"></td><td><input name="precio" type="number" step="any" min="0" class="r"></td></tr>{% endfor %}</table></div>
+<p class="small muted">Si no indica el costo, SAP usa el costo del artículo. Solo se escribe en las bases de SAP autorizadas (sap_escritura_empresas).</p>
+<button data-confirm="¿Registrar el ingreso de mercadería en SAP?">{{ ic('upload') }} Registrar en SAP</button></form>{% endif %}
+<h2 class="sec-title">Ingresos registrados</h2>
+{% if ingresos %}<div class="tw"><table class="small apilable"><tr><th>#</th><th>Fecha</th><th>Almacén</th><th>Productos</th><th>Motivo</th><th>Guía</th><th>SAP</th><th>Registró</th></tr>
+{% for r in ingresos %}<tr><td data-label="#">{{ r.id }}</td><td data-label="Fecha">{{ r.fecha|d }}</td><td data-label="Almacén">{{ r.almacen }}</td>
+<td data-label="Productos">{% for x in r.lineas %}<div>{{ x.codigo }} · lote {{ x.lote }} · {{ x.cantidad|n }}{% if x.fv %} · FV {{ x.fv }}{% endif %}</div>{% endfor %}</td>
+<td data-label="Motivo" class="small">{{ r.motivo }}</td><td data-label="Guía">{{ (r.guia.serie ~ '-' ~ r.guia.numero) if r.guia else '—' }}</td>
+<td data-label="SAP">{% if r.estado == 'EN_SAP' %}{{ b('EN SAP', 'ok') }} entrada {{ r.sap.docnum }}{% elif r.estado == 'ERROR' %}{{ b('ERROR', 'err') }} <span class="small">{{ r.sap.error }}</span>{% else %}{{ b(r.estado) }}{% endif %}{% if r.sap.guia_error %}<div class="small err">Guía: {{ r.sap.guia_error }}</div>{% endif %}</td>
+<td data-label="Registró">{{ r.user.nombre if r.user }}</td></tr>{% endfor %}</table></div>{{ paginacion(ingresos, "ingresos") }}
+{% else %}{{ empty('Aún no hay ingresos de mercadería registrados.', 'box') }}{% endif %}
+{% endblock %}

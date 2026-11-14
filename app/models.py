@@ -2663,6 +2663,9 @@ class SunatGuide(Base):
     estado: Mapped[str] = mapped_column(String(20), default="REGISTRADA")  # REGISTRADA / ENVIADA_SAP / ANULADA
     inventario: Mapped[dict] = mapped_column(JSON, default=dict)  # {decision YA_DESCONTADO/DESCONTADO, detalle, user, ts}
     sap: Mapped[dict] = mapped_column(JSON, default=dict)  # {estado OK/ERROR, docentry, docnum, error, ts}
+    # V35: SAP rechazó la guía por inventario negativo (ya se descontó, p. ej. por reconteo): préstamo pendiente
+    # {estado PENDIENTE/INGRESADO, lineas, error, ts, ingreso_id}
+    prestamo: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}")
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     ts: Mapped[datetime] = mapped_column(DateTime, default=now)
     order = relationship("SalesOrder")
@@ -2774,3 +2777,21 @@ class SapMovement(Base):
     product_code: Mapped[str] = mapped_column(String(30), default="", index=True)
     cantidad: Mapped[float] = mapped_column(Float, default=0)
     ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+
+class GoodsReceipt(Base):
+    """V35 (14-nov-2026): ingreso de mercadería a SAP (entrada de mercancías) que registra la Jefatura de Operaciones, p.
+    ej. para el préstamo de stock cuando una guía SUNAT no pasa a SAP por inventario negativo."""
+    __tablename__ = "ingresos_mercaderia"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    fecha: Mapped[date] = mapped_column(Date)
+    almacen: Mapped[str] = mapped_column(String(20), default="")
+    motivo: Mapped[str] = mapped_column(Text, default="")
+    lineas: Mapped[list] = mapped_column(JSON, default=list)  # [{codigo, descripcion, lote, cantidad, fp, fv, precio}]
+    guia_id: Mapped[int | None] = mapped_column(ForeignKey("sunat_guides.id"), nullable=True)
+    estado: Mapped[str] = mapped_column(String(15), default="REGISTRADO")  # REGISTRADO / EN_SAP / ERROR
+    sap: Mapped[dict] = mapped_column(JSON, default=dict)  # {docentry, docnum, error, ts}
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    guia = relationship("SunatGuide")
+    user = relationship("User")
