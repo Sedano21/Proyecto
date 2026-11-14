@@ -33,3 +33,4 @@ Sin migración nueva. Pruebas con datos ficticios.
 
 - `tests/test_v33.py` (6 pruebas): se agrega la guía con el mismo producto en dos lotes (una línea por línea de OV con sus lotes y elección de la OV correcta entre series) y la situación como filtro.
 - `tests/test_v27.py`: se verifica que no se repita la línea de la OV.
+- Suite completa: **630 pruebas, todas pasan**.
