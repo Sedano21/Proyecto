@@ -33,3 +33,4 @@ SACOS · PESO POR SACO · SALDO), horas, operarios y observaciones. El SKU se re
 se indica al subir) y la línea por el título del proceso («1ER PROCESO : CIMBRIA») o se elige. Quedan en borrador.
 
 **Pruebas:** `tests/test_v45.py`.
+- Suite completa: **659 pruebas, todas pasan**.
