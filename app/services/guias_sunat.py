@@ -526,3 +526,67 @@ def conciliar_con_sap():
             g.prestamo = dict(g.prestamo, estado="RESUELTO_EN_SAP")
         n += 1
     return n
+
+
+# ------------------------------------------------------------------ V46: editar la guía al subirla
+def editar(user, g, datos):
+    """Quien sube la guía puede corregirla (lo que leyó del PDF/XML puede no ser lo que salió: «salió menos», un lote
+    distinto, una línea de más) y dejar una observación. datos: dict/MultiDict con fecha_traslado, placa, observacion,
+    motivo (obligatorio si cambian las líneas) y las listas codigo, descripcion, lote, fp, fv, cantidad, um.
+    No se edita una guía ya registrada en SAP ni una cuyo stock ya se descontó en el módulo (primero se corrige esa
+    decisión). Cada edición queda en el historial de la guía y en la auditoría."""
+    from ..models import Product
+    if not (has_perm(user, "guias.sunat_cargar") or has_perm(user, "guias.regularizar_inventario")):
+        raise BusinessError("Editan la guía Distribución y la Jefatura de Operaciones.")
+    if (g.sap or {}).get("estado") == "OK":
+        raise BusinessError("La guía ya está registrada en SAP: la corrección se hace en SAP.")
+    if (g.inventario or {}).get("decision") == "DESCONTADO":
+        raise BusinessError("El stock de esta guía ya se descontó en el módulo: primero corrija la decisión de inventario.")
+    get = datos.getlist if hasattr(datos, "getlist") else (lambda k: datos.get(k) or [])
+    cods, descs, lotes_, fps, fvs, cants, ums = (get(k) for k in ("codigo", "descripcion", "lote", "fp", "fv", "cantidad", "um"))
+    nuevas = []
+    for i, code in enumerate(cods):
+        code = (code or "").strip().upper()
+        q = (cants[i] if i < len(cants) else "") or ""
+        if not code and not str(q).strip():
+            continue
+        if not code:
+            raise BusinessError(f"Línea {i + 1}: falta el código.")
+        try:
+            cant = float(str(q).replace(",", "."))
+        except ValueError:
+            raise BusinessError(f"Línea {i + 1} ({code}): cantidad no válida.")
+        if cant < 0:
+            raise BusinessError(f"Línea {i + 1} ({code}): la cantidad no puede ser negativa.")
+        p = db().get(Product, code)
+        nuevas.append({"codigo": code, "descripcion": ((descs[i] if i < len(descs) else "") or (p.descripcion if p else "")).strip(),
+                       "lote": ((lotes_[i] if i < len(lotes_) else "") or "").strip(),
+                       "fp": ((fps[i] if i < len(fps) else "") or "").strip(), "fv": ((fvs[i] if i < len(fvs) else "") or "").strip(),
+                       "cantidad": cant, "um": ((ums[i] if i < len(ums) else "") or "").strip()})
+    if not nuevas:
+        raise BusinessError("La guía debe tener al menos una línea.")
+    antes = {"lineas": list(g.lineas or []), "fecha_traslado": g.fecha_traslado.isoformat() if g.fecha_traslado else "",
+             "placa": g.placa, "observacion": g.observacion or ""}
+    def clave(xs):
+        return [(str(x.get("codigo") or ""), str(x.get("lote") or ""), float(x.get("cantidad") or 0),
+                 str(x.get("fp") or ""), str(x.get("fv") or "")) for x in xs]
+    cambia_lineas = clave(antes["lineas"]) != clave(nuevas)
+    motivo = (datos.get("motivo") or "").strip()
+    if cambia_lineas and not motivo:
+        raise BusinessError("Indique el motivo del cambio en las líneas (p. ej. «salió menos», «lote distinto»).")
+    ft = (datos.get("fecha_traslado") or "").strip()
+    if ft:
+        try:
+            g.fecha_traslado = date.fromisoformat(ft)
+        except ValueError:
+            raise BusinessError("Fecha de traslado no válida.")
+    g.placa = (datos.get("placa") if datos.get("placa") is not None else g.placa or "").strip().upper()[:15]
+    g.observacion = (datos.get("observacion") if datos.get("observacion") is not None else g.observacion or "").strip()
+    g.lineas = nuevas
+    if (g.sap or {}).get("estado") == "ERROR":
+        g.sap = dict(g.sap, editada_despues_del_error=True)
+    g.ediciones = list(g.ediciones or []) + [{"user": user.nombre, "ts": now().isoformat(timespec="minutes"),
+                                              "motivo": motivo, "antes": antes,
+                                              "lineas_cambiadas": cambia_lineas}]
+    audit(user, "GUIA_SUNAT_EDITADA", "SunatGuide", g.id, {"motivo": motivo, "antes": antes, "despues": nuevas})
+    return g

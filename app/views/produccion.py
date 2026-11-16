@@ -128,6 +128,12 @@ def _insumos():
 @perm_required("produccion.ver")
 def bom():
     versions = list(db().execute(select(BOMVersion).order_by(BOMVersion.version.desc())).scalars())
+    # V46: estado de la última lectura de recetas de SAP y de su carga (para ver qué pasó si no aparece la versión)
+    from ..models import UploadBatch
+    from ..services import sap_sl
+    job_bom = sap_sl.job_state("BOM")
+    carga_sap = db().execute(select(UploadBatch).where(UploadBatch.archivo.like("SAP_SL_BOM_%"))
+                             .order_by(UploadBatch.id.desc())).scalars().first()
     code = (request.args.get("producto") or "").strip().upper()
     qty = request.args.get("cantidad")
     calc = None
@@ -143,7 +149,8 @@ def bom():
                 calc = None
     prods = psvc.bom_products()
     subs = {l.id: psvc.substitutes(l) for l in lines} if "produccion.plan_validar" in g.perms else {}
-    return render_template("bom.html", versions=versions, code=code, qty=qty or "", calc=calc, lines=lines, prods=prods, subs=subs)
+    return render_template("bom.html", versions=versions, code=code, qty=qty or "", calc=calc, lines=lines, prods=prods, subs=subs,
+                           job_bom=job_bom, carga_sap=carga_sap)
 
 
 @bp.route("/liquidaciones", methods=["GET", "POST"])

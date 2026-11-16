@@ -299,6 +299,8 @@ def sunat_guides():
             return act(lambda: gs.decidir_inventario(g.user, gd, f.get("decision"), f.get("nota", "")),
                        lambda x: "Inventario: " + ("descontado del lote." if x.inventario["decision"] == "DESCONTADO" else
                                                    "ya estaba descontado (no se cambió el stock)."), back)
+        if acc == "editar":  # V46: corregir lo leído de la guía y dejar una observación
+            return act(lambda: gs.editar(g.user, gd, f), "Guía actualizada (queda en su historial).", back)
         if acc == "corregir_inventario":
             return act(lambda: gs.corregir_inventario(g.user, gd, f.get("motivo", "")),
                        lambda x: "Decisión de inventario anulada (lo descontado volvió al lote). Decida de nuevo.", back)

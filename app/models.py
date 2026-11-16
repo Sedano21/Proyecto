@@ -2666,6 +2666,9 @@ class SunatGuide(Base):
     # V35: SAP rechazó la guía por inventario negativo (ya se descontó, p. ej. por reconteo): préstamo pendiente
     # {estado PENDIENTE/INGRESADO, lineas, error, ts, ingreso_id}
     prestamo: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}")
+    # V46: observación de quien sube la guía (p. ej. «salió menos») e historial de las ediciones
+    observacion: Mapped[str] = mapped_column(Text, default="", server_default="")
+    ediciones: Mapped[list] = mapped_column(JSON, default=list, server_default="[]")
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     ts: Mapped[datetime] = mapped_column(DateTime, default=now)
     order = relationship("SalesOrder")

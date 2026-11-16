@@ -407,10 +407,19 @@ def rows_bom(sl):
         padre = t.get("TreeCode")
         if not padre:
             continue
-        for i, ln in enumerate(t.get("ProductTreeLines") or []):
+        # V46: un mismo componente repetido en la receta se suma en una sola fila (la carga no admite duplicados) y,
+        # si la línea no trae almacén, se usa el de la receta
+        juntas = {}
+        for ln in t.get("ProductTreeLines") or []:
             comp = ln.get("ItemCode")
-            if not comp:
+            if not comp or comp == padre:
                 continue
+            if comp in juntas:
+                juntas[comp]["Quantity"] = (juntas[comp].get("Quantity") or 0) + (ln.get("Quantity") or 0)
+            else:
+                juntas[comp] = dict(ln, Warehouse=ln.get("Warehouse") or t.get("Warehouse") or "")
+        for i, ln in enumerate(juntas.values()):
+            comp = ln.get("ItemCode")
             out.append({"Articulo Padre": padre,
                         "Descripcion Padre": t.get("ProductDescription") or nombres.get(padre) or padre,
                         "Tipo BOM": {"iProductionTree": "P", "iSalesTree": "V", "iAssemblyTree": "A",
@@ -499,7 +508,16 @@ def sync(tipo, user, upload_dir, sl=None, autoconfirmar=None, solo_si_cambia=Fal
     path, nombre = _write_excel(tipo, filas, upload_dir)
     b = create_batch(user, tipo, path, nombre)
     auto = autoconfirmar if autoconfirmar is not None else tipo in (param("sap_autoconfirmar", []) or [])
-    if auto and b.estado != "VALIDADO_CON_ERRORES" and SPECS[tipo]["confirm_perm"]:
+    if auto and b.estado == "VALIDADO_CON_ERRORES" and tipo in ("BOM", "LIQUIDACION"):
+        # V46: lo que SAP trae con algún dato que la carga no acepta se deja fuera (con su motivo, visible en la carga)
+        # y se confirma el resto; antes no se confirmaba nada y la pantalla quedaba vacía
+        from .uploads import validate_batch
+        for r in b.rows:
+            if r.errores and not r.excluida:
+                r.excluida = True
+                r.motivo_exclusion = ("Excluida al traer de SAP: " + "; ".join(r.errores))[:250]
+        validate_batch(b)
+    if auto and b.estado != "VALIDADO_CON_ERRORES" and SPECS[tipo]["confirm_perm"] and any(not r.excluida for r in b.rows):
         confirm(b, user)
     audit(user, "SAP_SL_SINCRONIZADO", "UploadBatch", b.id, {"tipo": tipo, "filas": len(filas), "autoconfirmada": bool(auto)})
     return b
@@ -1268,7 +1286,8 @@ def sync_background(app, tipo, user, upload_dir):
                     _job_set(tipo, {"estado": "OK", "inicio": inicio, "fin": datetime.now().isoformat(timespec="seconds"),
                                     "usuario": u.nombre, "resumen": res})
                     return
-                b = sync(tipo, u, upload_dir)
+                # V46: las recetas pedidas con el botón se confirman solas (lo que no pasa la validación queda excluido)
+                b = sync(tipo, u, upload_dir, autoconfirmar=True if tipo == "BOM" else None)
                 db().commit()
                 if tipo == "LIQUIDACION":  # V29: con las liquidaciones se revisa también el balance de peso de las OF
                     try:
