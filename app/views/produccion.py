@@ -214,7 +214,11 @@ def plan():
         return act(lambda: plan_excel.importar(g.user, per, path, fs.filename),
                    lambda r: (f"Plan actualizado desde Excel: {r['creadas']} nueva(s), {r['actualizadas']} actualizada(s), "
                               f"{r['iguales']} sin cambio" + (f", {r['pendientes']} cambio(s) por validar del Jefe de "
-                                                              "Producción" if r["pendientes"] else "") + "."),
+                                                              "Producción" if r["pendientes"] else "") + "."
+                              + (f" {len(r['sin_producto'])} fila(s) no se cargaron porque su producto no coincide con un "
+                                 "artículo del sistema: " + "; ".join(f"fila {x['fila']} «{x['producto']}»"
+                                                                      for x in r["sin_producto"][:10])
+                                 + ("…" if len(r["sin_producto"]) > 10 else "") + "." if r["sin_producto"] else "")),
                    url_for("prod.plan", periodo=per))
     if request.method == "POST" and request.form.get("accion") == "preprogramar":
         per = request.form.get("periodo") or "SEMANA"

@@ -120,3 +120,33 @@ def test_liquidaciones_por_linea_desde_excel(app, s, U, tmp_path):
     assert n.procesos[0]["horas"] == 6 and n.procesos[0]["operarios"] == 4
     html = _cliente(app, "jefe.produccion").get("/produccion/liquidacion-proceso").get_data(as_text=True)
     assert "Subir el Excel de liquidaciones" in html
+
+
+def test_plan_con_el_formato_de_produccion_sin_codigo(app, s, U, tmp_path):
+    """V47: el Excel PLANEAMIENTO de Producción no trae código: producto por nombre (en selección, el granel), líneas
+    por sus nombres y cantidad en «PLANIFICADO MP- KG». Datos ficticios con la misma forma."""
+    from datetime import datetime as dt
+    from app.models import Product, ProductionPlan
+    from app.services import plan_excel
+    s.get(Product, "PT-901").descripcion = "LENTEJA DEMO * 500 G - MARCA DEMO"
+    s.get(Product, "GR-901").descripcion = "LENTEJA DEMO * GRANEL - PROVEEDOR DEMO"
+    s.commit()
+    hoy = dt.combine(date.today(), dt.min.time())
+    cab = ["FECHA", "SEMANA", "# OP", "LINEA", "PROGRAMADO", "CLIENTE", "PLANIFICADO MP- KG", "PRESENTACION", "U.M",
+           "CODIGO", "PRODUCTO", "PRESENTACION / GRANEL", "CANTIDAD / SACOS", "DATOS DE GRANEL"]
+    p = tmp_path / "PLANEAMIENTO.xlsx"
+    p.write_bytes(_xlsx([[], [], cab,
+                         [hoy, 47, 3, "CIMBRIA + IQ", True, None, 40000, 1, "KG", " ", "LENTEJA DEMO", 45.36, 908,
+                          "LENTEJA DEMO  * GRANEL - PROVEEDOR DEMO"],
+                         [hoy, 47, None, "R1&R2", False, None, 7000, 0.5, "UNIDADES", " ", "LENTEJA DEMO * 500 G - MARCA DEMO",
+                          50, 70, "LENTEJA DEMO"],
+                         [hoy, 47, None, "R3", False, None, 900, 5, "UNIDADES", " ", "PRODUCTO QUE NO EXISTE * 5 KG", 50, 90,
+                          "X"],
+                         [None, 52, None, None, False, None, None, None, None, " ", None, None, "#DIV/0!", None]]))
+    r = plan_excel.importar(U("jefe.produccion"), "DIA", str(p), "PLANEAMIENTO.xlsx")
+    s.commit()
+    assert r["creadas"] == 2 and [x["fila"] for x in r["sin_producto"]] == [6]
+    gr = s.query(ProductionPlan).filter_by(product_code="GR-901").one()
+    pt = s.query(ProductionPlan).filter_by(product_code="PT-901").one()
+    assert (gr.line_code, gr.cantidad) == ("CIMBRIA", 40000) and "OP 3" in gr.comentario
+    assert (pt.line_code, pt.cantidad) == ("R1", 7000)

@@ -34,3 +34,21 @@ se indica al subir) y la línea por el título del proceso («1ER PROCESO : CIMB
 
 **Pruebas:** `tests/test_v45.py`.
 - Suite completa: **659 pruebas, todas pasan**.
+
+## 5. V47 — El Excel PLANEAMIENTO de Producción
+El usuario envió su Excel (no se guarda en el repositorio: tiene datos reales; se usó solo para conocer el formato).
+Error: «El Excel no tiene filas con producto, fecha y cantidad», porque la columna CODIGO está vacía y las líneas
+tienen otros nombres. Ahora se lee ese formato:
+- Encabezado en la fila 3: FECHA · SEMANA · # OP · LINEA · PROGRAMADO · CLIENTE · **PLANIFICADO MP- KG** (cantidad) ·
+  PRESENTACION · **U.M** · CODIGO · **PRODUCTO** · PRESENTACION / GRANEL · CANTIDAD / SACOS · **DATOS DE GRANEL**.
+- Producto: por el código si lo hay; si no, por el **nombre** (sin importar tildes, mayúsculas, espacios ni signos). En
+  selección (U.M = KG) se busca primero el granel («DATOS DE GRANEL»); en envasado (UNIDADES), el producto. Si el nombre
+  es corto, se acepta solo si un único granel empieza así. No se adivina: las filas cuyo producto no coincide con un
+  artículo del sistema **no se cargan y se listan** en el mensaje (fila y nombre).
+- Líneas: «CIMBRIA + IQ» → CIMBRIA, «BHULLER + TRUER» → TRUER, «SELECCIÓN MANUAL» → SEL_MANUAL, «ENVASADO MANUAL» →
+  ENV_MANUAL, «R1&R2» → R1 (grupo RAUMAK 1 Y 2), «R3» → R3.
+- «# OP» y CLIENTE quedan en el comentario de la entrada. Las filas vacías o sin cantidad (p. ej. «#DIV/0!») se omiten.
+- Con el Excel recibido se reconocieron las 47 filas con cantidad y todas sus líneas; los productos se reconocen contra
+  el maestro de artículos de SAP del servidor (en la demostración los artículos son ficticios).
+
+**Prueba:** `test_plan_con_el_formato_de_produccion_sin_codigo` (datos ficticios con la misma forma).
