@@ -899,6 +899,18 @@ def plan_vs_real(periodo="DIA", desde=None, hasta=None):
     for p in plans:
         k = (p.fecha, p.product_code)
         plan[k] = plan.get(k, 0) + p.cantidad
+    if periodo != "DIA":
+        # V48: el plan diario (p. ej. el que se sube con el Excel de Producción) también cuenta en la semana o el mes,
+        # salvo que para ese periodo y producto haya un plan semanal o mensual propio
+        diarios = {}
+        for p in s.execute(select(ProductionPlan).where(ProductionPlan.periodo == "DIA",
+                                                        ProductionPlan.fecha >= _inicio(periodo, desde),
+                                                        ProductionPlan.fecha <= _fin(periodo, hasta))).scalars():
+            k = (_inicio(periodo, p.fecha), p.product_code)
+            diarios[k] = diarios.get(k, 0) + p.cantidad
+            plans.append(p)
+        for k, q in diarios.items():
+            plan.setdefault(k, q)
     filas = []
     for k in sorted(set(plan) | {k for k in real if k[0] >= _inicio(periodo, desde)}):
         pl, re_ = plan.get(k), real.get(k, 0)

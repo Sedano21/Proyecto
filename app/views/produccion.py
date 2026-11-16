@@ -211,7 +211,8 @@ def plan():
         os.makedirs(d, exist_ok=True)
         path = os.path.join(d, f"{datetime.now():%Y%m%d%H%M%S}_{secure_filename(fs.filename)}")
         fs.save(path)
-        return act(lambda: plan_excel.importar(g.user, per, path, fs.filename),
+        # V48: el Excel trae fechas por día: se guarda como plan diario y se ve también en la semana y el mes
+        return act(lambda: plan_excel.importar(g.user, "DIA", path, fs.filename),
                    lambda r: (f"Plan actualizado desde Excel: {r['creadas']} nueva(s), {r['actualizadas']} actualizada(s), "
                               f"{r['iguales']} sin cambio" + (f", {r['pendientes']} cambio(s) por validar del Jefe de "
                                                               "Producción" if r["pendientes"] else "") + "."
@@ -268,7 +269,7 @@ def plan():
     # V18: el programa incluye lo ya planificado a futuro (no solo hasta hoy)
     from datetime import timedelta as _td
     hasta_prog = max(d["hasta"], date.today() + _td(days={"DIA": 14, "SEMANA": 42, "MES": 93}.get(d["periodo"], 42)))
-    entradas = list(db().execute(select(ProductionPlan).where(ProductionPlan.periodo == d["periodo"],
+    entradas = list(db().execute(select(ProductionPlan).where(ProductionPlan.periodo.in_({d["periodo"], "DIA"}),
                                                               ProductionPlan.fecha >= psvc._inicio(d["periodo"], d["desde"]),
                                                               ProductionPlan.fecha <= hasta_prog)
                                  .order_by(ProductionPlan.fecha.desc(), ProductionPlan.id.desc())).scalars())

@@ -86,6 +86,7 @@ def parse_text(texto):
     m = re.search(r"Placa de vehiculo\s*:?\s*([A-Z0-9-]{5,8})", plano, re.I)
     g["placa"] = m.group(1).replace("-", "").upper() if m else ""
     g["motivo"] = next((x for x in MOTIVOS if re.search(r"(?<![a-z])" + re.escape(_sin_tildes(x)) + r"(?![a-z])", plano, re.I)), "")
+    g["transporte"] = transporte_de_texto(plano)
     m = re.search(r"Punto de llegada\s+(.+?)(?:\n\s*\n|Datos del Destinatario)", t, re.S)
     g["llegada"] = " ".join(m.group(1).split())[:250] if m else ""
     lineas = []
@@ -113,6 +114,60 @@ def parse_text(texto):
         x.setdefault("fv", "")
     g["lineas"] = lineas
     return g
+
+
+def transporte_de_texto(plano):
+    """V48: datos de transporte de la representación impresa (lo que se encuentre; lo demás se completa a mano)."""
+    t = {}
+    m = re.search(r"Modalidad de traslado\s*:?\s*(Transporte\s+(?:privado|publico))", plano, re.I)
+    if m:
+        t["modalidad"] = "PRIVADO" if "priv" in m.group(1).lower() else "PUBLICO"
+    m = re.search(r"Peso bruto[^\d]{0,40}([\d.,]+)\s*(KGM|KG|TNE|TN)?", plano, re.I)
+    if m:
+        t["peso_bruto"], t["peso_um"] = _num(m.group(1)), (m.group(2) or "KGM").upper()
+    m = re.search(r"Licencia de conducir\s*:?\s*([A-Z0-9-]{6,12})", plano, re.I)
+    if m:
+        t["licencia"] = m.group(1).upper()
+    m = re.search(r"(?:Conductor|Datos del conductor)[^:\n]*:\s*([A-Z][A-Z .,]{5,80}?)(?:\s*-|\s+DNI|\s+DOCUMENTO|\n)", plano, re.I)
+    if m:
+        t["conductor_nombre"] = " ".join(m.group(1).split()).strip(" .,-")
+    m = re.search(r"Transportista[^\n]{0,40}?:\s*(.+?)\s*-\s*(?:RUC|REGISTRO UNICO DE CONTRIBUYENTES)[^\d]{0,12}(\d{11})", plano, re.I)
+    if m:
+        t["transportista_nombre"], t["transportista_ruc"] = " ".join(m.group(1).split()), m.group(2)
+    m = re.search(r"Marca\s*(?:del vehiculo)?\s*:?\s*([A-Z][A-Z0-9 -]{1,30})\n", plano, re.I)
+    if m:
+        t["marca"] = m.group(1).strip()
+    return t
+
+
+def transporte_de_xml(root):
+    """V48: datos de transporte del XML UBL (DespatchAdvice)."""
+    t = {}
+    tm = _x(root, "TransportModeCode")
+    if tm is not None and (tm.text or "").strip():
+        t["modalidad"] = "PUBLICO" if tm.text.strip() == "01" else "PRIVADO"
+    hc = _x(root, "HandlingCode")
+    if hc is not None and (hc.text or "").strip():
+        t["motivo_codigo"] = hc.text.strip()
+    gw = _x(root, "GrossWeightMeasure")
+    if gw is not None and (gw.text or "").strip():
+        t["peso_bruto"], t["peso_um"] = _num(gw.text), (gw.get("unitCode") or "KGM").upper()
+    cp = _x(root, "CarrierParty")
+    if cp is not None:
+        i, n = _x(cp, "ID"), _x(cp, "RegistrationName")
+        t["transportista_ruc"] = (i.text or "").strip() if i is not None else ""
+        t["transportista_nombre"] = " ".join((n.text or "").split()) if n is not None else ""
+    dp = _x(root, "DriverPerson")
+    if dp is not None:
+        fn, ln = _x(dp, "FirstName"), _x(dp, "FamilyName")
+        t["conductor_nombre"] = " ".join(((fn.text or "") if fn is not None else "").split() +
+                                         ((ln.text or "") if ln is not None else "").split())
+        i = _x(dp, "ID")
+        t["conductor_doc"] = (i.text or "").strip() if i is not None else ""
+        lic = _x(dp, "IdentityDocumentReference")
+        if lic is not None and _x(lic, "ID") is not None:
+            t["licencia"] = (_x(lic, "ID").text or "").strip()
+    return {k: v for k, v in t.items() if v not in (None, "")}
 
 
 def _x(el, *nombres):
@@ -153,6 +208,7 @@ def parse_xml(data):
     g["motivo"] = (mot.text or "").strip()[:60] if mot is not None else ""
     pl = _x(root, "LicensePlateID")
     g["placa"] = (pl.text or "").replace("-", "").upper() if pl is not None else ""
+    g["transporte"] = transporte_de_xml(root)
     da = _x(root, "DeliveryAddress")
     g["llegada"] = " ".join((_x(da, "Line").text or "").split())[:250] if da is not None and _x(da, "Line") is not None else ""
     lineas = []
@@ -216,6 +272,7 @@ def registrar(user, path, nombre_archivo="", archivo_rel=""):
                    fecha_traslado=d.get("fecha_traslado"), motivo=d.get("motivo", "")[:60],
                    destinatario_ruc=d.get("destinatario_ruc", ""), destinatario=(d.get("destinatario") or "")[:200],
                    llegada=d.get("llegada", ""), placa=d.get("placa", ""), lineas=d["lineas"],
+                   transporte=d.get("transporte") or {},
                    archivo=archivo_rel or __import__("os").path.basename(path),
                    user_id=user.id, inventario={}, sap={})
     db().add(g)
@@ -401,6 +458,69 @@ def campos_de_entregas(sl, serie=""):
     return out
 
 
+def _n(t):
+    return re.sub(r"\s+", " ", _sin_tildes(str(t or "")).lower()).strip()
+
+
+def campos_guia_remision(g, metas):
+    """V48: valores de la guía para los campos de usuario de la entrega (panel «Guía de remisión» de la localización):
+    se reconocen por su descripción en SAP (UserFieldsMD de ODLN). Solo se envía lo que la guía tiene."""
+    tr = g.transporte or {}
+    f_tr = g.fecha_traslado.isoformat() if g.fecha_traslado else ""
+    out = {}
+
+    def valor_lista(m, *claves):
+        for v, d in m["valores"]:
+            if any(c in _n(d) or c == _n(v) for c in claves):
+                return v
+        return None
+    for m in metas:
+        d, nombre = _n(m["descripcion"]), "U_" + m["nombre"]
+        val = None
+        if "placa" in d:
+            val = g.placa
+        elif "licencia" in d:
+            val = tr.get("licencia")
+        elif "conductor" in d and ("nombre" in d or "conductor" == d):
+            val = tr.get("conductor_nombre")
+        elif "marca" in d and "vehic" in d:
+            val = tr.get("marca")
+        elif "transportista" in d and "ruc" in d:
+            val = tr.get("transportista_ruc")
+        elif "transportista" in d and ("nombre" in d or "razon" in d):
+            val = tr.get("transportista_nombre")
+        elif "transportista" in d and "direcc" in d:
+            val = tr.get("transportista_direccion")
+        elif "modalidad" in d:
+            mod = (tr.get("modalidad") or "").lower()
+            val = (valor_lista(m, "privad", "02") if mod.startswith("priv") else valor_lista(m, "public", "01")) \
+                if mod and m["valores"] else ({"privado": "02", "publico": "01"}.get(mod) if mod else None)
+        elif "motivo" in d and "traslado" in d and "otros" in d:
+            val = g.motivo
+        elif "motivo" in d and "traslado" in d:
+            cod = tr.get("motivo_codigo")
+            val = cod or (valor_lista(m, _n(g.motivo)) if g.motivo and m["valores"] else None)
+        elif "fecha" in d and ("traslado" in d or "entrega" in d):
+            val = f_tr
+        elif "peso" in d and ("um" in d.split() or "unidad" in d):
+            um = (tr.get("peso_um") or "").upper()
+            val = valor_lista(m, "kg") if um.startswith("K") and m["valores"] else None
+        elif "peso" in d:
+            val = tr.get("peso_bruto")
+        if val not in (None, ""):
+            out[nombre] = val
+    return out
+
+
+def _metas_entrega(sl):
+    try:
+        return [{"nombre": f.get("Name", ""), "descripcion": f.get("Description") or "",
+                 "valores": [(v.get("Value"), v.get("Description") or v.get("Value")) for v in (f.get("ValidValuesMD") or [])]}
+                for f in sl.get_all("UserFieldsMD", {"$filter": "TableName eq 'ODLN'"}) if isinstance(f, dict)]
+    except Exception:  # noqa: BLE001  (sin permiso de lectura de metadatos: se envía sin estos campos)
+        return []
+
+
 def enviar_sap(user, g, sl=None):
     """Crea en SAP la entrega (guía) basada en la OV de SAP, con la serie y el número de SUNAT y los lotes."""
     from . import sap_sl
@@ -477,6 +597,8 @@ def enviar_sap(user, g, sl=None):
             body.setdefault(k, v)
         if udf.get("series"):
             body["Series"] = udf["series"]
+        guia_rem = campos_guia_remision(g, _metas_entrega(sl))  # V48: lo de la guía manda sobre lo copiado
+        body.update(guia_rem)
         for k, v in udf.get("lineas", {}).items():
             for d in lines:
                 d.setdefault(k, v)
@@ -495,7 +617,8 @@ def enviar_sap(user, g, sl=None):
             except BusinessError:
                 pass
     g.sap = {"estado": "OK", "docentry": r.get("DocEntry"), "docnum": r.get("DocNum"), "user": user.nombre,
-             "ts": now().isoformat(timespec="minutes"), **({"udf": udf} if udf else {})}
+             "ts": now().isoformat(timespec="minutes"), **({"udf": udf} if udf else {}),
+             **({"guia_remision": guia_rem} if guia_rem else {})}
     g.estado = "ENVIADA_SAP"
     audit(user, "GUIA_SUNAT_SAP", "SunatGuide", g.id, g.sap)
     return g
@@ -552,6 +675,13 @@ def conciliar_con_sap():
 
 
 # ------------------------------------------------------------------ V46: editar la guía al subirla
+CAMPOS_TRANSPORTE = {"modalidad": "Modalidad (PRIVADO / PUBLICO)", "motivo_codigo": "Código de motivo de traslado",
+                     "transportista_ruc": "RUC del transportista", "transportista_nombre": "Nombre del transportista",
+                     "transportista_direccion": "Dirección del transportista", "conductor_nombre": "Nombre del conductor",
+                     "conductor_doc": "DNI del conductor", "licencia": "Licencia del conductor", "marca": "Marca del vehículo",
+                     "peso_bruto": "Peso bruto", "peso_um": "UM del peso (KGM / TNE)"}
+
+
 def editar(user, g, datos):
     """Quien sube la guía puede corregirla (lo que leyó del PDF/XML puede no ser lo que salió: «salió menos», un lote
     distinto, una línea de más) y dejar una observación. datos: dict/MultiDict con fecha_traslado, placa, observacion,
@@ -604,6 +734,22 @@ def editar(user, g, datos):
         except ValueError:
             raise BusinessError("Fecha de traslado no válida.")
     g.placa = (datos.get("placa") if datos.get("placa") is not None else g.placa or "").strip().upper()[:15]
+    tr = dict(g.transporte or {})
+    for k in CAMPOS_TRANSPORTE:
+        v = datos.get(f"t_{k}")
+        if v is not None:
+            v = v.strip()
+            if k == "peso_bruto":
+                try:
+                    v = float(v.replace(",", ".")) if v else None
+                except ValueError:
+                    raise BusinessError("Peso bruto no válido.")
+            if v in (None, ""):
+                tr.pop(k, None)
+            else:
+                tr[k] = v.upper() if k in ("modalidad", "peso_um", "licencia") and isinstance(v, str) else v
+    antes["transporte"] = dict(g.transporte or {})
+    g.transporte = tr
     g.observacion = (datos.get("observacion") if datos.get("observacion") is not None else g.observacion or "").strip()
     g.lineas = nuevas
     if (g.sap or {}).get("estado") == "ERROR":

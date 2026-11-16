@@ -329,25 +329,77 @@ def enviar(user, ing, sl=None):
     return ing
 
 
-# ------------------------------------------------------------------ V44: lo que falta para el préstamo
-def faltante(guia, almacen=""):
-    """Por cada línea de la guía: lo que pide la guía, lo que SAP tiene de ese lote (según la última carga de stock de
-    SAP, en el almacén elegido o en todos) y lo que falta ingresar (guía − stock, nunca negativo). Es una propuesta: el
-    encargado la revisa y la edita antes de registrar el ingreso."""
+# ------------------------------------------------------------------ V44/V48: lo que falta para el préstamo
+def _stock_sap(sl, codigos, almacen):
+    """V48: stock de SAP en este momento. Con la consulta de stock por lote configurada (sap_consultas.STOCK) se tiene por
+    artículo, lote y almacén; si no, por artículo y almacén (Items/ItemWarehouseInfoCollection, entidad estándar)."""
+    code = (param("sap_consultas", {}) or {}).get("STOCK")
+    if code:
+        por = {}
+        for r in sl.sql_query(code):
+            item = r.get("ItemCode") or r.get("Número de artículo") or r.get("articulo")
+            lote = r.get("DistNumber") or r.get("Lote") or ""
+            whs = r.get("WhsCode") or r.get("Almacén") or r.get("almacen") or ""
+            if item in codigos and (not almacen or whs == almacen):
+                k = (item, str(lote).upper())
+                por[k] = por.get(k, 0) + float(r.get("Quantity") or r.get("Cantidad") or 0)
+        return {"por_lote": por, "fuente": "SAP en este momento (stock por lote)"}
+    por = {}
+    for c in sorted(codigos):
+        it = sl._req("GET", f"Items('{c}')?$select=ItemCode,ItemWarehouseInfoCollection")
+        for w in (it or {}).get("ItemWarehouseInfoCollection") or []:
+            if not almacen or w.get("WarehouseCode") == almacen:
+                por[c] = por.get(c, 0) + float(w.get("InStock") or 0)
+    return {"por_articulo": por, "fuente": "SAP en este momento (stock del artículo en el almacén; SAP no da el lote "
+                                           "sin la consulta de stock por lote)"}
+
+
+def faltante(guia, almacen="", sl=None):
+    """Por cada línea de la guía: lo que pide la guía, lo que SAP tiene (V48: consultado a SAP en el momento; si SAP no
+    responde, la última carga de stock de SAP del módulo) y lo que falta ingresar (guía − stock, nunca negativo). Es una
+    propuesta: el encargado la revisa y la edita antes de registrar el ingreso."""
     from sqlalchemy import select as _select
     from ..models import StockLot
     from . import lotes as _lotes
+    from . import sap_sl
     from .stock import stock_freshness
+    lineas = (guia.prestamo or {}).get("lineas") or guia.lineas or []
+    codigos = {x.get("codigo") for x in lineas if x.get("codigo")}
+    sap, aviso = None, ""
+    if sl is not None or sap_sl.configured():
+        propio = sl is None
+        try:
+            sl = sl or sap_sl.ServiceLayer()
+            if propio:
+                sl.login()
+            sap = _stock_sap(sl, codigos, almacen)
+        except Exception as e:  # noqa: BLE001  (sin respuesta de SAP: se usa la última carga de stock)
+            aviso = f"SAP no respondió ({str(e)[:120]}): se usó la última carga de stock de SAP."
+        finally:
+            if propio and sl is not None:
+                try:
+                    sl.logout()
+                except Exception:  # noqa: BLE001
+                    pass
+    restante = dict((sap or {}).get("por_articulo") or {})
     filas = []
-    for x in (guia.prestamo or {}).get("lineas") or guia.lineas or []:
+    for x in lineas:
         q = float(x.get("cantidad") or 0)
         lote = (x.get("lote") or "").strip()
         lots = [l for l in db().execute(_select(StockLot).where(StockLot.product_code == x.get("codigo"))).scalars()
                 if lote and _lotes.misma(l.lote or "", lote) and (not almacen or l.warehouse_code == almacen)]
-        disp = round(sum(max(l.cantidad or 0, 0) for l in lots), 3)
-        falta = round(max(q - disp, 0), 3)
-        filas.append(dict(x, guia=q, stock_sap=disp, cantidad=falta,
+        if sap and "por_lote" in sap:
+            disp = sum(v for (c, lt), v in sap["por_lote"].items() if c == x.get("codigo") and _lotes.misma(lt, lote))
+        elif sap:
+            disp = min(restante.get(x.get("codigo"), 0), q)  # el stock del artículo se reparte entre sus líneas
+            restante[x.get("codigo")] = restante.get(x.get("codigo"), 0) - disp
+        else:
+            disp = sum(max(l.cantidad or 0, 0) for l in lots)
+        disp = round(disp, 3)
+        filas.append(dict(x, guia=q, stock_sap=disp, cantidad=round(max(q - disp, 0), 3),
                           fp=x.get("fp") or (min([l.fecha_fab for l in lots if l.fecha_fab] or [None]) or ""),
                           fv=x.get("fv") or (min([l.fecha_venc for l in lots if l.fecha_venc] or [None]) or "")))
     info = stock_freshness()
-    return {"filas": filas, "stock_ts": info["ts"] if info else None, "almacen": almacen}
+    fuente = sap["fuente"] if sap else (f"última carga de stock de SAP ({info['ts']:%d/%m/%Y %H:%M})" if info else
+                                        "stock del módulo")
+    return {"filas": filas, "stock_ts": info["ts"] if info else None, "almacen": almacen, "fuente": fuente, "aviso": aviso}

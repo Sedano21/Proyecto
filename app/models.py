@@ -2669,6 +2669,8 @@ class SunatGuide(Base):
     # V46: observación de quien sube la guía (p. ej. «salió menos») e historial de las ediciones
     observacion: Mapped[str] = mapped_column(Text, default="", server_default="")
     ediciones: Mapped[list] = mapped_column(JSON, default=list, server_default="[]")
+    # V48: modalidad, transportista, conductor, licencia, peso… (panel «Guía de remisión» de la entrega en SAP)
+    transporte: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}")
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     ts: Mapped[datetime] = mapped_column(DateTime, default=now)
     order = relationship("SalesOrder")

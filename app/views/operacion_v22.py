@@ -323,7 +323,7 @@ def sunat_guides():
             return redirect(back)
         abort(400)
     guias = list(db().execute(select(SunatGuide).order_by(SunatGuide.id.desc()).limit(200)).scalars())
-    return render_template("guias_sunat.html", guias=paginate(guias, 25), cand={x.id: gs.candidatas(x) for x in guias
+    return render_template("guias_sunat.html", guias=paginate(guias, 25), campos_transporte=gs.CAMPOS_TRANSPORTE, cand={x.id: gs.candidatas(x) for x in guias
                                                                        if (x.sap or {}).get("estado") != "OK"})
 
 
