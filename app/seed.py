@@ -130,6 +130,20 @@ def _apply_param_changes():
             n += 1
         s.add(AuditLog(user_id=None, accion="PARAMETRO_CAMBIO_CATALOGO", entidad="Param", entidad_id=marca,
                        detalle={"anterior": anterior, "nuevo": nuevo, "aplicado": aplicado, "fuente": fuente}))
+    # V45: agregar elementos a un parámetro de tipo lista una sola vez, conservando lo que ya tenga configurado
+    for key, agregar, fuente in getattr(C, "PARAMS_AGREGAR", []):
+        marca = f"+{key}:{fuente}"[:60]
+        if s.execute(select(AuditLog).where(AuditLog.accion == "PARAMETRO_CAMBIO_CATALOGO",
+                                            AuditLog.entidad_id == marca)).first():
+            continue
+        p = s.get(Param, key)
+        actual = list((p.valor or {}).get("v") or []) if p is not None else []
+        nuevos = [x for x in agregar if x not in actual]
+        if p is not None and nuevos and isinstance((p.valor or {}).get("v", []), list):
+            p.valor = {"v": actual + nuevos}
+            n += 1
+        s.add(AuditLog(user_id=None, accion="PARAMETRO_CAMBIO_CATALOGO", entidad="Param", entidad_id=marca,
+                       detalle={"anterior": actual, "agregado": nuevos, "fuente": fuente}))
     return n
 
 

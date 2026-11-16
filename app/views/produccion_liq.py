@@ -22,6 +22,24 @@ VER = ("produccion.liquidacion_proceso", "vista.total")
 def process_liqs():
     a = request.args
     if request.method == "POST":
+        if request.form.get("accion") == "excel":  # V45: subir el Excel de liquidaciones por línea que ya usan
+            import os
+            from datetime import datetime
+            from werkzeug.utils import secure_filename
+            fs = request.files.get("archivo")
+            if not fs or not fs.filename.lower().endswith((".xlsx", ".xlsm")):
+                from flask import flash, redirect
+                flash("Elija el Excel de liquidaciones (.xlsx).", "error")
+                return redirect(url_for("prod.process_liqs"))
+            d = os.path.join(current_app.config["UPLOAD_DIR"], "liquidaciones")
+            os.makedirs(d, exist_ok=True)
+            path = os.path.join(d, f"{datetime.now():%Y%m%d%H%M%S}_{secure_filename(fs.filename)}")
+            fs.save(path)
+            f = request.form
+            return act(lambda: pl.importar_excel(g.user, path, f.get("product_code", ""), f.get("linea", ""), fs.filename),
+                       lambda ls: f"{len(ls)} liquidación(es) cargada(s) desde el Excel: "
+                                  + ", ".join(f"N° {x.numero:05d} ({x.linea or 'sin línea'})" for x in ls) + ".",
+                       url_for("prod.process_liqs"))
         if request.form.get("accion") == "manual":  # V18: nueva liquidación con todas las casillas, sin partes
             return act(lambda: pl.create_manual(g.user, request.form),
                        lambda l: f"Liquidación N° {l.numero:05d} creada; complete los procesos.", url_for("prod.process_liqs"),

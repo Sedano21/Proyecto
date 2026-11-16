@@ -261,6 +261,7 @@ def install(app):
         return {"chat_no_leidos": chat_n, "csrf_token": csrf_token, "user": u, "perms": g.get("perms", set()), "can": lambda p: p in g.get("perms", set()),
                 "ve": lambda p: p in g.get("perms", set()) or "vista.total" in g.get("perms", set()),
                 "logo_url": _logo_url(), "vi": _vi, "sap_estado": _sap_estado,
+                "sap_configurado": __import__("app.services.sap_sl", fromlist=["x"]).configured,
                 "fmt_date": fmt_date, "fmt_num": fmt_num, "stock_info": stock_freshness() if u else None,
                 "alertas_abiertas": abiertas, "today": date.today(), "demo_mode": app.config.get("DEMO_MODE"),
                 "contingencia": _contingencia() if u else {}}

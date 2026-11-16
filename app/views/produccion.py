@@ -1,5 +1,5 @@
 """Vistas de Producción: solicitudes, validación, programación, BOM/calculadora, liquidaciones y recepción de PT."""
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from flask import Blueprint, abort, g, redirect, render_template, request, url_for
 from sqlalchemy import select
@@ -188,6 +188,27 @@ def plan():
     """Planeamiento diario, semanal y mensual de Producción vs liquidación (tasa de cumplimiento)."""
     from ..catalogs import PRODUCTION_LINES
     from ..models import ProductionPlan
+    if request.method == "POST" and request.form.get("accion") == "excel":
+        # V45: actualizar el planeamiento subiendo el Excel de Producción
+        import os
+        from flask import current_app
+        from werkzeug.utils import secure_filename
+        from ..services import plan_excel
+        per = request.form.get("periodo") or "DIA"
+        fs = request.files.get("archivo")
+        if not fs or not fs.filename.lower().endswith((".xlsx", ".xlsm")):
+            from flask import flash
+            flash("Elija el Excel del plan (.xlsx).", "error")
+            return redirect(url_for("prod.plan", periodo=per))
+        d = os.path.join(current_app.config["UPLOAD_DIR"], "plan")
+        os.makedirs(d, exist_ok=True)
+        path = os.path.join(d, f"{datetime.now():%Y%m%d%H%M%S}_{secure_filename(fs.filename)}")
+        fs.save(path)
+        return act(lambda: plan_excel.importar(g.user, per, path, fs.filename),
+                   lambda r: (f"Plan actualizado desde Excel: {r['creadas']} nueva(s), {r['actualizadas']} actualizada(s), "
+                              f"{r['iguales']} sin cambio" + (f", {r['pendientes']} cambio(s) por validar del Jefe de "
+                                                              "Producción" if r["pendientes"] else "") + "."),
+                   url_for("prod.plan", periodo=per))
     if request.method == "POST" and request.form.get("accion") == "preprogramar":
         per = request.form.get("periodo") or "SEMANA"
         holder = {}

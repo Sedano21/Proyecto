@@ -34,7 +34,8 @@ from http.cookiejar import CookieJar
 from .core import BusinessError, audit, param
 
 TIPOS_SAP = {"OV": "Órdenes de venta abiertas", "CLIENTES": "Clientes", "PRODUCTOS": "Artículos",
-             "DESPACHOS": "Entregas (guías)", "STOCK": "Stock por lote", "LIQUIDACION": "Liquidaciones de producción"}
+             "DESPACHOS": "Entregas (guías)", "STOCK": "Stock por lote", "LIQUIDACION": "Liquidaciones de producción",
+             "BOM": "Listas de materiales (recetas)"}
 # V29: lecturas de SAP que no son cargas: facturas y notas de crédito, órdenes de fabricación ligadas a OV, órdenes de
 # venta y de servicio del periodo (demanda) y balance de peso de las órdenes de fabricación
 EXTRAS = {"FACTURAS": "Facturas y notas de crédito", "SERVICIOS": "Órdenes de fabricación ligadas a OV",
@@ -394,6 +395,36 @@ def rows_liquidacion(sl, desde=None):
     return out
 
 
+def rows_bom(sl):
+    """V45: listas de materiales (recetas) de SAP: árboles de producto (ProductTrees) con sus componentes, en el formato
+    de la carga «Lista de materiales» (una fila por componente)."""
+    from sqlalchemy import select
+    from ..db import db as _db
+    from ..models import Product
+    nombres = {p.code: p.descripcion for p in _db().execute(select(Product)).scalars()}
+    out = []
+    for t in sl.get_all("ProductTrees", {}):
+        padre = t.get("TreeCode")
+        if not padre:
+            continue
+        for i, ln in enumerate(t.get("ProductTreeLines") or []):
+            comp = ln.get("ItemCode")
+            if not comp:
+                continue
+            out.append({"Articulo Padre": padre,
+                        "Descripcion Padre": t.get("ProductDescription") or nombres.get(padre) or padre,
+                        "Tipo BOM": {"iProductionTree": "P", "iSalesTree": "V", "iAssemblyTree": "A",
+                                     "iTemplateTree": "T"}.get(t.get("TreeType"), t.get("TreeType") or "P"),
+                        "Cantidad BOM": t.get("Quantity") or 1, "Almacen PT": t.get("Warehouse") or "",
+                        "Fecha Creacion": "", "Fecha Actualizacion": "", "Orden": "" if i == 0 else i,
+                        "Articulo Componente": comp,
+                        "Descripcion Componente": ln.get("ItemName") or nombres.get(comp) or comp,
+                        "Cantidad Componente": ln.get("Quantity"), "Almacen Componente": ln.get("Warehouse") or "",
+                        "UM": "", "Metodo Emision": {"im_Backflush": "B", "im_Manual": "M"}.get(
+                            ln.get("IssueMethod"), str(ln.get("IssueMethod") or "")[:5])})
+    return out
+
+
 def rows_consulta(sl, tipo):
     code = (param("sap_consultas", {}) or {}).get(tipo)
     if not code:
@@ -403,7 +434,8 @@ def rows_consulta(sl, tipo):
 
 
 def fetch(tipo, sl):
-    fn = {"OV": rows_ov, "CLIENTES": rows_clientes, "PRODUCTOS": rows_productos, "DESPACHOS": rows_despachos}.get(tipo)
+    fn = {"OV": rows_ov, "CLIENTES": rows_clientes, "PRODUCTOS": rows_productos, "DESPACHOS": rows_despachos,
+          "BOM": rows_bom}.get(tipo)
     if tipo == "LIQUIDACION" and not (param("sap_consultas", {}) or {}).get("LIQUIDACION"):
         fn = rows_liquidacion  # V21: sin consulta configurada, con las entidades estándar
     return fn(sl) if fn else rows_consulta(sl, tipo)

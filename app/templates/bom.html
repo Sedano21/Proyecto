@@ -1,5 +1,6 @@
 {% extends "base.html" %}{% from "_m.html" import b, errs, csrf, ic %}
-{% block content %}<h1>Lista de materiales</h1>
+{% block content %}<div class="page-head"><div><h1>Lista de materiales</h1><p class="sub">Recetas de SAP (árboles de producto): se actualizan solas cada hora si cambian en SAP; también se pueden traer ahora.</p></div>
+{% if sap_configurado() and can('produccion.bom_cargar') %}<form method="post" action="{{ url_for('alm.sap_sync') }}" class="noprint">{{ csrf() }}<input type="hidden" name="tipo" value="BOM"><input type="hidden" name="volver" value="{{ request.full_path.rstrip('?') }}"><button class="btn sec">{{ ic('refresh') }} Traer recetas de SAP</button></form>{% endif %}</div>
 <p class="muted small">Se carga desde Excel (Cargas de archivos → Lista de materiales) con validación de estructura, productos, presentaciones, materiales, duplicados y obligatorios; cada carga crea una versión con registro de cambios (IF §8.1). {% if can('produccion.bom_cargar') %}<a href="{{ url_for('alm.upload_new', tipo='BOM') }}">Cargar nueva versión</a>{% endif %}</p>
 <h2>Versiones</h2><table><tr><th>Versión</th><th>Archivo</th><th>Fecha</th><th>Activa</th><th>¿Excel incluye merma?</th><th>Cambios vs anterior</th><th>Líneas</th></tr>
 {% for v in versions %}<tr><td>{{ v.version }}</td><td>{{ v.archivo }}</td><td>{{ v.ts|d }}</td><td>{{ 'Sí' if v.activa else '' }}</td><td>{{ b(v.incluye_merma) }}</td><td class="mono small">{{ v.cambios }}</td><td>{{ v.lines|length }}</td></tr>{% endfor %}</table>

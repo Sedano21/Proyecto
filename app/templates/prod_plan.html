@@ -13,7 +13,9 @@
 <p class="small"><a href="{{ url_for('main.holidays') }}">Feriados del año (marcar los que se trabajan)</a></p>
 <p class="muted small">Producción ingresa lo que producirá en el día, la semana o el mes; el sistema lo contrasta con lo liquidado y calcula la tasa de cumplimiento (Σ mín(real, plan) / Σ plan).</p>
 <p class="tabs">{% for p, t in [('DIA','Diario'),('SEMANA','Semanal'),('MES','Mensual')] %}<a class="btn {{ '' if d.periodo == p else 'sec' }}" href="{{ url_for('prod.plan', periodo=p) }}">{{ t }}</a> {% endfor %}</p>
-{% if can('produccion.programar') or can('produccion.liquidar') %}<p><button class="btn" data-open="dlg-plan">{{ ic('plus') }} Registrar plan {{ nombre_periodo }}</button></p>
+{% if can('produccion.programar') or can('produccion.liquidar') %}<div class="row noprint"><button class="btn" data-open="dlg-plan">{{ ic('plus') }} Registrar plan {{ nombre_periodo }}</button>
+<form method="post" enctype="multipart/form-data" class="row">{{ csrf() }}<input type="hidden" name="accion" value="excel"><input type="hidden" name="periodo" value="{{ d.periodo }}"><label class="btn sec" for="plan-xlsx">{{ ic('upload') }} Actualizar con Excel</label><input id="plan-xlsx" type="file" name="archivo" accept=".xlsx,.xlsm" required hidden onchange="this.form.submit()"></form>
+<span class="small muted">Excel con Fecha, Código, Cantidad y Línea (o Código y una columna por día). Lo que ya está programado para ese producto, fecha y línea se actualiza; lo nuevo se agrega.</span></div>
 <dialog class="modal" id="dlg-plan" aria-labelledby="dlg-plan-t"><form method="post">{{ csrf() }}<input type="hidden" name="periodo" value="{{ d.periodo }}">
 <div class="dlg-head"><h3 id="dlg-plan-t">Registrar plan {{ nombre_periodo }}</h3><button class="ibtn" data-close aria-label="Cerrar">{{ ic('x') }}</button></div>
 <div class="dlg-body"><p class="small muted">Periodicidad: la elegida arriba ({{ nombre_periodo }}). {{ 'La semana se toma de la fecha.' if d.periodo == 'SEMANA' else ('El mes se toma de la fecha.' if d.periodo == 'MES' else '') }}</p>

@@ -149,7 +149,7 @@ def ciclo(user, upload_dir, forzar=False, sl=None):
                 paso("LIQUIDACION", lambda: carga("LIQUIDACION"))
         ult_hora = _p("sap_vigia_horario", "")
         if forzar or not ult_hora or (datetime.now() - datetime.fromisoformat(ult_hora)).total_seconds() > 3600:
-            for t in ("CLIENTES", "PRODUCTOS", "STOCK"):
+            for t in ("CLIENTES", "PRODUCTOS", "STOCK", "BOM"):  # V45: también las listas de materiales
                 if t in tipos:
                     paso(t, lambda t=t: carga(t))
             _set("sap_vigia_horario", datetime.now().isoformat(timespec="seconds"), "Última revisión horaria (interno)")

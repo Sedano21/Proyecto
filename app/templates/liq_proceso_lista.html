@@ -2,6 +2,13 @@
 {% block content %}<div class="page-head"><div><h1>Liquidación de proceso (CP-OPE-004)</h1><p class="sub">Por línea producida, SKU o lote · se prellena con los partes de los asistentes de producción</p></div></div>
 <datalist id="dl-sku">{% for c, d in productos %}<option value="{{ c }}">{{ d }}</option>{% endfor %}</datalist>
 <datalist id="dl-lote">{% for l in lotes %}<option value="{{ l }}">{% endfor %}</datalist>
+{% if can('produccion.liquidacion_proceso') %}<details class="card noprint"><summary><b>{{ ic('upload') }} Subir el Excel de liquidaciones</b> <span class="small muted">(el formato LIQUIDACIONES por línea que ya usan: una liquidación por hoja)</span></summary>
+<form method="post" enctype="multipart/form-data" class="row">{{ csrf() }}<input type="hidden" name="accion" value="excel">
+<div class="grow"><label class="req" for="lq-xlsx">Excel</label><input id="lq-xlsx" type="file" name="archivo" accept=".xlsx,.xlsm" required></div>
+<div><label for="lq-sku">SKU (si la descripción no coincide)</label><input id="lq-sku" name="product_code" list="dl-sku" size="12"></div>
+<div><label for="lq-lin">Línea (si el título del proceso no la trae)</label><select id="lq-lin" name="linea"><option value="">(del Excel)</option>{% for x in lineas %}<option>{{ x }}</option>{% endfor %}</select></div>
+<div class="row-end"><button>Subir</button></div></form>
+<p class="small muted">Se lee de cada hoja: datos del servicio y del producto, cada proceso (PROCESO · CALIDAD · SACOS · PESO POR SACO · SALDO), total de horas, operarios y observaciones. Quedan en borrador para revisarlas y cerrarlas.</p></details>{% endif %}
 <form method="get" class="card"><div class="row">
 <div><label>N°</label><input name="numero" value="{{ a.numero or '' }}" size="6" inputmode="numeric"></div>
 <div><label>Línea</label><select name="linea"><option value="">(todas)</option>{% for l in lineas %}<option {{ 'selected' if a.linea == l }}>{{ l }}</option>{% endfor %}</select></div>

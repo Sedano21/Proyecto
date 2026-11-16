@@ -3222,3 +3222,11 @@ PARAMS_CAMBIO += [
     ("dias_minimos_emision_ov", 1, 0, f"{V44}: por ahora la OV solo se bloquea por precio"),
 ]
 PARAMS = [(k, {"bloquear_ov_sin_opcion": False, "dias_minimos_emision_ov": 0}.get(k, v), *rest) for k, v, *rest in PARAMS]
+# ------------------------------------------------------------------ V45 (16-nov-2026)
+V45 = "Observaciones V45 (16-nov-2026)"
+# el módulo trae de SAP solo, sin revisión manual: liquidaciones de producción (entradas por orden de fabricación) y
+# listas de materiales (recetas, ProductTrees). Se agregan a lo ya configurado (no se quita nada).
+PARAMS_AGREGAR = [
+    ("sap_sync_tipos", ["LIQUIDACION", "BOM"], f"{V45}: liquidaciones y recetas desde SAP"),
+    ("sap_autoconfirmar", ["LIQUIDACION", "BOM"], f"{V45}: liquidaciones y recetas desde SAP"),
+]

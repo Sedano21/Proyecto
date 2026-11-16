@@ -500,3 +500,128 @@ def export_excel(liq, static_dir, upload_dir):
     out = io.BytesIO()
     wb.save(out)
     return out.getvalue()
+
+
+# ------------------------------------------------------------------ V45: subir el Excel que ya usa Producción
+def _txt(v):
+    return "" if v is None else (v.strftime("%d/%m/%Y") if isinstance(v, (date, datetime)) else str(v).strip())
+
+
+def leer_hoja(ws):
+    """Lee una hoja con el formato CP-OPE-004 (el mismo que exporta el módulo): datos del servicio y del producto,
+    procesos (PROCESO / CALIDAD / SACOS / PESO POR SACO / SALDO), horas, operarios y observaciones."""
+    celdas = {}
+    for row in ws.iter_rows():
+        for c in row:
+            if c.value not in (None, ""):
+                celdas[(c.row, c.column)] = c.value
+    if not celdas:
+        return None
+
+    def v(r, col):
+        return celdas.get((r, col))
+
+    def buscar(texto):
+        t = texto.upper()
+        return sorted(k for k, x in celdas.items() if isinstance(x, str) and x.strip().upper().startswith(t))
+    serv_ini = buscar("DATOS DEL SERVICIO")
+    prod_ini = buscar("DATOS DEL PRODUCTO")
+    cabs = [k for k in buscar("PROCESO") if str(v(k[0], k[1] + 1) or "").strip().upper() == "CALIDAD"]
+    if not cabs:
+        return None
+    servicio, producto = [], []
+    if serv_ini:
+        r, c = serv_ini[0]
+        r += 1
+        while (r, c) in celdas and r < cabs[0][0]:
+            servicio.append({"etiqueta": _txt(v(r, c)), "valor": _txt(v(r, c + 1))})
+            r += 1
+    if prod_ini:
+        r0, c0 = prod_ini[0]
+        for r in range(r0 + 1, cabs[0][0]):
+            for c in (c0, c0 + 2):
+                if v(r, c) not in (None, ""):
+                    producto.append({"etiqueta": _txt(v(r, c)), "valor": _txt(v(r, c + 1))})
+    procesos = []
+    for r, c in cabs:
+        titulo = ""
+        for rr in (r - 1, r - 2):
+            t = v(rr, c)
+            if isinstance(t, str) and "PROCESO" in t.upper() and t.strip().upper() != "PROCESO":
+                titulo = t.strip()
+                break
+        filas = []
+        rr = r + 1
+        while rr <= ws.max_row:
+            pr = v(rr, c)
+            if pr in (None, "") or str(v(rr, c + 5) or "").upper().startswith("DESVIACI"):
+                break
+            filas.append(_fila(_txt(pr), _txt(v(rr, c + 1)), _num(v(rr, c + 2)), _num(v(rr, c + 3)), _num(v(rr, c + 4))))
+            rr += 1
+        horas = operarios = None
+        for r2 in range(rr, rr + 4):
+            if str(v(r2, c) or "").upper().startswith("TOTAL DE HR"):
+                horas = _num(v(r2, c + 1))
+                op = _num(v(r2, c + 4))
+                operarios = int(op) if op is not None else None
+                break
+        procesos.append({"titulo": titulo, "filas": filas, "horas": horas, "operarios": operarios, "report_id": None})
+    variante = "PR" if any(str(v(r, c + 7) or "").strip() == "%" for r, c in cabs) else "PF"
+    obs = ""
+    for r, c in buscar("OBSERVACIONES"):
+        obs = _txt(v(r + 1, c)) or _txt(v(r + 2, c))
+    return {"servicio": servicio, "producto": producto, "procesos": procesos, "variante": variante, "observaciones": obs}
+
+
+def importar_excel(user, path, product_code="", linea="", nombre=""):
+    """Una liquidación por hoja del Excel (formato CP-OPE-004). El SKU se toma de la descripción del producto si coincide
+    con un artículo; si no, del SKU indicado al subir. La línea, del título del proceso («1ER PROCESO : CIMBRIA») o la
+    indicada al subir."""
+    import unicodedata
+    from openpyxl import load_workbook
+    from ..models import Product
+    _req(user)
+    wb = load_workbook(path, data_only=True)
+
+    def norm(t):
+        return unicodedata.normalize("NFD", str(t or "")).encode("ascii", "ignore").decode().upper().strip()
+    por_desc = {norm(p.descripcion): p.code for p in db().execute(select(Product)).scalars()}
+    creadas = []
+    for ws in wb.worksheets:
+        d = leer_hoja(ws)
+        if d is None:
+            continue
+        pv = {norm(x["etiqueta"]): x["valor"] for x in d["producto"]}
+        code = (product_code or "").strip().upper() or por_desc.get(norm(pv.get("DESCRIPCION")), "")
+        if not code or db().get(Product, code) is None:
+            raise BusinessError(f"Hoja «{ws.title}»: no se reconoce el producto «{pv.get('DESCRIPCION', '')}». Indique "
+                                "el SKU al subir el Excel.")
+        lin = (linea or "").strip()
+        if not lin:
+            for p in d["procesos"]:
+                if ":" in p["titulo"]:
+                    lin = p["titulo"].split(":", 1)[1].strip()
+                    break
+        fecha = date.today()
+        for x in d["servicio"]:
+            if norm(x["etiqueta"]).startswith("FECHA"):
+                try:
+                    fecha = datetime.strptime(x["valor"], "%d/%m/%Y").date()
+                    break
+                except ValueError:
+                    continue
+        numero = (db().execute(select(func.max(ProcessLiquidation.numero))).scalar() or 0) + 1
+        liq = ProcessLiquidation(numero=numero, variante=d["variante"], product_code=code, lote=str(pv.get("LOTE", ""))[:60],
+                                 linea=lin[:80], fecha=fecha, servicio=d["servicio"], producto=d["producto"],
+                                 procesos=d["procesos"], costos={}, report_ids=[], user_id=user.id,
+                                 observaciones=d["observaciones"],
+                                 historial=[{"evento": f"CREADA desde Excel {nombre} (hoja {ws.title})".strip(),
+                                             "user": user.nombre, "ts": now().isoformat(timespec="minutes")}])
+        db().add(liq)
+        db().flush()
+        creadas.append(liq)
+    if not creadas:
+        raise BusinessError("El Excel no tiene hojas con el formato de liquidación de proceso (PROCESO / CALIDAD / SACOS…).")
+    audit(user, "LIQ_PROCESO_EXCEL", "ProcessLiquidation", ",".join(str(x.id) for x in creadas)[:60],
+          {"archivo": nombre, "hojas": len(creadas)})
+    return creadas
