@@ -881,3 +881,4 @@ a.kpi::after,.kpi-clic::after{content:"›";position:absolute;right:12px;top:10p
 .chart-nota{margin:2px 0 0}
 
 a.kpi,.kpi-clic{padding-right:30px}
+.kpi-on{outline:2px solid var(--cp-verde);outline-offset:1px}

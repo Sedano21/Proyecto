@@ -359,8 +359,23 @@ def campos_de_entregas(sl, serie=""):
                     c.setdefault(k, Counter())[str(v)] += 1
                     orig[(k, str(v))] = v  # se envía con el mismo tipo de dato que tiene en SAP
         return {k: orig[(k, x.most_common(1)[0][0])] for k, x in c.items()}
-    return {"cabecera": mas_usados(docs),
-            "lineas": mas_usados([ln for d in docs for ln in d.get("DocumentLines") or [] if isinstance(ln, dict)])}
+    out = {"cabecera": mas_usados(docs),
+           "lineas": mas_usados([ln for d in docs for ln in d.get("DocumentLines") or [] if isinstance(ln, dict)])}
+    # V44: la serie de numeración de SAP (p. ej. «EG07») es la de las entregas con el mismo prefijo de folio; sin ella SAP
+    # usa su serie por defecto («0001») y la guía no se distingue en SAP
+    con_serie = [d for d in misma if d.get("Series")]
+    if not con_serie and serie:
+        try:
+            p = str(serie).replace("'", "''")
+            con_serie = [d for d in sl.get_all("DeliveryNotes", {"$filter": f"FolioPrefixString eq '{p}'",
+                                                                  "$select": "DocEntry,Series,FolioPrefixString",
+                                                                  "$orderby": "DocEntry desc", "$top": "5"})[:5]
+                         if isinstance(d, dict) and d.get("Series") and str(d.get("FolioPrefixString") or "") == str(serie)]
+        except Exception:  # noqa: BLE001
+            con_serie = []
+    if con_serie:
+        out["series"] = Counter(d["Series"] for d in con_serie).most_common(1)[0][0]
+    return out
 
 
 def enviar_sap(user, g, sl=None):
@@ -437,6 +452,8 @@ def enviar_sap(user, g, sl=None):
         udf = campos_de_entregas(sl, g.serie)  # V41: tipo de operación de la localización, como en las entregas de SAP
         for k, v in udf.get("cabecera", {}).items():
             body.setdefault(k, v)
+        if udf.get("series"):
+            body["Series"] = udf["series"]
         for k, v in udf.get("lineas", {}).items():
             for d in lines:
                 d.setdefault(k, v)

@@ -374,7 +374,9 @@ def goods_receipts():
     from ..models import Product
     productos = list(db().execute(select(Product).order_by(Product.code)).scalars())
     from ..services.core import param
+    falta = ing.faltante(guia, request.args.get("almacen", "")) if guia is not None and request.args.get("faltante") else None
     return render_template("v35_ingresos.html", ingresos=ingresos, pendientes=pendientes, guia=guia, almacenes=almacenes,
+                           falta=falta, almacen_sel=request.args.get("almacen", ""),
                            cuenta_def=param("ingreso_mercaderia_cuenta", "") or "", msg_error=ing.mensaje_error,
                            campos=(param("ingreso_mercaderia_campos_sap", {}) or {}).get("campos") or [],
                            udf_def=param("ingreso_mercaderia_valores", {}) or {},

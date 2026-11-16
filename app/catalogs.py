@@ -3213,3 +3213,12 @@ V43 = "Observaciones V43 (14-nov-2026)"
 PARAMS_CAMBIO.append(("sap_historial_desde", "2026-07-01", "2025-01-01",
                       f"{V43}: historial de SAP desde enero de 2025 para comparar con el año anterior"))
 PARAMS = [(k, ("2025-01-01" if k == "sap_historial_desde" else v), *rest) for k, v, *rest in PARAMS]
+# ------------------------------------------------------------------ V44 (16-nov-2026)
+V44 = "Observaciones V44 (16-nov-2026)"
+# «bloquea solo por precio por ahora»: la OV ya no se bloquea por falta de anticipación ni porque ninguna opción cumpla
+# la fecha (siguen las alertas de precio, que detienen la OV); se reactivan desde Parámetros
+PARAMS_CAMBIO += [
+    ("bloquear_ov_sin_opcion", True, False, f"{V44}: por ahora la OV solo se bloquea por precio"),
+    ("dias_minimos_emision_ov", 1, 0, f"{V44}: por ahora la OV solo se bloquea por precio"),
+]
+PARAMS = [(k, {"bloquear_ov_sin_opcion": False, "dias_minimos_emision_ov": 0}.get(k, v), *rest) for k, v, *rest in PARAMS]

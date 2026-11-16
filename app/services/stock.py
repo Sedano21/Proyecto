@@ -125,7 +125,21 @@ def stock_freshness():
                      .order_by(UploadBatch.confirmado_ts.desc())).scalars().first()
     if b is None:
         return None
-    return {"ts": b.confirmado_ts, "archivo": b.archivo, "usuario": b.user.nombre if b.user else "", "id": b.id}
+    # V44: además de la última carga de stock (último cambio de stock de SAP), cuándo se revisó SAP y cuándo se trajo el
+    # último cambio de cualquier documento (OV, guías, facturas, inventario)
+    from datetime import datetime as _dt
+
+    def _ts(k):
+        try:
+            v = param(k)
+            return _dt.fromisoformat(v) if v else None
+        except (TypeError, ValueError):
+            return None
+    revisado = max([x for x in (_ts("sap_revision_STOCK"), _ts("sap_vigia_revision")) if x] or [None]) \
+        if (_ts("sap_revision_STOCK") or _ts("sap_vigia_revision")) else None
+    cambio = max([x for x in (b.confirmado_ts, _ts("sap_vigia_ultimo_cambio")) if x] or [b.confirmado_ts])
+    return {"ts": b.confirmado_ts, "archivo": b.archivo, "usuario": b.user.nombre if b.user else "", "id": b.id,
+            "revisado": revisado, "ultimo_cambio": cambio}
 
 
 def product_stock_summary(product_code):

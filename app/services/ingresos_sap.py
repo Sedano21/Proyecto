@@ -327,3 +327,27 @@ def enviar(user, ing, sl=None):
     if ing.guia_id:
         alerts.close_by_system(f"PRESTAMO:{ing.guia_id}", f"Ingreso de mercadería #{ing.id} registrado en SAP")
     return ing
+
+
+# ------------------------------------------------------------------ V44: lo que falta para el préstamo
+def faltante(guia, almacen=""):
+    """Por cada línea de la guía: lo que pide la guía, lo que SAP tiene de ese lote (según la última carga de stock de
+    SAP, en el almacén elegido o en todos) y lo que falta ingresar (guía − stock, nunca negativo). Es una propuesta: el
+    encargado la revisa y la edita antes de registrar el ingreso."""
+    from sqlalchemy import select as _select
+    from ..models import StockLot
+    from . import lotes as _lotes
+    from .stock import stock_freshness
+    filas = []
+    for x in (guia.prestamo or {}).get("lineas") or guia.lineas or []:
+        q = float(x.get("cantidad") or 0)
+        lote = (x.get("lote") or "").strip()
+        lots = [l for l in db().execute(_select(StockLot).where(StockLot.product_code == x.get("codigo"))).scalars()
+                if lote and _lotes.misma(l.lote or "", lote) and (not almacen or l.warehouse_code == almacen)]
+        disp = round(sum(max(l.cantidad or 0, 0) for l in lots), 3)
+        falta = round(max(q - disp, 0), 3)
+        filas.append(dict(x, guia=q, stock_sap=disp, cantidad=falta,
+                          fp=x.get("fp") or (min([l.fecha_fab for l in lots if l.fecha_fab] or [None]) or ""),
+                          fv=x.get("fv") or (min([l.fecha_venc for l in lots if l.fecha_venc] or [None]) or "")))
+    info = stock_freshness()
+    return {"filas": filas, "stock_ts": info["ts"] if info else None, "almacen": almacen}

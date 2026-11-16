@@ -42,6 +42,10 @@ def app():
         set_param("prefijos_producidos", [])
         set_param("compras_no_comprables", [])
         set_param("usar_stock_seguridad", False)
+        # V44: en producción la OV por ahora solo se bloquea por precio; los bloqueos por anticipación y por falta de
+        # opción siguen probándose con sus valores anteriores (y test_v44.py prueba el valor nuevo)
+        set_param("bloquear_ov_sin_opcion", True)
+        set_param("dias_minimos_emision_ov", 1)
         SessionLocal().commit()
         yield app
         SessionLocal.remove()

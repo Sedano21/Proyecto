@@ -122,6 +122,8 @@ def ciclo(user, upload_dir, forzar=False, sl=None):
 
     def carga(tipo):
         b = sap_sl.sync(tipo, user, upload_dir, sl=sl, solo_si_cambia=True, autoconfirmar=tipo in auto)
+        # V44: cuándo se revisó por última vez (aunque SAP no haya cambiado), para el encabezado
+        _set(f"sap_revision_{tipo}", datetime.now().isoformat(timespec="seconds"), f"Última revisión de {tipo} en SAP (interno)")
         return "sin cambios" if b is None else f"carga #{b.id} ({b.estado.lower()})"
     try:
         if propio:
@@ -153,6 +155,10 @@ def ciclo(user, upload_dir, forzar=False, sl=None):
             _set("sap_vigia_horario", datetime.now().isoformat(timespec="seconds"), "Última revisión horaria (interno)")
         paso("envios", lambda: (sap_sl.push_pending_orders(sl=sl), sap_sl.push_pending_guides(sl=sl)) and "ok")
         _set("sap_vigia_firmas", nuevas, "Firmas de los documentos de SAP de ayer y hoy (interno)")
+        ahora = datetime.now().isoformat(timespec="seconds")
+        _set("sap_vigia_revision", ahora, "Última revisión completa de SAP (interno)")
+        if any(cambio.values()):
+            _set("sap_vigia_ultimo_cambio", ahora, "Último cambio traído de SAP (interno)")
         db().commit()
     finally:
         if propio:

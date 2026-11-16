@@ -301,13 +301,13 @@ def service_month_sap(ini, fin, customer_id=None, canal=""):
     return dict(_metricas(filas, ini, fin), fuente="SAP")
 
 
-def nivel_comercial_sap(desde, hasta):
+def nivel_comercial_sap(desde, hasta, canal=""):
     """V42: el nivel de servicio de SAP con el formato del tablero comercial; None si no hay historial de SAP."""
     from .core import param
     from .sap_v31 import tiene_historial
     if (param("otif_fuente", "SAP") or "SAP") != "SAP" or not tiene_historial():
         return None
-    d = service_month_sap(desde, hasta)
+    d = service_month_sap(desde, hasta, canal=canal)
     filas = d["filas"]
     hoy = date.today()
     fallas = [{"numero": f["o"].numero, "id": None, "cliente": f["o"].customer.nombre, "fecha": f["o"].fecha_compromiso,

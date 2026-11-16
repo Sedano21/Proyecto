@@ -61,8 +61,11 @@ def group(cid, fecha):
 @perm_required("indicadores.servicio", "informes.comercial")
 def service():
     canal = (request.args.get("canal") or "").strip()  # V30: por canal o en general
+    desde, hasta = f_date("desde"), f_date("hasta")  # V44: también una semana o un grupo de días
+    if desde and hasta and hasta < desde:
+        desde, hasta = hasta, desde
     d = seg.service_month(f_date("mes") or None, request.args.get("cliente") or None, request.args.get("vendedor") or None,
-                          canal=canal)
+                          desde=desde if desde and hasta else None, hasta=hasta if desde and hasta else None, canal=canal)
     ver = request.args.get("ver", "")
     filas = d["filas"]
     filtros = {"otif_no": lambda x: not x["otif"], "otif_si": lambda x: x["otif"],

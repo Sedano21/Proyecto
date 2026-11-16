@@ -76,11 +76,15 @@ def tablero(hoy=None, ver_costos=False, canal=""):
         n = nivel(del_canal(base_mes(ini, fin_de_mes(ini))), hoy=hoy)
     else:
         n = nivel_periodo(ini, None, hoy)
+    # V44: con el historial de SAP, el OTIF del mes es el de las OV de SAP frente a sus guías (se actualiza con SAP)
+    from .comercial_v23 import fin_de_mes as _fdm
+    from .seguimiento import nivel_comercial_sap
+    n = nivel_comercial_sap(ini, _fdm(ini), canal) or n
     otif = n["otif"]
     cards.append(_card("Logística", "OTIF del mes", f"{otif} %" if otif is not None else "—",
                        f"{n['conteos'][2]} de {n['n']} OV a tiempo y completas; {n['en_plazo']} aún en plazo",
                        "" if otif is None else ("ok" if otif >= 95 else "warn" if otif >= 85 else "err")))
-    vencidas_fuera = [f for f in n["fallas"] if f["fecha"] < hoy and not f["salida"]]
+    vencidas_fuera = [f for f in n["fallas"] if f["fecha"] and f["fecha"] < hoy and not f["salida"]]
     if vencidas_fuera:
         atencion.append(("ALTA", "Logística", f"{len(vencidas_fuera)} OV con fecha vencida que aún no salen "
                                               f"({', '.join(f['numero'] for f in vencidas_fuera[:4])})."))
@@ -179,7 +183,12 @@ def _series(hoy, cb):
         v = sum(order_amount(o) for o in s.execute(select(SalesOrder).where(
             SalesOrder.fecha_emision >= ini, SalesOrder.fecha_emision <= fin,
             SalesOrder.estado.notin_(("CANCELADA", "BORRADOR")))).scalars())
-        ot = nivel(base_mes(ini, min(fin, hoy)), hoy=hoy)["otif"] if ini <= hoy else None
+        if ini <= hoy:
+            from .seguimiento import nivel_comercial_sap
+            sap = nivel_comercial_sap(ini, min(fin, hoy))  # V44: con SAP si hay historial
+            ot = sap["otif"] if sap else nivel(base_mes(ini, min(fin, hoy)), hoy=hoy)["otif"]
+        else:
+            ot = None
         semanas.append((f"{ini:%d/%m}", round(v, 2), ot))
     tramos = [(k, round(sum(i.saldo for i, _ in v), 2)) for k, v in cb["tramos"].items()]
     return {"semanas": semanas, "cobranza": tramos}
