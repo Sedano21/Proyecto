@@ -39,3 +39,4 @@ capacidad de esos 30 días, y además el granel sin peso por unidad contaba 0 kg
   capacidad y en el informe de capacidad).
 
 **Prueba:** `test_porcentaje_por_linea_es_lo_programado_del_dia_frente_a_su_capacidad_diaria`.
+- Suite completa: **667 pruebas, todas pasan**.
