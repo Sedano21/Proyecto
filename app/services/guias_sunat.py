@@ -231,11 +231,27 @@ def registrar(user, path, nombre_archivo="", archivo_rel=""):
     return g
 
 
-def unir(user, g, order_id=None, sap_ov=""):
+def unir(user, g, order_id=None, sap_ov="", motivo=""):
     _req(user)
     o = db().get(SalesOrder, int(order_id)) if order_id else None
     if order_id and o is None:
         raise BusinessError("OV no encontrada.")
+    if not o and not (sap_ov or "").strip():
+        raise BusinessError("Elija la OV del módulo o escriba el número de la OV en SAP.")
+    # solo es «cambio» si pasa a otra OV (completar el número de SAP de la misma OV no lo es)
+    nuevo_sap = (sap_ov or "").strip()
+    cambio = bool((g.order_id and (o is None or o.id != g.order_id))
+                  or (not g.order_id and g.sap_ov and (o is not None or (nuevo_sap and nuevo_sap != g.sap_ov))))
+    if cambio:
+        # V47: cambiar la OV de una guía ya unida (p. ej. cerraron la OV y crearon otra para la guía SUNAT)
+        if (g.sap or {}).get("estado") == "OK":
+            raise BusinessError("La guía ya está registrada en SAP con su OV: el cambio se hace en SAP.")
+        if (g.inventario or {}).get("decision") == "DESCONTADO":
+            raise BusinessError("El stock de esta guía ya se descontó con las reservas de la OV anterior: primero corrija "
+                                "la decisión de inventario.")
+        if not (motivo or "").strip():
+            raise BusinessError("Indique por qué cambia la OV (p. ej. «se cerró la OV y se creó otra»).")
+        anterior = {"order_id": g.order_id, "ov": g.order.numero if g.order else "", "sap_ov": g.sap_ov}
     g.order_id = o.id if o else None
     g.sap_ov = (sap_ov or (o.sap_docnum if o is not None and o.sap_docnum else (o.numero if o is not None else ""))).strip()[:20]
     if o is not None:  # la guía de la parada de la ruta toma el número de SUNAT si aún no tiene
@@ -243,7 +259,14 @@ def unir(user, g, order_id=None, sap_ov=""):
         for st in db().execute(select(RouteStop).where(RouteStop.order_id == o.id)).scalars():
             if not st.guia_numero:
                 st.guia_numero = f"{g.serie}-{g.numero}"
-    audit(user, "GUIA_SUNAT_OV", "SunatGuide", g.id, {"ov": o.numero if o else "", "sap_ov": g.sap_ov})
+    if cambio:
+        g.ediciones = list(g.ediciones or []) + [{"user": user.nombre, "ts": now().isoformat(timespec="minutes"),
+                                                  "motivo": motivo.strip(), "cambio_ov": True, "antes": anterior,
+                                                  "lineas_cambiadas": False}]
+        if (g.sap or {}).get("estado") == "ERROR":
+            g.sap = dict(g.sap, ov_cambiada=True)
+    audit(user, "GUIA_SUNAT_OV", "SunatGuide", g.id, {"ov": o.numero if o else "", "sap_ov": g.sap_ov,
+                                                       **({"antes": anterior, "motivo": motivo} if cambio else {})})
     return g
 
 

@@ -74,3 +74,31 @@ def test_editar_la_guia_sunat_al_subirla(app, s, U):
     desc = _guia(s, numero="462", inventario={"decision": "DESCONTADO"})
     with pytest.raises(BusinessError, match="decisión de inventario"):
         gs.editar(u, desc, datos)
+
+
+def test_cambiar_la_ov_de_la_guia_antes_de_enviarla(app, s, U, new_order):
+    from app.services import guias_sunat as gs
+    from app.services.core import BusinessError
+    vieja = new_order([("PT-901", 10)])
+    nueva = new_order([("PT-901", 10)])
+    g = _guia(s, numero="470")
+    u = U("asist.distribucion")
+    gs.unir(u, g, vieja.id)
+    s.commit()
+    assert g.order_id == vieja.id and not g.ediciones
+    with pytest.raises(BusinessError, match="por qué"):
+        gs.unir(u, g, nueva.id)
+    gs.unir(u, g, nueva.id, motivo="se cerró la OV y se creó otra (ficticio)")
+    s.commit()
+    assert g.order_id == nueva.id and g.ediciones[-1]["cambio_ov"] and g.ediciones[-1]["antes"]["ov"] == vieja.numero
+    gs.unir(u, g, None, "1636999", motivo="OV nueva solo en SAP")
+    assert g.order_id is None and g.sap_ov == "1636999"
+    html = _cliente(app, "asist.distribucion").get("/operacion/guias-sunat").get_data(as_text=True)
+    assert "Cambiar la OV" in html and "cambió la OV" in html
+    g.sap = {"estado": "OK"}
+    with pytest.raises(BusinessError, match="registrada en SAP"):
+        gs.unir(u, g, nueva.id, motivo="x")
+    g.sap = {}
+    g.inventario = {"decision": "DESCONTADO"}
+    with pytest.raises(BusinessError, match="decisión de inventario"):
+        gs.unir(u, g, nueva.id, motivo="x")

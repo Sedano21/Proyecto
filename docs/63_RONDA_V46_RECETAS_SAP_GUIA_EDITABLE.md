@@ -26,3 +26,14 @@ Cambios:
 
 **Pruebas:** `tests/test_v46.py`.
 - Suite completa: 660 pruebas pasan en la corrida completa; la única que falló (`test_sap_segundo_plano`, por la forma de llamar a la lectura en segundo plano) se corrigió y pasa.
+
+## 3. Cambiar la OV de una guía ya unida (V47)
+Caso: cerraron la OV en SAP antes de que se subiera la guía SUNAT y crearon otra OV; la guía debe ir con la nueva.
+- En la guía, «Cambiar la OV» permite elegir otra OV del módulo o escribir el número de la OV en SAP, con **motivo**.
+- Solo mientras la guía no esté registrada en SAP y su stock no se haya descontado en el módulo con las reservas de la
+  OV anterior (en ese caso, primero se corrige la decisión de inventario).
+- El cambio queda en el historial de la guía («cambió la OV (antes …)») y en la auditoría; si la guía tenía un error de
+  SAP, se vuelve a enviar con la nueva OV.
+- Completar el número de SAP de la misma OV no cuenta como cambio.
+
+**Prueba:** `test_cambiar_la_ov_de_la_guia_antes_de_enviarla`.

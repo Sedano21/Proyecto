@@ -294,7 +294,8 @@ def sunat_guides():
             return act(_cargar, lambda r: f"{len(r[0])} guía(s) cargada(s)." + (f" No se cargaron: {' '.join(r[1])}" if r[1] else ""), back)
         gd = db().get(SunatGuide, int(f.get("id") or 0)) or abort(404)
         if acc == "unir":
-            return act(lambda: gs.unir(g.user, gd, f.get("order_id") or None, f.get("sap_ov", "")), "Guía unida a su OV.", back)
+            return act(lambda: gs.unir(g.user, gd, f.get("order_id") or None, f.get("sap_ov", ""), f.get("motivo", "")),
+                       "Guía unida a su OV.", back)
         if acc == "inventario":
             return act(lambda: gs.decidir_inventario(g.user, gd, f.get("decision"), f.get("nota", "")),
                        lambda x: "Inventario: " + ("descontado del lote." if x.inventario["decision"] == "DESCONTADO" else
@@ -322,7 +323,8 @@ def sunat_guides():
             return redirect(back)
         abort(400)
     guias = list(db().execute(select(SunatGuide).order_by(SunatGuide.id.desc()).limit(200)).scalars())
-    return render_template("guias_sunat.html", guias=paginate(guias, 25), cand={x.id: gs.candidatas(x) for x in guias if not x.order_id})
+    return render_template("guias_sunat.html", guias=paginate(guias, 25), cand={x.id: gs.candidatas(x) for x in guias
+                                                                       if (x.sap or {}).get("estado") != "OK"})
 
 
 @bp.route("/ingresos-mercaderia", methods=["GET", "POST"])
