@@ -40,3 +40,17 @@ capacidad de esos 30 días, y además el granel sin peso por unidad contaba 0 kg
 
 **Prueba:** `test_porcentaje_por_linea_es_lo_programado_del_dia_frente_a_su_capacidad_diaria`.
 - Suite completa: **667 pruebas, todas pasan**.
+
+## 5. V49 — El plan día por día y un cuadro por línea
+- **Vista diaria**: arriba se elige el día (‹ › o los días de la semana, Lun…Dom) y cada línea muestra **lo que toca
+  ese día** (producto, cantidad, kg, línea, fecha, estado), con su % frente a la capacidad diaria.
+- **Cuadro por línea** (vista diaria): se cambia la cantidad, la fecha o la **línea** de lo programado, se marca
+  «Quitar» o se **agregan productos** (con «+ Otra fila»), y se guarda todo junto con un motivo. Los cambios de un
+  asistente quedan para validación del Jefe de Producción (también el cambio de línea).
+- Al subir el Excel, la pantalla abre la vista diaria en el primer día del plan.
+- Lo que antes se subió desde Excel como plan **semanal o mensual** se reemplaza al volver a subir el Excel (queda por
+  día y no se suma dos veces); no se toca lo registrado a mano ni lo liquidado. **Hay que volver a subir el Excel una
+  vez** para que lo ya cargado como semanal quede por día.
+
+**Pruebas:** `tests/test_v49.py`.
+- Suite completa V49: **669 pruebas, todas pasan**.

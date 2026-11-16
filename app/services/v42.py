@@ -69,10 +69,47 @@ def plan_por_linea(entradas, capa, dia=None):
         dias = dias_de(f["grupo"], es)
         hoy_ = next((x for x in dias if x["fecha"] == dia), None)
         cap_dia = kg_dia.get(f["grupo"], 0) * day_factor(dia)
-        out.append(dict(f, entradas=es, dias=dias, dia=dia, kg_dia_prog=hoy_["kg"] if hoy_ else 0.0, cap_dia=round(cap_dia, 1),
+        out.append(dict(f, entradas=es, del_dia=[e for e in es if e.fecha == dia], lineas=f.get("lineas") or [],
+                        dias=dias, dia=dia, kg_dia_prog=hoy_["kg"] if hoy_ else 0.0, cap_dia=round(cap_dia, 1),
                         pct_dia=(round(100 * (hoy_["kg"] if hoy_ else 0) / cap_dia, 1) if cap_dia else None)))
     for g, es in sorted(por.items()):
         out.append({"grupo": g, "proceso": "", "capacidad": 0, "programada": 0, "ejecutada": 0, "pct_programada": None,
-                    "pct_ejecutada": None, "cumplimiento": None, "entradas": es, "dias": dias_de(g, es), "dia": dia,
+                    "pct_ejecutada": None, "cumplimiento": None, "entradas": es, "del_dia": [e for e in es if e.fecha == dia],
+                    "lineas": [g] if g != "Sin línea" else [], "dias": dias_de(g, es), "dia": dia,
                     "kg_dia_prog": 0, "cap_dia": 0, "pct_dia": None})
     return out
+
+
+def guardar_linea(user, dia, filas, nuevas, motivo="", linea_def=None):
+    """V49: cuadro de una línea para un día: modificar cantidad, fecha o línea de lo programado, quitarlo (cantidad 0 o
+    «quitar») y agregar productos. Cambios con motivo; los de un asistente quedan para validación del Jefe de Producción
+    (mismas reglas del plan). filas: [{id, cantidad, fecha, linea, quitar}]; nuevas: [{producto, cantidad, linea, comentario}]."""
+    from ..db import db
+    from ..models import ProductionPlan
+    from .core import BusinessError
+    from .production import add_plan, update_plan
+    cambios = 0
+    for f in filas:
+        pl = db().get(ProductionPlan, int(f["id"]))
+        if pl is None:
+            continue
+        q = 0.0 if f.get("quitar") else f.get("cantidad")
+        fecha, linea = f.get("fecha"), (f.get("linea") or "").strip() or None
+        if q is None:
+            raise BusinessError(f"{pl.product_code}: indique la cantidad.")
+        if abs(q - (pl.cantidad or 0)) < 1e-9 and (not fecha or fecha == pl.fecha) and (not linea or linea == pl.line_code):
+            continue
+        if not (motivo or "").strip():
+            raise BusinessError("Indique el motivo del cambio (p. ej. falta de materia prima, parada de línea, pedido urgente).")
+        update_plan(user, pl, q, motivo, fecha, linea)
+        cambios += 1
+    for n in nuevas:
+        code = (n.get("producto") or "").strip().upper().split(" ")[0]
+        if not code and not n.get("cantidad"):
+            continue
+        add_plan(user, "DIA", dia, code, n.get("cantidad"), (n.get("linea") or linea_def or None),
+                 (n.get("comentario") or "").strip() or (f"Agregado en el cuadro de la línea: {motivo}".strip(": ") if motivo else ""))
+        cambios += 1
+    if not cambios:
+        raise BusinessError("No hay cambios que guardar.")
+    return cambios

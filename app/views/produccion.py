@@ -216,11 +216,43 @@ def plan():
                    lambda r: (f"Plan actualizado desde Excel: {r['creadas']} nueva(s), {r['actualizadas']} actualizada(s), "
                               f"{r['iguales']} sin cambio" + (f", {r['pendientes']} cambio(s) por validar del Jefe de "
                                                               "Producción" if r["pendientes"] else "") + "."
+                              + (f" Se reemplazaron {r['reemplazadas']} entrada(s) semanales/mensuales que se habían "
+                                 "subido antes desde Excel." if r.get("reemplazadas") else "")
                               + (f" {len(r['sin_producto'])} fila(s) no se cargaron porque su producto no coincide con un "
                                  "artículo del sistema: " + "; ".join(f"fila {x['fila']} «{x['producto']}»"
                                                                       for x in r["sin_producto"][:10])
                                  + ("…" if len(r["sin_producto"]) > 10 else "") + "." if r["sin_producto"] else "")),
-                   url_for("prod.plan", periodo=per))
+                   url_for("prod.plan", periodo="DIA"),
+                   redirect_fn=lambda r: url_for("prod.plan", periodo="DIA",
+                                                 dia=(r["primer_dia"] or date.today()).isoformat()))
+    if request.method == "POST" and request.form.get("accion") == "linea_dia":
+        # V49: cuadro de una línea para el día elegido (agregar, quitar o modificar)
+        from ..services import v42
+        f = request.form
+        dia = f_date("dia") or date.today()
+
+        def _q(v):
+            try:
+                return float(str(v).replace(",", ".")) if str(v or "").strip() else None
+            except ValueError:
+                raise BusinessError(f"Cantidad inválida: {v}")
+
+        def _d(v):
+            try:
+                return date.fromisoformat(v) if v else None
+            except ValueError:
+                raise BusinessError(f"Fecha inválida: {v}")
+        quitar = set(f.getlist("quitar"))
+        filas = [{"id": i, "cantidad": _q(q), "fecha": _d(fe), "linea": ln, "quitar": i in quitar}
+                 for i, q, fe, ln in zip(f.getlist("plan_id"), f.getlist("cantidad"), f.getlist("fecha_e"), f.getlist("linea_e"))]
+        nuevas = [{"producto": pc, "cantidad": _q(q), "linea": ln, "comentario": co}
+                  for pc, q, ln, co in zip(f.getlist("n_producto"), f.getlist("n_cantidad"), f.getlist("n_linea"),
+                                           f.getlist("n_comentario"))]
+        return act(lambda: v42.guardar_linea(g.user, dia, filas, nuevas, f.get("motivo", ""), f.get("linea_def") or None),
+                   lambda n: f"Línea {f.get('grupo', '')} del {dia:%d/%m/%Y}: {n} cambio(s) guardado(s)"
+                             + ("" if "produccion.plan_validar" in g.perms else " (los cambios quedan para validación del Jefe "
+                                                                                 "de Producción)") + ".",
+                   url_for("prod.plan", periodo="DIA", dia=dia.isoformat()) + f"#linea-{f.get('grupo', '')}")
     if request.method == "POST" and request.form.get("accion") == "preprogramar":
         per = request.form.get("periodo") or "SEMANA"
         holder = {}
@@ -269,8 +301,11 @@ def plan():
     # V18: el programa incluye lo ya planificado a futuro (no solo hasta hoy)
     from datetime import timedelta as _td
     hasta_prog = max(d["hasta"], date.today() + _td(days={"DIA": 14, "SEMANA": 42, "MES": 93}.get(d["periodo"], 42)))
+    dia_sel = f_date("dia") or date.today()  # V49: el día elegido (y su semana) siempre está en la programación
+    hasta_prog = max(hasta_prog, dia_sel + _td(days=7))
     entradas = list(db().execute(select(ProductionPlan).where(ProductionPlan.periodo.in_({d["periodo"], "DIA"}),
-                                                              ProductionPlan.fecha >= psvc._inicio(d["periodo"], d["desde"]),
+                                                              ProductionPlan.fecha >= min(psvc._inicio(d["periodo"], d["desde"]),
+                                                                                          dia_sel - _td(days=7)),
                                                               ProductionPlan.fecha <= hasta_prog)
                                  .order_by(ProductionPlan.fecha.desc(), ProductionPlan.id.desc())).scalars())
     req = psvc.requirements(d["periodo"] if d["periodo"] != "DIA" else "DIA")
@@ -282,7 +317,8 @@ def plan():
     dia_linea = f_date("dia") or date.today()  # V48: el % por línea es el del día elegido frente a su capacidad diaria
     capa_dia = psvc.capacity_vs_plan(dia_linea, dia_linea)
     from ..services.v42 import plan_por_linea
-    return render_template("prod_plan.html", capa=capa, d=d, por_linea=plan_por_linea(entradas, capa_dia, dia_linea), dia_linea=dia_linea, graf=graf, products=products, lineas=PRODUCTION_LINES, hoy=date.today(),
+    return render_template("prod_plan.html", capa=capa, d=d, por_linea=plan_por_linea(entradas, capa_dia, dia_linea), dia_linea=dia_linea,
+                           kg_de=psvc.kg_de, timedelta=_td, graf=graf, products=products, lineas=PRODUCTION_LINES, hoy=date.today(),
                            entradas=entradas, req=req, faltan=faltan, estados=estados,
                            nombre_periodo={"DIA": "diario", "SEMANA": "semanal", "MES": "mensual"}[d["periodo"]])
 

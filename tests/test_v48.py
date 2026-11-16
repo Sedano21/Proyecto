@@ -146,4 +146,4 @@ def test_porcentaje_por_linea_es_lo_programado_del_dia_frente_a_su_capacidad_dia
     assert l["kg_dia_prog"] == 20400 and l["cap_dia"] == 25500 and l["pct_dia"] == 80.0
     assert next(x for x in capa["filas"] if x["grupo"] == "IQ+CIMB")["programada"] >= 20400
     html = _cliente(app, "jefe.produccion").get(f"/produccion/plan?dia={dia.isoformat()}").get_data(as_text=True)
-    assert "Día para el % de cada línea" in html and "80 %" in html
+    assert "capacidad diaria de la línea" in html and "80 %" in html

@@ -884,3 +884,7 @@ a.kpi,.kpi-clic{padding-right:30px}
 .kpi-on{outline:2px solid var(--cp-verde);outline-offset:1px}
 .lp-dias{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 10px}.lp-dias .chip.err{border-color:var(--err);color:var(--err)}
 .meter.bad i{background:var(--err)}
+/* V49: navegación por día y cuadro por línea */
+.dia-nav .row{align-items:center;gap:8px}.dias-sem{display:flex;flex-wrap:wrap;gap:6px;margin-left:8px}.dias-sem .chip.on{background:var(--cp-verde);color:#fff;border-color:var(--cp-verde)}
+.cuadro-linea table input,.cuadro-linea table select{min-width:0}.cuadro-linea tr.nueva td{background:var(--panel-2,#fafafa)}
+.cuadro-linea td.r{white-space:nowrap}

@@ -204,7 +204,8 @@ def importar(user, periodo, path, nombre=""):
         else:
             junt[k] = dict(f, fecha=k[0])
     filas = list(junt.values())
-    res = {"creadas": 0, "actualizadas": 0, "iguales": 0, "pendientes": 0, "sin_producto": sin}
+    res = {"creadas": 0, "actualizadas": 0, "iguales": 0, "pendientes": 0, "sin_producto": sin,
+           "primer_dia": min((f["fecha"] for f in filas), default=None)}
     for f in filas:
         try:
             pl = db().execute(select(ProductionPlan).where(
@@ -223,6 +224,18 @@ def importar(user, periodo, path, nombre=""):
                 res["pendientes" if r is not None else "actualizadas"] += 1
         except BusinessError as e:
             raise BusinessError(f"Fila {f['fila']} ({f['product_code']} {f['fecha']:%d/%m/%Y}): {e}")
+    if periodo == "DIA" and filas:
+        # V49: lo que antes se subió desde Excel como plan semanal o mensual se reemplaza por el plan diario (no se suma
+        # dos veces en la vista semanal); no se toca lo registrado a mano ni lo ya liquidado
+        borrados = 0
+        for per in ("SEMANA", "MES"):
+            claves = {(prod._inicio(per, f["fecha"]), f["product_code"]) for f in filas}
+            for pl in db().execute(select(ProductionPlan).where(ProductionPlan.periodo == per,
+                                                                ProductionPlan.comentario.like("%desde Excel%"))).scalars():
+                if (pl.fecha, pl.product_code) in claves and prod.plan_status(pl)[0] != "LIQUIDADO":
+                    db().delete(pl)
+                    borrados += 1
+        res["reemplazadas"] = borrados
     if not filas:
         raise BusinessError("Ninguna fila del Excel coincide con un artículo del sistema (por código o por nombre): "
                             + "; ".join(f"fila {x['fila']} «{x['producto']}»" for x in sin[:8]) + ".")

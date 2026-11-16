@@ -841,7 +841,7 @@ def plan_status(pl, real=None):
     return "PROGRAMADO", "", real
 
 
-def update_plan(user, pl, cantidad, comentario, fecha=None):
+def update_plan(user, pl, cantidad, comentario, fecha=None, line_code=None):
     """La programación puede variar manualmente por una variable no contemplada (observaciones al demo v0.6). La
     preprogramada por el sistema la edita el Jefe de Producción (obs. demo v0.7)."""
     from .core import has_perm
@@ -859,11 +859,15 @@ def update_plan(user, pl, cantidad, comentario, fecha=None):
     nueva_fecha = _inicio(pl.periodo, fecha) if fecha else None
     if nueva_fecha == pl.fecha:
         nueva_fecha = None
+    nueva_linea = (line_code or "").strip() or None  # V49: también se cambia de línea
+    if nueva_linea == (pl.line_code or None):
+        nueva_linea = None
     if not has_perm(user, "produccion.plan_validar"):
         # ronda 23-oct-2026: el cambio del asistente queda pendiente hasta que lo valida el Jefe de Producción
         pl.cambio_pendiente = {"cantidad": cantidad, "motivo": comentario.strip(), "user": user.nombre, "user_id": user.id,
                                "ts": now().isoformat(timespec="minutes"), "antes": antes,
-                               "fecha": nueva_fecha.isoformat() if nueva_fecha else ""}
+                               "fecha": nueva_fecha.isoformat() if nueva_fecha else "",
+                               "linea": nueva_linea or ""}
         alerts.emit("PROGRAMA_CAMBIO_POR_VALIDAR", f"Validar cambio de programa: {pl.product_code} {antes:g} → {cantidad:g}",
                     f"{pl.periodo} {pl.fecha:%d/%m/%Y}. Propuesto por {user.nombre}: {comentario.strip()}", "ProductionPlan", pl.id,
                     dedup_key=f"PLAN_CAMBIO:{pl.id}:{pl.cambio_pendiente['ts']}", creado_por=user)
@@ -876,6 +880,9 @@ def update_plan(user, pl, cantidad, comentario, fecha=None):
         if nueva_fecha:
             pl.comentario = (pl.comentario + "\n" if pl.comentario else "") + f"{user.nombre}: fecha {pl.fecha:%d/%m/%Y} → {nueva_fecha:%d/%m/%Y}"
             pl.fecha = nueva_fecha
+        if nueva_linea:
+            pl.comentario = (pl.comentario + "\n" if pl.comentario else "") + f"{user.nombre}: línea {pl.line_code or '-'} → {nueva_linea}"
+            pl.line_code = nueva_linea
         pl.comentario = (pl.comentario + "\n" if pl.comentario else "") + f"{user.nombre}: {antes:g} → {cantidad:g} ({comentario.strip()})"
     audit(user, "PLAN_PRODUCCION_MODIFICADO", "ProductionPlan", pl.id, {"antes": antes, "despues": cantidad,
                                                                          "motivo": comentario.strip()})
@@ -1097,6 +1104,8 @@ def validate_plan_change(user, pl, aprobar, comentario=""):
     pl.cantidad = float(c["cantidad"])
     if c.get("fecha"):
         pl.fecha = date.fromisoformat(c["fecha"])
+    if c.get("linea"):
+        pl.line_code = c["linea"]
     pl.comentario = (pl.comentario + "\n" if pl.comentario else "") + (f"{c['user']}: {antes:g} → {pl.cantidad:g} "
                                                                        f"({c['motivo']}); validado por {user.nombre}")
     return pl
