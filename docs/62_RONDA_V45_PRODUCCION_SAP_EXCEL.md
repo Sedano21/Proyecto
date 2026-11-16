@@ -52,3 +52,4 @@ tienen otros nombres. Ahora se lee ese formato:
   el maestro de artículos de SAP del servidor (en la demostración los artículos son ficticios).
 
 **Prueba:** `test_plan_con_el_formato_de_produccion_sin_codigo` (datos ficticios con la misma forma).
+- Suite completa tras V47 (plan): **663 passed**.
