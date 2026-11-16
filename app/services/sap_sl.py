@@ -1287,7 +1287,7 @@ def sync_background(app, tipo, user, upload_dir):
                                     "usuario": u.nombre, "resumen": res})
                     return
                 # V46: las recetas pedidas con el botón se confirman solas (lo que no pasa la validación queda excluido)
-                b = sync(tipo, u, upload_dir, autoconfirmar=True if tipo == "BOM" else None)
+                b = sync(tipo, u, upload_dir, autoconfirmar=True) if tipo == "BOM" else sync(tipo, u, upload_dir)
                 db().commit()
                 if tipo == "LIQUIDACION":  # V29: con las liquidaciones se revisa también el balance de peso de las OF
                     try:

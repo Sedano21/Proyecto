@@ -25,3 +25,4 @@ Cambios:
 - Migración `0045` (columnas `observacion` y `ediciones` en `sunat_guides`).
 
 **Pruebas:** `tests/test_v46.py`.
+- Suite completa: 660 pruebas pasan en la corrida completa; la única que falló (`test_sap_segundo_plano`, por la forma de llamar a la lectura en segundo plano) se corrigió y pasa.
