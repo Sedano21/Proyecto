@@ -37,3 +37,4 @@ Caso: cerraron la OV en SAP antes de que se subiera la guía SUNAT y crearon otr
 - Completar el número de SAP de la misma OV no cuenta como cambio.
 
 **Prueba:** `test_cambiar_la_ov_de_la_guia_antes_de_enviarla`.
+- Suite completa tras V47: **662 pruebas, todas pasan**.
