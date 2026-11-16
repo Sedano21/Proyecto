@@ -77,7 +77,7 @@ def test_pantallas_del_prestamo(app, s, U, new_order):
     gs.pedir_prestamo(U("asist.distribucion"), g, "negative inventory")
     s.commit()
     html = _cliente(app, "jefe.operaciones").get("/operacion/guias-sunat").get_data(as_text=True)
-    assert "PRÉSTAMO PENDIENTE" in html and "Registrar el ingreso (préstamo)" in html
+    assert "PRÉSTAMO PENDIENTE" in html and "Registrar el ingreso con lo que falta" in html
     html = _cliente(app, "jefe.operaciones").get(f"/operacion/ingresos-mercaderia?guia={g.id}").get_data(as_text=True)
     assert "préstamo para la guía EG07-458" in html and 'value="251026VG"' in html
     assert _cliente(app, "vendedor1").get("/operacion/ingresos-mercaderia").status_code == 403

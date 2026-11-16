@@ -43,3 +43,4 @@ Además del mes, se elige **desde / hasta** (una semana o un grupo de días). La
 mismo rango.
 
 **Pruebas:** `tests/test_v44.py`.
+- Suite completa: **655 pruebas, todas pasan** (654 + la prueba de V35 ajustada al nuevo texto del botón).
