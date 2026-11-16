@@ -128,3 +128,22 @@ def test_plan_del_excel_se_ve_en_semana_y_mes(app, s, U, tmp_path):
     assert {f["producto"]: f["plan"] for f in mes["filas"]}.get("PT-902") == 40
     html = _cliente(app, "jefe.produccion").get("/produccion/plan?periodo=SEMANA").get_data(as_text=True)
     assert "PT-901" in html
+
+
+def test_porcentaje_por_linea_es_lo_programado_del_dia_frente_a_su_capacidad_diaria(app, s, U):
+    from app.models import Product, ProductionPlan
+    from app.services import production
+    from app.services.v42 import plan_por_linea
+    dia = date.today()
+    while dia.weekday() >= 5:
+        dia += timedelta(days=1)
+    gr = s.get(Product, "GR-901")
+    gr.peso_kg = None  # el granel se mide en kg aunque no tenga peso por unidad
+    s.add(ProductionPlan(periodo="DIA", fecha=dia, product_code="GR-901", cantidad=20400, line_code="CIMBRIA", comentario=""))
+    s.commit()
+    capa = production.capacity_vs_plan(dia, dia)
+    l = next(x for x in plan_por_linea(list(s.query(ProductionPlan)), capa, dia) if x["grupo"] == "IQ+CIMB")
+    assert l["kg_dia_prog"] == 20400 and l["cap_dia"] == 25500 and l["pct_dia"] == 80.0
+    assert next(x for x in capa["filas"] if x["grupo"] == "IQ+CIMB")["programada"] >= 20400
+    html = _cliente(app, "jefe.produccion").get(f"/produccion/plan?dia={dia.isoformat()}").get_data(as_text=True)
+    assert "Día para el % de cada línea" in html and "80 %" in html

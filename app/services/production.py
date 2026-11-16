@@ -1184,6 +1184,18 @@ def edit_bom_line(user, line, cantidad=None, componente=None, motivo=""):
     return line
 
 
+def kg_de(product_code, cantidad):
+    """V48: kg de una cantidad del artículo: por su peso por unidad; el granel, la MP y lo que se mide en kg ya está en kg
+    (antes el granel sin peso por unidad contaba 0 kg en la capacidad)."""
+    from .stock import product_kind
+    p = db().get(Product, product_code)
+    if p is None or not cantidad:
+        return 0.0
+    if p.peso_kg:
+        return cantidad * p.peso_kg
+    return cantidad if (p.um or "").upper().startswith("K") or product_kind(p) in ("GR", "MP") else 0.0
+
+
 def capacity_vs_plan(desde, hasta):
     """V14: por grupo de capacidad (tabla de capacidades por línea), en el periodo: capacidad real (kg/día × jornadas
     operativas), programada (solicitudes programadas y plan con línea, en kg) y ejecutada (kg de los partes de
@@ -1202,8 +1214,7 @@ def capacity_vs_plan(desde, hasta):
         plan = 0.0
         for p in db().execute(select(ProductionPlan).where(ProductionPlan.line_code.in_(lineas), ProductionPlan.fecha >= desde,
                                                            ProductionPlan.fecha <= hasta)).scalars():
-            prod = db().get(Product, p.product_code)
-            plan += (p.cantidad or 0) * ((prod.peso_kg if prod else 0) or 0)
+            plan += kg_de(p.product_code, p.cantidad)
         ejec = 0.0
         for r in db().execute(select(ProductionReport).where(ProductionReport.linea.in_(lineas), ProductionReport.fecha >= desde,
                                                              ProductionReport.fecha <= hasta,

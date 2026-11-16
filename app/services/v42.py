@@ -39,16 +39,40 @@ def check_capacidad_lineas(hoy):
     return f"{n} línea(s) bajo {umbral:g} %"
 
 
-def plan_por_linea(entradas, capa):
-    """Agrupa la programación por línea (grupo de capacidad) para verla línea por línea."""
-    grupo_de = {l: g["grupo"] for g in (param("capacidad_lineas", []) or []) for l in g.get("lineas", [])}
+def plan_por_linea(entradas, capa, dia=None):
+    """Agrupa la programación por línea (grupo de capacidad). V48: el % de cada línea es lo **programado del día frente a
+    su capacidad diaria** (kg/día × jornada del día), para ver qué líneas necesitan atención; además, el % de cada día
+    programado."""
+    from datetime import date as _date
+    from .production import day_factor, kg_de
+    dia = dia or _date.today()
+    grupos = param("capacidad_lineas", []) or []
+    grupo_de = {l: g["grupo"] for g in grupos for l in g.get("lineas", [])}
+    kg_dia = {g["grupo"]: float(g.get("kg_dia") or 0) for g in grupos}
     por = defaultdict(list)
     for e in entradas:
         por[grupo_de.get(e.line_code, e.line_code or "Sin línea")].append(e)
+
+    def dias_de(grupo, es):
+        kg = defaultdict(float)
+        for e in es:
+            kg[e.fecha] += kg_de(e.product_code, e.cantidad)
+        out = []
+        for f in sorted(kg):
+            cap = kg_dia.get(grupo, 0) * day_factor(f)
+            out.append({"fecha": f, "kg": round(kg[f], 1), "capacidad": round(cap, 1),
+                        "pct": round(100 * kg[f] / cap, 1) if cap else None})
+        return out
     out = []
     for f in capa["filas"]:
-        out.append(dict(f, entradas=por.pop(f["grupo"], [])))
+        es = por.pop(f["grupo"], [])
+        dias = dias_de(f["grupo"], es)
+        hoy_ = next((x for x in dias if x["fecha"] == dia), None)
+        cap_dia = kg_dia.get(f["grupo"], 0) * day_factor(dia)
+        out.append(dict(f, entradas=es, dias=dias, dia=dia, kg_dia_prog=hoy_["kg"] if hoy_ else 0.0, cap_dia=round(cap_dia, 1),
+                        pct_dia=(round(100 * (hoy_["kg"] if hoy_ else 0) / cap_dia, 1) if cap_dia else None)))
     for g, es in sorted(por.items()):
         out.append({"grupo": g, "proceso": "", "capacidad": 0, "programada": 0, "ejecutada": 0, "pct_programada": None,
-                    "pct_ejecutada": None, "cumplimiento": None, "entradas": es})
+                    "pct_ejecutada": None, "cumplimiento": None, "entradas": es, "dias": dias_de(g, es), "dia": dia,
+                    "kg_dia_prog": 0, "cap_dia": 0, "pct_dia": None})
     return out

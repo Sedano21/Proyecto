@@ -882,3 +882,5 @@ a.kpi::after,.kpi-clic::after{content:"›";position:absolute;right:12px;top:10p
 
 a.kpi,.kpi-clic{padding-right:30px}
 .kpi-on{outline:2px solid var(--cp-verde);outline-offset:1px}
+.lp-dias{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 10px}.lp-dias .chip.err{border-color:var(--err);color:var(--err)}
+.meter.bad i{background:var(--err)}

@@ -26,3 +26,16 @@ El plan se guardaba con la periodicidad de la pestaña abierta al subir. Ahora e
 mensual propio para ese producto y periodo).
 
 **Pruebas:** `tests/test_v48.py`.
+
+## 4. % de cada línea = programado del día ÷ capacidad diaria
+La tarjeta de cada línea mostraba «Programado 2 %»: era lo programado en todo el periodo (30 días) frente a la
+capacidad de esos 30 días, y además el granel sin peso por unidad contaba 0 kg (por eso «programada 15 000 kg» con
+135 000 kg en el plan). Ahora:
+- El % es **lo programado ese día ÷ la capacidad diaria de la línea** (kg/día de la tabla de capacidades × jornada:
+  sábado media, domingo/feriado/día no laborable 0). Se elige el día (por defecto hoy).
+- Debajo, el % de **cada día** programado de la línea (chips por día).
+- En rojo si está bajo el 80 % o sobre el 100 % (sobrecargada).
+- El granel, la MP y lo que se mide en kg cuentan en kg aunque no tengan peso por unidad (también en la alerta de
+  capacidad y en el informe de capacidad).
+
+**Prueba:** `test_porcentaje_por_linea_es_lo_programado_del_dia_frente_a_su_capacidad_diaria`.

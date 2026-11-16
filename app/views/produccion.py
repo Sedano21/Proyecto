@@ -279,8 +279,10 @@ def plan():
     faltan = [(r, m) for r, m in faltan if m]
     estados = {e.id: psvc.plan_status(e) for e in entradas}
     capa = psvc.capacity_vs_plan(d["desde"], d["hasta"])  # mismo periodo que el resto de la pantalla
+    dia_linea = f_date("dia") or date.today()  # V48: el % por línea es el del día elegido frente a su capacidad diaria
+    capa_dia = psvc.capacity_vs_plan(dia_linea, dia_linea)
     from ..services.v42 import plan_por_linea
-    return render_template("prod_plan.html", capa=capa, d=d, por_linea=plan_por_linea(entradas, capa), graf=graf, products=products, lineas=PRODUCTION_LINES, hoy=date.today(),
+    return render_template("prod_plan.html", capa=capa, d=d, por_linea=plan_por_linea(entradas, capa_dia, dia_linea), dia_linea=dia_linea, graf=graf, products=products, lineas=PRODUCTION_LINES, hoy=date.today(),
                            entradas=entradas, req=req, faltan=faltan, estados=estados,
                            nombre_periodo={"DIA": "diario", "SEMANA": "semanal", "MES": "mensual"}[d["periodo"]])
 
