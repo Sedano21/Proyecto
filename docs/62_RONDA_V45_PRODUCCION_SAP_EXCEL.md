@@ -60,3 +60,4 @@ En «Planeamiento → Actualizar con Excel» se puede subir el libro completo (2
 cargan (ver la revisión entregada al usuario: partes por línea, paradas, colaboradores, asistencia, etc.).
 
 **Prueba:** `test_plan_desde_el_excel_general_con_varias_pestanas`.
+- Suite completa V50: **670 passed**.
