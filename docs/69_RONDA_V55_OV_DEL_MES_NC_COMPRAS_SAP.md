@@ -50,4 +50,4 @@ numeración, grupo de proveedor u otro.
 No se probó contra la base real de SAP. Los valores asumen que LineTotal y TaxTotal de la línea vienen en moneda
 local (soles), como DocTotal en la facturación.
 
-**Pruebas:** `tests/test_v55.py`.
+**Pruebas:** `tests/test_v55.py`. Suite completa: 682 pruebas pasan.
