@@ -55,4 +55,4 @@ paginan.
 No se probó contra la base real de SAP. En particular, conviene confirmar en la primera factura que SAP acepte la
 forma de pago y el vencimiento enviados.
 
-**Pruebas:** `tests/test_v57.py` (y `tests/test_v56.py` actualizado: la forma de pago es obligatoria).
+**Pruebas:** `tests/test_v57.py` (y `tests/test_v56.py` actualizado: la forma de pago es obligatoria). Suite completa: 693 pruebas pasan.
