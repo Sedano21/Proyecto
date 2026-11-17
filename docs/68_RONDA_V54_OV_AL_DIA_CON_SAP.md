@@ -55,4 +55,4 @@ servicio. Muestra las guías de cada OV y enlaza las que están en el módulo.
 No se probó contra la base real de SAP. Cuando el vigilante lea el historial, las OV con guía en SAP cambian de estado
 solas; conviene revisar algunas en Estado de OV.
 
-**Pruebas:** `tests/test_v54.py`.
+**Pruebas:** `tests/test_v54.py`. Suite completa: 680 pruebas pasan.

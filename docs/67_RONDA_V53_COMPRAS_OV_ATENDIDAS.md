@@ -15,4 +15,4 @@ pendiente de Logística) se reduce o se **cancela sola** (queda en su motivo y e
 Se ejecuta cada vez que el vigilante lee el historial de SAP (cuando cambian OV o guías, cada minuto) y al abrir el
 consolidado de compras, para que no quede nada pendiente que ya se resolvió.
 
-**Pruebas:** `tests/test_v53.py`.
+**Pruebas:** `tests/test_v53.py`. Suite completa (con V53 y V54): 680 pruebas pasan.
