@@ -241,6 +241,13 @@ def sync_historial(user, sl=None, completo=False):
     return res
 
 
+def necesita_relectura():
+    """V55: la última lectura del historial es de una versión anterior (le faltan datos nuevos, p. ej. el valor de las
+    líneas de OV): el vigilante la relee completa sin esperar a que cambie algo en SAP."""
+    ult = param("sap_ordenes_ultimo", {}) or {}
+    return bool(ult.get("ts")) and ult.get("version") != HISTORIAL_VERSION
+
+
 def tiene_historial():
     return bool((param("sap_ordenes_ultimo", {}) or {}).get("historial")) and \
         db().execute(select(SapOrderLine.id).limit(1)).first() is not None

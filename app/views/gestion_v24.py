@@ -292,3 +292,35 @@ def compras_sap():
     desde, hasta = f_date("desde") or hoy.replace(day=1), f_date("hasta") or hoy
     return render_template("v55_compras_sap.html", d=resumen(desde, hasta), desde=desde, hasta=hasta,
                            ver=request.args.get("ver", "ordenes"))
+
+
+@bp.route("/facturacion-sap")
+@perm_required("tablero.empresa", "finanzas.ver", "facturas.cargar")
+def facturacion_sap():
+    """V55: detalle de la facturación del mes (SAP): facturas − notas de crédito = neto, por documento y por cliente."""
+    from ..services.facturacion_sap import detalle
+    from .common import paginate
+    hoy = date.today()
+    desde, hasta = f_date("desde") or hoy.replace(day=1), f_date("hasta") or hoy
+    ver = request.args.get("ver", "clientes")
+    tipo = {"facturas": "FACTURA", "notas": "NOTA_CREDITO"}.get(ver, "")
+    d = detalle(desde, hasta, tipo)
+    return render_template("v55_facturacion_sap.html", d=d, desde=desde, hasta=hasta, ver=ver,
+                           lista=paginate(d["docs"], 50) if ver in ("facturas", "notas", "todos") else None)
+
+
+@bp.route("/ov-mes-sap")
+@perm_required("tablero.empresa", "ov.ver")
+def ov_mes_sap():
+    """V55: OV de SAP con despacho en el periodo (lo que suma la tarjeta «OV con despacho en el mes»)."""
+    from ..services.comercial_v23 import fin_de_mes
+    from ..services.facturacion_sap import ov_del_periodo, ov_detalle
+    from .common import paginate
+    hoy = date.today()
+    desde, hasta = f_date("desde") or hoy.replace(day=1), f_date("hasta") or fin_de_mes(hoy.replace(day=1))
+    filas = ov_detalle(desde, hasta)
+    q = (request.args.get("q") or "").strip().upper()
+    if q:
+        filas = [f for f in filas if q in f["docnum"] or q in (f["cliente"] or "").upper()]
+    return render_template("v55_ov_mes_sap.html", r=ov_del_periodo(desde, hasta), filas=paginate(filas, 50), desde=desde,
+                           hasta=hasta, q=q)

@@ -133,7 +133,8 @@ def ciclo(user, upload_dir, forzar=False, sl=None):
         cambio, nuevas = cambios(sl, previas)
         if forzar:
             cambio = {k: True for k in cambio}
-        if cambio["OV"] or cambio["GUIAS"] or cambio["INVENTARIO"] or not sap_v31.tiene_historial():
+        if (cambio["OV"] or cambio["GUIAS"] or cambio["INVENTARIO"] or not sap_v31.tiene_historial()
+                or sap_v31.necesita_relectura()):
             paso("historial", lambda: sap_v31.sync_historial(user, sl=sl))
         if cambio["FACTURAS"]:
             paso("reservas", lambda: facturas_reserva.sync(user, sl=sl))
@@ -156,13 +157,19 @@ def ciclo(user, upload_dir, forzar=False, sl=None):
             paso("balance_of", lambda: balance_of.sync(user, sl=sl))
             if "LIQUIDACION" in tipos:
                 paso("LIQUIDACION", lambda: carga("LIQUIDACION"))
+        from . import compras_sap  # V55: órdenes de compra de SAP (valor y lo recibido): cada hora y apenas falten
         ult_hora = _p("sap_vigia_horario", "")
+        intento = _p("sap_compras_intento", "")
+        falta = not _p("sap_compras_ultimo", {}) and (
+            not intento or (datetime.now() - datetime.fromisoformat(intento)).total_seconds() > 600)
+        if forzar or not ult_hora or falta or (datetime.now() - datetime.fromisoformat(ult_hora)).total_seconds() > 3600:
+            _set("sap_compras_intento", datetime.now().isoformat(timespec="seconds"),
+                 "Último intento de leer las órdenes de compra de SAP (interno)")
+            paso("compras_sap", lambda: compras_sap.sync_seguro(user, sl=sl))
         if forzar or not ult_hora or (datetime.now() - datetime.fromisoformat(ult_hora)).total_seconds() > 3600:
             for t in ("CLIENTES", "PRODUCTOS", "STOCK", "BOM"):  # V45: también las listas de materiales
                 if t in tipos:
                     paso(t, lambda t=t: carga(t))
-            from . import compras_sap  # V55: órdenes de compra de SAP (valor y lo recibido)
-            paso("compras_sap", lambda: compras_sap.sync(user, sl=sl))
             _set("sap_vigia_horario", datetime.now().isoformat(timespec="seconds"), "Última revisión horaria (interno)")
         paso("envios", lambda: (sap_sl.push_pending_orders(sl=sl), sap_sl.push_pending_guides(sl=sl)) and "ok")
         _set("sap_vigia_firmas", nuevas, "Firmas de los documentos de SAP de ayer y hoy (interno)")

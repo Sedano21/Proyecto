@@ -82,6 +82,18 @@ def sync(user, sl=None):
     return res
 
 
+def sync_seguro(user, sl=None):
+    """Para el vigilante: un error inesperado al leer las compras no debe frenar el resto de la revisión."""
+    from .core import BusinessError
+    from .sap_sl import SapConnectionError
+    try:
+        return sync(user, sl=sl)
+    except (BusinessError, SapConnectionError):
+        raise
+    except Exception as e:  # noqa: BLE001
+        raise BusinessError(f"No se pudieron leer las órdenes de compra de SAP: {str(e)[:200]}") from e
+
+
 def resumen(desde, hasta):
     """Órdenes de compra de SAP emitidas en el periodo (sin las anuladas): valor total (con y sin IGV), recibido y por
     recibir (proporcional a la cantidad), por moneda del documento y por proveedor. None si nunca se leyó SAP."""

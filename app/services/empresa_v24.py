@@ -27,6 +27,9 @@ _MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agost
           "noviembre", "diciembre"]
 
 
+_PEND_OV = " · el valor de las OV de SAP con despacho en el mes se muestra aquí apenas se relea el historial de SAP"
+
+
 def _url(endpoint, por_defecto):
     try:
         from flask import url_for
@@ -75,14 +78,15 @@ def tablero(hoy=None, ver_costos=False, canal=""):
         niv = "err" if gen["atrasada"] else "ok"
         cards.append(_card("Comercial", "OV ingresadas del mes", f"S/ {v_mes:,.0f}",
                            f"{gen['avance_soles']} % de la meta (esperado {metas['esperado']} % a la fecha)" +
-                           (f"; {var_ant:+.0f} % vs el mismo corte del mes anterior" if var_ant is not None else ""), niv))
+                           (f"; {var_ant:+.0f} % vs el mismo corte del mes anterior" if var_ant is not None else "")
+                           + _PEND_OV, niv, _url("com.orders", "/ov/")))
         if gen["atrasada"]:
             atencion.append(("ALTA", "Comercial", f"La venta va {gen['avance_soles']} % de la meta y a la fecha debería ir "
                                                   f"{metas['esperado']} %: faltan S/ {gen['falta_soles'] or 0:,.0f}."))
     else:
         cards.append(_card("Comercial", "OV ingresadas del mes", f"S/ {v_mes:,.0f}",
-                           (f"{var_ant:+.0f} % vs el mismo corte del mes anterior" if var_ant is not None else "sin meta cargada"),
-                           "warn" if var_ant is not None and var_ant < -10 else ""))
+                           (f"{var_ant:+.0f} % vs el mismo corte del mes anterior" if var_ant is not None else "sin meta cargada")
+                           + _PEND_OV, "warn" if var_ant is not None and var_ant < -10 else "", _url("com.orders", "/ov/")))
     # V52/V55: la facturación del mes es la de SAP, solo el neto (facturas − notas de crédito); las notas de crédito van
     # en su propia tarjeta
     from .comercial_v23 import fin_de_mes as _fm
@@ -97,7 +101,7 @@ def tablero(hoy=None, ver_costos=False, canal=""):
         cards.insert(0, _card("Comercial", f"OV con despacho en {_MESES[ini.month - 1]} (SAP)", f"S/ {ovm['total']:,.0f}",
                               f"{ovm['n']} OV · despachado S/ {ovm['despachado']:,.0f} · por despachar S/ {ovm['por_despachar']:,.0f}"
                               f" · sin IGV S/ {ovm['sin_igv']:,.0f} · ingresadas en el mes: {ovm['n_ingresadas']} OV por "
-                              f"S/ {ovm['ingresadas']:,.0f}{meta}", ""))
+                              f"S/ {ovm['ingresadas']:,.0f}{meta}", "", _url("v24.ov_mes_sap", "/gestion/ov-mes-sap")))
     if fx is not None:
         var_f = _pct(fx["neto"] - fa["neto"], fa["neto"]) if fa and fa["neto"] else None
         extra = ""
@@ -105,16 +109,19 @@ def tablero(hoy=None, ver_costos=False, canal=""):
             extra = (" · incluye lo facturado en el mes de OV de meses anteriores y documentos sin OV (servicios, "
                      "ajustes)")
         cards.insert(0, _card("Comercial", "Facturación del mes (SAP)", f"S/ {fx['neto']:,.0f}",
-                              f"neto de notas de crédito · sin IGV S/ {fx['neto_sin_igv']:,.0f}"
+                              f"facturado S/ {fx['facturas']:,.0f} − notas de crédito S/ {fx['notas_credito']:,.0f}"
+                              f" = S/ {fx['neto']:,.0f} · sin IGV S/ {fx['neto_sin_igv']:,.0f}"
                               + (f" · {var_f:+.0f} % vs el mismo corte del mes anterior" if var_f is not None else "")
-                              + (f" · hasta el {fx['ultima']:%d/%m}" if fx.get("ultima") else "") + extra, ""))
+                              + (f" · hasta el {fx['ultima']:%d/%m}" if fx.get("ultima") else "") + extra, "",
+                              _url("v24.facturacion_sap", "/gestion/facturacion-sap")))
         var_nc = _pct(fx["notas_credito"] - fa["notas_credito"], fa["notas_credito"]) if fa and fa["notas_credito"] else None
         pct_nc = _pct(fx["notas_credito"], fx["facturas"])
         cards.insert(1, _card("Comercial", "Notas de crédito del mes (SAP)", f"S/ {fx['notas_credito']:,.0f}",
                               f"{fx['n_notas']} nota(s) · sin IGV S/ {fx['notas_sin_igv']:,.0f}"
                               + (f" · {pct_nc:.1f} % de lo facturado" if pct_nc is not None else "")
                               + (f" · {var_nc:+.0f} % vs el mismo corte del mes anterior" if var_nc is not None else ""),
-                              "warn" if pct_nc is not None and pct_nc > 10 else ""))
+                              "warn" if pct_nc is not None and pct_nc > 10 else "",
+                              _url("v24.facturacion_sap", "/gestion/facturacion-sap") + "?ver=notas"))
     if canal:
         from .comercial_v23 import base_mes, fin_de_mes, nivel
         n = nivel(del_canal(base_mes(ini, fin_de_mes(ini))), hoy=hoy)
@@ -127,7 +134,8 @@ def tablero(hoy=None, ver_costos=False, canal=""):
     otif = n["otif"]
     cards.append(_card("Logística", "OTIF del mes", f"{otif} %" if otif is not None else "—",
                        f"{n['conteos'][2]} de {n['n']} OV a tiempo y completas; {n['en_plazo']} aún en plazo",
-                       "" if otif is None else ("ok" if otif >= 95 else "warn" if otif >= 85 else "err")))
+                       "" if otif is None else ("ok" if otif >= 95 else "warn" if otif >= 85 else "err"),
+                       _url("seg.service", "/seguimiento/servicio")))
     vencidas_fuera = [f for f in n["fallas"] if f["fecha"] and f["fecha"] < hoy and not f["salida"]]
     if vencidas_fuera:
         atencion.append(("ALTA", "Logística", f"{len(vencidas_fuera)} OV con fecha vencida que aún no salen "
@@ -135,7 +143,8 @@ def tablero(hoy=None, ver_costos=False, canal=""):
     cb = collection_board(hoy)
     cards.append(_card("Finanzas", "Cobranza vencida", f"S/ {cb['total_vencido']:,.0f}",
                        f"de S/ {cb['total_abierto']:,.0f} por cobrar; S/ {cb['total_por_vencer']:,.0f} vence pronto",
-                       "err" if cb["total_vencido"] > 0.2 * (cb["total_abierto"] or 1) else ("warn" if cb["total_vencido"] else "ok")))
+                       "err" if cb["total_vencido"] > 0.2 * (cb["total_abierto"] or 1) else ("warn" if cb["total_vencido"] else "ok"),
+                       _url("fin.board", "/finanzas/")))
     if cb["por_cliente"]:
         top = [f"{c.nombre} (S/ {v['vencido']:,.0f})" for c, v in cb["por_cliente"][:3] if v["vencido"]]
         if top:
@@ -148,7 +157,8 @@ def tablero(hoy=None, ver_costos=False, canal=""):
         c_val = cu["cumplimiento"]
         cards.append(_card("Operaciones", "Cumplimiento de la demanda", f"{c_val} %" if c_val is not None else "—",
                            f"despachado {cu['despachado_kg']:,.0f} kg de {cu['proyectado_a_hoy_kg']:,.0f} kg proyectados a hoy",
-                           "" if c_val is None else ("ok" if c_val >= 90 else "warn" if c_val >= 75 else "err")))
+                           "" if c_val is None else ("ok" if c_val >= 90 else "warn" if c_val >= 75 else "err"),
+                           _url("v23.demand", "/analisis/demanda")))
         if c_val is not None and c_val < 75:
             atencion.append(("ALTA", "Operaciones", f"Se despachó {c_val} % de lo proyectado a la fecha: revisar con Comercial "
                                                     "si la proyección sigue vigente y con Producción la capacidad."))
@@ -164,7 +174,7 @@ def tablero(hoy=None, ver_costos=False, canal=""):
     r_prom = round(sum(rend) / len(rend), 1) if rend else None
     cards.append(_card("Producción", "Producción del mes", f"{kg_p:,.0f} kg",
                        f"{len(partes)} partes; rendimiento {r_prom if r_prom is not None else '—'} %; {par:,} min de parada",
-                       "" if r_prom is None else ("ok" if r_prom >= 95 else "warn")))
+                       "" if r_prom is None else ("ok" if r_prom >= 95 else "warn"), _url("prod.reports", "/produccion/partes")))
     from .indicators import production_summary
     try:
         for nivel, texto in production_summary(ini, hoy)["alertas"][:2]:
@@ -187,14 +197,17 @@ def tablero(hoy=None, ver_costos=False, canal=""):
                            "warn" if atrasadas else "", _url("v24.compras_sap", "/gestion/compras-sap")))
     else:
         cards.append(_card("Compras", "Compras nacionales abiertas", len(abiertas),
-                           f"{len(atrasadas)} con fecha de necesidad vencida", "warn" if atrasadas else ""))
+                           f"{len(atrasadas)} con fecha de necesidad vencida · las órdenes de compra de SAP se muestran "
+                           "aquí apenas el vigilante las lea", "warn" if atrasadas else "",
+                           _url("v24.purchases", "/gestion/compras-nacionales")))
     if atrasadas:
         atencion.append(("MEDIA", "Compras", f"{len(atrasadas)} compra(s) nacional(es) pasaron su fecha de necesidad."))
     from .importaciones_v24 import board as imp_board
     ib = imp_board(hoy)
     cards.append(_card("Importaciones", "Contenedores por retirar", ib["tot"]["por_retirar"],
                        f"{ib['tot']['en_riesgo']} en riesgo de sobreestadía; gastos extra USD {ib['tot']['gastos_usd']:,.0f}",
-                       "err" if ib["tot"]["sobreestadia"] else ("warn" if ib["tot"]["en_riesgo"] else "")))
+                       "err" if ib["tot"]["sobreestadia"] else ("warn" if ib["tot"]["en_riesgo"] else ""),
+                       _url("v24.imports", "/gestion/importaciones")))
     if ib["tot"]["sobreestadia"]:
         atencion.append(("ALTA", "Importaciones", f"{ib['tot']['sobreestadia']} importación(es) con días libres vencidos: "
                                                   f"riesgo USD {ib['tot']['riesgo_usd']:,.0f}."))
@@ -203,7 +216,7 @@ def tablero(hoy=None, ver_costos=False, canal=""):
         ca = analisis(hoy=hoy)
         cards.append(_card("Costos", "Reponer vs costo registrado",
                            f"S/ {abs(ca['neto']):,.0f} {'en contra' if ca['neto'] > 0 else 'a favor'}",
-                           ca["resumen"][:160], "err" if ca["neto"] > 0 else "ok"))
+                           ca["resumen"][:160], "err" if ca["neto"] > 0 else "ok", _url("v24.costs", "/gestion/costos")))
         if ca["neto"] > 0:
             atencion.append(("MEDIA", "Costos", ca["resumen"]))
     orden = {"ALTA": 0, "MEDIA": 1, "INFO": 2}
@@ -222,7 +235,7 @@ def tablero(hoy=None, ver_costos=False, canal=""):
                            f"{rot['kg']:,.0f} kg sin salida en {rot['dias']} días" +
                            (f"; S/ {rot['valor_costo']:,.0f} al costo" if ver_costos and rot["valor_costo"] else "") +
                            (f"; venta S/ {rot['valor_min']:,.0f} a S/ {rot['valor_max']:,.0f}" if rot["valor_min"] else ""),
-                           "warn", url="/suministro/rotacion"))
+                           "warn", url=_url("sup.rotation", "/suministro/rotacion")))
     return {"hoy": hoy, "cards": cards, "atencion": atencion, "graficos": _series(hoy, cb), "meta_mes": meta_mes, "rot": rot}
 
 

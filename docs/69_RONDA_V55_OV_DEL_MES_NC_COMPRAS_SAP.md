@@ -41,6 +41,40 @@ La facturación sí venía de SAP. Por eso no eran comparables.
     desde el día anterior a la última lectura, que incluye recepciones y cierres.
   - Si nunca se leyeron, se sigue viendo «Compras nacionales abiertas» del módulo.
 
+## Ajustes del mismo día
+Observación: «la facturación del mes es el total facturado menos las notas de crédito; al hacer clic debe verse el
+detalle».
+
+- **La tarjeta muestra la cuenta completa:** «facturado S/ X − notas de crédito S/ Y = S/ Z», más el valor sin IGV y la
+  comparación con el mes anterior.
+- **Facturación (SAP)** (`/gestion/facturacion-sap`):
+  - total facturado, notas de crédito y facturación del periodo;
+  - vistas por cliente (facturado, notas y neto), facturas, notas de crédito y todos los documentos;
+  - filtro de fechas.
+
+  La tarjeta de notas de crédito abre esta misma pantalla en la vista de notas.
+- **OV con despacho en el periodo (SAP)** (`/gestion/ov-mes-sap`): una fila por OV con valor, despachado y saldo, con
+  buscador y fechas.
+- **Toda tarjeta abre su detalle con un clic:**
+
+  | Tarjeta | Abre |
+  |---|---|
+  | OV | Órdenes de venta, o la pantalla nueva cuando hay valor de SAP |
+  | OTIF | Nivel de servicio |
+  | Cobranza | Finanzas |
+  | Demanda | Análisis de la demanda |
+  | Producción | Partes |
+  | Compras | Detalle de SAP, o el consolidado |
+  | Importaciones | Seguimiento de importaciones |
+  | Costos | Costos y reposición |
+  | Stock sin rotación | Rotación |
+
+- **El vigilante relee el historial completo sin esperar a que cambie algo en SAP** cuando la última lectura es de una
+  versión anterior. Así trae ya el valor de las líneas de OV.
+- **Las órdenes de compra de SAP se leen en cuanto falten**, reintentando cada 10 minutos si falla. Un error al
+  leerlas no frena el resto de la revisión.
+- Mientras tanto, las tarjetas anteriores indican que el dato de SAP aparecerá apenas se lea.
+
 ## Pendiente de definir
 SAP no separa por sí solo las compras **nacionales** de las **importaciones**. La tarjeta muestra todas las órdenes
 de compra, con el monto por moneda del documento. Para separarlas hace falta el criterio de la empresa: serie de

@@ -48,5 +48,17 @@
       k.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); abrir(k); } });
     });
   }
-  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", preparar); else preparar();
+  // V55: las tarjetas de «Cómo va la empresa» con detalle también se abren con un clic (o Enter)
+  function prepararTarjetas() {
+    document.querySelectorAll("section.ec[data-href]").forEach(function (k) {
+      if (k.dataset.listo) return;
+      k.dataset.listo = "1";
+      k.classList.add("kpi-clic");
+      k.title = "Ver el detalle";
+      k.addEventListener("click", function (e) { if (!e.target.closest("a")) location.href = k.dataset.href; });
+      k.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); location.href = k.dataset.href; } });
+    });
+  }
+  function todo() { preparar(); prepararTarjetas(); }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", todo); else todo();
 })();

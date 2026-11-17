@@ -1,0 +1,14 @@
+{% extends "base.html" %}{% from "_m.html" import b, empty, paginacion %}
+{% block content %}<div class="page-head"><div><h1>OV con despacho en el periodo (SAP)</h1>
+<p class="sub">Órdenes de venta y de servicio de SAP con fecha de entrega en el periodo, abiertas y cerradas, sin las anuladas. Valor en soles con IGV; lo despachado es proporcional a lo entregado de cada línea.</p></div></div>
+<form class="row card" method="get"><div class="grow"><label>OV o cliente</label><input name="q" type="search" value="{{ q }}" placeholder="Buscar…"></div>
+<div><label>Entrega desde</label><input type="date" name="desde" value="{{ desde.isoformat() }}"></div><div><label>hasta</label><input type="date" name="hasta" value="{{ hasta.isoformat() }}"></div><div><button class="sec">Ver</button></div></form>
+{% if r is none %}{{ empty('Las OV de SAP aún no traen su valor: se completa con la próxima lectura del historial de SAP.', 'cart') }}{% else %}
+<div class="kpis"><div class="kpi"><span>Valor de las OV</span><b>S/ {{ '{:,.0f}'.format(r.total) }}</b></div>
+<div class="kpi ok"><span>Despachado</span><b>S/ {{ '{:,.0f}'.format(r.despachado) }}</b></div>
+<div class="kpi warn"><span>Por despachar</span><b>S/ {{ '{:,.0f}'.format(r.por_despachar) }}</b></div>
+<div class="kpi"><span>OV</span><b>{{ r.n }}</b></div></div>
+<p class="small muted">Sin IGV S/ {{ '{:,.0f}'.format(r.sin_igv) }} · ingresadas (emitidas) en el periodo: {{ r.n_ingresadas }} OV por S/ {{ '{:,.0f}'.format(r.ingresadas) }}.</p>
+<div data-lista id="lista-ov-mes">{% if filas.total %}<div class="tw"><table class="small"><tr><th>OV</th><th>Cliente</th><th>Emisión</th><th>Entrega</th><th>Estado</th><th class="r">Valor S/</th><th class="r">Despachado S/</th><th class="r">Saldo S/</th></tr>
+{% for o in filas %}<tr><td>{{ o.docnum }}{% if o.clase == 'SERVICIO' %} <span class="muted">servicio</span>{% endif %}</td><td>{{ o.cliente }}</td><td>{{ o.fecha|d }}</td><td>{{ o.entrega|d }}</td><td>{{ b(o.estado) }}</td><td class="r">{{ '{:,.2f}'.format(o.total) }}</td><td class="r">{{ '{:,.2f}'.format(o.despachado) }}</td><td class="r">{{ '{:,.2f}'.format(o.saldo) }}</td></tr>{% endfor %}</table></div>
+{{ paginacion(filas, 'OV') }}{% else %}{{ empty('Sin OV con despacho en el periodo.', 'cart') }}{% endif %}</div>{% endif %}{% endblock %}

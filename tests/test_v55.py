@@ -48,9 +48,19 @@ def test_ov_del_mes_y_notas_de_credito_aparte(app, s, U):
     tit = [c["titulo"] for c in cards]
     assert "OV ingresadas del mes" not in tit and any(t.startswith("OV con despacho en") for t in tit)
     f = next(c for c in cards if c["titulo"] == "Facturación del mes (SAP)")
-    assert f["valor"] == "S/ 4,602" and "neto de notas de crédito" in f["frase"] and "118" not in f["frase"]
+    assert f["valor"] == "S/ 4,602" and "facturado S/ 4,720 − notas de crédito S/ 118 = S/ 4,602" in f["frase"]
     nc = next(c for c in cards if c["titulo"] == "Notas de crédito del mes (SAP)")
     assert nc["valor"] == "S/ 118"
+    assert all(c["url"] for c in cards), [c["titulo"] for c in cards if not c["url"]]  # toda tarjeta abre su detalle
+    c = _cliente(app, "jefe.operaciones")
+    html = c.get("/gestion/facturacion-sap").get_data(as_text=True)
+    assert "4,720" in html and "118" in html and "4,602" in html and "CLIENTE QUE NO ESTA EN EL MODULO" in html
+    html = c.get("/gestion/facturacion-sap?ver=notas").get_data(as_text=True)
+    assert "FC01" in html and "F001-1" not in html
+    html = c.get("/gestion/ov-mes-sap").get_data(as_text=True)
+    assert "800001" in html and "800002" not in html and "1,180" in html
+    html = c.get("/gestion/empresa").get_data(as_text=True)
+    assert 'data-href="/gestion/facturacion-sap"' in html
 
 
 def test_compras_desde_ordenes_de_compra_de_sap(app, s, U):
@@ -70,3 +80,14 @@ def test_compras_desde_ordenes_de_compra_de_sap(app, s, U):
     assert c["valor"] == "S/ 1,180" and c["url"]
     html = _cliente(app, "jefe.operaciones").get("/gestion/compras-sap?ver=productos").get_data(as_text=True)
     assert "Insumo prueba" in html and "1,180" in html
+
+
+def test_vigilante_relee_el_historial_viejo(app, s, U):
+    from app.services import sap_v31
+    from app.services.core import set_param
+    set_param("sap_ordenes_ultimo", {"ts": "2026-11-17T08:00", "historial": True, "version": 3})
+    s.commit()
+    assert sap_v31.necesita_relectura()
+    set_param("sap_ordenes_ultimo", {"ts": "2026-11-17T08:00", "historial": True, "version": sap_v31.HISTORIAL_VERSION})
+    s.commit()
+    assert not sap_v31.necesita_relectura()

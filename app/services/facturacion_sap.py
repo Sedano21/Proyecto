@@ -118,3 +118,44 @@ def ov_del_periodo(desde, hasta, canal=""):
             "despachado": round(desp, 2), "por_despachar": round(total - desp, 2), "n": len({x.docnum for x in lineas}),
             "ingresadas": round(sum(con(x) for x in ingresadas), 2), "n_ingresadas": len({x.docnum for x in ingresadas}),
             "desde": desde, "hasta": hasta}
+
+
+def detalle(desde, hasta, tipo=""):
+    """V55: documentos de SAP del periodo (facturas y notas de crédito), con el resumen y el neto por cliente."""
+    q = select(SapBilling).where(SapBilling.fecha >= desde, SapBilling.fecha <= hasta)
+    docs = list(db().execute(q.order_by(SapBilling.fecha.desc(), SapBilling.numero)).scalars())
+    por_cli = {}
+    for d in docs:
+        c = por_cli.setdefault(d.cliente or d.cardcode, {"cliente": d.cliente or d.cardcode, "facturas": 0.0, "notas": 0.0,
+                                                          "n_facturas": 0, "n_notas": 0})
+        if d.tipo == "FACTURA":
+            c["facturas"] += d.total
+            c["n_facturas"] += 1
+        else:
+            c["notas"] += d.total
+            c["n_notas"] += 1
+    for c in por_cli.values():
+        c["neto"] = round(c["facturas"] - c["notas"], 2)
+    lista = [d for d in docs if not tipo or d.tipo == tipo]
+    return {"resumen": resumen(desde, hasta), "docs": lista,
+            "clientes": sorted(por_cli.values(), key=lambda c: -c["neto"])}
+
+
+def ov_detalle(desde, hasta):
+    """V55: OV de SAP con despacho en el periodo, una fila por OV: cliente, fecha, estado, valor, despachado y saldo."""
+    from ..models import SapOrderLine
+    lineas = list(db().execute(select(SapOrderLine).where(SapOrderLine.fecha_entrega >= desde,
+                                                          SapOrderLine.fecha_entrega <= hasta,
+                                                          SapOrderLine.estado != "CANCELADA")).scalars())
+    ovs = {}
+    for x in lineas:
+        con = (x.total or 0) + (x.igv or 0)
+        frac = min((x.entregado or 0) / x.cantidad, 1.0) if x.cantidad else 0.0
+        o = ovs.setdefault(x.docnum, {"docnum": x.docnum, "cliente": x.cliente, "fecha": x.fecha, "entrega": x.fecha_entrega,
+                                      "estado": x.estado, "clase": x.clase, "total": 0.0, "despachado": 0.0, "lineas": 0})
+        o["total"] += con
+        o["despachado"] += con * frac
+        o["lineas"] += 1
+    for o in ovs.values():
+        o["saldo"] = round(o["total"] - o["despachado"], 2)
+    return sorted(ovs.values(), key=lambda o: (o["entrega"] or date.min, o["docnum"]))

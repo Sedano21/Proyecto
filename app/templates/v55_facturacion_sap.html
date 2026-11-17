@@ -1,0 +1,17 @@
+{% extends "base.html" %}{% from "_m.html" import b, empty, paginacion %}
+{% block content %}<div class="page-head"><div><h1>Facturación (SAP)</h1>
+<p class="sub">Facturación del periodo = total facturado − notas de crédito. Documentos de SAP no anulados, en soles (moneda local) con IGV.</p></div></div>
+<form class="row card" method="get"><div><label>Desde</label><input type="date" name="desde" value="{{ desde.isoformat() }}"></div>
+<div><label>Hasta</label><input type="date" name="hasta" value="{{ hasta.isoformat() }}"></div><input type="hidden" name="ver" value="{{ ver }}"><div><button class="sec">Ver</button></div></form>
+{% set r = d.resumen %}{% if r is none %}{{ empty('Todavía no se leyó la facturación de SAP: el vigilante la trae en su próxima revisión.', 'file') }}{% else %}
+<div class="kpis"><div class="kpi"><span>Total facturado</span><b>S/ {{ '{:,.0f}'.format(r.facturas) }}</b></div>
+<div class="kpi warn"><span>Notas de crédito</span><b>− S/ {{ '{:,.0f}'.format(r.notas_credito) }}</b></div>
+<div class="kpi ok"><span>Facturación del periodo</span><b>S/ {{ '{:,.0f}'.format(r.neto) }}</b></div></div>
+<p class="small muted">{{ r.n_facturas }} factura(s) y {{ r.n_notas }} nota(s) de crédito. Sin IGV: facturado S/ {{ '{:,.0f}'.format(r.facturas_sin_igv) }} − notas S/ {{ '{:,.0f}'.format(r.notas_sin_igv) }} = S/ {{ '{:,.0f}'.format(r.neto_sin_igv) }}.</p>
+<div class="vista-sel">{% for k, t in [('clientes', 'Por cliente'), ('facturas', 'Facturas'), ('notas', 'Notas de crédito'), ('todos', 'Todos los documentos')] %}<a class="btn {{ '' if ver == k else 'sec' }} small" href="?desde={{ desde.isoformat() }}&hasta={{ hasta.isoformat() }}&ver={{ k }}">{{ t }}</a> {% endfor %}</div>
+{% if lista is none %}<div class="tw"><table class="small"><tr><th>Cliente</th><th class="r">Facturado S/</th><th class="r">Notas de crédito S/</th><th class="r">Neto S/</th></tr>
+{% for c in d.clientes %}<tr><td>{{ c.cliente }}</td><td class="r">{{ '{:,.2f}'.format(c.facturas) }} <span class="muted">({{ c.n_facturas }})</span></td><td class="r">{{ '{:,.2f}'.format(c.notas) }} <span class="muted">({{ c.n_notas }})</span></td><td class="r"><b>{{ '{:,.2f}'.format(c.neto) }}</b></td></tr>{% else %}<tr><td colspan="4" class="muted">Sin documentos en el periodo.</td></tr>{% endfor %}</table></div>
+{% else %}<div data-lista id="lista-facturacion">{% if lista.total %}<div class="tw"><table class="small"><tr><th>Fecha</th><th>Tipo</th><th>Número</th><th>Cliente</th><th class="r">Total S/</th><th class="r">IGV S/</th></tr>
+{% for x in lista %}<tr><td>{{ x.fecha|d }}</td><td>{{ 'Nota de crédito' if x.tipo == 'NOTA_CREDITO' else 'Factura' }}</td><td>{{ x.numero }}</td><td>{{ x.cliente }}</td><td class="r">{{ ('− ' if x.tipo == 'NOTA_CREDITO') ~ '{:,.2f}'.format(x.total) }}</td><td class="r">{{ '{:,.2f}'.format(x.igv) }}</td></tr>{% endfor %}</table></div>
+{{ paginacion(lista, 'documentos') }}{% else %}{{ empty('Sin documentos en el periodo.', 'file') }}{% endif %}</div>{% endif %}
+{% endif %}{% endblock %}
