@@ -26,4 +26,4 @@ líneas sin valor se valorizan con el precio de su OV en SAP y la tarjeta lo ind
 ## No verificado
 No se probó contra la base real de SAP.
 
-**Pruebas:** `tests/test_v58.py`.
+**Pruebas:** `tests/test_v58.py`. Suite completa: 694 pruebas pasan.
