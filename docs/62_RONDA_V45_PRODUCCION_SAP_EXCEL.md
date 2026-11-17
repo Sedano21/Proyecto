@@ -53,3 +53,10 @@ tienen otros nombres. Ahora se lee ese formato:
 
 **Prueba:** `test_plan_con_el_formato_de_produccion_sin_codigo` (datos ficticios con la misma forma).
 - Suite completa tras V47 (plan): **663 passed**.
+
+## 6. V50 — El Excel general CONTROL DE PRODUCCION
+En «Planeamiento → Actualizar con Excel» se puede subir el libro completo (29 pestañas): el plan se toma de la pestaña
+**PROGRAMACION** (o de la primera con el encabezado del plan), no de la primera pestaña. Las demás pestañas aún no se
+cargan (ver la revisión entregada al usuario: partes por línea, paradas, colaboradores, asistencia, etc.).
+
+**Prueba:** `test_plan_desde_el_excel_general_con_varias_pestanas`.

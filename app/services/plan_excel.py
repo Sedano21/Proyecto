@@ -123,9 +123,23 @@ def leer(path):
     reconocer: devuelve (filas, sin_producto)."""
     from openpyxl import load_workbook
     wb = load_workbook(path, data_only=True, read_only=True)
-    ws = wb.worksheets[0]
-    filas = [list(r) for r in ws.iter_rows(values_only=True)]
+    # V50: el Excel general de Producción tiene muchas pestañas: se usa «PROGRAMACION» (o la primera que tenga el
+    # encabezado del plan), no necesariamente la primera
+    hojas = sorted(wb.worksheets, key=lambda w: 0 if _norm(w.title).startswith("programacion") else 1)
+    filas, h, cols, fechas = [], None, {}, {}
+    for ws in hojas:
+        filas = [list(r) for r in ws.iter_rows(values_only=True, max_row=4000)]
+        h, cols, fechas = _encabezado(filas)
+        if h is not None:
+            break
     wb.close()
+    if h is None:
+        raise BusinessError("No se encontró el encabezado del plan en ninguna pestaña: se espera Código o Producto y "
+                            "Cantidad con Fecha, o Código con una columna por día (pestaña «PROGRAMACION»).")
+    return _filas_plan(filas, h, cols, fechas)
+
+
+def _encabezado(filas):
     for h, cab in enumerate(filas[:15]):  # el encabezado puede no estar en la primera fila
         cols = {}
         fechas = {}
@@ -139,10 +153,11 @@ def leer(path):
                 fechas[j] = f
         tiene_prod = "codigo" in cols or "producto" in cols
         if tiene_prod and ("cantidad" in cols and "fecha" in cols or len(fechas) >= 1):
-            break
-    else:
-        raise BusinessError("No se encontró el encabezado: se espera Código o Producto y Cantidad con Fecha, o Código con "
-                            "una columna por día.")
+            return h, cols, fechas
+    return None, {}, {}
+
+
+def _filas_plan(filas, h, cols, fechas):
     por = _productos()
     out, sin = [], []
     for i, r in enumerate(filas[h + 1:], start=h + 2):

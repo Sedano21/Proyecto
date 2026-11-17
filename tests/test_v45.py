@@ -150,3 +150,20 @@ def test_plan_con_el_formato_de_produccion_sin_codigo(app, s, U, tmp_path):
     pt = s.query(ProductionPlan).filter_by(product_code="PT-901").one()
     assert (gr.line_code, gr.cantidad) == ("CIMBRIA", 40000) and "OP 3" in gr.comentario
     assert (pt.line_code, pt.cantidad) == ("R1", 7000)
+
+
+def test_plan_desde_el_excel_general_con_varias_pestanas(app, s, U, tmp_path):
+    """V50: el Excel CONTROL DE PRODUCCION tiene muchas pestañas; el plan se toma de «PROGRAMACION»."""
+    from openpyxl import Workbook
+    from app.services import plan_excel
+    wb = Workbook()
+    wb.active.title = "REQ"
+    wb.active.append(["NRO", "COLABORADORES", "LINEA"])
+    ws = wb.create_sheet("PROGRAMACION")
+    ws.append([])
+    ws.append(["FECHA", "SEMANA", "# OP", "LINEA", "PLANIFICADO MP- KG", "U.M", "CODIGO", "PRODUCTO"])
+    ws.append([date.today(), 47, 3, "R3", 120, "UNIDADES", "PT-901", "x"])
+    p = tmp_path / "general.xlsx"
+    wb.save(p)
+    r = plan_excel.importar(U("jefe.produccion"), "DIA", str(p))
+    assert r["creadas"] == 1
