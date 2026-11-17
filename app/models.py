@@ -2864,3 +2864,37 @@ class SapPurchaseLine(Base):
     total: Mapped[float] = mapped_column(Float, default=0)  # LineTotal en soles, sin IGV
     igv: Mapped[float] = mapped_column(Float, default=0)
     ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+
+class Prefactura(Base):
+    """V56: factura preparada por el sistema a partir de una guía (entrega) abierta de SAP, o leída de una factura
+    emitida en SUNAT (regularización). La revisa y valida el facturador (edita cantidades y precios, quita ítems,
+    agrega observación) y recién entonces se crea en SAP, basada en la entrega."""
+    __tablename__ = "prefacturas"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    origen: Mapped[str] = mapped_column(String(10), default="SAP")  # SAP (guía de SAP) / SUNAT (regularización)
+    # POR_VALIDAR / OBSERVADA / VALIDADA / ENVIADA_SAP / FACTURADA_EN_SAP / DESCARTADA
+    estado: Mapped[str] = mapped_column(String(20), default="POR_VALIDAR", index=True)
+    entrega_docentry: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    guia: Mapped[str] = mapped_column(String(40), default="")
+    ov_numero: Mapped[str] = mapped_column(String(30), default="")
+    order_id: Mapped[int | None] = mapped_column(ForeignKey("sales_orders.id"), nullable=True, index=True)
+    cardcode: Mapped[str] = mapped_column(String(30), default="")
+    cliente: Mapped[str] = mapped_column(String(200), default="")
+    ruc: Mapped[str] = mapped_column(String(15), default="")
+    fecha: Mapped[date | None] = mapped_column(Date, nullable=True)
+    moneda: Mapped[str] = mapped_column(String(10), default="")
+    serie: Mapped[str] = mapped_column(String(8), default="")  # factura emitida en SUNAT (regularización)
+    numero: Mapped[str] = mapped_column(String(12), default="")
+    # [{linea (BaseLine), codigo, descripcion, um, cantidad, maximo, precio, descuento, impuesto, almacen}]
+    lineas: Mapped[list] = mapped_column(JSON, default=list)
+    observacion: Mapped[str] = mapped_column(Text, default="")
+    ediciones: Mapped[list] = mapped_column(JSON, default=list)
+    sap: Mapped[dict] = mapped_column(JSON, default=dict)  # {estado PENDIENTE/OK/ERROR, docentry, docnum, error, ts}
+    archivo: Mapped[str] = mapped_column(String(250), default="")
+    total_sunat: Mapped[float | None] = mapped_column(Float, nullable=True)
+    validado_por: Mapped[str] = mapped_column(String(120), default="")
+    validado_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    order = relationship("SalesOrder", foreign_keys=[order_id], viewonly=True)

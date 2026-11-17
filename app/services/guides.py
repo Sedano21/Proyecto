@@ -267,8 +267,15 @@ def review(user, order, form):
         if k in form:
             pg[k] = (form.get(k) or "").strip()[:300]
     items = []
+    quitados = []
+    motivo_q = (form.get("motivo_quitar") or "").strip()
     for i, x in enumerate(pg.get("items") or []):
         x = dict(x)
+        if form.get(f"quitar_{i}"):  # V56: quitar el ítem de la guía (con motivo y rastro)
+            if not motivo_q:
+                raise BusinessError("Indique el motivo para quitar ítems de la guía.")
+            quitados.append(x)
+            continue
         if f"cant_{i}" in form and str(form.get(f"cant_{i}")).strip() != "":
             x["preparado"] = _num(form.get(f"cant_{i}"), x["codigo"])
         if f"pres_{i}" in form:
@@ -284,6 +291,12 @@ def review(user, order, form):
                                 f"con la cantidad ({x['preparado']:g}).")
         x["lotes"] = lotes
         items.append(x)
+    if not items:
+        raise BusinessError("La guía debe tener al menos un ítem; si no sale nada, observe la pre-guía.")
+    for x in quitados:
+        pg["cambios"] = list(pg.get("cambios") or []) + [{"ts": _ts(), "user": user.nombre, "campo": "ítem quitado",
+                                                          "producto": x["codigo"], "de": x.get("preparado"), "a": 0,
+                                                          "motivo": motivo_q, "origen": "revisión"}]
     pg["items"] = items
     pg["diferencias"] = _diferencias(items)
     pg["revisado_ts"], pg["revisado_por"] = _ts(), user.nombre

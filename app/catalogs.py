@@ -3252,3 +3252,18 @@ PARAMS += [
     ("sap_compras_ultimo", {}, "dict", "Integración SAP",
      "Última lectura de las órdenes de compra de SAP (la escribe el sistema).", "DEFINIDO", V55),
 ]
+# ------------------------------------------------------------------ V56 (17-nov-2026)
+V56 = "Observaciones V56 (17-nov-2026)"
+ALERT_TYPES += [
+    ("PREFACTURA_POR_VALIDAR", "Factura por validar (desde la guía)", "Facturación", "Facturación", "MEDIA",
+     ["FACTURACION"], "DEFINIDO", V56,
+     "El sistema preparó la factura de una guía abierta de SAP: revisarla, corregirla y validarla para crearla en SAP.", False),
+    ("PREFACTURA_OBSERVADA", "Factura observada por Facturación", "Facturación", "Comercial", "MEDIA",
+     ["FACTURACION"], "DEFINIDO", V56, "Facturación observó la factura preparada de la OV (p. ej. un precio).", False),
+    ("PREFACTURA_ERROR_SAP", "SAP no aceptó la factura validada", "Facturación", "Facturación", "ALTA",
+     ["FACTURACION"], "DEFINIDO", V56, "La factura validada no se pudo crear en SAP: revisar el mensaje y corregir.", False),
+]
+PARAMS += [
+    ("prefacturas_ultima", {}, "dict", "Integración SAP",
+     "Última preparación de facturas desde las guías abiertas de SAP (la escribe el sistema).", "DEFINIDO", V56),
+]

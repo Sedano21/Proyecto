@@ -147,6 +147,15 @@ def ciclo(user, upload_dir, forzar=False, sl=None):
                 _set("sap_facturacion_leida", datetime.now().isoformat(timespec="seconds"),
                      "Última lectura de facturas y notas de crédito de SAP (interno)")
                 db().commit()
+        # V56: facturas preparadas desde las guías abiertas de SAP (para que Facturación las valide)
+        from . import prefacturas
+        intento_pf = _p("prefacturas_intento", "")
+        falta_pf = not _p("prefacturas_ultima", {}) and (
+            not intento_pf or (datetime.now() - datetime.fromisoformat(intento_pf)).total_seconds() > 600)
+        if cambio["GUIAS"] or cambio["FACTURAS"] or falta_pf:
+            _set("prefacturas_intento", datetime.now().isoformat(timespec="seconds"),
+                 "Último intento de preparar facturas desde las guías de SAP (interno)")
+            paso("prefacturas", lambda: prefacturas.sincronizar_seguro(user, sl=sl))
         if cambio["OV"]:
             paso("OV", lambda: carga("OV"))
         if cambio["GUIAS"] and "DESPACHOS" in tipos:
@@ -171,7 +180,8 @@ def ciclo(user, upload_dir, forzar=False, sl=None):
                 if t in tipos:
                     paso(t, lambda t=t: carga(t))
             _set("sap_vigia_horario", datetime.now().isoformat(timespec="seconds"), "Última revisión horaria (interno)")
-        paso("envios", lambda: (sap_sl.push_pending_orders(sl=sl), sap_sl.push_pending_guides(sl=sl)) and "ok")
+        paso("envios", lambda: (sap_sl.push_pending_orders(sl=sl), sap_sl.push_pending_guides(sl=sl),
+                                prefacturas.enviar_pendientes(sl=sl)) and "ok")
         _set("sap_vigia_firmas", nuevas, "Firmas de los documentos de SAP de ayer y hoy (interno)")
         ahora = datetime.now().isoformat(timespec="seconds")
         _set("sap_vigia_revision", ahora, "Última revisión completa de SAP (interno)")

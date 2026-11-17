@@ -58,6 +58,8 @@ def register_views(app):
     app.register_blueprint(v29.bp)
     from . import v30  # V30: ubicación de lotes, clientes sin movimiento y facturas de reserva sin entrega
     app.register_blueprint(v30.bp)
+    from . import facturacion  # V56: pre-facturas (desde las guías de SAP) y regularización de facturas de SUNAT
+    app.register_blueprint(facturacion.bp)
 
     @app.after_request
     def _aviso_descarga(resp):

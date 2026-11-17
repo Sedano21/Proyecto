@@ -251,7 +251,8 @@ def order_detail(oid):
     paradas = list(db().execute(select(RouteStop).where(RouteStop.order_id == o.id).order_by(RouteStop.id)).scalars())
     from ..services import ov_sap
     guias_ov = ov_sap.guias_de([o]).get(o.id, [])  # V54: guías de SAP y del módulo de la OV
-    return render_template("ov_detail.html", guias_ov=guias_ov, motivo_det=ov_sap.motivo_detencion(o), o=o, sap_pendiente=__import__("app.services.sap_sl", fromlist=["x"]).pending_action(o), prioridades_gg=osvc.PRIORIDADES_GG, alts=alts, paradas=paradas, docs=order_documents(o), tipos_doc=TIPOS_DOC_OV,
+    from ..services.prefacturas import de_la_orden as _pf_ov, total as _pf_total
+    return render_template("ov_detail.html", prefacturas=_pf_ov(o.id), pf_total=_pf_total, guias_ov=guias_ov, motivo_det=ov_sap.motivo_detencion(o), o=o, sap_pendiente=__import__("app.services.sap_sl", fromlist=["x"]).pending_action(o), prioridades_gg=osvc.PRIORIDADES_GG, alts=alts, paradas=paradas, docs=order_documents(o), tipos_doc=TIPOS_DOC_OV,
                            comp_estados=cmsvc.ESTADOS, dias_prod=cmsvc.production_days(), whs=whs, reqs=reqs, decs=decs, hist=hist, certs=certs,
                            products=products, line_reserved=line_reserved, monto=osvc.order_amount(o), peso=peso,
                            sin_peso=sin_peso, can_auth=osvc.can_authorize_change(g.user, o), prep=osvc.prep_progress(o),

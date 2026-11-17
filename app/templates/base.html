@@ -64,8 +64,9 @@
       {% if ve('comercial.configurar') %}{{ nl(url_for('com.commercial_config'), 'layers', 'Configuración comercial') }}{% endif %}
       {% if ve('ov.importar') or ve('precios.editar') or ve('costos.cargar') or ve('clientes.canal') %}{{ nl(url_for('alm.uploads', area='Comercial'), 'upload', 'Cargas de archivos') }}{% endif %}
     </div>{% endif %}
-    {% if ve('finanzas.ver') or ve('finanzas.gestionar') or ve('facturas.cargar') %}<div class="grp" data-grupo="Finanzas"><h4><span class="lbl">Finanzas</span></h4>
-      {{ nl(url_for('fin.board'), 'scale', 'Cobranza y condiciones') }}
+    {% if ve('finanzas.ver') or ve('finanzas.gestionar') or ve('facturas.cargar') or ve('facturacion.cargar') %}<div class="grp" data-grupo="Finanzas"><h4><span class="lbl">Finanzas</span></h4>
+      {% if ve('finanzas.ver') or ve('finanzas.gestionar') or ve('facturas.cargar') %}{{ nl(url_for('fin.board'), 'scale', 'Cobranza y condiciones') }}{% endif %}
+      {% if can('facturacion.cargar') or can('finanzas.ver') %}{{ nl(url_for('fac.prefacturas'), 'file', 'Facturación (pre-facturas)') }}{% endif %}
       {% if ve('clientes.ver') and not ve('ov.ver') %}{{ nl(url_for('com.customer_list'), 'users', 'Clientes') }}{% endif %}
     </div>{% endif %}
     {% if ve('stock.ver') or ve('traslados.ver') or ve('reempaque.ver') or ve('tareas.ejecutar') or ve('movimiento.solicitar') or ve('movimiento.ejecutar') or ve('demanda.ver') or ve('ingresos.ver') or ve('asistencia.area') %}<div class="grp" data-grupo="Almacén"><h4><span class="lbl">Almacén</span></h4>
