@@ -462,16 +462,9 @@ def rows_stock_sin_lote(sl):
 
 def rows_stock(sl):
     """Stock por lote (consulta guardada) más el stock de los artículos sin lote."""
-    code = (param("sap_consultas", {}) or {}).get("STOCK")
-    filas = sl.sql_query(code) if code else []
-    try:
-        filas = list(filas) + rows_stock_sin_lote(sl)
-    except BusinessError:
-        if not code:
-            raise
-    if not code and not filas:
-        raise BusinessError("Stock por lote: configure en sap_consultas la consulta del stock por lote («STOCK»).")
-    return filas
+    if not (param("sap_consultas", {}) or {}).get("STOCK"):
+        return rows_consulta(sl, "STOCK")  # sin la consulta configurada: el mismo aviso de siempre
+    return list(rows_consulta(sl, "STOCK")) + rows_stock_sin_lote(sl)
 
 
 def fetch(tipo, sl):
