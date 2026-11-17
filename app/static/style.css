@@ -888,3 +888,4 @@ a.kpi,.kpi-clic{padding-right:30px}
 .dia-nav .row{align-items:center;gap:8px}.dias-sem{display:flex;flex-wrap:wrap;gap:6px;margin-left:8px}.dias-sem .chip.on{background:var(--cp-verde);color:#fff;border-color:var(--cp-verde)}
 .cuadro-linea table input,.cuadro-linea table select{min-width:0}.cuadro-linea tr.nueva td{background:var(--panel-2,#fafafa)}
 .cuadro-linea td.r{white-space:nowrap}
+.motivo-est summary{cursor:pointer;list-style:none}.motivo-est[open]{background:var(--bg2,rgba(0,0,0,.03));border-radius:8px;padding:6px}

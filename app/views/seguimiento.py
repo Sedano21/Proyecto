@@ -17,6 +17,8 @@ bp = Blueprint("seg", __name__, url_prefix="/seguimiento")
 @perm_required("expedientes.ver")
 def groups():
     vend = request.args.get("vendedor") or (str(g.user.id) if g.user.role_code == "EJECUTIVO_VENTAS" else "")
+    from ..services.ov_sap import al_dia_vista
+    al_dia_vista()  # V54
     grupos = seg.groups(f_date("desde"), f_date("hasta"), request.args.get("cliente") or None, vend or None)
     clientes = list(db().execute(select(Customer).order_by(Customer.nombre)).scalars())
     vendedores = list(db().execute(select(User).where(User.role_code == "EJECUTIVO_VENTAS").order_by(User.nombre)).scalars())
@@ -48,6 +50,8 @@ def group(cid, fecha):
     except ValueError:
         abort(404)
     c = db().get(Customer, cid) or abort(404)
+    from ..services.ov_sap import al_dia_vista
+    al_dia_vista(seg.group_detail(cid, f))  # V54
     ovs = seg.group_detail(cid, f)
     from ..services.finance import order_documents
     modo = request.args.get("certificados", "producto")

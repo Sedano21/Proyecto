@@ -31,6 +31,8 @@ def test_vigilante_trae_solo_lo_que_cambio(app, s, U, monkeypatch):
     monkeypatch.setattr(balance_of, "sync", lambda u, sl=None: llamadas.append("balance"))
     monkeypatch.setattr(sap_sl, "sync", lambda t, u, d, sl=None, solo_si_cambia=False, autoconfirmar=None: llamadas.append(t))
     monkeypatch.setattr(sap_sl, "sync_facturas", lambda u, sl=None, desde=None: llamadas.append("facturas"))
+    from app.services import facturacion_sap
+    monkeypatch.setattr(facturacion_sap, "sync", lambda u, sl=None, desde=None: llamadas.append("facturacion"))
     monkeypatch.setattr(sap_sl, "push_pending_orders", lambda ahora=None, sl=None: None)
     monkeypatch.setattr(sap_sl, "push_pending_guides", lambda sl=None: None)
     set_param("sap_sync_tipos", ["OV", "DESPACHOS", "CLIENTES"])

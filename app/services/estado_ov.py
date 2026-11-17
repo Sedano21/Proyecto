@@ -10,10 +10,13 @@ from ..models import CustomerInvoice, PickingTask, RouteStop, SalesOrder
 # etapa visible → estados de la OV
 ETAPAS = [
     ("BORRADOR", "Borrador", ("BORRADOR",)),
-    ("DETENIDA", "Detenida", ("BLOQUEADA", "REGISTRADA", "EVALUADA")),
+    # V54: «Detenida» es solo la OV bloqueada o retenida por precio; la evaluada sin problemas está «Por preparar»
+    ("DETENIDA", "Detenida", ("BLOQUEADA",)),
+    ("POR_PREPARAR", "Por preparar", ("REGISTRADA", "EVALUADA")),
     ("EN_PREPARACION", "En preparación", ("PROGRAMADA", "EN_PREPARACION")),
     ("LISTA", "Lista para despacho", ("PREPARADA",)),
-    ("DESPACHADA", "Despachada (en ruta)", ("DESPACHADA",)),
+    ("PARCIAL", "Despacho parcial (saldo pendiente)", ("DESPACHO_PARCIAL",)),
+    ("DESPACHADA", "Despachada (con guía)", ("DESPACHADA",)),
     ("ENTREGADA", "Entregada", ("ENTREGADA", "ENTREGA_PARCIAL")),
     ("CERRADA", "Cerrada / cancelada", ("CERRADA", "CANCELADA", "DEVUELTA", "REGULARIZADA", "REGULARIZADA_CERRADA",
                                         "REGULARIZACION_OBSERVADA")),
@@ -22,19 +25,38 @@ _DE = {e: k for k, _, ests in ETAPAS for e in ests}
 
 
 def etapa(o):
+    if o.retenida_precio and o.estado in ("REGISTRADA", "EVALUADA"):
+        return "DETENIDA"
     return _DE.get(o.estado, "DETENIDA")
 
 
-def pasos(o, picking, parada, factura):
-    """Línea de tiempo de la OV: [(nombre, hecho, detalle)]."""
+def pasos(o, picking, parada, factura, guias=None):
+    """Línea de tiempo de la OV: [(nombre, hecho, detalle)]. V54: con guía (de SAP o subida al módulo), el stock, el
+    picking y la salida de lo guiado ya se cumplieron aunque no se hayan registrado en el módulo."""
+    guias = guias or []
     reservado = o.cobertura_unidades or 0
+    activas = [l for l in o.lines if l.activa]
+    pedido = sum(l.cantidad or 0 for l in activas)
+    guiado = sum(min(l.despachado or 0, l.cantidad or 0) for l in activas)
+    pct_g = round(guiado * 100 / pedido, 1) if pedido else 0
+    completo = bool(guias) and pct_g >= 100 - 1e-6
+    docs = ", ".join(g["documento"] for g in guias)
+    if guias:
+        stock = ("Stock", completo, f"{pct_g:g}% despachado" + ("" if completo else f" · saldo {reservado:g}% reservado"))
+        pick = ("Picking", completo, "cumplido (guía)" if completo else f"cumplido en lo guiado ({pct_g:g}%)")
+        ruta = ("Ruta", True, f"ruta #{parada.route_id}" if parada is not None else
+                "salió " + (guias[0]["fecha"].strftime("%d/%m") if guias[0]["fecha"] else "") + " (SAP)")
+        guia = ("Guía", True, docs)
+    else:
+        stock = ("Stock", reservado >= 100, f"{reservado:g}% reservado")
+        pick = ("Picking", bool(picking) and all(t.estado == "LISTO" for t in picking),
+                ", ".join(t.estado.lower().replace("_", " ") for t in picking) if picking else "sin programar")
+        ruta = ("Ruta", parada is not None, f"ruta #{parada.route_id}" if parada is not None else "")
+        guia = ("Guía", bool(parada is not None and parada.guia_numero),
+                parada.guia_numero if parada is not None and parada.guia_numero else "")
     return [
         ("Registrada", True, o.creado_ts.strftime("%d/%m") if o.creado_ts else ""),
-        ("Stock", reservado >= 100, f"{reservado:g}% reservado"),
-        ("Picking", bool(picking) and all(t.estado == "LISTO" for t in picking),
-         ", ".join(t.estado.lower().replace("_", " ") for t in picking) if picking else "sin programar"),
-        ("Ruta", parada is not None, f"ruta #{parada.route_id}" if parada is not None else ""),
-        ("Guía", bool(parada is not None and parada.guia_numero), parada.guia_numero if parada is not None and parada.guia_numero else ""),
+        stock, pick, ruta, guia,
         ("Entrega", o.estado in ("ENTREGADA", "ENTREGA_PARCIAL") or (parada is not None and parada.estado in
                                                                     ("ENTREGADO", "ENTREGADA", "ENTREGA_PARCIAL")),
          (o.entrega_ts.strftime("%d/%m %H:%M") if o.entrega_ts else (parada.estado.lower().replace("_", " ")
@@ -63,6 +85,8 @@ def tablero(desde=None, hasta=None, q="", vendedor_id=None, etapa_f=""):
         paradas[st.order_id] = st
     for inv in s.execute(select(CustomerInvoice).where(CustomerInvoice.order_id.in_(ids), CustomerInvoice.tipo == "FACTURA")).scalars():
         facts.setdefault(inv.order_id, []).append(inv.numero)
+    from .ov_sap import guias_de
+    guias = guias_de(ords)
     tot = {k: 0 for k, _, _ in ETAPAS}
     filas = []
     for o in ords:
@@ -70,8 +94,11 @@ def tablero(desde=None, hasta=None, q="", vendedor_id=None, etapa_f=""):
         tot[e] += 1
         if etapa_f and e != etapa_f:
             continue
-        atrasada = o.fecha_compromiso < hoy and e not in ("ENTREGADA", "CERRADA")
-        filas.append({"o": o, "etapa": e, "pasos": pasos(o, picks.get(o.id, []), paradas.get(o.id), facts.get(o.id, [])),
-                      "atrasada": atrasada})
-    tot["ATRASADAS"] = sum(1 for o in ords if o.fecha_compromiso < hoy and etapa(o) not in ("ENTREGADA", "CERRADA"))
+        atrasada = o.fecha_compromiso < hoy and e not in ("DESPACHADA", "ENTREGADA", "CERRADA")
+        filas.append({"o": o, "etapa": e, "pasos": pasos(o, picks.get(o.id, []), paradas.get(o.id), facts.get(o.id, []),
+                                                         guias.get(o.id)),
+                      "atrasada": atrasada, "motivo": (o.bloqueo_ov or {}).get("motivo") if o.estado == "BLOQUEADA"
+                      else (o.motivo_detencion if o.retenida_precio else "")})
+    tot["ATRASADAS"] = sum(1 for o in ords if o.fecha_compromiso < hoy
+                           and etapa(o) not in ("DESPACHADA", "ENTREGADA", "CERRADA"))
     return {"filas": filas, "tot": tot, "total": len(ords), "desde": desde, "hasta": hasta, "etapas": ETAPAS}

@@ -226,6 +226,11 @@ def sync_historial(user, sl=None, completo=False):
         res["producciones_error"] = prod_err
     from .guias_sunat import conciliar_con_sap  # V35: guías SUNAT del módulo que ya están en SAP
     res["guias_sunat_en_sap"] = conciliar_con_sap()
+    # V54: la OV del módulo toma el estado de SAP (guías, cierre, anulación)
+    from .ov_sap import sincronizar as _sinc, reactivar_bloqueadas as _react
+    r54 = _sinc(None)
+    res["ov_desde_sap"] = {k: len(v) for k, v in r54.items()}
+    res["ov_reactivadas"] = len(_react(None))
     from .compras_ov import revisar  # V53: compras por OV ya atendidas (guías, OV cerrada o anulada)
     res["compras_ov"] = revisar(user)
     set_param("sap_ordenes_ultimo", dict(res, ts=now().isoformat(timespec="minutes")), user)

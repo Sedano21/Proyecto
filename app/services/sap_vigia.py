@@ -138,11 +138,14 @@ def ciclo(user, upload_dir, forzar=False, sl=None):
         if cambio["FACTURAS"]:
             paso("reservas", lambda: facturas_reserva.sync(user, sl=sl))
         from . import facturacion_sap
-        from ..models import SapBilling
-        from sqlalchemy import select as _sel
-        if cambio["FACTURAS"] or db().execute(_sel(SapBilling.id).limit(1)).first() is None:
-            # V52: facturación del mes (facturas − notas de crédito) para los indicadores, sin depender de los clientes
+        if cambio["FACTURAS"] or not _p("sap_facturacion_leida", ""):
+            # V52: facturación del mes (facturas − notas de crédito) para los indicadores, sin depender de los clientes.
+            # La primera lectura se hace aunque SAP no avise cambios; luego solo cuando cambian las facturas.
             paso("facturacion", lambda: facturacion_sap.sync(user, sl=sl))
+            if res.get("facturacion") == "ok":
+                _set("sap_facturacion_leida", datetime.now().isoformat(timespec="seconds"),
+                     "Última lectura de facturas y notas de crédito de SAP (interno)")
+                db().commit()
         if cambio["OV"]:
             paso("OV", lambda: carga("OV"))
         if cambio["GUIAS"] and "DESPACHOS" in tipos:

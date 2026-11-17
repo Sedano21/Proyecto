@@ -123,8 +123,23 @@ def groups(desde=None, hasta=None, customer_id=None, vendedor_id=None, solo_abie
         av = [progress(o)["unidades"] for o in ovs]
         out.append({"cliente": cli, "fecha": f, "ovs": sorted(ovs, key=lambda o: o.numero), "kg": round(kg, 1),
                     "avance": round(sum(av) / len(av), 1) if av else 0,
-                    "retrasos": sum(1 for o in ovs if delay(o)), "estados": Counter(o.estado for o in ovs)})
+                    "retrasos": sum(1 for o in ovs if delay(o)), "estados": Counter(o.estado for o in ovs),
+                    "motivos": _motivos(ovs)})
     return sorted(out, key=lambda g: (g["fecha"], g["cliente"].nombre if g["cliente"] else ""))
+
+
+def _motivos(ovs):
+    """V54: por estado, las OV detenidas o bloqueadas con su motivo y la evaluación de hoy (si con el stock se atiende)."""
+    from .ov_sap import motivo_detencion
+    out = defaultdict(list)
+    for o in ovs:
+        m = motivo_detencion(o)
+        if not m and o.estado not in ("BLOQUEADA",) and not o.retenida_precio:
+            continue
+        ev = (o.bloqueo_ov or {}).get("evaluacion") or {}
+        out[o.estado].append({"o": o, "motivo": m or "—", "stock": o.estado_stock, "cobertura": o.cobertura_unidades or 0,
+                              "llega": ev.get("llega")})
+    return dict(out)
 
 
 def group_detail(customer_id, fecha):
@@ -322,12 +337,20 @@ def nivel_comercial_sap(desde, hasta, canal=""):
 def customer_compliance(customer_id, dias=90):
     """Cumplimiento con el cliente (últimos «dias»): para que Logística y Almacén lo vean antes de responder «no cumple»."""
     hasta = date.today()
-    d = service_month(customer_id=customer_id, desde=hasta - timedelta(days=dias), hasta=hasta + timedelta(days=30),
-                      fuente="MODULO")
+    # V54: con el historial de SAP, el cumplimiento es el de las OV de SAP del cliente frente a sus guías (las OV del
+    # módulo no siempre registran la salida: se despacha en SAP)
+    d = service_month(customer_id=customer_id, desde=hasta - timedelta(days=dias), hasta=hasta + timedelta(days=30))
     ult = sorted([f for f in d["filas"] if f["salio"]], key=lambda f: f["o"].salida_ts, reverse=True)[:8]
-    no_cumple = sum(1 for f in d["filas"] if (f["o"].compromiso or {}).get("estado") == "NO_CUMPLE")
+    for f in ult:
+        if getattr(f["o"], "id", None) is None:  # OV de SAP: si está en el módulo, se enlaza
+            from .orders import order_by_number
+            m = order_by_number(f["o"].numero)
+            f["oid"] = m.id if m else None
+        else:
+            f["oid"] = f["o"].id
+    no_cumple = sum(1 for f in d["filas"] if (getattr(f["o"], "compromiso", None) or {}).get("estado") == "NO_CUMPLE")
     return {"dias": dias, "otif": d["otif"], "otif_n": d["otif_n"], "on_time": d["on_time"], "fill_rate": d["fill_rate"],
-            "ultimas": ult, "no_cumple": no_cumple, "universo": d["universo"]}
+            "ultimas": ult, "no_cumple": no_cumple, "universo": d["universo"], "fuente": d.get("fuente", "MODULO")}
 
 
 # ------------------------------------------------------------------ tiempos de respuesta y desempeño

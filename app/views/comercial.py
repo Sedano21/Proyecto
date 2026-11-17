@@ -220,6 +220,8 @@ def order_new():
 @perm_required("ov.ver")
 def order_detail(oid):
     o = db().get(SalesOrder, oid) or abort(404)
+    from ..services.ov_sap import al_dia_vista
+    al_dia_vista([o])  # V54: guías y cierre de SAP al momento
     ve_opciones = "ov.opciones" in g.perms  # Comercial ve solo el avance de su pedido (observaciones al demo v0.6)
     alts = alternatives_for_order(o) if ve_opciones and o.estado_stock in ("INCOMPLETA", "SIN_STOCK") and o.estado not in (
         "CANCELADA", "DESPACHADA", "ENTREGADA") else []
@@ -247,7 +249,9 @@ def order_detail(oid):
     from ..services import commitment as cmsvc
     from ..services.finance import TIPOS_DOC_OV, order_documents
     paradas = list(db().execute(select(RouteStop).where(RouteStop.order_id == o.id).order_by(RouteStop.id)).scalars())
-    return render_template("ov_detail.html", o=o, sap_pendiente=__import__("app.services.sap_sl", fromlist=["x"]).pending_action(o), prioridades_gg=osvc.PRIORIDADES_GG, alts=alts, paradas=paradas, docs=order_documents(o), tipos_doc=TIPOS_DOC_OV,
+    from ..services import ov_sap
+    guias_ov = ov_sap.guias_de([o]).get(o.id, [])  # V54: guías de SAP y del módulo de la OV
+    return render_template("ov_detail.html", guias_ov=guias_ov, motivo_det=ov_sap.motivo_detencion(o), o=o, sap_pendiente=__import__("app.services.sap_sl", fromlist=["x"]).pending_action(o), prioridades_gg=osvc.PRIORIDADES_GG, alts=alts, paradas=paradas, docs=order_documents(o), tipos_doc=TIPOS_DOC_OV,
                            comp_estados=cmsvc.ESTADOS, dias_prod=cmsvc.production_days(), whs=whs, reqs=reqs, decs=decs, hist=hist, certs=certs,
                            products=products, line_reserved=line_reserved, monto=osvc.order_amount(o), peso=peso,
                            sin_peso=sin_peso, can_auth=osvc.can_authorize_change(g.user, o), prep=osvc.prep_progress(o),
@@ -868,6 +872,8 @@ def order_status():
     vend = a.get("vendedor_id") or None
     if g.user.role_code == "EJECUTIVO_VENTAS":  # el ejecutivo ve solo sus OV
         vend = g.user.id
+    from ..services.ov_sap import al_dia_vista
+    al_dia_vista()  # V54: las OV con guía o cerradas en SAP dejan de figurar como detenidas
     d = eov.tablero(f_date("desde"), f_date("hasta"), a.get("q", ""), vend, a.get("etapa", ""))
     vendedores = list(db().execute(select(User).where(User.role_code.in_(("EJECUTIVO_VENTAS", "COORD_VENTAS", "JEFE_VENTAS")))
                                    .order_by(User.nombre)).scalars())
