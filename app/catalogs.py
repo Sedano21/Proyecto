@@ -3246,3 +3246,9 @@ ALERT_TYPES += [
      ["COMPRAS", "JEFE_LOGISTICA"], "DEFINIDO", V53,
      "La OV que originó la compra ya tiene sus guías en SAP o se cerró o anuló: revisar si aún hace falta comprar.", False),
 ]
+# ------------------------------------------------------------------ V55 (17-nov-2026)
+V55 = "Observaciones V55 (17-nov-2026)"
+PARAMS += [
+    ("sap_compras_ultimo", {}, "dict", "Integración SAP",
+     "Última lectura de las órdenes de compra de SAP (la escribe el sistema).", "DEFINIDO", V55),
+]

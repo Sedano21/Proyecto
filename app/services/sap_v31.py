@@ -27,7 +27,7 @@ def historial_desde():
 
 HASTA_ABIERTO = date(2099, 12, 31)
 # V33: al cambiar lo que se guarda (p. ej. las órdenes de servicio), la siguiente lectura vuelve a traer todo una vez
-HISTORIAL_VERSION = 3  # V42: también los ingresos de producción (liquidaciones de SAP)
+HISTORIAL_VERSION = 4  # V42: ingresos de producción; V55: valor de las líneas de OV (se relee todo una vez)
 
 
 def _f(v):
@@ -69,14 +69,16 @@ def rows_ordenes(sl, desde, cambios_desde=None):
                             "cliente": (o.get("CardName") or "")[:200], "estado": estado, "producto": "SERVICIO",
                             "descripcion": (ln.get("ItemDescription") or o.get("Comments") or "Servicio")[:200],
                             "cantidad": q, "entregado": q if cerrada and estado != "CANCELADA" else 0.0,
-                            "linea_cerrada": cerrada})
+                            "linea_cerrada": cerrada, "total": float(ln.get("LineTotal") or 0),
+                            "igv": float(ln.get("TaxTotal") or 0)})
                 continue
             out.append({"docnum": str(o.get("DocNum")), "clase": clase, "serie": serie[:40],
                         "fecha": str(o.get("DocDate") or "")[:10], "fecha_entrega": str(o.get("DocDueDate") or "")[:10],
                         "cliente": (o.get("CardName") or "")[:200], "estado": estado,
                         "producto": (ln.get("ItemCode") or "")[:30], "descripcion": (ln.get("ItemDescription") or "")[:200],
                         "cantidad": q, "entregado": max(q - pend, 0.0) if estado != "CANCELADA" else 0.0,
-                        "linea_cerrada": ln.get("LineStatus") == "bost_Close"})
+                        "linea_cerrada": ln.get("LineStatus") == "bost_Close", "total": float(ln.get("LineTotal") or 0),
+                        "igv": float(ln.get("TaxTotal") or 0)})
     return out
 
 
@@ -94,7 +96,8 @@ def guardar_ordenes(filas, completo):
         s.add(SapOrderLine(docnum=f["docnum"], clase=f["clase"], serie=f["serie"], fecha=_f(f["fecha"]),
                            fecha_entrega=_f(f["fecha_entrega"]), cliente=f["cliente"], estado=f["estado"],
                            product_code=f["producto"], descripcion=f["descripcion"], cantidad=f["cantidad"],
-                           entregado=f["entregado"], linea_cerrada=bool(f["linea_cerrada"])))
+                           entregado=f["entregado"], linea_cerrada=bool(f["linea_cerrada"]),
+                           total=f.get("total") or 0.0, igv=f.get("igv") or 0.0))
     s.flush()
 
 

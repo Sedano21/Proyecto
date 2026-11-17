@@ -68,6 +68,7 @@ Pruebas: `pip install -r requirements-dev.txt && python -m pytest tests -v` (489
 | [66_RONDA_V52_FACTURACION_SAP](docs/66_RONDA_V52_FACTURACION_SAP.md) | Ronda V52: facturación del mes desde SAP (facturas − notas de crédito, con y sin IGV) sin depender del maestro de clientes, en «Cómo va la empresa» y en Comercial |
 | [67_RONDA_V53_COMPRAS_OV_ATENDIDAS](docs/67_RONDA_V53_COMPRAS_OV_ATENDIDAS.md) | Ronda V53: las compras por OV se actualizan solas cuando la OV ya tiene sus guías en SAP o se cerró o anuló |
 | [68_RONDA_V54_OV_AL_DIA_CON_SAP](docs/68_RONDA_V54_OV_AL_DIA_CON_SAP.md) | Ronda V54: la OV toma el estado de SAP (guías, cierre, anulación), cumplimiento del cliente con SAP, motivo de bloqueo en expedientes |
+| [69_RONDA_V55_OV_DEL_MES_NC_COMPRAS_SAP](docs/69_RONDA_V55_OV_DEL_MES_NC_COMPRAS_SAP.md) | Ronda V55: OV con despacho en el mes (valor de SAP), facturación neta, notas de crédito aparte y compras desde las órdenes de compra de SAP |
 | [23_OBSERVACIONES_V7](docs/23_OBSERVACIONES_V7.md) | Observaciones del módulo V7: regularización, penalidades, informe de gestión comercial, catálogo, cotizaciones SAP, metas, proyección, turnos, movimientos, carga chofer→auxiliar, GEOSATELITAL |
 | [01_INVENTARIO_FUENTES](docs/01_INVENTARIO_FUENTES.md) | Los 30 archivos analizados, qué contiene cada uno y cómo se usó |
 | [02_ESPECIFICACION_CONSOLIDADA](docs/02_ESPECIFICACION_CONSOLIDADA.md) | Alcance consolidado, contradicciones, vacíos, dependencias, decisiones técnicas y **preguntas Q1–Q17** (Q1, Q3, Q4 resueltas) |

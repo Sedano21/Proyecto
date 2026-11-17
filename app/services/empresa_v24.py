@@ -23,6 +23,18 @@ def _pct(a, b):
     return round(100.0 * a / b, 1) if b else None
 
 
+_MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "setiembre", "octubre",
+          "noviembre", "diciembre"]
+
+
+def _url(endpoint, por_defecto):
+    try:
+        from flask import url_for
+        return url_for(endpoint)
+    except Exception:  # noqa: BLE001 - fuera de una petición (informe PDF, pruebas)
+        return por_defecto
+
+
 def _card(area, titulo, valor, frase, nivel="", url=None):
     return {"area": area, "titulo": titulo, "valor": valor, "frase": frase, "nivel": nivel, "url": url}
 
@@ -71,18 +83,38 @@ def tablero(hoy=None, ver_costos=False, canal=""):
         cards.append(_card("Comercial", "OV ingresadas del mes", f"S/ {v_mes:,.0f}",
                            (f"{var_ant:+.0f} % vs el mismo corte del mes anterior" if var_ant is not None else "sin meta cargada"),
                            "warn" if var_ant is not None and var_ant < -10 else ""))
-    # V52: la facturación del mes es la de SAP (facturas − notas de crédito), como la reporta Comercial; las OV
-    # ingresadas siguen en la tarjeta de venta
-    from .facturacion_sap import resumen as _fact
+    # V52/V55: la facturación del mes es la de SAP, solo el neto (facturas − notas de crédito); las notas de crédito van
+    # en su propia tarjeta
+    from .comercial_v23 import fin_de_mes as _fm
+    from .facturacion_sap import ov_del_periodo, resumen as _fact
     fx = _fact(ini, hoy, canal)
+    fa = _fact(ant_ini, ant_ini.replace(day=dia_eq), canal) if fx is not None else None
+    # V55: «OV del mes» son las OV de SAP con despacho en el mes (abiertas y cerradas, sin anuladas), con su valor
+    ovm = ov_del_periodo(ini, _fm(ini), canal)
+    if ovm is not None:
+        meta = (f"; {gen['avance_soles']} % de la meta" if gen and gen["avance_soles"] is not None else "")
+        cards = [c for c in cards if c["titulo"] != "OV ingresadas del mes"]
+        cards.insert(0, _card("Comercial", f"OV con despacho en {_MESES[ini.month - 1]} (SAP)", f"S/ {ovm['total']:,.0f}",
+                              f"{ovm['n']} OV · despachado S/ {ovm['despachado']:,.0f} · por despachar S/ {ovm['por_despachar']:,.0f}"
+                              f" · sin IGV S/ {ovm['sin_igv']:,.0f} · ingresadas en el mes: {ovm['n_ingresadas']} OV por "
+                              f"S/ {ovm['ingresadas']:,.0f}{meta}", ""))
     if fx is not None:
-        fa = _fact(ant_ini, ant_ini.replace(day=dia_eq), canal)
         var_f = _pct(fx["neto"] - fa["neto"], fa["neto"]) if fa and fa["neto"] else None
+        extra = ""
+        if ovm is not None and fx["neto"] > ovm["despachado"] + 1:
+            extra = (" · incluye lo facturado en el mes de OV de meses anteriores y documentos sin OV (servicios, "
+                     "ajustes)")
         cards.insert(0, _card("Comercial", "Facturación del mes (SAP)", f"S/ {fx['neto']:,.0f}",
-                              f"facturas S/ {fx['facturas']:,.0f} − notas de crédito S/ {fx['notas_credito']:,.0f}"
-                              f" · sin IGV S/ {fx['neto_sin_igv']:,.0f}"
+                              f"neto de notas de crédito · sin IGV S/ {fx['neto_sin_igv']:,.0f}"
                               + (f" · {var_f:+.0f} % vs el mismo corte del mes anterior" if var_f is not None else "")
-                              + (f" · hasta el {fx['ultima']:%d/%m}" if fx.get("ultima") else ""), ""))
+                              + (f" · hasta el {fx['ultima']:%d/%m}" if fx.get("ultima") else "") + extra, ""))
+        var_nc = _pct(fx["notas_credito"] - fa["notas_credito"], fa["notas_credito"]) if fa and fa["notas_credito"] else None
+        pct_nc = _pct(fx["notas_credito"], fx["facturas"])
+        cards.insert(1, _card("Comercial", "Notas de crédito del mes (SAP)", f"S/ {fx['notas_credito']:,.0f}",
+                              f"{fx['n_notas']} nota(s) · sin IGV S/ {fx['notas_sin_igv']:,.0f}"
+                              + (f" · {pct_nc:.1f} % de lo facturado" if pct_nc is not None else "")
+                              + (f" · {var_nc:+.0f} % vs el mismo corte del mes anterior" if var_nc is not None else ""),
+                              "warn" if pct_nc is not None and pct_nc > 10 else ""))
     if canal:
         from .comercial_v23 import base_mes, fin_de_mes, nivel
         n = nivel(del_canal(base_mes(ini, fin_de_mes(ini))), hoy=hoy)
@@ -143,8 +175,19 @@ def tablero(hoy=None, ver_costos=False, canal=""):
     abiertas = list(s.execute(select(PurchaseRequest).where(PurchaseRequest.estado.notin_(
         ("RECIBIDA", "RECIBIDA_CON_DIFERENCIAS", "RECIBIDA_BAJO_OBSERVACION", "CERRADA", "RECHAZADA", "CANCELADA")))).scalars())
     atrasadas = [r for r in abiertas if r.fecha_necesidad and r.fecha_necesidad < hoy]
-    cards.append(_card("Compras", "Compras nacionales abiertas", len(abiertas),
-                       f"{len(atrasadas)} con fecha de necesidad vencida", "warn" if atrasadas else ""))
+    # V55: las compras del mes salen de las órdenes de compra de SAP (valor y lo recibido); sin ellas, las solicitudes
+    from .compras_sap import resumen as _compras
+    cs = _compras(ini, hoy)
+    if cs is not None:
+        mon = " · ".join(f"{k}: S/ {v:,.0f}" for k, v in sorted(cs["por_moneda"].items())) if len(cs["por_moneda"]) > 1 else ""
+        cards.append(_card("Compras", "Compras del mes (SAP)", f"S/ {cs['total']:,.0f}",
+                           f"{cs['n_ordenes']} orden(es) de compra · recibido S/ {cs['recibido']:,.0f} · por recibir "
+                           f"S/ {cs['por_recibir']:,.0f} · sin IGV S/ {cs['sin_igv']:,.0f}" + (f" · {mon}" if mon else "")
+                           + f" · {len(atrasadas)} solicitud(es) del módulo con fecha vencida",
+                           "warn" if atrasadas else "", _url("v24.compras_sap", "/gestion/compras-sap")))
+    else:
+        cards.append(_card("Compras", "Compras nacionales abiertas", len(abiertas),
+                           f"{len(atrasadas)} con fecha de necesidad vencida", "warn" if atrasadas else ""))
     if atrasadas:
         atencion.append(("MEDIA", "Compras", f"{len(atrasadas)} compra(s) nacional(es) pasaron su fecha de necesidad."))
     from .importaciones_v24 import board as imp_board

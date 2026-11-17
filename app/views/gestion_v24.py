@@ -281,3 +281,14 @@ def gross_margin():
     html = render_template("v24_margen.html", d=d, ev=ev, proy=mb.proyeccion(d), graf=graf,
                            canales=sorted({c["nombre"] for c in mb.calcular(desde, hasta)["canal"]}))
     return _descarga(html, "Margen bruto", "margen_bruto")
+
+
+@bp.route("/compras-sap")
+@perm_required("tablero.empresa", "compras.ver", "compras.consolidado")
+def compras_sap():
+    """V55: órdenes de compra de SAP del periodo: valor, lo recibido y lo que falta, por proveedor, producto y orden."""
+    from ..services.compras_sap import resumen
+    hoy = date.today()
+    desde, hasta = f_date("desde") or hoy.replace(day=1), f_date("hasta") or hoy
+    return render_template("v55_compras_sap.html", d=resumen(desde, hasta), desde=desde, hasta=hasta,
+                           ver=request.args.get("ver", "ordenes"))

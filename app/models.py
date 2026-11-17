@@ -2738,6 +2738,9 @@ class SapOrderLine(Base):
     cantidad: Mapped[float] = mapped_column(Float, default=0)
     entregado: Mapped[float] = mapped_column(Float, default=0)
     linea_cerrada: Mapped[bool] = mapped_column(Boolean, default=False)
+    # V55: valor de la línea en soles (moneda local) sin IGV (LineTotal) y su IGV (TaxTotal), para la venta del mes
+    total: Mapped[float] = mapped_column(Float, default=0, server_default="0")
+    igv: Mapped[float] = mapped_column(Float, default=0, server_default="0")
     ts: Mapped[datetime] = mapped_column(DateTime, default=now)
 
 
@@ -2837,4 +2840,27 @@ class SapBilling(Base):
     moneda: Mapped[str] = mapped_column(String(10), default="")
     total: Mapped[float] = mapped_column(Float, default=0)  # DocTotal en soles (moneda local), con IGV
     igv: Mapped[float] = mapped_column(Float, default=0)  # VatSum en soles
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+
+class SapPurchaseLine(Base):
+    """V55: órdenes de compra de SAP (PurchaseOrders), una fila por línea: qué se compró, a quién, cuánto, cuánto se
+    recibió y su valor en soles (moneda local), para el indicador de compras y su detalle."""
+    __tablename__ = "sap_compras"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    clave: Mapped[str] = mapped_column(String(40), unique=True)  # DocEntry:LineNum
+    docentry: Mapped[int] = mapped_column(Integer, index=True)
+    docnum: Mapped[str] = mapped_column(String(20), default="")
+    fecha: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
+    fecha_entrega: Mapped[date | None] = mapped_column(Date, nullable=True)
+    cardcode: Mapped[str] = mapped_column(String(30), default="")
+    proveedor: Mapped[str] = mapped_column(String(200), default="")
+    estado: Mapped[str] = mapped_column(String(12), default="ABIERTA")  # ABIERTA / CERRADA / CANCELADA
+    moneda: Mapped[str] = mapped_column(String(10), default="")
+    product_code: Mapped[str] = mapped_column(String(30), default="")
+    descripcion: Mapped[str] = mapped_column(String(200), default="")
+    cantidad: Mapped[float] = mapped_column(Float, default=0)
+    recibido: Mapped[float] = mapped_column(Float, default=0)
+    total: Mapped[float] = mapped_column(Float, default=0)  # LineTotal en soles, sin IGV
+    igv: Mapped[float] = mapped_column(Float, default=0)
     ts: Mapped[datetime] = mapped_column(DateTime, default=now)

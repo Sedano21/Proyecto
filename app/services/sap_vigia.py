@@ -161,6 +161,8 @@ def ciclo(user, upload_dir, forzar=False, sl=None):
             for t in ("CLIENTES", "PRODUCTOS", "STOCK", "BOM"):  # V45: también las listas de materiales
                 if t in tipos:
                     paso(t, lambda t=t: carga(t))
+            from . import compras_sap  # V55: órdenes de compra de SAP (valor y lo recibido)
+            paso("compras_sap", lambda: compras_sap.sync(user, sl=sl))
             _set("sap_vigia_horario", datetime.now().isoformat(timespec="seconds"), "Última revisión horaria (interno)")
         paso("envios", lambda: (sap_sl.push_pending_orders(sl=sl), sap_sl.push_pending_guides(sl=sl)) and "ok")
         _set("sap_vigia_firmas", nuevas, "Firmas de los documentos de SAP de ayer y hoy (interno)")

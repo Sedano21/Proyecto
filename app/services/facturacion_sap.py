@@ -87,3 +87,34 @@ def resumen(desde, hasta, canal=""):
     return {"facturas": t(fac), "notas_credito": t(nc), "neto": round(t(fac) - t(nc), 2), "n_facturas": len(fac),
             "n_notas": len(nc), "facturas_sin_igv": b(fac), "notas_sin_igv": b(nc), "neto_sin_igv": round(b(fac) - b(nc), 2),
             "desde": desde, "hasta": hasta, "ultima": max((d.fecha for d in docs), default=None)}
+
+
+def ov_del_periodo(desde, hasta, canal=""):
+    """V55: las OV de SAP con despacho (fecha de entrega) en el periodo, sin las anuladas: su valor en soles con y sin
+    IGV (líneas de la OV), lo ya despachado (proporcional a lo entregado) y lo que falta despachar; además, las que
+    se ingresaron (emitieron) en el periodo. None si las OV de SAP aún no traen su valor (se completa en la próxima
+    lectura del historial)."""
+    from ..models import SapOrderLine
+    if db().execute(select(SapOrderLine.id).where(SapOrderLine.total != 0).limit(1)).first() is None:
+        return None
+    lineas = list(db().execute(select(SapOrderLine).where(SapOrderLine.fecha_entrega >= desde,
+                                                          SapOrderLine.fecha_entrega <= hasta,
+                                                          SapOrderLine.estado != "CANCELADA")).scalars())
+    ingresadas = list(db().execute(select(SapOrderLine).where(SapOrderLine.fecha >= desde, SapOrderLine.fecha <= hasta,
+                                                              SapOrderLine.estado != "CANCELADA")).scalars())
+    if canal:
+        from ..models import Customer
+        from .margin import channel
+        nombres = {x.cliente for x in lineas + ingresadas}
+        canal_de = {c.nombre: channel(c) for c in db().execute(select(Customer).where(Customer.nombre.in_(list(nombres) or [""])))
+                    .scalars()}
+        lineas = [x for x in lineas if canal_de.get(x.cliente) == canal]
+        ingresadas = [x for x in ingresadas if canal_de.get(x.cliente) == canal]
+    con = lambda x: (x.total or 0) + (x.igv or 0)  # noqa: E731
+    frac = lambda x: min((x.entregado or 0) / x.cantidad, 1.0) if x.cantidad else 0.0  # noqa: E731
+    total = sum(con(x) for x in lineas)
+    desp = sum(con(x) * frac(x) for x in lineas)
+    return {"total": round(total, 2), "sin_igv": round(sum(x.total or 0 for x in lineas), 2),
+            "despachado": round(desp, 2), "por_despachar": round(total - desp, 2), "n": len({x.docnum for x in lineas}),
+            "ingresadas": round(sum(con(x) for x in ingresadas), 2), "n_ingresadas": len({x.docnum for x in ingresadas}),
+            "desde": desde, "hasta": hasta}

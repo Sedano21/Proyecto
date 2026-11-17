@@ -1,0 +1,21 @@
+{% extends "base.html" %}{% from "_m.html" import b, empty %}
+{% block content %}<div class="page-head"><div><h1>Compras (órdenes de compra de SAP)</h1>
+<p class="sub">Qué se compró, a quién y por cuánto, con lo ya recibido. Valores en soles (moneda local de SAP) con IGV; se actualiza con SAP cada hora.{% if d and d.ultima %} Última lectura: {{ d.ultima|replace('T', ' ') }}.{% endif %}</p></div></div>
+<form class="row card" method="get"><div><label>Emitidas desde</label><input type="date" name="desde" value="{{ desde.isoformat() }}"></div>
+<div><label>hasta</label><input type="date" name="hasta" value="{{ hasta.isoformat() }}"></div><input type="hidden" name="ver" value="{{ ver }}"><div><button class="sec">Ver</button></div></form>
+{% if d is none %}{{ empty('Todavía no se leyeron las órdenes de compra de SAP: el vigilante las trae en su revisión horaria.', 'cart') }}{% else %}
+<div class="kpis"><div class="kpi"><span>Total comprado</span><b>S/ {{ '{:,.0f}'.format(d.total) }}</b></div>
+<div class="kpi ok"><span>Recibido</span><b>S/ {{ '{:,.0f}'.format(d.recibido) }}</b></div>
+<div class="kpi warn"><span>Por recibir</span><b>S/ {{ '{:,.0f}'.format(d.por_recibir) }}</b></div>
+<div class="kpi"><span>Órdenes (abiertas)</span><b>{{ d.n_ordenes }} ({{ d.abiertas }})</b></div></div>
+<p class="small muted">Sin IGV: S/ {{ '{:,.0f}'.format(d.sin_igv) }}{% if d.por_moneda|length > 1 %} · por moneda del documento: {% for k, v in d.por_moneda.items() %}{{ k }} S/ {{ '{:,.0f}'.format(v) }}{{ ' · ' if not loop.last }}{% endfor %}{% endif %}. Lo recibido es proporcional a la cantidad ya ingresada de cada línea.</p>
+<div class="vista-sel">{% for k, t in [('ordenes', 'Por orden'), ('proveedores', 'Por proveedor'), ('productos', 'Por producto')] %}<a class="btn {{ '' if ver == k else 'sec' }} small" href="?desde={{ desde.isoformat() }}&hasta={{ hasta.isoformat() }}&ver={{ k }}">{{ t }}</a> {% endfor %}</div>
+{% if ver == 'proveedores' %}<div class="tw"><table class="small"><tr><th>Proveedor</th><th class="r">Órdenes</th><th class="r">Total S/</th></tr>
+{% for p in d.proveedores %}<tr><td>{{ p.proveedor }}</td><td class="r">{{ p.ordenes }}</td><td class="r">{{ '{:,.2f}'.format(p.total) }}</td></tr>{% else %}<tr><td colspan="3" class="muted">Sin órdenes de compra en el periodo.</td></tr>{% endfor %}</table></div>
+{% elif ver == 'productos' %}<div class="tw"><table class="small"><tr><th>Código</th><th>Descripción</th><th class="r">Comprado</th><th class="r">Recibido</th><th class="r">Total S/</th></tr>
+{% for p in d.productos %}<tr><td>{{ p.codigo }}</td><td>{{ p.descripcion }}</td><td class="r">{{ p.cantidad|n }}</td><td class="r">{{ p.recibido|n }}</td><td class="r">{{ '{:,.2f}'.format(p.total) }}</td></tr>{% else %}<tr><td colspan="5" class="muted">Sin órdenes de compra en el periodo.</td></tr>{% endfor %}</table></div>
+{% else %}<div class="tw"><table class="small"><tr><th>OC</th><th>Fecha</th><th>Proveedor</th><th>Estado</th><th>Qué se compró</th><th class="r">Total S/</th><th class="r">Recibido S/</th></tr>
+{% for o in d.ordenes %}<tr><td>{{ o.docnum }}</td><td>{{ o.fecha|d }}{% if o.entrega %}<br><span class="muted">entrega {{ o.entrega|d }}</span>{% endif %}</td><td>{{ o.proveedor }}</td><td>{{ b(o.estado) }}{% if o.moneda %} <span class="muted">{{ o.moneda }}</span>{% endif %}</td>
+<td>{% for ln in o.lineas %}<div>{{ ln.product_code }} {{ ln.descripcion }} · {{ ln.cantidad|n }}{% if ln.recibido %} (recibido {{ ln.recibido|n }}){% endif %}</div>{% endfor %}</td>
+<td class="r">{{ '{:,.2f}'.format(o.total) }}</td><td class="r">{{ '{:,.2f}'.format(o.recibido) }}</td></tr>{% else %}<tr><td colspan="7" class="muted">Sin órdenes de compra en el periodo.</td></tr>{% endfor %}</table></div>{% endif %}
+{% endif %}{% endblock %}
