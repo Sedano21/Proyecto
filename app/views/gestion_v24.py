@@ -87,6 +87,9 @@ def purchases():
             return act(lambda: cv.choose(g.user, q), "Cotización elegida: se pasó a la(s) solicitud(es).", back)
         abort(400)
     prod = request.args.get("producto") or None
+    from ..services import compras_ov  # V53: antes de mostrar lo que falta comprar, se quita lo ya atendido
+    if compras_ov.revisar(g.user)["ajustadas"]:
+        db().commit()
     d = cv.consolidado(prod)
     comps = {q.id: cv.comparar(q) for p in d for q in p["cotizaciones"]}
     prods = list(db().execute(select(Product).order_by(Product.code)).scalars())

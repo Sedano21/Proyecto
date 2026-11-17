@@ -226,6 +226,8 @@ def sync_historial(user, sl=None, completo=False):
         res["producciones_error"] = prod_err
     from .guias_sunat import conciliar_con_sap  # V35: guías SUNAT del módulo que ya están en SAP
     res["guias_sunat_en_sap"] = conciliar_con_sap()
+    from .compras_ov import revisar  # V53: compras por OV ya atendidas (guías, OV cerrada o anulada)
+    res["compras_ov"] = revisar(user)
     set_param("sap_ordenes_ultimo", dict(res, ts=now().isoformat(timespec="minutes")), user)
     audit(user, "SAP_HISTORIAL", "SapOrderLine", "", res)
     return res

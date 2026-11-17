@@ -3239,3 +3239,10 @@ PARAMS += [
     ("historico_produccion_ultima_carga", {}, "dict", "Producción",
      "Resumen de la última carga del Excel de control de producción (lo escribe el sistema).", "DEFINIDO", V51),
 ]
+# ------------------------------------------------------------------ V53 (17-nov-2026)
+V53 = "Observaciones V53 (17-nov-2026)"
+ALERT_TYPES += [
+    ("COMPRA_REVISAR_OV_ATENDIDA", "Compra en curso cuya OV ya se atendió", "Compras", "Compras", "MEDIA",
+     ["COMPRAS", "JEFE_LOGISTICA"], "DEFINIDO", V53,
+     "La OV que originó la compra ya tiene sus guías en SAP o se cerró o anuló: revisar si aún hace falta comprar.", False),
+]
