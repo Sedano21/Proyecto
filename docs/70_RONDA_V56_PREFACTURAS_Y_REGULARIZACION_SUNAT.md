@@ -60,4 +60,4 @@ Coordinador o el Asistente de Distribución (`distribucion.guia_modificar`).
 - **Primera lectura.** Prepara pre-facturas para todas las guías abiertas de SAP desde el inicio del historial. Las
   que en la práctica ya se facturaron sin basarse en la guía deben descartarse una vez, con motivo.
 
-**Pruebas:** `tests/test_v56.py`.
+**Pruebas:** `tests/test_v56.py`. Suite completa: 688 pruebas pasan.
