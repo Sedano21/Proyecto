@@ -290,12 +290,16 @@ def compras_sap():
     from ..services.compras_sap import resumen
     hoy = date.today()
     desde, hasta = f_date("desde") or hoy.replace(day=1), f_date("hasta") or hoy
-    return render_template("v55_compras_sap.html", d=resumen(desde, hasta), desde=desde, hasta=hasta,
-                           ver=request.args.get("ver", "ordenes"))
+    from .common import paginate
+    d = resumen(desde, hasta)
+    ver = request.args.get("ver", "ordenes")
+    ver = ver if ver in ("ordenes", "proveedores", "productos") else "ordenes"
+    return render_template("v55_compras_sap.html", d=d, desde=desde, hasta=hasta, ver=ver,
+                           lista=paginate(d[ver], 40) if d else None)
 
 
 @bp.route("/facturacion-sap")
-@perm_required("tablero.empresa", "finanzas.ver", "facturas.cargar")
+@perm_required("tablero.empresa", "finanzas.ver", "facturas.cargar", "facturacion.cargar")
 def facturacion_sap():
     """V55: detalle de la facturación del mes (SAP): facturas − notas de crédito = neto, por documento y por cliente."""
     from ..services.facturacion_sap import detalle
@@ -306,7 +310,8 @@ def facturacion_sap():
     tipo = {"facturas": "FACTURA", "notas": "NOTA_CREDITO"}.get(ver, "")
     d = detalle(desde, hasta, tipo)
     return render_template("v55_facturacion_sap.html", d=d, desde=desde, hasta=hasta, ver=ver,
-                           lista=paginate(d["docs"], 50) if ver in ("facturas", "notas", "todos") else None)
+                           lista=paginate(d["docs"], 50) if ver in ("facturas", "notas", "todos") else None,
+                           clientes=paginate(d["clientes"], 40))
 
 
 @bp.route("/ov-mes-sap")

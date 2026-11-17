@@ -3267,3 +3267,9 @@ PARAMS += [
     ("prefacturas_ultima", {}, "dict", "Integración SAP",
      "Última preparación de facturas desde las guías abiertas de SAP (la escribe el sistema).", "DEFINIDO", V56),
 ]
+# ------------------------------------------------------------------ V57 (18-nov-2026)
+V57 = "Observaciones V57 (18-nov-2026)"
+PARAMS += [
+    ("sap_condiciones_pago", [], "list", "Integración SAP",
+     "Condiciones de pago (formas de pago) leídas de SAP para la factura (las escribe el sistema).", "DEFINIDO", V57),
+]

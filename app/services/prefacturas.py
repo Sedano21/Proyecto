@@ -48,6 +48,39 @@ def _hist(p, user, accion, **extra):
                                                    "ts": now().isoformat(timespec="minutes")}, **extra)]
 
 
+# ------------------------------------------------------------------ V57: condiciones de pago de SAP (forma de pago)
+def condiciones():
+    """[{codigo, nombre, dias}] leídas de SAP (PaymentTermsTypes)."""
+    return list(param("sap_condiciones_pago", []) or [])
+
+
+def leer_condiciones(sl):
+    from .core import set_param
+    try:
+        filas = sl.get_all("PaymentTermsTypes", {"$select": "GroupNumber,PaymentTermsGroupName,NumberOfAdditionalDays,"
+                                                            "NumberOfAdditionalMonths"})
+    except BusinessError:
+        return condiciones()
+    lst = [{"codigo": int(f["GroupNumber"]), "nombre": f.get("PaymentTermsGroupName") or str(f["GroupNumber"]),
+            "dias": int(f.get("NumberOfAdditionalDays") or 0) + 30 * int(f.get("NumberOfAdditionalMonths") or 0)}
+           for f in filas if f.get("GroupNumber") is not None]
+    if lst and lst != condiciones():
+        set_param("sap_condiciones_pago", lst)
+    return lst or condiciones()
+
+
+def _aplicar_condicion(p, codigo):
+    """Forma de pago y vencimiento según la condición de pago de SAP (el vencimiento se puede cambiar)."""
+    if codigo in (None, ""):
+        return
+    c = next((x for x in condiciones() if x["codigo"] == int(codigo)), None)
+    p.forma_pago_codigo = int(codigo)
+    p.forma_pago = (c["nombre"] if c else str(codigo))[:80]
+    if c is not None:
+        from datetime import timedelta
+        p.vencimiento = (p.fecha or date.today()) + timedelta(days=c["dias"])
+
+
 # ------------------------------------------------------------------ 1. pre-factura desde las guías abiertas de SAP
 def _lineas_de_entrega(d):
     out = []
@@ -75,7 +108,7 @@ def _abiertas_sap(sl):
     return sl.get_all("DeliveryNotes", {"$filter": f"DocumentStatus eq 'bost_Open' and Cancelled eq 'tNO' and "
                                                    f"DocDate ge '{historial_desde().isoformat()}'",
                                         "$select": "DocEntry,DocNum,FolioPrefixString,FolioNumber,DocDate,CardCode,CardName,"
-                                                   "DocCurrency,DocumentLines"}), _folio
+                                                   "DocCurrency,NumAtCard,PaymentGroupCode,DocDueDate,DocumentLines"}), _folio
 
 
 def sincronizar(user=None, sl=None):
@@ -92,6 +125,7 @@ def sincronizar(user=None, sl=None):
         docs, folio = _abiertas_sap(sl)
         ovs = _por_entry(sl, "Orders", [ln.get("BaseEntry") for d in docs for ln in d.get("DocumentLines") or []
                                         if ln.get("BaseType") == 17], "DocEntry,DocNum")
+        leer_condiciones(sl)
     finally:
         if propio:
             sl.logout()
@@ -105,12 +139,16 @@ def sincronizar(user=None, sl=None):
         lineas = _lineas_de_entrega(d)
         if not lineas:
             continue
+        for x in lineas:
+            x["entrega"], x["guia"] = de, folio(d)
         ov = next((str(ovs.get(x["base_ov"], {}).get("DocNum") or "") for x in lineas if x.get("base_ov")), "")
         o = order_by_number(ov) if ov else None
         p = Prefactura(origen="SAP", estado="POR_VALIDAR", entrega_docentry=de, guia=folio(d), ov_numero=ov,
                        order_id=o.id if o else None, cardcode=(d.get("CardCode") or "")[:30],
                        cliente=(d.get("CardName") or "")[:200], fecha=date.today(),
-                       moneda=(d.get("DocCurrency") or "")[:10], lineas=lineas, sap={}, ediciones=[])
+                       moneda=(d.get("DocCurrency") or "")[:10], lineas=lineas, sap={}, ediciones=[],
+                       oc_cliente=(d.get("NumAtCard") or (o.oc_numero if o else "") or "")[:100])
+        _aplicar_condicion(p, d.get("PaymentGroupCode"))
         c = db().execute(select(Customer).where(Customer.codigo_sap == p.cardcode)).scalars().first() if p.cardcode else None
         p.ruc = (c.ruc if c else "")[:15]
         db().add(p)
@@ -192,6 +230,19 @@ def editar(user, p, datos):
             raise BusinessError("Fecha no válida.") from None
     if datos.get("observacion") is not None:
         p.observacion = datos.get("observacion").strip()[:1000]
+    if datos.get("oc_cliente") is not None:
+        p.oc_cliente = datos.get("oc_cliente").strip()[:100]
+    fp = (datos.get("forma_pago_codigo") or "").strip() if isinstance(datos.get("forma_pago_codigo"), str) else datos.get("forma_pago_codigo")
+    if fp not in (None, "") and str(fp) != str(p.forma_pago_codigo or ""):
+        _aplicar_condicion(p, int(fp))
+    v = (datos.get("vencimiento") or "").strip()
+    if v:
+        try:
+            p.vencimiento = date.fromisoformat(v)
+        except ValueError:
+            raise BusinessError("Fecha de vencimiento no válida.") from None
+    if p.vencimiento and p.fecha and p.vencimiento < p.fecha:
+        raise BusinessError("El vencimiento no puede ser anterior a la fecha de la factura.")
     p.lineas = nuevas
     _hist(p, user, "EDITADA", motivo=motivo, lineas_cambiadas=cambia, antes=antes if cambia else None)
     audit(user, "PREFACTURA_EDITADA", "Prefactura", p.id, {"motivo": motivo, "cambia_lineas": cambia})
@@ -205,6 +256,8 @@ def validar(user, p, aprobar=True, observacion="", sl=None):
     if p.origen == "SUNAT" and not p.entrega_docentry:
         raise BusinessError("Una primero la factura de SUNAT a la guía que factura.")
     obs = (observacion or "").strip()
+    if aprobar and not (p.forma_pago_codigo is not None or p.forma_pago):
+        raise BusinessError("Elija la forma de pago antes de validar.")
     if not aprobar:
         if not obs:
             raise BusinessError("Indique qué se observa.")
@@ -244,7 +297,7 @@ def descartar(user, p, motivo):
 def payload(p):
     lineas = []
     for x in p.lineas or []:
-        d = {"BaseType": 15, "BaseEntry": p.entrega_docentry, "BaseLine": x["linea"], "Quantity": x["cantidad"],
+        d = {"BaseType": 15, "BaseEntry": x.get("entrega") or p.entrega_docentry, "BaseLine": x["linea"], "Quantity": x["cantidad"],
              "UnitPrice": x["precio"], "DiscountPercent": x.get("descuento") or 0}
         if x.get("impuesto"):
             d["TaxCode"] = x["impuesto"]
@@ -254,6 +307,12 @@ def payload(p):
             "Comments": (f"Factura de la guía {p.guia}" + (f" (OV {p.ov_numero})" if p.ov_numero else "")
                          + " validada en el módulo." + (f" {p.observacion}" if p.observacion else ""))[:254],
             "DocumentLines": lineas}
+    if p.forma_pago_codigo is not None:
+        body["PaymentGroupCode"] = p.forma_pago_codigo
+    if p.vencimiento:
+        body["DocDueDate"] = p.vencimiento.isoformat()
+    if p.oc_cliente:
+        body["NumAtCard"] = p.oc_cliente[:100]
     if p.origen == "SUNAT" and p.serie and p.numero:
         body["FolioPrefixString"], body["FolioNumber"] = p.serie, int(p.numero)
     return body
@@ -370,6 +429,15 @@ def parse_xml(data):
                        "cantidad": float(q.text) if q is not None and q.text else 0.0,
                        "precio": float(precio.text) if precio is not None and precio.text else 0.0, "descuento": 0.0})
     f["lineas"] = lineas
+    gr = [(_t(d, "ID").text or "").strip() for d in _hijos(root, "DespatchDocumentReference") if _t(d, "ID") is not None]
+    f["guias"] = [x for x in gr if x]
+    oc = _t(root, "OrderReference", "ID")
+    f["oc"] = (oc.text or "").strip() if oc is not None else ""
+    pt = [e for e in _hijos(root, "PaymentTerms")]
+    f["forma_pago"] = next(((_t(e, "PaymentMeansID").text or "").strip() for e in pt
+                            if _t(e, "PaymentMeansID") is not None and (_t(e, "PaymentMeansID").text or "").strip()), "")
+    venc = next((_t(e, "PaymentDueDate") for e in pt if _t(e, "PaymentDueDate") is not None), None)
+    f["vencimiento"] = date.fromisoformat(venc.text[:10]) if venc is not None and venc.text else None
     return f
 
 
@@ -386,8 +454,30 @@ def parse_text(texto):
     f["ruc"] = rucs[0] if rucs else ""
     fechas = re.findall(r"(\d{2}/\d{2}/\d{4})", t)
     f["fecha"] = datetime.strptime(fechas[0], "%d/%m/%Y").date() if fechas else None
-    m = re.search(r"(?:importe\s+total|total\s+a\s+pagar|total)\s*:?\s*(?:S/\.?|US\$|\$)?\s*([\d.,]+)", t, re.I)
+    m = re.search(r"importe\s+total[\s\S]{0,60}?([\d,]+\.\d{2})", t, re.I) or \
+        re.search(r"total\s+a\s+pagar[\s\S]{0,40}?([\d,]+\.\d{2})", t, re.I)
     f["total"] = float(m.group(1).replace(",", "")) if m else None
+    m = re.search(r"fecha\s+de\s+emisi[oó]n\s*:?\s*(\d{2}/\d{2}/\d{4})", t, re.I)
+    if m:
+        f["fecha"] = datetime.strptime(m.group(1), "%d/%m/%Y").date()
+    m = re.search(r"fecha\s+de\s+vencimiento\s*:?\s*(\d{2}/\d{2}/\d{4})", t, re.I)
+    f["vencimiento"] = datetime.strptime(m.group(1), "%d/%m/%Y").date() if m else None
+    m = re.search(r"forma\s+de\s+pago\s*:?\s*(CR[EÉ]DITO|CONTADO)", t, re.I)
+    f["forma_pago"] = m.group(1).upper().replace("É", "E") if m else ""
+    m = re.search(r"orden\s+de[\s\S]{0,25}?(\d{6,})", t, re.I)
+    f["oc"] = m.group(1) if m else ""
+    m = re.search(r"gu[ií]a\(?s?\)?\s+de\s+remisi[oó]n\s*:?\s*([A-Z0-9]{4}\s*-\s*\d+(?:\s*[,;/]\s*[A-Z0-9]{4}\s*-\s*\d+)*)", t, re.I)
+    f["guias"] = [re.sub(r"\s", "", x) for x in re.split(r"[,;/]", m.group(1))] if m else []
+    # ítems: «10.00 MP-902 DESCRIPCION 5.00 50.00» (cantidad, código, descripción, P.U., valor)
+    for ln in t.splitlines():
+        m = re.match(r"^\s*([\d.,]+)\s+([A-Za-z]{2,3}-\d{2,6}[A-Za-z0-9.]*)\s+(.+?)\s+([\d.,]+)\s+([\d.,]+)\s*$", ln)
+        if m:
+            try:
+                q, pu = float(m.group(1).replace(",", "")), float(m.group(4).replace(",", ""))
+            except ValueError:
+                continue
+            f["lineas"].append({"codigo": m.group(2).upper(), "descripcion": m.group(3).strip(), "um": "", "cantidad": q,
+                                "precio": pu, "descuento": 0.0})
     c = db().execute(select(Customer).where(Customer.ruc == f["ruc"])).scalars().first() if f["ruc"] else None
     f["cliente"] = c.nombre if c else ""
     return f
@@ -400,6 +490,21 @@ def leer_archivo(path):
     from pypdf import PdfReader
     texto = "\n".join(pg.extract_text() or "" for pg in PdfReader(path).pages)
     return parse_text(texto)
+
+
+def _norm(t):
+    import unicodedata
+    return "".join(c for c in unicodedata.normalize("NFD", (t or "").upper()) if unicodedata.category(c) != "Mn")
+
+
+def _norm_guia(g):
+    """{'T001-123'} sin ceros a la izquierda ni espacios, para comparar el número de guía que cita la factura."""
+    out = set()
+    for x in re.split(r"[,;/]", g or ""):
+        m = re.match(r"\s*([A-Z0-9]{4})\s*-\s*0*(\d+)", x.upper())
+        if m:
+            out.add(f"{m.group(1)}-{m.group(2)}")
+    return out
 
 
 def candidatas(p):
@@ -424,13 +529,24 @@ def registrar_sunat(user, path, nombre="", archivo_rel=""):
     p = Prefactura(origen="SUNAT", estado="POR_VALIDAR", serie=f["serie"], numero=f["numero"], ruc=f["ruc"][:15],
                    cliente=(f.get("cliente") or (c.nombre if c else ""))[:200], cardcode=(c.codigo_sap if c else "")[:30],
                    fecha=f.get("fecha") or date.today(), moneda=f.get("moneda", "")[:10], lineas=f.get("lineas") or [],
-                   total_sunat=f.get("total"), archivo=archivo_rel, sap={}, ediciones=[], user_id=user.id)
+                   total_sunat=f.get("total"), archivo=archivo_rel, sap={}, ediciones=[], user_id=user.id,
+                   oc_cliente=(f.get("oc") or "")[:100], vencimiento=f.get("vencimiento"))
+    fp = (f.get("forma_pago") or "").upper()
+    if fp:
+        c_fp = next((x for x in condiciones() if fp[:5] in _norm(x["nombre"])), None)
+        p.forma_pago = (c_fp["nombre"] if c_fp else fp.title())[:80]
+        p.forma_pago_codigo = c_fp["codigo"] if c_fp else None
     db().add(p)
     db().flush()
     _hist(p, user, "SUBIDA", archivo=nombre)
     cands = candidatas(p)
-    if len(cands) == 1:
-        unir(user, p, cands[0], "Única guía abierta del cliente")
+    citadas = set().union(*[_norm_guia(g) for g in f.get("guias") or []]) if f.get("guias") else set()
+    por_guia = [c for c in cands if _norm_guia(c.guia) & citadas]
+    elegidas = por_guia or (cands if len(cands) == 1 else [])
+    if elegidas:
+        unir(user, p, elegidas[0], "La factura cita la guía " + elegidas[0].guia if por_guia else "Única guía abierta del cliente")
+        if len(elegidas) > 1:
+            juntar(user, p, elegidas[1:], "La factura cita varias guías")
     audit(user, "FACTURA_SUNAT_SUBIDA", "Prefactura", p.id, {"factura": f"{p.serie}-{p.numero}", "ruc": p.ruc})
     return p
 
@@ -457,11 +573,54 @@ def unir(user, p, guia_p, motivo=""):
     p.entrega_docentry, p.guia, p.ov_numero, p.order_id = guia_p.entrega_docentry, guia_p.guia, guia_p.ov_numero, guia_p.order_id
     p.cardcode = p.cardcode or guia_p.cardcode
     p.cliente = p.cliente or guia_p.cliente
+    p.oc_cliente = p.oc_cliente or guia_p.oc_cliente
+    if p.forma_pago_codigo is None and guia_p.forma_pago_codigo is not None:
+        p.forma_pago_codigo, p.forma_pago = guia_p.forma_pago_codigo, guia_p.forma_pago
+        p.vencimiento = p.vencimiento or guia_p.vencimiento
     guia_p.estado = "DESCARTADA"
     guia_p.entrega_docentry = None  # la guía pasa a la factura de SUNAT (una guía, una pre-factura)
     _hist(guia_p, user, "REEMPLAZADA", detalle=f"Se factura con la factura de SUNAT {p.serie}-{p.numero}")
     _hist(p, user, "UNIDA", guia=p.guia, motivo=motivo)
     alerts.close_by_system(f"PREFACTURA:{guia_p.id}", f"Facturada en SUNAT con {p.serie}-{p.numero}")
+    db().flush()
+    return p
+
+
+# ------------------------------------------------------------------ V57: de guías a factura (varias guías, una factura)
+def juntables(p):
+    """Otras pre-facturas por validar del mismo cliente (de otras guías) que se pueden facturar juntas con esta."""
+    if p.estado not in ABIERTAS or not p.cardcode:
+        return []
+    return [x for x in db().execute(select(Prefactura).where(Prefactura.id != p.id, Prefactura.origen == "SAP",
+                                                             Prefactura.cardcode == p.cardcode,
+                                                             Prefactura.estado.in_(ABIERTAS))).scalars()]
+
+
+def juntar(user, p, otras, motivo=""):
+    """Factura varias guías del mismo cliente en una sola: las líneas de las otras pre-facturas pasan a esta (cada una con
+    su guía de origen) y aquellas quedan descartadas como «unidas»."""
+    _req(user)
+    if p.estado not in ABIERTAS:
+        raise BusinessError("Solo se juntan guías en una pre-factura por validar.")
+    if not otras:
+        raise BusinessError("Elija las guías que se facturan junto con esta.")
+    lineas = [dict(x, entrega=x.get("entrega") or p.entrega_docentry, guia=x.get("guia") or p.guia) for x in p.lineas or []]
+    guias = [g.strip() for g in (p.guia or "").split(",") if g.strip()]
+    for q in otras:
+        if q.id == p.id or q.cardcode != p.cardcode or q.estado not in ABIERTAS or q.origen != "SAP":
+            raise BusinessError(f"La pre-factura #{q.id} no se puede juntar (otro cliente o ya no está por validar).")
+        for x in q.lineas or []:
+            lineas.append(dict(x, entrega=x.get("entrega") or q.entrega_docentry, guia=x.get("guia") or q.guia))
+        guias.append(q.guia)
+        if q.ov_numero and q.ov_numero not in (p.ov_numero or ""):
+            p.ov_numero = ((p.ov_numero + ", ") if p.ov_numero else "") + q.ov_numero
+        q.estado = "DESCARTADA"
+        _hist(q, user, "UNIDA", detalle=f"Se factura junto con la pre-factura #{p.id}")
+        alerts.close_by_system(f"PREFACTURA:{q.id}", f"Unida a la pre-factura #{p.id}")
+    p.lineas = lineas
+    p.guia = ", ".join(dict.fromkeys(guias))[:40]
+    _hist(p, user, "GUIAS_JUNTADAS", detalle="Guías: " + ", ".join(dict.fromkeys(guias)), motivo=motivo)
+    audit(user, "PREFACTURA_GUIAS_JUNTADAS", "Prefactura", p.id, {"guias": guias})
     db().flush()
     return p
 

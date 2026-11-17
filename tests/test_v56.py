@@ -20,6 +20,7 @@ class _SL:
                 return []
             return [{"DocEntry": 301, "DocNum": 4001, "FolioPrefixString": "EG07", "FolioNumber": 900, "DocDate": date.today().isoformat(),
                      "CardCode": "C20000000001", "CardName": "CLIENTE PRUEBA SAC", "DocCurrency": "S/",
+                     "PaymentGroupCode": 3, "NumAtCard": "OC-PRUEBA-1",
                      "DocumentLines": [
                          {"LineNum": 0, "ItemCode": "MP-902", "ItemDescription": "Insumo prueba", "Quantity": 10,
                           "RemainingOpenQuantity": 10, "UnitPrice": 5.0, "DiscountPercent": 0, "TaxCode": "IGV",
@@ -28,6 +29,9 @@ class _SL:
                           "RemainingOpenQuantity": 4, "UnitPrice": 2.5, "TaxCode": "IGV", "BaseType": 17, "BaseEntry": 77}]}]
         if path == "Orders":
             return [{"DocEntry": 77, "DocNum": 9000010}]
+        if path == "PaymentTermsTypes":
+            return [{"GroupNumber": -1, "PaymentTermsGroupName": "CONTADO", "NumberOfAdditionalDays": 0},
+                    {"GroupNumber": 3, "PaymentTermsGroupName": "CREDITO 45 DIAS", "NumberOfAdditionalDays": 45}]
         return []
 
     def _req(self, method, path, body=None, headers=None):

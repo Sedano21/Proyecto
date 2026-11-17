@@ -24,7 +24,11 @@ from datetime import date, datetime, timedelta
 from .core import BusinessError, param
 
 GRUPOS = {"OV": ("Orders",), "GUIAS": ("DeliveryNotes",), "FACTURAS": ("Invoices", "CreditNotes"),
-          "INVENTARIO": ("InventoryGenExits", "InventoryGenEntries")}
+          "INVENTARIO": ("InventoryGenExits", "InventoryGenEntries"),
+          # V57: todo lo que mueve el stock o los maestros también se detecta al minuto
+          "COMPRAS": ("PurchaseOrders", "PurchaseDeliveryNotes"), "TRASLADOS": ("StockTransfers",),
+          "ARTICULOS": ("Items",), "SOCIOS": ("BusinessPartners",)}
+CLAVE = {"Items": "ItemCode", "BusinessPartners": "CardCode"}  # los maestros no tienen DocEntry
 LATIDO_MAX_SEG = 180
 
 
@@ -67,9 +71,10 @@ def pedir_actualizacion(user):
 
 
 def _firma(sl, entidad, desde, con_hora):
-    sel = "DocEntry,UpdateDate" + (",UpdateTime" if con_hora else "")
+    clave = CLAVE.get(entidad, "DocEntry")
+    sel = f"{clave},UpdateDate" + (",UpdateTime" if con_hora else "")
     filas = sl.get_all(entidad, {"$select": sel, "$filter": f"UpdateDate ge '{desde.isoformat()}'"})
-    datos = sorted((f.get("DocEntry"), str(f.get("UpdateDate")), str(f.get("UpdateTime", ""))) for f in filas)
+    datos = sorted((str(f.get(clave)), str(f.get("UpdateDate")), str(f.get("UpdateTime", ""))) for f in filas)
     return hashlib.sha256(json.dumps(datos).encode()).hexdigest(), len(filas)
 
 
@@ -120,7 +125,12 @@ def ciclo(user, upload_dir, forzar=False, sl=None):
             db().rollback()
             res[nombre] = f"error: {str(e)[:150]}"
 
+    hechos = set()
+
     def carga(tipo):
+        if tipo in hechos:  # V57: una sola vez por revisión aunque la pidan dos motivos
+            return "ya revisado en esta vuelta"
+        hechos.add(tipo)
         b = sap_sl.sync(tipo, user, upload_dir, sl=sl, solo_si_cambia=True, autoconfirmar=tipo in auto)
         # V44: cuándo se revisó por última vez (aunque SAP no haya cambiado), para el encabezado
         _set(f"sap_revision_{tipo}", datetime.now().isoformat(timespec="seconds"), f"Última revisión de {tipo} en SAP (interno)")
@@ -166,19 +176,29 @@ def ciclo(user, upload_dir, forzar=False, sl=None):
             paso("balance_of", lambda: balance_of.sync(user, sl=sl))
             if "LIQUIDACION" in tipos:
                 paso("LIQUIDACION", lambda: carga("LIQUIDACION"))
+        # V57: lo que cambió en SAP se trae al minuto: stock (guías, entradas, salidas, recepciones de compra y
+        # traslados), artículos, clientes y órdenes de compra
+        if "STOCK" in tipos and any(cambio.get(k) for k in ("GUIAS", "INVENTARIO", "COMPRAS", "TRASLADOS")):
+            paso("STOCK", lambda: carga("STOCK"))
+        if "PRODUCTOS" in tipos and cambio.get("ARTICULOS"):
+            paso("PRODUCTOS", lambda: carga("PRODUCTOS"))
+        if "CLIENTES" in tipos and cambio.get("SOCIOS"):
+            paso("CLIENTES", lambda: carga("CLIENTES"))
         from . import compras_sap  # V55: órdenes de compra de SAP (valor y lo recibido): cada hora y apenas falten
         ult_hora = _p("sap_vigia_horario", "")
         intento = _p("sap_compras_intento", "")
         falta = not _p("sap_compras_ultimo", {}) and (
             not intento or (datetime.now() - datetime.fromisoformat(intento)).total_seconds() > 600)
-        if forzar or not ult_hora or falta or (datetime.now() - datetime.fromisoformat(ult_hora)).total_seconds() > 3600:
+        if forzar or not ult_hora or falta or cambio.get("COMPRAS") or \
+                (datetime.now() - datetime.fromisoformat(ult_hora)).total_seconds() > 3600:
             _set("sap_compras_intento", datetime.now().isoformat(timespec="seconds"),
                  "Último intento de leer las órdenes de compra de SAP (interno)")
             paso("compras_sap", lambda: compras_sap.sync_seguro(user, sl=sl))
         if forzar or not ult_hora or (datetime.now() - datetime.fromisoformat(ult_hora)).total_seconds() > 3600:
             for t in ("CLIENTES", "PRODUCTOS", "STOCK", "BOM"):  # V45: también las listas de materiales
                 if t in tipos:
-                    paso(t, lambda t=t: carga(t))
+                    if t not in hechos:
+                        paso(t, lambda t=t: carga(t))
             _set("sap_vigia_horario", datetime.now().isoformat(timespec="seconds"), "Última revisión horaria (interno)")
         paso("envios", lambda: (sap_sl.push_pending_orders(sl=sl), sap_sl.push_pending_guides(sl=sl),
                                 prefacturas.enviar_pendientes(sl=sl)) and "ok")

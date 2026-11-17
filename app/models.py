@@ -2893,6 +2893,12 @@ class Prefactura(Base):
     sap: Mapped[dict] = mapped_column(JSON, default=dict)  # {estado PENDIENTE/OK/ERROR, docentry, docnum, error, ts}
     archivo: Mapped[str] = mapped_column(String(250), default="")
     total_sunat: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # V57: lo que ingresa el facturador (lo demás lo arrastra la guía): forma de pago (condición de pago de SAP),
+    # vencimiento y número de orden de compra del cliente
+    forma_pago: Mapped[str] = mapped_column(String(80), default="", server_default="")
+    forma_pago_codigo: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    vencimiento: Mapped[date | None] = mapped_column(Date, nullable=True)
+    oc_cliente: Mapped[str] = mapped_column(String(100), default="", server_default="")
     validado_por: Mapped[str] = mapped_column(String(120), default="")
     validado_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)

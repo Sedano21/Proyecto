@@ -442,9 +442,41 @@ def rows_consulta(sl, tipo):
     return sl.sql_query(code)
 
 
+SIN_LOTE = "SIN LOTE"
+
+
+def rows_stock_sin_lote(sl):
+    """V57: stock de los artículos que SAP no maneja por lote (p. ej. panetones): la consulta por lote (OBTQ) no los
+    trae. Se leen de los artículos de inventario sin lote, por almacén (InStock), con el lote «SIN LOTE»."""
+    out = []
+    for it in sl.get_all("Items", {"$filter": "ManageBatchNumbers eq 'tNO' and InventoryItem eq 'tYES'",
+                                   "$select": "ItemCode,ItemName,ItemWarehouseInfoCollection"}):
+        for w in it.get("ItemWarehouseInfoCollection") or []:
+            q = float(w.get("InStock") or 0)
+            if q > 0:
+                out.append({"ItemCode": it["ItemCode"], "ItemName": it.get("ItemName") or "", "DistNumber": SIN_LOTE,
+                            "WhsCode": w.get("WarehouseCode") or "", "Quantity": q, "ExpDate": None, "MnfDate": None,
+                            "InDate": None})
+    return out
+
+
+def rows_stock(sl):
+    """Stock por lote (consulta guardada) más el stock de los artículos sin lote."""
+    code = (param("sap_consultas", {}) or {}).get("STOCK")
+    filas = sl.sql_query(code) if code else []
+    try:
+        filas = list(filas) + rows_stock_sin_lote(sl)
+    except BusinessError:
+        if not code:
+            raise
+    if not code and not filas:
+        raise BusinessError("Stock por lote: configure en sap_consultas la consulta del stock por lote («STOCK»).")
+    return filas
+
+
 def fetch(tipo, sl):
     fn = {"OV": rows_ov, "CLIENTES": rows_clientes, "PRODUCTOS": rows_productos, "DESPACHOS": rows_despachos,
-          "BOM": rows_bom}.get(tipo)
+          "BOM": rows_bom, "STOCK": rows_stock}.get(tipo)
     if tipo == "LIQUIDACION" and not (param("sap_consultas", {}) or {}).get("LIQUIDACION"):
         fn = rows_liquidacion  # V21: sin consulta configurada, con las entidades estándar
     return fn(sl) if fn else rows_consulta(sl, tipo)

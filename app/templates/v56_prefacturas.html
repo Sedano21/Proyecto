@@ -1,6 +1,9 @@
 {% extends "base.html" %}{% from "_m.html" import b, ic, empty, paginacion %}
 {% block content %}<div class="page-head"><div><h1>Facturación</h1>
 <p class="sub">El sistema prepara la factura de cada guía abierta de SAP (de la pre-guía del módulo o hecha en SAP). El facturador la revisa, corrige lo mal digitado, quita ítems si corresponde y la valida: recién entonces se crea en SAP, basada en la guía, y queda en el expediente de la OV.{% if ultima.ts %} Última revisión de guías de SAP: {{ ultima.ts|replace('T', ' ') }} ({{ ultima.guias_abiertas }} guía(s) abiertas).{% endif %}</p></div></div>
+{% if mes %}<div class="kpis"><a class="kpi" href="{{ url_for('v24.facturacion_sap', ver='facturas') }}"><span>Facturado del mes (SAP)</span><b>S/ {{ '{:,.0f}'.format(mes.facturas) }}</b></a>
+<a class="kpi warn" href="{{ url_for('v24.facturacion_sap', ver='notas') }}"><span>Notas de crédito del mes</span><b>S/ {{ '{:,.0f}'.format(mes.notas_credito) }}</b></a>
+<a class="kpi ok" href="{{ url_for('v24.facturacion_sap') }}"><span>Facturación del mes (facturado − notas)</span><b>S/ {{ '{:,.0f}'.format(mes.neto) }}</b></a></div>{% endif %}
 <div class="kpis">{% for k, t in [('pendientes', 'Por validar'), ('validadas', 'Validadas, por crear en SAP'), ('sap', 'Facturadas en SAP'), ('descartadas', 'Descartadas')] %}<a class="kpi {{ 'on' if ver == k }} {{ 'warn' if k == 'pendientes' and cuenta[k] }}" href="?ver={{ k }}"><span>{{ t }}</span><b>{{ cuenta[k] }}</b></a>{% endfor %}</div>
 {% if can('facturacion.cargar') %}<details class="card"><summary>{{ ic('upload') }} Regularizar factura emitida en SUNAT (XML o PDF)</summary>
 <form method="post" enctype="multipart/form-data" class="row">{{ csrf() }}<div class="grow"><label class="req">XML o PDF de SUNAT</label><input type="file" name="archivos" accept=".xml,.pdf" multiple required></div><div><button>Subir</button></div></form>

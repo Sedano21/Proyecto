@@ -55,8 +55,12 @@ def prefacturas():
         q = q.where(Prefactura.estado.in_(VISTAS[ver]))
     lista = list(db().execute(q.limit(500)).scalars())
     cuenta = {k: len(list(db().execute(select(Prefactura.id).where(Prefactura.estado.in_(v))).scalars())) for k, v in VISTAS.items()}
+    from datetime import date as _date
     from ..services.core import param
+    from ..services.facturacion_sap import resumen
+    hoy = _date.today()
     return render_template("v56_prefacturas.html", lista=paginate(lista, 30), ver=ver, cuenta=cuenta, total=pf.total,
+                           mes=resumen(hoy.replace(day=1), hoy),
                            estados=pf.ESTADOS, ultima=param("prefacturas_ultima", {}) or {})
 
 
@@ -87,9 +91,14 @@ def prefactura(pid):
         if acc == "reintentar":
             return act(lambda: pf.enviar(p, g.user), lambda s: "Factura creada en SAP." if s.get("estado") == "OK" else
                        f"Aún no se pudo: {s.get('error', '')}", back)
+        if acc == "juntar":
+            otras = [db().get(Prefactura, int(x)) for x in f.getlist("otras") if x.isdigit()]
+            return act(lambda: pf.juntar(g.user, p, [x for x in otras if x is not None], f.get("motivo", "")),
+                       "Guías juntadas en esta factura.", back)
         if acc == "unir":
             guia = db().get(Prefactura, int(f.get("guia_id") or 0)) or abort(404)
             return act(lambda: pf.unir(g.user, p, guia, f.get("motivo", "")), "Factura de SUNAT unida a su guía.", back)
         abort(400)
-    return render_template("v56_prefactura.html", p=p, total=pf.total(p), estados=pf.ESTADOS,
+    return render_template("v56_prefactura.html", p=p, total=pf.total(p), estados=pf.ESTADOS, condiciones=pf.condiciones(),
+                           juntables=pf.juntables(p) if p.origen == "SAP" or p.entrega_docentry else [],
                            cand=pf.candidatas(p) if p.origen == "SUNAT" and not p.entrega_docentry else [])
