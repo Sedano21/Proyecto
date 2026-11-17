@@ -302,6 +302,16 @@ def plan():
     from datetime import timedelta as _td
     hasta_prog = max(d["hasta"], date.today() + _td(days={"DIA": 14, "SEMANA": 42, "MES": 93}.get(d["periodo"], 42)))
     dia_sel = f_date("dia") or date.today()  # V49: el día elegido (y su semana) siempre está en la programación
+    # V51: semanal y mensual no se eligen por día sino por rango de fechas (por defecto, la semana o el mes en curso)
+    r_desde, r_hasta = f_date("r_desde"), f_date("r_hasta")
+    if d["periodo"] != "DIA":
+        if not (r_desde and r_hasta):
+            r_desde = psvc._inicio(d["periodo"], date.today())
+            r_hasta = psvc._fin(d["periodo"], date.today())
+        if r_hasta < r_desde:
+            r_desde, r_hasta = r_hasta, r_desde
+        dia_sel = r_desde
+        hasta_prog = max(hasta_prog, r_hasta)
     hasta_prog = max(hasta_prog, dia_sel + _td(days=7))
     entradas = list(db().execute(select(ProductionPlan).where(ProductionPlan.periodo.in_({d["periodo"], "DIA"}),
                                                               ProductionPlan.fecha >= min(psvc._inicio(d["periodo"], d["desde"]),
@@ -317,7 +327,8 @@ def plan():
     dia_linea = f_date("dia") or date.today()  # V48: el % por línea es el del día elegido frente a su capacidad diaria
     capa_dia = psvc.capacity_vs_plan(dia_linea, dia_linea)
     from ..services.v42 import plan_por_linea
-    return render_template("prod_plan.html", capa=capa, d=d, por_linea=plan_por_linea(entradas, capa_dia, dia_linea), dia_linea=dia_linea,
+    return render_template("prod_plan.html", capa=capa, d=d, por_linea=plan_por_linea(entradas, capa_dia, dia_linea, r_desde, r_hasta), dia_linea=dia_linea,
+                           r_desde=r_desde, r_hasta=r_hasta,
                            kg_de=psvc.kg_de, timedelta=_td, graf=graf, products=products, lineas=PRODUCTION_LINES, hoy=date.today(),
                            entradas=entradas, req=req, faltan=faltan, estados=estados,
                            nombre_periodo={"DIA": "diario", "SEMANA": "semanal", "MES": "mensual"}[d["periodo"]])
@@ -365,3 +376,36 @@ def reports():
                            estados=ptsvc.ESTADOS_PARTE, no_editables=ptsvc.NO_EDITABLES, f=a, desde=desde,
                            formato_hora=(param("formato_hora", "24H") or "24H").upper(), fmt_hora=ptsvc.fmt_hora,
                            envasado=",".join(ptsvc.LINEAS_ENVASADO))
+
+
+@bp.route("/historico-excel", methods=["GET", "POST"])
+@perm_required("produccion.liquidar", "produccion.programar")
+def history_excel():
+    """V51: subir el Excel CONTROL DE PRODUCCION completo y cargar su histórico; ver los movimientos históricos."""
+    import os
+    from flask import current_app, flash
+    from werkzeug.utils import secure_filename
+    from ..models import ProductionHistory
+    from ..services import historico_excel as hx
+    from ..services.core import param
+    from .common import paginate
+    if request.method == "POST":
+        fs = request.files.get("archivo")
+        if not fs or not fs.filename.lower().endswith((".xlsx", ".xlsm")):
+            flash("Elija el Excel de control de producción (.xlsx o .xlsm).", "error")
+            return redirect(url_for("prod.history_excel"))
+        d = os.path.join(current_app.config["UPLOAD_DIR"], "historico")
+        os.makedirs(d, exist_ok=True)
+        path = os.path.join(d, f"{datetime.now():%Y%m%d%H%M%S}_{secure_filename(fs.filename)}")
+        fs.save(path)
+        return act(lambda: hx.importar(g.user, path, fs.filename),
+                   lambda r: f"Histórico cargado: {r['total']} registro(s) nuevos. Revise abajo el detalle por pestaña.",
+                   url_for("prod.history_excel"))
+    tipo = request.args.get("tipo", "")
+    q = select(ProductionHistory).order_by(ProductionHistory.fecha.desc(), ProductionHistory.id.desc())
+    if tipo:
+        q = q.where(ProductionHistory.tipo == tipo)
+    filas = paginate(list(db().execute(q.limit(5000)).scalars()), 50)
+    tipos = [t for t, in db().execute(select(ProductionHistory.tipo).distinct()).all()]
+    return render_template("prod_historico.html", ultima=param("historico_produccion_ultima_carga", {}) or {}, filas=filas,
+                           tipo=tipo, tipos=sorted(tipos), desde=param("historico_produccion_desde", "2026-01-01"))

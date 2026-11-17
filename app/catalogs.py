@@ -3230,3 +3230,12 @@ PARAMS_AGREGAR = [
     ("sap_sync_tipos", ["LIQUIDACION", "BOM"], f"{V45}: liquidaciones y recetas desde SAP"),
     ("sap_autoconfirmar", ["LIQUIDACION", "BOM"], f"{V45}: liquidaciones y recetas desde SAP"),
 ]
+# ------------------------------------------------------------------ V51 (17-nov-2026)
+V51 = "Observaciones V51 (17-nov-2026)"
+PARAMS += [
+    ("historico_produccion_desde", "2026-01-01", "str", "Producción",
+     "Desde qué fecha se carga el histórico del Excel CONTROL DE PRODUCCION (partes, paradas, asistencia, movimientos).",
+     "DEFINIDO", V51),
+    ("historico_produccion_ultima_carga", {}, "dict", "Producción",
+     "Resumen de la última carga del Excel de control de producción (lo escribe el sistema).", "DEFINIDO", V51),
+]

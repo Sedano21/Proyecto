@@ -39,7 +39,7 @@ def check_capacidad_lineas(hoy):
     return f"{n} línea(s) bajo {umbral:g} %"
 
 
-def plan_por_linea(entradas, capa, dia=None):
+def plan_por_linea(entradas, capa, dia=None, desde=None, hasta=None):
     """Agrupa la programación por línea (grupo de capacidad). V48: el % de cada línea es lo **programado del día frente a
     su capacidad diaria** (kg/día × jornada del día), para ver qué líneas necesitan atención; además, el % de cada día
     programado."""
@@ -63,6 +63,21 @@ def plan_por_linea(entradas, capa, dia=None):
             out.append({"fecha": f, "kg": round(kg[f], 1), "capacidad": round(cap, 1),
                         "pct": round(100 * kg[f] / cap, 1) if cap else None})
         return out
+    from datetime import timedelta as _td
+
+    def rango(grupo, es):
+        """V51: vista semanal o mensual: lo programado en el rango elegido frente a la capacidad del rango."""
+        if not (desde and hasta):
+            return {}
+        del_r = [e for e in es if desde <= e.fecha <= hasta]
+        kg = sum(kg_de(e.product_code, e.cantidad) for e in del_r)
+        cap = 0.0
+        d = desde
+        while d <= hasta:
+            cap += kg_dia.get(grupo, 0) * day_factor(d)
+            d += _td(days=1)
+        return {"del_rango": del_r, "kg_rango": round(kg, 1), "cap_rango": round(cap, 1),
+                "pct_rango": round(100 * kg / cap, 1) if cap else None}
     out = []
     for f in capa["filas"]:
         es = por.pop(f["grupo"], [])
@@ -71,12 +86,13 @@ def plan_por_linea(entradas, capa, dia=None):
         cap_dia = kg_dia.get(f["grupo"], 0) * day_factor(dia)
         out.append(dict(f, entradas=es, del_dia=[e for e in es if e.fecha == dia], lineas=f.get("lineas") or [],
                         dias=dias, dia=dia, kg_dia_prog=hoy_["kg"] if hoy_ else 0.0, cap_dia=round(cap_dia, 1),
-                        pct_dia=(round(100 * (hoy_["kg"] if hoy_ else 0) / cap_dia, 1) if cap_dia else None)))
+                        pct_dia=(round(100 * (hoy_["kg"] if hoy_ else 0) / cap_dia, 1) if cap_dia else None),
+                        **rango(f["grupo"], es)))
     for g, es in sorted(por.items()):
         out.append({"grupo": g, "proceso": "", "capacidad": 0, "programada": 0, "ejecutada": 0, "pct_programada": None,
                     "pct_ejecutada": None, "cumplimiento": None, "entradas": es, "del_dia": [e for e in es if e.fecha == dia],
                     "lineas": [g] if g != "Sin línea" else [], "dias": dias_de(g, es), "dia": dia,
-                    "kg_dia_prog": 0, "cap_dia": 0, "pct_dia": None})
+                    "kg_dia_prog": 0, "cap_dia": 0, "pct_dia": None, **rango(g, es)})
     return out
 
 

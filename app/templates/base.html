@@ -91,6 +91,7 @@
     {% if ve('produccion.ver') %}<div class="grp" data-grupo="Producción"><h4><span class="lbl">Producción</span></h4>
       {{ nl(url_for('prod.requests'), 'factory', 'Solicitudes y programa') }}
       {{ nl(url_for('prod.plan'), 'calendar', 'Planeamiento') }}
+      {% if ve('produccion.liquidar') or ve('produccion.programar') %}{{ nl(url_for('prod.history_excel'), 'upload', 'Cargar histórico (Excel de control)') }}{% endif %}
       {{ nl(url_for('prod.bom'), 'layers', 'Lista de materiales') }}
       {{ nl(url_for('prod.liquidations'), 'file', 'Liquidaciones') }}
       {{ nl(url_for('v29.mass_balance'), 'scale', 'Balance de peso de OF (SAP)') }}

@@ -188,6 +188,16 @@ def gestion(desde=None, hasta=None, filtros=None, ver_costos=False, user=None):
                    "Sin facturas cargadas en el periodo: se muestra lo atendido valorizado"}
     if not facts:
         facturacion["soles"] = atendidas["soles"]
+    if not (f.get("clientes") or f.get("vendedores")):
+        # V52: sin filtro de cliente o vendedor, la facturación es la de SAP (facturas − notas de crédito), aunque el
+        # cliente no esté en el maestro del módulo (con filtro de canal, por el canal del cliente)
+        from .facturacion_sap import resumen as _fact
+        canales = f.get("canales") or []
+        fx = _fact(desde, hasta, canales[0] if len(canales) == 1 else "") if len(canales) <= 1 else None
+        if fx is not None:
+            facturacion = {"soles": fx["neto"], "docs": fx["n_facturas"] + fx["n_notas"],
+                           "fuente": f"SAP: facturas S/ {fx['facturas']:,.0f} − notas de crédito S/ {fx['notas_credito']:,.0f}"
+                                     f" (sin IGV S/ {fx['neto_sin_igv']:,.0f})"}
     # V23: el nivel de servicio se mide sobre las OV que corresponden despacharse en el periodo (fecha comprometida),
     # hasta el fin del mes del periodo, con los mismos filtros
     from .comercial_v23 import base_mes, fin_de_mes, indicadores

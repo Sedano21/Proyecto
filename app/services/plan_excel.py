@@ -169,6 +169,8 @@ def _filas_plan(filas, h, cols, fechas):
         if not code and not nombre:
             continue
         um = _norm(val("um"))
+        if code and code not in set(por.values()):
+            code = ""  # V51: código que no está en el maestro de artículos: se intenta por el nombre
         if not code:
             # sin código: por el nombre; en selección (kg) el producto es el granel («DATOS DE GRANEL»)
             orden = (granel, nombre) if um.startswith("k") and granel else (nombre, granel)

@@ -2800,3 +2800,41 @@ class GoodsReceipt(Base):
     ts: Mapped[datetime] = mapped_column(DateTime, default=now)
     guia = relationship("SunatGuide")
     user = relationship("User")
+
+
+class ProductionHistory(Base):
+    """V51: registros históricos del Excel CONTROL DE PRODUCCION que no son partes de línea ni asistencia: control de
+    merma, MP y calidad 3, desmontajes o transformaciones, requerimientos de MP, suministros y OF de SAP."""
+    __tablename__ = "historico_produccion"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    tipo: Mapped[str] = mapped_column(String(30), index=True)
+    fecha: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
+    codigo: Mapped[str] = mapped_column(String(40), default="")
+    descripcion: Mapped[str] = mapped_column(String(250), default="")
+    lote: Mapped[str] = mapped_column(String(60), default="")
+    linea: Mapped[str] = mapped_column(String(40), default="")
+    cantidad: Mapped[float | None] = mapped_column(Float, nullable=True)
+    um: Mapped[str] = mapped_column(String(20), default="")
+    datos: Mapped[dict] = mapped_column(JSON, default=dict)
+    hoja: Mapped[str] = mapped_column(String(60), default="")
+    fila: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    clave: Mapped[str] = mapped_column(String(120), unique=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+
+class SapBilling(Base):
+    """V52: facturas y notas de crédito de SAP (montos en soles, con y sin IGV) para la facturación del mes y los
+    indicadores. Se guardan todas, aunque el cliente no esté en el maestro del módulo."""
+    __tablename__ = "sap_facturacion"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    clave: Mapped[str] = mapped_column(String(40), unique=True)  # FACTURA:DocEntry / NOTA_CREDITO:DocEntry
+    tipo: Mapped[str] = mapped_column(String(15), index=True)
+    numero: Mapped[str] = mapped_column(String(40), default="")
+    fecha: Mapped[date] = mapped_column(Date, index=True)
+    cardcode: Mapped[str] = mapped_column(String(30), default="")
+    cliente: Mapped[str] = mapped_column(String(200), default="")
+    moneda: Mapped[str] = mapped_column(String(10), default="")
+    total: Mapped[float] = mapped_column(Float, default=0)  # DocTotal en soles (moneda local), con IGV
+    igv: Mapped[float] = mapped_column(Float, default=0)  # VatSum en soles
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)

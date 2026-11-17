@@ -61,16 +61,28 @@ def tablero(hoy=None, ver_costos=False, canal=""):
     var_ant = _pct(v_mes - v_ant, v_ant)
     if gen and gen["avance_soles"] is not None:
         niv = "err" if gen["atrasada"] else "ok"
-        cards.append(_card("Comercial", "Venta del mes", f"S/ {v_mes:,.0f}",
+        cards.append(_card("Comercial", "OV ingresadas del mes", f"S/ {v_mes:,.0f}",
                            f"{gen['avance_soles']} % de la meta (esperado {metas['esperado']} % a la fecha)" +
                            (f"; {var_ant:+.0f} % vs el mismo corte del mes anterior" if var_ant is not None else ""), niv))
         if gen["atrasada"]:
             atencion.append(("ALTA", "Comercial", f"La venta va {gen['avance_soles']} % de la meta y a la fecha debería ir "
                                                   f"{metas['esperado']} %: faltan S/ {gen['falta_soles'] or 0:,.0f}."))
     else:
-        cards.append(_card("Comercial", "Venta del mes", f"S/ {v_mes:,.0f}",
+        cards.append(_card("Comercial", "OV ingresadas del mes", f"S/ {v_mes:,.0f}",
                            (f"{var_ant:+.0f} % vs el mismo corte del mes anterior" if var_ant is not None else "sin meta cargada"),
                            "warn" if var_ant is not None and var_ant < -10 else ""))
+    # V52: la facturación del mes es la de SAP (facturas − notas de crédito), como la reporta Comercial; las OV
+    # ingresadas siguen en la tarjeta de venta
+    from .facturacion_sap import resumen as _fact
+    fx = _fact(ini, hoy, canal)
+    if fx is not None:
+        fa = _fact(ant_ini, ant_ini.replace(day=dia_eq), canal)
+        var_f = _pct(fx["neto"] - fa["neto"], fa["neto"]) if fa and fa["neto"] else None
+        cards.insert(0, _card("Comercial", "Facturación del mes (SAP)", f"S/ {fx['neto']:,.0f}",
+                              f"facturas S/ {fx['facturas']:,.0f} − notas de crédito S/ {fx['notas_credito']:,.0f}"
+                              f" · sin IGV S/ {fx['neto_sin_igv']:,.0f}"
+                              + (f" · {var_f:+.0f} % vs el mismo corte del mes anterior" if var_f is not None else "")
+                              + (f" · hasta el {fx['ultima']:%d/%m}" if fx.get("ultima") else ""), ""))
     if canal:
         from .comercial_v23 import base_mes, fin_de_mes, nivel
         n = nivel(del_canal(base_mes(ini, fin_de_mes(ini))), hoy=hoy)
