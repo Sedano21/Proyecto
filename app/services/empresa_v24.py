@@ -122,6 +122,26 @@ def tablero(hoy=None, ver_costos=False, canal=""):
                               + (f" · {var_nc:+.0f} % vs el mismo corte del mes anterior" if var_nc is not None else ""),
                               "warn" if pct_nc is not None and pct_nc > 10 else "",
                               _url("v24.facturacion_sap", "/gestion/facturacion-sap") + "?ver=notas"))
+    # V58: lo entregado del mes (todas las guías de SAP: despachos completos, parciales y sin OV), valorizado con SAP
+    from .facturacion_sap import entregado as _entregado
+    en = _entregado(ini, hoy, canal)
+    if en is not None:
+        ea = _entregado(ant_ini, ant_ini.replace(day=dia_eq), canal)
+        var_e = _pct(en["total"] - ea["total"], ea["total"]) if ea and ea["total"] else None
+        pt, nt = en["por_tipo"], en["n_tipo"]
+        partes = [f"completas S/ {pt['COMPLETA']:,.0f} ({nt['COMPLETA']} OV)",
+                  f"parciales S/ {pt['PARCIAL']:,.0f} ({nt['PARCIAL']} OV)"]
+        if pt["CERRADA_PARCIAL"]:
+            partes.append(f"parciales ya cerradas S/ {pt['CERRADA_PARCIAL']:,.0f} ({nt['CERRADA_PARCIAL']} OV)")
+        if pt["SIN_OV"]:
+            partes.append(f"sin OV S/ {pt['SIN_OV']:,.0f}")
+        pos = next((i + 1 for i, c in enumerate(cards) if c["titulo"].startswith("OV con despacho")), min(2, len(cards)))
+        cards.insert(pos, _card("Comercial", f"Entregado en {_MESES[ini.month - 1]} (SAP)", f"S/ {en['total']:,.0f}",
+                                f"{en['guias']} guía(s) de {en['ovs']} OV · " + " · ".join(partes)
+                                + f" · sin IGV S/ {en['sin_igv']:,.0f}"
+                                + (f" · {var_e:+.0f} % vs el mismo corte del mes anterior" if var_e is not None else "")
+                                + (f" · {en['estimadas']} línea(s) valorizadas con el precio de su OV hasta releer SAP"
+                                   if en["estimadas"] else ""), "", _url("v24.entregado_sap", "/gestion/entregado-sap")))
     if canal:
         from .comercial_v23 import base_mes, fin_de_mes, nivel
         n = nivel(del_canal(base_mes(ini, fin_de_mes(ini))), hoy=hoy)

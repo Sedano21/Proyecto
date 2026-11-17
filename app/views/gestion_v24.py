@@ -329,3 +329,34 @@ def ov_mes_sap():
         filas = [f for f in filas if q in f["docnum"] or q in (f["cliente"] or "").upper()]
     return render_template("v55_ov_mes_sap.html", r=ov_del_periodo(desde, hasta), filas=paginate(filas, 50), desde=desde,
                            hasta=hasta, q=q)
+
+
+@bp.route("/entregado-sap")
+@perm_required("tablero.empresa", "ov.ver", "finanzas.ver", "facturacion.cargar")
+def entregado_sap():
+    """V58: lo entregado (guías de SAP) en el periodo, valorizado con SAP, por guía y por cliente."""
+    from collections import defaultdict
+    from ..services.facturacion_sap import entregado, entregado_detalle
+    from .common import paginate
+    hoy = date.today()
+    desde, hasta = f_date("desde") or hoy.replace(day=1), f_date("hasta") or hoy
+    filas = entregado_detalle(desde, hasta)
+    q = (request.args.get("q") or "").strip().upper()
+    tipo = request.args.get("tipo", "")
+    if q:
+        filas = [f for f in filas if q in (f["guia"] or "").upper() or q in (f["ov"] or "") or q in (f["cliente"] or "").upper()]
+    if tipo:
+        filas = [f for f in filas if f["tipo"] == tipo]
+    ver = request.args.get("ver", "guias")
+    por_cli = defaultdict(lambda: {"valor": 0.0, "guias": 0, "ovs": set()})
+    for f in filas:
+        c = por_cli[f["cliente"]]
+        c["valor"] += f["valor"]
+        c["guias"] += 1
+        if f["ov"]:
+            c["ovs"].add(f["ov"])
+    clientes = sorted(({"cliente": k, "valor": v["valor"], "guias": v["guias"], "ovs": len(v["ovs"])} for k, v in por_cli.items()),
+                      key=lambda x: -x["valor"])
+    return render_template("v58_entregado_sap.html", r=entregado(desde, hasta), desde=desde, hasta=hasta, q=q, tipo=tipo,
+                           ver=ver, total_filtro=sum(f["valor"] for f in filas),
+                           lista=paginate(clientes if ver == "clientes" else filas, 40))

@@ -27,7 +27,7 @@ def historial_desde():
 
 HASTA_ABIERTO = date(2099, 12, 31)
 # V33: al cambiar lo que se guarda (p. ej. las órdenes de servicio), la siguiente lectura vuelve a traer todo una vez
-HISTORIAL_VERSION = 4  # V42: ingresos de producción; V55: valor de las líneas de OV (se relee todo una vez)
+HISTORIAL_VERSION = 5  # V42: ingresos de producción; V55: valor de las líneas de OV; V58: valor de las guías
 
 
 def _f(v):
@@ -120,7 +120,8 @@ def rows_guias(sl, desde, cambios_desde=None):
             out.append({"clave": f"GUIA:{d['DocEntry']}:{ln.get('LineNum', 0)}", "tipo": "GUIA", "docentry": d["DocEntry"],
                         "documento": _folio(d), "fecha": str(d.get("DocDate") or "")[:10], "ov": str(ov or ""),
                         "of": "", "factura": "", "cliente": (d.get("CardName") or "")[:200], "producto": ln["ItemCode"][:30],
-                        "cantidad": float(ln.get("Quantity") or 0)})
+                        "cantidad": float(ln.get("Quantity") or 0), "total": float(ln.get("LineTotal") or 0),
+                        "igv": float(ln.get("TaxTotal") or 0)})
     return out
 
 
@@ -173,7 +174,7 @@ def guardar_movimientos(filas, completo, tipos=("GUIA", "CONSUMO")):
         s.add(SapMovement(clave=f["clave"][:50], tipo=f["tipo"], docentry=int(f["docentry"]), documento=f["documento"][:40],
                           fecha=_f(f["fecha"]), ov_numero=f["ov"][:30], orden_fabricacion=f["of"][:30],
                           factura=f["factura"][:40], cliente=f["cliente"], product_code=f["producto"],
-                          cantidad=f["cantidad"]))
+                          cantidad=f["cantidad"], total=f.get("total") or 0.0, igv=f.get("igv") or 0.0))
     s.flush()
 
 

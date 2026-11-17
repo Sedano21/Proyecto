@@ -1,0 +1,23 @@
+{% extends "base.html" %}{% from "_m.html" import b, empty, paginacion %}
+{% block content %}<div class="page-head"><div><h1>Entregado (guías de SAP)</h1>
+<p class="sub">Todo lo que salió con guía en el periodo: despachos completos, parciales y sin OV. Valor en soles con IGV según las líneas de la guía en SAP. Para cada OV se indica si con sus guías (de este u otro mes) ya quedó completa.</p></div></div>
+<form class="row card" method="get"><div class="grow"><label>Guía, OV o cliente</label><input name="q" type="search" value="{{ q }}" placeholder="Buscar…"></div>
+<div><label>Desde</label><input type="date" name="desde" value="{{ desde.isoformat() }}"></div><div><label>Hasta</label><input type="date" name="hasta" value="{{ hasta.isoformat() }}"></div>
+<div><label>Despacho</label><select name="tipo"><option value="">(todos)</option>{% for k, t in [('COMPLETA', 'OV completa'), ('PARCIAL', 'OV parcial (saldo pendiente)'), ('CERRADA_PARCIAL', 'OV parcial ya cerrada'), ('SIN_OV', 'Sin OV')] %}<option value="{{ k }}" {{ 'selected' if tipo == k }}>{{ t }}</option>{% endfor %}</select></div>
+<input type="hidden" name="ver" value="{{ ver }}"><div><button class="sec">Ver</button></div></form>
+{% if r is none %}{{ empty('Todavía no se leyeron las guías de SAP.', 'truck') }}{% else %}
+<div class="kpis"><div class="kpi"><span>Entregado</span><b>S/ {{ '{:,.0f}'.format(r.total) }}</b></div>
+<a class="kpi ok" href="?desde={{ desde.isoformat() }}&hasta={{ hasta.isoformat() }}&tipo=COMPLETA"><span>OV completas ({{ r.n_tipo.COMPLETA }})</span><b>S/ {{ '{:,.0f}'.format(r.por_tipo.COMPLETA) }}</b></a>
+<a class="kpi warn" href="?desde={{ desde.isoformat() }}&hasta={{ hasta.isoformat() }}&tipo=PARCIAL"><span>OV parciales ({{ r.n_tipo.PARCIAL }})</span><b>S/ {{ '{:,.0f}'.format(r.por_tipo.PARCIAL) }}</b></a>
+{% if r.por_tipo.CERRADA_PARCIAL %}<a class="kpi" href="?desde={{ desde.isoformat() }}&hasta={{ hasta.isoformat() }}&tipo=CERRADA_PARCIAL"><span>Parciales ya cerradas ({{ r.n_tipo.CERRADA_PARCIAL }})</span><b>S/ {{ '{:,.0f}'.format(r.por_tipo.CERRADA_PARCIAL) }}</b></a>{% endif %}
+{% if r.por_tipo.SIN_OV %}<a class="kpi" href="?desde={{ desde.isoformat() }}&hasta={{ hasta.isoformat() }}&tipo=SIN_OV"><span>Sin OV</span><b>S/ {{ '{:,.0f}'.format(r.por_tipo.SIN_OV) }}</b></a>{% endif %}</div>
+<p class="small muted">{{ r.guias }} guía(s) de {{ r.ovs }} OV · sin IGV S/ {{ '{:,.0f}'.format(r.sin_igv) }}{% if r.estimadas %} · {{ r.estimadas }} línea(s) valorizadas con el precio de su OV hasta la próxima lectura del historial de SAP{% endif %}.{% if q or tipo %} Con el filtro: S/ {{ '{:,.0f}'.format(total_filtro) }}.{% endif %}</p>
+<div class="vista-sel">{% for k, t in [('guias', 'Por guía'), ('clientes', 'Por cliente')] %}<a class="btn {{ '' if ver == k else 'sec' }} small" href="?desde={{ desde.isoformat() }}&hasta={{ hasta.isoformat() }}&q={{ q }}&tipo={{ tipo }}&ver={{ k }}">{{ t }}</a> {% endfor %}</div>
+<div data-lista id="lista-entregado">{% if lista.total %}<div class="tw"><table class="small apilable">
+{% if ver == 'clientes' %}<tr><th>Cliente</th><th class="r">Guías</th><th class="r">OV</th><th class="r">Entregado S/</th></tr>
+{% for c in lista %}<tr><td data-label="Cliente">{{ c.cliente }}</td><td data-label="Guías" class="r">{{ c.guias }}</td><td data-label="OV" class="r">{{ c.ovs }}</td><td data-label="Entregado" class="r">{{ '{:,.2f}'.format(c.valor) }}</td></tr>{% endfor %}
+{% else %}<tr><th>Fecha</th><th>Guía</th><th>Cliente</th><th>OV</th><th>Despacho de la OV</th><th class="r">Líneas</th><th class="r">Valor S/</th></tr>
+{% for g in lista %}<tr><td data-label="Fecha">{{ g.fecha|d }}</td><td data-label="Guía">{{ g.guia }}</td><td data-label="Cliente">{{ g.cliente }}</td><td data-label="OV">{{ g.ov or '—' }}</td>
+<td data-label="Despacho">{{ b({'COMPLETA': 'COMPLETA', 'PARCIAL': 'PARCIAL', 'CERRADA_PARCIAL': 'CERRADA', 'SIN_OV': 'SIN OV'}[g.tipo]) }}</td><td data-label="Líneas" class="r">{{ g.lineas }}</td>
+<td data-label="Valor" class="r">{{ '{:,.2f}'.format(g.valor) }}{% if g.estimada %} <span class="muted" title="Valorizada con el precio de la OV">*</span>{% endif %}</td></tr>{% endfor %}{% endif %}</table></div>
+{{ paginacion(lista, 'filas') }}{% else %}{{ empty('Sin guías en el periodo.', 'truck') }}{% endif %}</div>{% endif %}{% endblock %}

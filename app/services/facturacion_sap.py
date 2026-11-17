@@ -159,3 +159,82 @@ def ov_detalle(desde, hasta):
     for o in ovs.values():
         o["saldo"] = round(o["total"] - o["despachado"], 2)
     return sorted(ovs.values(), key=lambda o: (o["entrega"] or date.min, o["docnum"]))
+
+
+def _guias_del_periodo(desde, hasta, canal=""):
+    """V58: líneas de las guías (entregas) de SAP con fecha en el periodo, con su valor en soles con IGV. Si una línea
+    aún no trae su valor (antes de releer el historial), se valoriza con el precio de su OV en SAP."""
+    from collections import defaultdict
+    from ..models import SapMovement, SapOrderLine
+    movs = list(db().execute(select(SapMovement).where(SapMovement.tipo == "GUIA", SapMovement.fecha >= desde,
+                                                       SapMovement.fecha <= hasta)).scalars())
+    if canal:
+        from ..models import Customer
+        from .margin import channel
+        nombres = {m.cliente for m in movs}
+        canal_de = {c.nombre: channel(c) for c in db().execute(select(Customer).where(Customer.nombre.in_(list(nombres) or [""])))
+                    .scalars()}
+        movs = [m for m in movs if canal_de.get(m.cliente) == canal]
+    ovs = sorted({m.ov_numero for m in movs if m.ov_numero})
+    pedido, precio, precio_sin, estado_ov = defaultdict(float), {}, {}, {}
+    for i in range(0, len(ovs), 500):
+        for ln in db().execute(select(SapOrderLine).where(SapOrderLine.docnum.in_(ovs[i:i + 500]))).scalars():
+            pedido[(ln.docnum, ln.product_code)] += ln.cantidad or 0
+            if ln.cantidad:
+                precio[(ln.docnum, ln.product_code)] = ((ln.total or 0) + (ln.igv or 0)) / ln.cantidad
+                precio_sin[(ln.docnum, ln.product_code)] = (ln.total or 0) / ln.cantidad
+            estado_ov.setdefault(ln.docnum, set()).add(ln.estado)
+    guiado_total = defaultdict(float)  # todo lo guiado de esas OV (también en otros meses), para saber si quedó completa
+    for i in range(0, len(ovs), 500):
+        for m in db().execute(select(SapMovement).where(SapMovement.tipo == "GUIA",
+                                                        SapMovement.ov_numero.in_(ovs[i:i + 500]))).scalars():
+            guiado_total[(m.ov_numero, m.product_code)] += m.cantidad or 0
+    filas, valorizado_ov = [], 0
+    for m in movs:
+        v, sin = (m.total or 0) + (m.igv or 0), (m.total or 0)
+        if not v and (m.ov_numero, m.product_code) in precio:
+            v = (m.cantidad or 0) * precio[(m.ov_numero, m.product_code)]
+            sin = (m.cantidad or 0) * precio_sin[(m.ov_numero, m.product_code)]
+            valorizado_ov += 1
+        m._sin_igv = sin
+        filas.append((m, v))
+
+    def tipo_ov(ov):
+        if not ov or not any(k[0] == ov for k in pedido):
+            return "SIN_OV"
+        completa = all(guiado_total[k] >= q - 1e-9 for k, q in pedido.items() if k[0] == ov)
+        return "COMPLETA" if completa else ("CERRADA_PARCIAL" if estado_ov.get(ov, set()) <= {"CERRADA", "CANCELADA"} else "PARCIAL")
+    return filas, tipo_ov, valorizado_ov
+
+
+def entregado(desde, hasta, canal=""):
+    """V58: valor de todo lo entregado (guías de SAP) en el periodo: despachos completos, parciales y sin OV."""
+    from ..models import SapMovement
+    if db().execute(select(SapMovement.id).where(SapMovement.tipo == "GUIA").limit(1)).first() is None:
+        return None
+    filas, tipo_ov, por_precio_ov = _guias_del_periodo(desde, hasta, canal)
+    total = sum(v for _, v in filas)
+    sin_igv = sum(m._sin_igv for m, _ in filas)
+    por_tipo = {"COMPLETA": 0.0, "PARCIAL": 0.0, "CERRADA_PARCIAL": 0.0, "SIN_OV": 0.0}
+    ovs_tipo = {}
+    for m, v in filas:
+        t = ovs_tipo.setdefault(m.ov_numero or f"_{m.docentry}", tipo_ov(m.ov_numero))
+        por_tipo[t] += v
+    return {"total": round(total, 2), "sin_igv": round(sin_igv, 2), "guias": len({m.docentry for m, _ in filas}),
+            "ovs": len({m.ov_numero for m, _ in filas if m.ov_numero}), "por_tipo": {k: round(v, 2) for k, v in por_tipo.items()},
+            "n_tipo": {k: sum(1 for x in ovs_tipo.values() if x == k) for k in por_tipo},
+            "estimadas": por_precio_ov, "desde": desde, "hasta": hasta}
+
+
+def entregado_detalle(desde, hasta, canal=""):
+    """Una fila por guía: fecha, guía, cliente, OV, tipo de despacho de la OV, productos y valor."""
+    filas, tipo_ov, _ = _guias_del_periodo(desde, hasta, canal)
+    guias = {}
+    for m, v in filas:
+        g = guias.setdefault(m.docentry, {"docentry": m.docentry, "guia": m.documento, "fecha": m.fecha, "cliente": m.cliente,
+                                          "ov": m.ov_numero, "tipo": tipo_ov(m.ov_numero), "valor": 0.0, "lineas": 0,
+                                          "estimada": False})
+        g["valor"] += v
+        g["lineas"] += 1
+        g["estimada"] = g["estimada"] or not m.total
+    return sorted(guias.values(), key=lambda g: (g["fecha"] or date.min, g["guia"]), reverse=True)

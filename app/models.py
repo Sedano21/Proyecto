@@ -2784,6 +2784,9 @@ class SapMovement(Base):
     cliente: Mapped[str] = mapped_column(String(200), default="")
     product_code: Mapped[str] = mapped_column(String(30), default="", index=True)
     cantidad: Mapped[float] = mapped_column(Float, default=0)
+    # V58: valor de la línea en soles sin IGV (LineTotal) y su IGV (TaxTotal), para lo entregado del mes
+    total: Mapped[float] = mapped_column(Float, default=0, server_default="0")
+    igv: Mapped[float] = mapped_column(Float, default=0, server_default="0")
     ts: Mapped[datetime] = mapped_column(DateTime, default=now)
 
 
