@@ -62,4 +62,4 @@ solicitudes del módulo que aún no tienen OC, para no contar dos veces lo que y
 ## No verificado
 No se probó contra la base real de SAP.
 
-**Pruebas:** `tests/test_v59.py`.
+**Pruebas:** `tests/test_v59.py`. Suite completa: 698 pruebas pasan.
