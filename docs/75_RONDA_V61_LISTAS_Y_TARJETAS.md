@@ -15,4 +15,4 @@
   en una línea, la descripción baja a la siguiente. La descripción muestra hasta 70 caracteres y la completa al pasar
   el cursor. Se revisó en escritorio (1400 px) y en celular (390 px).
 
-**Pruebas:** `tests/test_v61.py`.
+**Pruebas:** `tests/test_v61.py`. Suite completa: 706 pruebas pasan.
