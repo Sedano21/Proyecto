@@ -78,4 +78,4 @@ placas son datos reales y no se guardan en el repositorio.
 No se probó contra la base real de SAP. La venta es lo despachado con guías, no la venta neta de facturas menos notas
 de crédito que usa el Excel.
 
-**Pruebas:** `tests/test_v60.py`.
+**Pruebas:** `tests/test_v60.py`. Suite completa: 704 pruebas pasan.
