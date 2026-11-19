@@ -74,6 +74,7 @@ Pruebas: `pip install -r requirements-dev.txt && python -m pytest tests -v` (489
 | [72_RONDA_V58_ENTREGADO_DEL_MES](docs/72_RONDA_V58_ENTREGADO_DEL_MES.md) | Ronda V58: lo entregado del mes (guías de SAP: completas, parciales y sin OV) valorizado con SAP, con su detalle |
 | [73_RONDA_V59_ABASTECIMIENTO_QUIEBRE_E_INGRESOS_SAP](docs/73_RONDA_V59_ABASTECIMIENTO_QUIEBRE_E_INGRESOS_SAP.md) | Ronda V59: quiebre de stock con OV por fecha y OC por ingresar de SAP, origen nacional o importado, ingresos registrados en SAP; Importación ve la proyección de demanda |
 | [74_RONDA_V60_PLAN_ABASTECIMIENTO_POR_GRANO](docs/74_RONDA_V60_PLAN_ABASTECIMIENTO_POR_GRANO.md) | Ronda V60: plan de abastecimiento por grano (método del Excel Maestro), proyección de Comercial tal cual, Compras sin PT/MQ (MP solo harinas y quinua) |
+| [75_RONDA_V61_LISTAS_Y_TARJETAS](docs/75_RONDA_V61_LISTAS_Y_TARJETAS.md) | Ronda V61: parámetros de lista escritos a mano y tarjetas de la proyección de demanda responsivas |
 | [23_OBSERVACIONES_V7](docs/23_OBSERVACIONES_V7.md) | Observaciones del módulo V7: regularización, penalidades, informe de gestión comercial, catálogo, cotizaciones SAP, metas, proyección, turnos, movimientos, carga chofer→auxiliar, GEOSATELITAL |
 | [01_INVENTARIO_FUENTES](docs/01_INVENTARIO_FUENTES.md) | Los 30 archivos analizados, qué contiene cada uno y cómo se usó |
 | [02_ESPECIFICACION_CONSOLIDADA](docs/02_ESPECIFICACION_CONSOLIDADA.md) | Alcance consolidado, contradicciones, vacíos, dependencias, decisiones técnicas y **preguntas Q1–Q17** (Q1, Q3, Q4 resueltas) |

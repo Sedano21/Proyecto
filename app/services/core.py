@@ -1,4 +1,5 @@
 """Servicios transversales: parámetros, auditoría, permisos."""
+import re
 from datetime import date, datetime
 
 from sqlalchemy import select
@@ -82,7 +83,27 @@ def coerce_param(tipo, raw):
         return float(raw.replace(",", "."))
     if tipo == "bool":
         return raw.lower() in ("1", "true", "si", "sí", "on", "yes")
-    if tipo in ("list", "dict"):
+    if tipo == "list":
+        try:
+            val = json.loads(raw)
+        except ValueError:
+            # V61: también una lista escrita a mano: «ALM-001, ALM-003» o «[ALM-001, ALM-003]» (sin comillas), una por
+            # línea o separada por comas o punto y coma
+            txt = raw[1:-1] if raw.startswith("[") and raw.endswith("]") else raw
+            val = []
+            for tok in re.split(r"[,;\n]+", txt):
+                tok = tok.strip().strip("'\"").strip()
+                if not tok:
+                    continue
+                try:
+                    val.append(int(tok) if re.fullmatch(r"-?\d+", tok) else float(tok) if re.fullmatch(r"-?\d+\.\d+", tok)
+                               else tok)
+                except ValueError:
+                    val.append(tok)
+        if not isinstance(val, list):
+            val = [val]
+        return val
+    if tipo == "dict":
         val = json.loads(raw)
         if tipo == "list" and not isinstance(val, list):
             raise ValueError("Se esperaba una lista JSON")
