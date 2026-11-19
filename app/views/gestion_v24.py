@@ -360,3 +360,27 @@ def entregado_sap():
     return render_template("v58_entregado_sap.html", r=entregado(desde, hasta), desde=desde, hasta=hasta, q=q, tipo=tipo,
                            ver=ver, total_filtro=sum(f["valor"] for f in filas),
                            lista=paginate(clientes if ver == "clientes" else filas, 40))
+
+
+@bp.route("/abastecimiento")
+@perm_required("compras.ver", "importaciones.ver", "compras.consolidado")
+def abastecimiento():
+    """V59: cuándo se quiebra el stock de lo que se compra (OV por fecha y OC por ingresar), de dónde conviene traerlo y
+    lo que ya está registrado en SAP como ingreso."""
+    from ..services import abastecimiento as ab
+    from .common import paginate
+    ver = request.args.get("ver", "quiebre")
+    origen = request.args.get("origen")
+    origen = ab.origen_por_rol(g.user) if origen is None else origen
+    q = (request.args.get("q") or "").strip()
+    if ver in ("pendientes", "ingresados"):
+        hoy = date.today()
+        desde = f_date("desde") or hoy.replace(day=1)
+        hasta = f_date("hasta") or hoy
+        filas = ab.ingresos(desde, hasta, origen, q, ver)
+        return render_template("v59_abastecimiento.html", ver=ver, origen=origen, q=q, desde=desde, hasta=hasta,
+                               lista=paginate(filas, 40), hay_sap=ab.hay_compras_sap())
+    todos = request.args.get("todos") == "1"
+    filas = ab.tablero(origen=origen, q=q, solo_riesgo=not todos)
+    return render_template("v59_abastecimiento.html", ver="quiebre", origen=origen, q=q, todos=todos,
+                           lista=paginate(filas, 25), hay_sap=ab.hay_compras_sap(), responsables=ab.RESPONSABLE)

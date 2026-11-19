@@ -477,8 +477,16 @@ def analyze_product(product, ref=None, demanda_produccion=0.0):
         for l in o.lines:
             if l.activa and l.product_code == product.code:
                 falt_ov += max(l.cantidad - l.despachado - line_reserved(l), 0)
-    en_camino = s.execute(select(func.coalesce(func.sum(PurchaseRequest.cantidad), 0)).where(
-        PurchaseRequest.product_code == product.code, PurchaseRequest.estado.in_(OPEN_STATES))).scalar() or 0
+    from .abastecimiento import ANTES_DE_OC, hay_compras_sap, pendientes
+    if hay_compras_sap():
+        # V59: lo que ya tiene OC está en SAP (saldo por ingresar de las OC abiertas); del módulo, solo lo que aún no
+        # tiene OC, para no contar dos veces
+        en_camino = sum(x["pendiente"] for x in pendientes([product.code], ref).get(product.code, []))
+        en_camino += s.execute(select(func.coalesce(func.sum(PurchaseRequest.cantidad), 0)).where(
+            PurchaseRequest.product_code == product.code, PurchaseRequest.estado.in_(ANTES_DE_OC))).scalar() or 0
+    else:
+        en_camino = s.execute(select(func.coalesce(func.sum(PurchaseRequest.cantidad), 0)).where(
+            PurchaseRequest.product_code == product.code, PurchaseRequest.estado.in_(OPEN_STATES))).scalar() or 0
     stock_min = product.stock_minimo or 0
     seg = 0.0
     if param("usar_stock_seguridad", False):

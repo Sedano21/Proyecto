@@ -75,7 +75,8 @@ def test_compras_desde_ordenes_de_compra_de_sap(app, s, U):
     assert d["n_ordenes"] == 1 and d["proveedores"][0]["proveedor"] == "PROVEEDOR PRUEBA SAC"
     compras_sap.sync(U("sistemas"), sl=sl)  # la segunda lectura trae solo lo cambiado y no duplica
     s.commit()
-    assert "UpdateDate ge" in sl.llamadas[-1][1] and compras_sap.resumen(hoy.replace(day=1), hoy)["total"] == 1180
+    ultima_oc = [x for x in sl.llamadas if x[0] == "PurchaseOrders"][-1]
+    assert "UpdateDate ge" in ultima_oc[1] and compras_sap.resumen(hoy.replace(day=1), hoy)["total"] == 1180
     c = next(x for x in empresa_v24.tablero()["cards"] if x["titulo"] == "Compras del mes (SAP)")
     assert c["valor"] == "S/ 1,180" and c["url"]
     html = _cliente(app, "jefe.operaciones").get("/gestion/compras-sap?ver=productos").get_data(as_text=True)

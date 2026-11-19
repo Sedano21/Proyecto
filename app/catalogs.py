@@ -3273,3 +3273,20 @@ PARAMS += [
     ("sap_condiciones_pago", [], "list", "Integración SAP",
      "Condiciones de pago (formas de pago) leídas de SAP para la factura (las escribe el sistema).", "DEFINIDO", V57),
 ]
+# ------------------------------------------------------------------ V59 (19-nov-2026)
+V59 = "Observaciones V59 (19-nov-2026)"
+PARAMS += [
+    ("pais_empresa", "PE", "str", "Compras",
+     "País de la empresa: las compras a proveedores de este país son nacionales; las de otro país, importadas.",
+     "DEFINIDO", V59),
+    ("abastecimiento_horizonte_dias", 60, "int", "Compras",
+     "Días hacia adelante de la proyección de stock (OV por fecha y OC por ingresar) para anticipar el quiebre.",
+     "PROPUESTO", V59),
+]
+# El Coordinador de Importación y el Asistente de Compras e Importaciones también ven la proyección de demanda
+ROLES_RENOMBRE[AIM] = "Asistente de Compras e Importaciones"
+ROLES[:] = [(c, "Asistente de Compras e Importaciones" if c == AIM else n, *rest) for c, n, *rest in ROLES]
+for _r in ("IMPORTACIONES", AIM):
+    for _p in ("demanda.ver", "compras.ver", "importaciones.ver"):
+        if any(x[0] == _p for x in PERMISSIONS) and not any(x[0] == _p for x in ROLE_PERMISSIONS.setdefault(_r, [])):
+            ROLE_PERMISSIONS[_r].append((_p, "DEFINIDO", f"{V59}: ve la proyección de demanda y el abastecimiento"))

@@ -19,15 +19,19 @@ def _estado(d):
     return "CERRADA" if d.get("DocumentStatus") == "bost_Close" else "ABIERTA"
 
 
-def rows(sl, desde=None, cambios_desde=None):
+VERSION = 2  # V59: también las entradas de mercancías de compra y el país del proveedor (se relee todo una vez)
+ENTIDADES = (("OC", "PurchaseOrders"), ("RECEPCION", "PurchaseDeliveryNotes"))
+
+
+def rows(sl, desde=None, cambios_desde=None, entidad="PurchaseOrders", tipo="OC"):
     from . import sap_sl
     filtro = f"DocDate ge '{desde.isoformat()}'" if desde else ""
     if cambios_desde:
         filtro = (filtro + " and " if filtro else "") + f"UpdateDate ge '{cambios_desde.isoformat()}'"
     out = []
-    for d in sl.get_all("PurchaseOrders", {"$filter": filtro,
-                                           "$select": "DocEntry,DocNum,DocDate,DocDueDate,CardCode,CardName,DocCurrency,"
-                                                      "DocumentStatus,Cancelled,DocumentLines"}):
+    for d in sl.get_all(entidad, {"$filter": filtro,
+                                  "$select": "DocEntry,DocNum,DocDate,DocDueDate,CardCode,CardName,DocCurrency,"
+                                             "DocumentStatus,Cancelled,DocumentLines"}):
         est = _estado(d)
         for ln in d.get("DocumentLines") or []:
             q = float(ln.get("Quantity") or 0)
@@ -35,6 +39,8 @@ def rows(sl, desde=None, cambios_desde=None):
             cerrada = ln.get("LineStatus") == "bost_Close"
             if est == "CANCELADA":
                 recibido = 0.0
+            elif tipo == "RECEPCION":
+                recibido = q  # la entrada de mercancías ya es lo que ingresó
             elif "RemainingOpenQuantity" in ln:
                 recibido = max(q - pend, 0.0)
             else:
@@ -43,7 +49,8 @@ def rows(sl, desde=None, cambios_desde=None):
                 fecha, entrega = sap_sl._d(d.get("DocDate")), sap_sl._d(d.get("DocDueDate"))
             except ValueError:
                 fecha = entrega = None
-            out.append({"clave": f"{d['DocEntry']}:{ln.get('LineNum', 0)}", "docentry": int(d["DocEntry"]),
+            out.append({"clave": f"{'R:' if tipo == 'RECEPCION' else ''}{d['DocEntry']}:{ln.get('LineNum', 0)}",
+                        "docentry": int(d["DocEntry"]), "tipo": tipo,
                         "docnum": str(d.get("DocNum") or ""), "fecha": fecha, "fecha_entrega": entrega,
                         "cardcode": (d.get("CardCode") or "")[:30], "proveedor": (d.get("CardName") or "")[:200],
                         "estado": est, "moneda": (d.get("DocCurrency") or "")[:10],
@@ -53,31 +60,59 @@ def rows(sl, desde=None, cambios_desde=None):
     return out
 
 
+def paises(sl, cardcodes):
+    """{CardCode: país} de los proveedores (BusinessPartners.Country) para separar compras nacionales de importadas."""
+    out = {}
+    cods = sorted({c for c in cardcodes if c})
+    for i in range(0, len(cods), 20):
+        filtro = " or ".join("CardCode eq '" + c.replace("'", "''") + "'" for c in cods[i:i + 20])
+        try:
+            for bp in sl.get_all("BusinessPartners", {"$filter": filtro, "$select": "CardCode,Country"}):
+                out[bp["CardCode"]] = (bp.get("Country") or "")[:3].upper()
+        except Exception:  # noqa: BLE001 - sin el país se muestra «sin país»; no frena la lectura de compras
+            pass
+    return out
+
+
 def sync(user, sl=None):
     from . import sap_sl
     from .sap_v31 import historial_desde
     ult = param("sap_compras_ultimo", {}) or {}
     hay = db().execute(select(SapPurchaseLine.id).limit(1)).first() is not None
     cambios = None
-    if hay and ult.get("ts"):
+    if hay and ult.get("ts") and ult.get("version") == VERSION:
         cambios = datetime.fromisoformat(ult["ts"]).date() - timedelta(days=1)
     propio = sl is None
     sl = sl or sap_sl.ServiceLayer()
     try:
         if propio:
             sl.login()
-        filas = rows(sl, None if cambios else historial_desde(), cambios)
+        filas = []
+        for tipo, ent in ENTIDADES:
+            filas += rows(sl, None if cambios else historial_desde(), cambios, ent, tipo)
+        conocidos = {}
+        for x in db().execute(select(SapPurchaseLine.cardcode, SapPurchaseLine.pais).where(SapPurchaseLine.pais != "")):
+            conocidos[x[0]] = x[1]
+        faltan = {f["cardcode"] for f in filas} - set(conocidos)
+        conocidos.update(paises(sl, faltan))
     finally:
         if propio:
             sl.logout()
-    docs = sorted({f["docentry"] for f in filas})
-    for i in range(0, len(docs), 500):
-        db().execute(delete(SapPurchaseLine).where(SapPurchaseLine.docentry.in_(docs[i:i + 500])))
+    if not cambios:
+        db().execute(delete(SapPurchaseLine))
+    else:
+        for tipo in ("OC", "RECEPCION"):
+            docs = sorted({f["docentry"] for f in filas if f["tipo"] == tipo})
+            for i in range(0, len(docs), 500):
+                db().execute(delete(SapPurchaseLine).where(SapPurchaseLine.tipo == tipo,
+                                                           SapPurchaseLine.docentry.in_(docs[i:i + 500])))
     for f in filas:
-        db().add(SapPurchaseLine(ts=now(), **f))
+        db().add(SapPurchaseLine(ts=now(), pais=conocidos.get(f["cardcode"], ""), **f))
     db().flush()
+    docs = {(f["tipo"], f["docentry"]) for f in filas}
     res = {"ts": datetime.now().isoformat(timespec="minutes"), "modo": f"cambios desde {cambios:%d/%m/%Y}" if cambios
-           else "completa", "ordenes": len(docs), "lineas": len(filas)}
+           else "completa", "ordenes": len({d for d in docs if d[0] == "OC"}),
+           "recepciones": len({d for d in docs if d[0] == "RECEPCION"}), "lineas": len(filas), "version": VERSION}
     set_param("sap_compras_ultimo", res, user)
     return res
 
@@ -100,6 +135,7 @@ def resumen(desde, hasta):
     if db().execute(select(SapPurchaseLine.id).limit(1)).first() is None:
         return None
     lineas = list(db().execute(select(SapPurchaseLine).where(SapPurchaseLine.fecha >= desde, SapPurchaseLine.fecha <= hasta,
+                                                             SapPurchaseLine.tipo == "OC",
                                                              SapPurchaseLine.estado != "CANCELADA")).scalars())
     tot = sin = rec = 0.0
     por_moneda, por_prov, por_prod = defaultdict(float), defaultdict(lambda: {"total": 0.0, "ordenes": set()}), \

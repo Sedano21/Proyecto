@@ -2866,6 +2866,9 @@ class SapPurchaseLine(Base):
     recibido: Mapped[float] = mapped_column(Float, default=0)
     total: Mapped[float] = mapped_column(Float, default=0)  # LineTotal en soles, sin IGV
     igv: Mapped[float] = mapped_column(Float, default=0)
+    # V59: OC (orden de compra) o RECEPCION (entrada de mercancías de compra) y país del proveedor (nacional/importado)
+    tipo: Mapped[str] = mapped_column(String(10), default="OC", server_default="OC", index=True)
+    pais: Mapped[str] = mapped_column(String(3), default="", server_default="")
     ts: Mapped[datetime] = mapped_column(DateTime, default=now)
 
 
