@@ -39,7 +39,7 @@ def demand():
                 os.makedirs(up, exist_ok=True)
                 path = os.path.join(up, f"demanda_{os.urandom(4).hex()}.xlsx")
                 arch.save(path)
-                return ssvc.import_forecast(g.user, path)
+                return ssvc.import_forecast(g.user, path, (f.get("mes_excel") or "").strip()[:7] or None)
             return act(_x, lambda r: f"{r[0]} fila(s) cargadas." + (f" Errores: {' | '.join(r[1][:5])}" if r[1] else ""), back)
         if f.get("accion") == "grupo":
             filas = [{"product_code": p, "cantidad": q, "canal": c, "customer_id": cl, "observacion": o} for p, q, c, cl, o in

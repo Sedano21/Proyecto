@@ -369,10 +369,15 @@ def abastecimiento():
     lo que ya está registrado en SAP como ingreso."""
     from ..services import abastecimiento as ab
     from .common import paginate
-    ver = request.args.get("ver", "quiebre")
+    ver = request.args.get("ver", "plan")
     origen = request.args.get("origen")
     origen = ab.origen_por_rol(g.user) if origen is None else origen
     q = (request.args.get("q") or "").strip()
+    if ver == "plan":  # V60: motor de reposición por grano (método del Excel Maestro de Abastecimiento)
+        from ..services import plan_granos as pg
+        filas = pg.tablero(origen=origen, q=q)
+        return render_template("v60_plan_granos.html", ver=ver, origen=origen, q=q, filas=filas, hoy=date.today(),
+                               hay_sap=ab.hay_compras_sap())
     if ver in ("pendientes", "ingresados"):
         hoy = date.today()
         desde = f_date("desde") or hoy.replace(day=1)
@@ -384,3 +389,13 @@ def abastecimiento():
     filas = ab.tablero(origen=origen, q=q, solo_riesgo=not todos)
     return render_template("v59_abastecimiento.html", ver="quiebre", origen=origen, q=q, todos=todos,
                            lista=paginate(filas, 25), hay_sap=ab.hay_compras_sap(), responsables=ab.RESPONSABLE)
+
+
+@bp.route("/abastecimiento/grano")
+@perm_required("compras.ver", "importaciones.ver", "compras.consolidado")
+def abastecimiento_grano():
+    """V60: un grano explicado: OV abiertas, demanda del horizonte por cliente, cálculo de la compra, destino y clientes."""
+    from ..services import plan_granos as pg
+    nombre = pg._norm(request.args.get("g", ""))
+    r = pg.calcular().get(nombre) or abort(404)
+    return render_template("v60_grano.html", r=r, hoy=date.today())

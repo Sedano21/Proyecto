@@ -1,0 +1,24 @@
+{% extends "base.html" %}{% from "_m.html" import b, ic, empty %}
+{% macro t(kg) %}{{ '{:,.1f}'.format((kg or 0) / 1000) }}{% endmacro %}
+{% block content %}<div class="page-head"><div><h1>Abastecimiento: plan por grano</h1>
+<p class="sub">Qué comprar o importar, cuánto y cuándo, por grano (todos sus códigos GR, MP, PT y MQ en toneladas). Usa el método del Excel Maestro de Abastecimiento: demanda base de 6 o 3 meses, demanda del horizonte cliente por cliente (OV vigente o recompra habitual), stock de seguridad por clase ABC, punto de pedido y simulación diaria del agotamiento. Se recalcula con los datos de SAP cada vez que se abre.</p></div></div>
+<div class="vista-sel">{% for k, tt in [('plan', 'Plan por grano'), ('quiebre', 'Proyección por producto'), ('pendientes', 'Por ingresar (OC abiertas en SAP)'), ('ingresados', 'Ya ingresado (entradas en SAP)')] %}<a class="btn {{ '' if ver == k else 'sec' }} small" href="?ver={{ k }}&origen={{ origen }}">{{ tt }}</a> {% endfor %}</div>
+<form class="row card" method="get"><input type="hidden" name="ver" value="plan"><div class="grow"><label>Grano</label><input name="q" type="search" value="{{ q }}" placeholder="Buscar grano…"></div>
+<div><label>Origen</label><select name="origen"><option value="">(todos)</option><option value="NACIONAL" {{ 'selected' if origen == 'NACIONAL' }}>Nacional (Coordinador de Compras)</option><option value="IMPORTADO" {{ 'selected' if origen == 'IMPORTADO' }}>Importado (Coordinador de Importación)</option></select></div><div><button class="sec">Ver</button></div></form>
+{% if not hay_sap %}<div class="note warn">Aún no se leyeron las órdenes de compra de SAP: «en camino» y el precio aparecen tras la próxima lectura del vigilante.</div>{% endif %}
+{% if filas %}{% set compra = filas|sum(attribute='compra') %}{% set pres = filas|selectattr('presupuesto')|sum(attribute='presupuesto') %}
+<div class="kpis"><div class="kpi"><span>Granos</span><b>{{ filas|length }}</b></div><div class="kpi warn"><span>Compra sugerida</span><b>{{ t(compra) }} t</b></div>
+<div class="kpi"><span>Presupuesto (a precio de OC)</span><b>S/ {{ '{:,.0f}'.format(pres) }}</b></div><div class="kpi err"><span>Emitir OC hoy</span><b>{{ filas|selectattr('emitir')|selectattr('emitir', 'le', hoy)|list|length }}</b></div></div>
+<div class="tw"><table class="small apilable"><tr><th>Grano</th><th>Origen</th><th>Clase</th><th class="r">Base t/mes</th><th class="r">OV vigentes t</th><th class="r">Stock t</th><th class="r">En camino t</th><th class="r">Cobertura</th><th class="r">SS t</th><th class="r">Compra t</th><th>A pedir</th><th>Emitir OC</th><th>Agota (hist. · Com. · plan)</th><th>Clasificación</th></tr>
+{% for r in filas %}<tr{% if r.emitir and r.emitir <= hoy and r.compra > 0 %} class="row-warn"{% endif %}>
+<td data-label="Grano"><a href="{{ url_for('v24.abastecimiento_grano', g=r.grano) }}"><b>{{ r.grano }}</b></a><div class="small muted">{{ r.responsable }}</div></td>
+<td data-label="Origen">{{ b(r.origen) }}</td><td data-label="Clase">{{ r.abc }}{{ r.xyz }}</td>
+<td data-label="Base" class="r">{{ t(r.base) }}<div class="small muted">{{ r.base_elegida }}</div></td><td data-label="OV" class="r">{{ t(r.ov_total) }}{% if r.ov_a_confirmar %}<div class="small muted">+{{ t(r.ov_a_confirmar) }} a confirmar</div>{% endif %}</td>
+<td data-label="Stock" class="r">{{ t(r.stock) }}</td><td data-label="En camino" class="r">{{ t(r.camino) }}</td>
+<td data-label="Cobertura" class="r">{{ '%.0f'|format(r.cobertura) ~ ' días' if r.cobertura is not none else 'sin demanda' }}</td><td data-label="SS" class="r">{{ t(r.ss) }}</td>
+<td data-label="Compra" class="r"><b>{{ t(r.compra) }}</b></td><td data-label="A pedir">{% if r.compra > 0 %}{{ r.fcl ~ ' FCL · ' if r.fcl }}{{ t(r.a_pedir) }} t{% if r.presupuesto %}<div class="small muted">S/ {{ '{:,.0f}'.format(r.presupuesto) }}</div>{% endif %}{% if r.puente %}<div class="small">puente {{ t(r.puente) }} t</div>{% endif %}{% else %}—{% endif %}</td>
+<td data-label="Emitir OC">{{ r.emitir|d if r.emitir else '—' }}</td>
+<td data-label="Agota" class="small">{{ r.agota.B|d if r.agota.B else 'no' }} · {{ r.agota.C|d if r.agota.C else ('—' if not r.comercial else 'no') }} · <b>{{ r.agota.D|d if r.agota.D else 'no' }}</b></td>
+<td data-label="Clasificación">{{ b(r.clasificacion) }}</td></tr>{% endfor %}</table></div>
+<p class="small muted">Base: promedio de 6 meses de lo despachado (guías de SAP), o de 3 meses si cambió más del 30 %. Compra = demanda del horizonte × factor MP + stock de seguridad − stock utilizable − en camino; las importaciones se redondean a contenedores. Agota: simulación diaria con la venta histórica, la proyección de Comercial y el plan (OV + recompra habitual). Toque un grano para ver su explicación. Supuestos editables en Parámetros (grupo Compras, «abastecimiento_…»).</p>
+{% else %}{{ empty('No hay granos con este filtro.', 'cart') }}{% endif %}{% endblock %}

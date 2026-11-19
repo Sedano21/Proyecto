@@ -81,9 +81,11 @@ def create_request(user, product_code, cantidad, fecha_necesidad=None, origen="A
         raise BusinessError("En la primera etapa las solicitudes de compra nacen en Almacén (IF §7, §10.1).")
     if db().get(Product, product_code) is None:
         raise BusinessError("Producto no existe.")
-    if es_no_comprable(db().get(Product, product_code)):  # V32: el PT lo fabrica la empresa: no se compra
-        raise BusinessError(f"{product_code} es producto terminado que fabrica la empresa: no se compra. Genere una "
-                            "solicitud de producción. Se compra el granel y, eventualmente, MP o MQ.")
+    if es_no_comprable(db().get(Product, product_code)):  # V32/V60: lo que fabrica la empresa no se compra
+        que = "materia prima que produce la empresa" if product_code.upper().startswith("MP") else \
+            "producto terminado que fabrica la empresa"
+        raise BusinessError(f"{product_code} es {que}: no se compra (genere una solicitud de producción). Compras "
+                            "nacionales compra granel y, como excepción, MP de harinas y quinua.")
     if cantidad is None or cantidad <= 0:
         raise BusinessError("Cantidad inválida.")
     if param("agrupar_presolicitudes_compra", True):
@@ -415,8 +417,15 @@ def es_no_comprable(product):
     reposición normal es una pre-solicitud de producción (es_producido)."""
     if product is None:
         return False
-    pref = [str(x).strip().upper() for x in (param("compras_no_comprables", ["PT"]) or []) if str(x).strip()]
-    return any(product.code.upper().startswith(x) for x in pref)
+    pref = [str(x).strip().upper() for x in (param("compras_no_comprables", ["PT", "MQ", "MP"]) or []) if str(x).strip()]
+    code = product.code.upper()
+    if not any(code.startswith(x) for x in pref):
+        return False
+    # V60: la MP la produce la empresa; Compras nacionales solo compra, como excepción, las harinas y la quinua
+    if code.startswith("MP"):
+        exc = [str(x).strip().upper() for x in (param("compras_mp_excepciones", ["HARINA", "QUINUA"]) or []) if str(x).strip()]
+        return not any(x in (product.descripcion or "").upper() for x in exc)
+    return True
 
 
 def _salidas_periodo(code, desde, ref):
@@ -617,4 +626,27 @@ def abc_classes(ref=None):
         acum += q
         pct = 100 * acum / total if total else 100
         out[code] = "A" if pct <= float(lim.get("A", 80)) + 1e-9 or not out else ("B" if pct <= float(lim.get("B", 95)) + 1e-9 else "C")
+    return out
+
+
+def limpiar_no_comprables(user=None):
+    """V60: las solicitudes abiertas de lo que no se compra (PT, MQ y MP que no es harina ni quinua) se cancelan si aún
+    no llegaron a cotización; si ya están en Compras, se avisa. Devuelve {canceladas, avisadas}."""
+    out = {"canceladas": [], "avisadas": []}
+    previas = ("BORRADOR", "PENDIENTE_LOGISTICA", "SOLICITADA")
+    for r in db().execute(select(PurchaseRequest).where(PurchaseRequest.estado.in_(OPEN_STATES))).scalars():
+        if not es_no_comprable(r.product):
+            continue
+        if r.estado in previas:
+            r.estado = "CANCELADA"
+            r.motivo = ((r.motivo or "") + " · Cancelada: lo fabrica la empresa (Compras nacionales solo compra granel y, "
+                        "como excepción, MP de harinas y quinua).").strip(" ·")[:500]
+            audit(user, "COMPRA_NO_COMPRABLE_CANCELADA", "PurchaseRequest", r.id, {"producto": r.product_code})
+            out["canceladas"].append(r.id)
+        else:
+            alerts.emit("COMPRA_REVISAR_OV_ATENDIDA", f"Compra #{r.id} de {r.product_code}: no es un producto que se compre",
+                        "Compras nacionales solo compra granel y, como excepción, MP de harinas y quinua: revisar si se "
+                        "debe producir en lugar de comprar.", "PurchaseRequest", r.id, dedup_key=f"NO_COMPRABLE:{r.id}",
+                        creado_por=user)
+            out["avisadas"].append(r.id)
     return out

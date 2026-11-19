@@ -1,7 +1,7 @@
 {% extends "base.html" %}{% from "_m.html" import b, ic, empty, paginacion %}
 {% block content %}<div class="page-head"><div><h1>Abastecimiento (granel, MP e insumos)</h1>
 <p class="sub">Cuándo se quiebra el stock con las OV que van saliendo y lo que ya está por ingresar en SAP, y de dónde conviene traerlo. El Coordinador de Compras trae lo nacional (y, a veces, MP); el Coordinador de Importación, lo importado. El objetivo es no llegar a cero.</p></div></div>
-<div class="vista-sel">{% for k, t in [('quiebre', 'Proyección de quiebre'), ('pendientes', 'Por ingresar (OC abiertas en SAP)'), ('ingresados', 'Ya ingresado (entradas en SAP)')] %}<a class="btn {{ '' if ver == k else 'sec' }} small" href="?ver={{ k }}&origen={{ origen }}">{{ t }}</a> {% endfor %}</div>
+<div class="vista-sel">{% for k, t in [('plan', 'Plan por grano'), ('quiebre', 'Proyección por producto'), ('pendientes', 'Por ingresar (OC abiertas en SAP)'), ('ingresados', 'Ya ingresado (entradas en SAP)')] %}<a class="btn {{ '' if ver == k else 'sec' }} small" href="?ver={{ k }}&origen={{ origen }}">{{ t }}</a> {% endfor %}</div>
 <form class="row card" method="get"><input type="hidden" name="ver" value="{{ ver }}"><div class="grow"><label>Producto, proveedor u OC</label><input name="q" type="search" value="{{ q }}" placeholder="Buscar…"></div>
 <div><label>Origen</label><select name="origen"><option value="">(todos)</option><option value="NACIONAL" {{ 'selected' if origen == 'NACIONAL' }}>Nacional (Compras)</option><option value="IMPORTADO" {{ 'selected' if origen == 'IMPORTADO' }}>Importado (Importación)</option></select></div>
 {% if ver == 'quiebre' %}<div><label><input type="checkbox" name="todos" value="1" {{ 'checked' if todos }}> ver también los que no se quiebran</label></div>

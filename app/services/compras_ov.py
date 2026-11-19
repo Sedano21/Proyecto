@@ -93,4 +93,6 @@ def revisar(user=None):
                         dedup_key=f"COMPRA_OV_ATENDIDA:{r.id}:{','.join(sorted(d['ov'] for d, _ in resueltas))}")
             avisadas += 1
     db().flush()
-    return {"ajustadas": ajustadas, "avisadas": avisadas}
+    from .purchasing import limpiar_no_comprables  # V60: PT, MQ y MP (salvo harinas y quinua) no se compran
+    nc = limpiar_no_comprables(user)
+    return {"ajustadas": ajustadas + len(nc["canceladas"]), "avisadas": avisadas + len(nc["avisadas"])}

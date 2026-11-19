@@ -202,16 +202,89 @@ def pending_changes():
     return [f for f in db().execute(select(DemandForecast)).scalars() if (f.cambio or {}).get("estado") == "PENDIENTE"]
 
 
-def import_forecast(user, path):
-    """Excel con columnas: mes (AAAA-MM), producto (código), cantidad y, opcionales, canal y observación."""
+_MESES_TXT = {"ENE": 1, "FEB": 2, "MAR": 3, "ABR": 4, "MAY": 5, "JUN": 6, "JUL": 7, "AGO": 8, "SET": 9, "SEP": 9,
+              "OCT": 10, "NOV": 11, "DIC": 12}
+
+
+def _mes_de_titulo(wb):
+    """«PROY NOV 26» o «PROYECTADO NOVIEMBRE 26» → «2026-11» (hoja o celda de título del archivo de Comercial)."""
+    import re
+    textos = [ws.title for ws in wb.worksheets]
+    for ws in wb.worksheets:
+        for r in ws.iter_rows(min_row=1, max_row=3, values_only=True):
+            textos += [str(c) for c in r if isinstance(c, str)]
+    for t in textos:
+        m = re.search(r"\b(ENE|FEB|MAR|ABR|MAY|JUN|JUL|AGO|SET|SEP|OCT|NOV|DIC)[A-Z]*\.?\s*[-/ ]?\s*(\d{2,4})\b", t.upper())
+        if m and ("PROY" in t.upper()):
+            y = int(m.group(2))
+            return f"{2000 + y if y < 100 else y}-{_MESES_TXT[m.group(1)]:02d}"
+    return None
+
+
+def _import_comercial(user, wb, mes):
+    """V60: archivo de Comercial (hojas IMPORTADO y NACIONAL: código de producto, UM y cantidad proyectada en kg)."""
+    por, hojas, errores = defaultdict(float), [], []
+    for ws in wb.worksheets:
+        filas = list(ws.iter_rows(min_row=1, max_row=ws.max_row, values_only=True))
+        if not filas:
+            continue
+        cab = [" ".join(str(c or "").strip().upper().split()) for c in filas[0]]
+        if "CODIGO DE PRODUCTO" not in cab or "CANTIDAD PROYECTADA" not in cab:
+            continue
+        ic, iq = cab.index("CODIGO DE PRODUCTO"), cab.index("CANTIDAD PROYECTADA")
+        ium = cab.index("UM") if "UM" in cab else None
+        hojas.append(ws.title)
+        for k, r in enumerate(filas[1:], start=2):
+            if not r or not r[ic]:
+                continue
+            code = str(r[ic]).strip().upper()
+            p = db().get(Product, code)
+            if p is None:
+                errores.append(f"{ws.title} fila {k}: producto {code} no existe")
+                continue
+            try:
+                q = float(r[iq] or 0)
+            except (TypeError, ValueError):
+                errores.append(f"{ws.title} fila {k}: cantidad inválida")
+                continue
+            um = str(r[ium] or "").upper() if ium is not None else ""
+            if um.startswith("K") and p.peso_kg and not (p.um or "").upper().startswith("K"):
+                q = q / p.peso_kg  # la proyección viene en kg; el módulo la guarda en la unidad del producto
+            por[code] += q
+    if not hojas:
+        return None
+    n = 0
+    for code, q in por.items():
+        try:
+            save_forecast(user, mes, code, round(q, 4), "", None, "Proyección Comercial (" + ", ".join(hojas) + ")")
+            n += 1
+        except BusinessError as e:
+            errores.append(str(e))
+    audit(user, "DEMANDA_CARGADA", "DemandForecast", "", {"filas": n, "errores": len(errores), "formato": "Comercial", "mes": mes})
+    return n, errores
+
+
+def import_forecast(user, path, mes=None):
+    """Excel con columnas: mes (AAAA-MM), producto (código), cantidad y, opcionales, canal y observación.
+    V60: también el archivo de Comercial tal cual (hojas IMPORTADO y NACIONAL con «CODIGO DE PRODUCTO» y «CANTIDAD
+    PROYECTADA» en kg): el mes se toma del formulario o del título («PROY NOV 26»)."""
     from openpyxl import load_workbook
     if not has_perm(user, "demanda.cargar"):
         raise BusinessError("La proyección de demanda la carga Comercial.")
-    ws = load_workbook(path, data_only=True, read_only=True).active
+    wb = load_workbook(path, data_only=True, read_only=True)
+    ws = wb.active
     filas = list(ws.iter_rows(values_only=True))
     if not filas:
         raise BusinessError("El archivo está vacío.")
     cab = [" ".join(str(c or "").strip().lower().split()) for c in filas[0]]
+    if not any(c in ("mes", "periodo") for c in cab):
+        mes = mes or _mes_de_titulo(wb)
+        if not mes:
+            raise BusinessError("Indique el mes de la proyección (el archivo no tiene columna «mes» ni un título "
+                                "«PROY <MES> <AÑO>»).")
+        r = _import_comercial(user, wb, mes)
+        if r is not None:
+            return r
 
     def col(*n):
         return next((i for i, c in enumerate(cab) if c in n), None)

@@ -18,8 +18,13 @@ def purchases():
     if request.method == "POST":
         return act(lambda: psvc.create_request(g.user, request.form.get("product_code", "").strip().upper(), f_float("cantidad", True),
                                                f_date("fecha_necesidad")), "Solicitud enviada a Compras.", url_for("buy.purchases"))
+    from ..services import compras_ov  # V53/V60: quita lo ya atendido y lo que no se compra (PT, MQ, MP salvo harinas y quinua)
+    if compras_ov.revisar(g.user)["ajustadas"]:
+        db().commit()
     estado = request.args.get("estado") or ""
     q = select(PurchaseRequest).order_by(PurchaseRequest.id.desc())
+    if not estado and request.args.get("todas") != "1":  # V60: por defecto no se listan las canceladas
+        q = q.where(PurchaseRequest.estado != "CANCELADA")
     if estado:
         q = q.where(PurchaseRequest.estado == estado)
     pres = list(db().execute(q.where(PurchaseRequest.creado_por.is_(None))).scalars())  # presolicitudes automáticas

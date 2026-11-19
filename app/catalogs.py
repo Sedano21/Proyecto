@@ -3290,3 +3290,55 @@ for _r in ("IMPORTACIONES", AIM):
     for _p in ("demanda.ver", "compras.ver", "importaciones.ver"):
         if any(x[0] == _p for x in PERMISSIONS) and not any(x[0] == _p for x in ROLE_PERMISSIONS.setdefault(_r, [])):
             ROLE_PERMISSIONS[_r].append((_p, "DEFINIDO", f"{V59}: ve la proyección de demanda y el abastecimiento"))
+# ------------------------------------------------------------------ V60 (19-nov-2026)
+V60 = "Observaciones V60 (19-nov-2026): método del Excel Maestro de Abastecimiento (Jefatura de Operaciones)"
+_GRANOS_V60 = [(g, o) for g, o in [
+    ("LENTEJA CRIMSON", "IMPORTADO"), ("LENTEJA RICHLEA", "IMPORTADO"), ("FRIJOL CANARIO", "IMPORTADO"),
+    ("FECULA DE PAPA", "IMPORTADO"), ("ARVEJA VERDE PARTIDA", "IMPORTADO"), ("LENTEJA ESTON", "IMPORTADO"),
+    ("GARBANZO", "IMPORTADO"), ("AVENA", "IMPORTADO"), ("MAIZ POP CORN", "IMPORTADO"), ("FRIJOL PANAMITO", "IMPORTADO"),
+    ("LINAZA", "IMPORTADO"), ("LENTEJON", "IMPORTADO"), ("FRIJOL CARAOTA NEGRO", "IMPORTADO"),
+    ("FRIJOL RED KIDNEY", "IMPORTADO"), ("HABAS", "NACIONAL"), ("TRIGO MOTE", "NACIONAL"), ("PALLAR", "NACIONAL"),
+    ("MAIZ CANCHA", "NACIONAL"), ("QUINUA", "NACIONAL"), ("FRIJOL CASTILLA", "NACIONAL"), ("MORON", "NACIONAL"),
+    ("HARINAS", "NACIONAL"), ("CEBADA", "NACIONAL"), ("TRIGO ENTERO", "NACIONAL"), ("MAICENA", "NACIONAL"),
+    ("MAIZ MOTE PELADO", "NACIONAL"), ("LENTEJA BELUGA", "NACIONAL"), ("FRIJOL ROJO", "NACIONAL")]]
+_ALIAS_V60 = {"MAIZ POP CORN": ["POP CORN", "POPCORN"], "FECULA DE PAPA": ["FECULA", "CHUNO"],
+              "HARINAS": ["HARINA", "CREMA DE"], "MAIZ MOTE PELADO": ["MOTE PELADO"], "FRIJOL RED KIDNEY": ["RED KIDNEY"],
+              "FRIJOL CARAOTA NEGRO": ["CARAOTA"], "FRIJOL CANARIO": ["CANARIO"], "FRIJOL PANAMITO": ["PANAMITO"],
+              "LENTEJA RICHLEA": ["RICHLEA"], "LENTEJA ESTON": ["ESTON"]}
+PARAMS += [
+    ("abastecimiento_granos",
+     [{"grano": g, "origen": o, "alias": _ALIAS_V60.get(g, []), **({"kg_fcl": 22680} if g == "FRIJOL CANARIO" else {})}
+      for g, o in _GRANOS_V60], "list", "Compras",
+     "Granos (familias) del plan de abastecimiento: origen (NACIONAL / IMPORTADO), alias para reconocerlos en la "
+     "descripción del artículo y, opcionales, base (Prom. 3m / Prom. 6m / Prom. 12m / Proyección Comercial), "
+     "rend_seleccion, kg_fcl y lead_time propios.", "DEFINIDO", V60),
+    ("abastecimiento_lt_importacion", 50, "int", "Compras", "Lead time de importación (días a planta).", "DEFINIDO", V60),
+    ("abastecimiento_lt_nacional", 7, "int", "Compras", "Lead time nacional de granel y MP (días).", "DEFINIDO", V60),
+    ("abastecimiento_lt_harinas", 10, "int", "Compras", "Lead time nacional de harinas y maicena (días).", "DEFINIDO", V60),
+    ("abastecimiento_revision_importacion", 30, "int", "Compras", "Periodo de revisión de importaciones (días).", "DEFINIDO", V60),
+    ("abastecimiento_revision_nacional", 15, "int", "Compras", "Periodo de revisión de compras nacionales (días).", "DEFINIDO", V60),
+    ("abastecimiento_z_a", 1.65, "float", "Compras", "Factor z de la clase A (nivel de servicio 95 %).", "DEFINIDO", V60),
+    ("abastecimiento_z_b", 1.28, "float", "Compras", "Factor z de la clase B (90 %).", "DEFINIDO", V60),
+    ("abastecimiento_z_c", 1.04, "float", "Compras", "Factor z de la clase C (85 %).", "DEFINIDO", V60),
+    ("abastecimiento_rend_envasado", 0.98, "float", "Compras", "Rendimiento de envasado.", "DEFINIDO", V60),
+    ("abastecimiento_rend_seleccion", 0.95, "float", "Compras",
+     "Rendimiento de selección por defecto (cada grano puede tener el suyo en «abastecimiento_granos»).", "PROPUESTO", V60),
+    ("abastecimiento_ov_firme_dias", 60, "int", "Compras",
+     "Antigüedad máxima de una OV para considerarla firme; las más antiguas se confirman con Comercial.", "DEFINIDO", V60),
+    ("abastecimiento_oc_max_dias", 60, "int", "Compras",
+     "OC abiertas de SAP con más días que esto no se cuentan como «en camino» (se muestran por depurar).", "PROPUESTO", V60),
+    ("abastecimiento_cambio_tendencia", 0.30, "float", "Compras",
+     "Si el promedio de 3 meses difiere más que esto del de 6 meses, la base recomendada es el de 3 meses.", "DEFINIDO", V60),
+    ("abastecimiento_kg_fcl", 24000, "float", "Compras", "kg por contenedor (FCL) por defecto.", "DEFINIDO", V60),
+    ("abastecimiento_dias_simulacion", 120, "int", "Compras", "Días de la simulación diaria de agotamiento.", "PROPUESTO", V60),
+    ("abastecimiento_almacenes_utilizables", [], "list", "Compras",
+     "Almacenes cuyo stock cubre necesidades en el plan por grano (p. ej. sin tránsito ni virtuales). Vacío: todos.",
+     "PENDIENTE", V60),
+    ("compras_mp_excepciones", ["HARINA", "QUINUA"], "list", "Compras",
+     "Palabras de la descripción de las MP que Compras nacionales sí compra (excepción); el resto de MP se produce.",
+     "DEFINIDO", V60),
+]
+# Compras nacionales solo compra granel (y abarrotes) y, como excepción, MP de harinas y quinua: nunca PT ni MQ
+PARAMS_CAMBIO.append(("compras_no_comprables", ["PT"], ["PT", "MQ", "MP"],
+                      f"{V60}: Compras no compra PT ni MQ; MP solo harinas y quinua («compras_mp_excepciones»)"))
+PARAMS = [(k, (["PT", "MQ", "MP"] if k == "compras_no_comprables" else v), *rest) for k, v, *rest in PARAMS]

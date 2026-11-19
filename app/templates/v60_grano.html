@@ -1,0 +1,36 @@
+{% extends "base.html" %}{% from "_m.html" import b, ic %}
+{% macro t(kg) %}{{ '{:,.1f}'.format((kg or 0) / 1000) }}{% endmacro %}
+{% block content %}<p><a href="{{ url_for('v24.abastecimiento', ver='plan') }}">← Plan por grano</a></p>
+<div class="page-head"><div><h1>{{ r.grano }}</h1><p class="sub">{{ b(r.origen) }} · clase {{ r.abc }}{{ r.xyz }} · {{ b(r.clasificacion) }} · responsable: {{ r.responsable }}{% if r.proveedores %} · proveedores habituales: {{ r.proveedores|join(', ') }}{% endif %}</p></div></div>
+<div class="note"><b>Conclusión:</b> base {{ t(r.base) }} t/mes ({{ r.base_elegida }}; recomendada {{ r.recomendada }}: 3m {{ t(r.p3) }} · 6m {{ t(r.p6) }} · 12m {{ t(r.p12) }}) · Comercial {{ t(r.comercial) }} t · OV vigentes {{ t(r.ov_total) }} t{% if r.ov_a_confirmar %} (+{{ t(r.ov_a_confirmar) }} t de más de 60 días a confirmar){% endif %} · CV {{ '%.2f'|format(r.cv) if r.cv is not none else '—' }}.
+{% if r.compra > 0 %}Comprar {{ t(r.compra) }} t{% if r.fcl %} ({{ r.fcl }} FCL · {{ t(r.a_pedir) }} t){% endif %}; emitir la OC {{ 'hoy' if r.emitir and r.emitir <= hoy else ('el ' ~ (r.emitir|d) if r.emitir else '—') }}.{% else %}No hace falta comprar en este horizonte.{% endif %}</div>
+<div class="g2">
+<section class="card"><h3>1 · OV abiertas pendientes (vigentes ≤ 60 días)</h3>
+{% set firmes = r.ov|selectattr('firme')|list %}<p class="small">{% for tp, nombre in [('G', 'Granel'), ('MP', 'MP'), ('PT', 'PT')] %}{% set xs = firmes|selectattr('tipo', 'equalto', tp)|list %}{{ nombre }} {{ t(xs|sum(attribute='kg')) }} t ({{ xs|length }} OV){{ ' · ' if not loop.last }}{% endfor %}</p>
+<div class="tw"><table class="small"><tr><th>Tipo</th><th>OV</th><th>Cliente</th><th>Código</th><th class="r">t</th><th>Entrega</th></tr>
+{% for x in firmes[:8] %}<tr><td>{{ x.tipo }}</td><td>{{ x.ov }}</td><td>{{ x.cliente[:28] }}</td><td>{{ x.codigo }}</td><td class="r">{{ t(x.kg) }}</td><td>{{ x.entrega|d }}</td></tr>{% endfor %}
+{% if firmes|length > 8 %}<tr><td colspan="4" class="muted">+ otras {{ firmes|length - 8 }} OV</td><td class="r">{{ t(firmes[8:]|sum(attribute='kg')) }}</td><td></td></tr>{% endif %}</table></div>
+<p class="small muted">Stock utilizable {{ t(r.stock) }} t · en camino {{ t(r.camino) }} t{% if r.oc_por_depurar %} (+{{ t(r.oc_por_depurar) }} t en OC de más de 60 días, por depurar: no se cuentan){% endif %} · posición {{ t(r.posicion) }} t.</p></section>
+<section class="card"><h3>3 · Cálculo de la compra</h3><table class="small">
+<tr><td>Demanda del horizonte ({{ r.horizonte }} días) × factor MP {{ '%.3f'|format(r.factor_mp) }}</td><td class="r">{{ t(r.demanda_horizonte * r.factor_mp) }}</td></tr>
+<tr><td>+ Stock de seguridad (z {{ r.z }} · {{ '%.0f'|format(r.ss_dias) if r.ss_dias else '—' }} días)</td><td class="r">{{ t(r.ss) }}</td></tr>
+<tr><td>− Stock utilizable</td><td class="r">-{{ t(r.stock) }}</td></tr><tr><td>− En camino</td><td class="r">-{{ t(r.camino) }}</td></tr>
+<tr><td><b>= Compra sugerida</b></td><td class="r"><b>{{ t(r.compra) }} t</b></td></tr>
+{% if r.fcl %}<tr><td>A pedir (FCL de {{ t(r.kg_fcl) }} t)</td><td class="r">{{ r.fcl }} FCL · {{ t(r.a_pedir) }} t</td></tr>{% endif %}
+<tr><td>Punto de pedido</td><td class="r">{{ t(r.rop) }} t</td></tr>
+<tr><td>Lead time · revisión</td><td class="r">{{ r.lead_time }} · {{ r.revision }} días</td></tr>
+<tr><td>Agota (histórico · Comercial · plan)</td><td class="r">{{ r.agota.B|d if r.agota.B else 'no' }} · {{ r.agota.C|d if r.agota.C else '—' }} · <b>{{ r.agota.D|d if r.agota.D else 'no' }}</b></td></tr>
+<tr><td>Agota solo con OV firmes</td><td class="r">{{ r.agota.A|d if r.agota.A else 'no se agota' }}</td></tr>
+{% if r.puente %}<tr><td>Compra puente (hasta que llegue una OC de hoy)</td><td class="r">{{ t(r.puente) }} t</td></tr>{% endif %}
+{% if r.presupuesto %}<tr><td>Presupuesto (S/ {{ '%.2f'|format(r.precio) }}/kg de las OC del año)</td><td class="r">S/ {{ '{:,.0f}'.format(r.presupuesto) }}</td></tr>{% endif %}</table>
+{% if r.llegadas %}<p class="small">Llegadas: {% for d, q in r.llegadas %}{{ d|d }} ({{ t(q) }} t){{ ', ' if not loop.last }}{% endfor %}</p>{% endif %}</section>
+</div>
+<section class="card"><h3>2 · Demanda del horizonte: en OV y por comportamiento</h3><div class="tw"><table class="small"><tr><th>Cliente</th><th>Estado</th><th class="r">Cada (d)</th><th class="r">kg/compra</th><th class="r">En OV t</th><th class="r">Recompra t</th><th class="r">Total t</th></tr>
+{% for c in r.clientes[:10] %}<tr><td>{{ c.cliente }}</td><td>{{ c.estado }}</td><td class="r">{{ c.cada or '—' }}</td><td class="r">{{ '{:,.0f}'.format(c.kg_compra) if c.kg_compra else '—' }}</td><td class="r">{{ t(c.en_ov) }}</td><td class="r">{{ t(c.recompra) }}</td><td class="r">{{ t(c.total) }}</td></tr>{% endfor %}
+{% if r.clientes|length > 10 %}{% set resto = r.clientes[10:] %}<tr><td>Resto de clientes ({{ resto|length }})</td><td></td><td></td><td></td><td class="r">{{ t(resto|sum(attribute='en_ov')) }}</td><td class="r">{{ t(resto|sum(attribute='recompra')) }}</td><td class="r">{{ t(resto|sum(attribute='total')) }}</td></tr>{% endif %}
+<tr><td><b>Total</b></td><td></td><td></td><td></td><td class="r"><b>{{ t(r.clientes|sum(attribute='en_ov')) }}</b></td><td class="r"><b>{{ t(r.recompra) }}</b></td><td class="r"><b>{{ t(r.demanda_horizonte) }}</b></td></tr></table></div>
+<p class="small muted">Por cliente: lo mayor entre su OV vigente y su recompra habitual (venta de 6 meses / 6 × factor k {{ '%.2f'|format(r.k) }} × {{ r.horizonte }} días / 30). Estado: activo, atrasado (pasó su frecuencia), ocasional (≤ 2 compras en 6 meses) o inactivo (no se cuenta).</p></section>
+<div class="g2"><section class="card"><h3>4 · Destino de la compra sugerida</h3><p>Venta a granel {{ t(r.destino.granel) }} t · MP seleccionada {{ t(r.destino.mp) }} t · transformación a PT {{ t(r.destino.pt) }} t</p>
+<p class="small muted">Según la mezcla de venta de 6 meses: granel {{ t(r.canal.G) }} t · MP {{ t(r.canal.MP) }} t · PT {{ t(r.canal.PT) }} t (rend. selección {{ r.rend_seleccion }}).</p></section>
+<section class="card"><h3>5 · Venta mensual (t)</h3><p class="small">{% for m, v in r.serie %}{{ m[5:] }}/{{ m[2:4] }} {{ t(v) }}{{ ' · ' if not loop.last }}{% endfor %}</p><p class="small muted">σ mensual {{ t(r.sigma) }} t · % procesado {{ '%.0f'|format(r.procesado * 100) }} %.</p></section></div>
+{% endblock %}

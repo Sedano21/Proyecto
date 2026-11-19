@@ -50,5 +50,6 @@
 <div class="dlg-foot"><button type="button" class="btn sec" data-close>Cancelar</button><button class="btn">Enviar proyección</button></div></form></dialog>
 <dialog class="modal" id="dlg-dem-xls"><form method="post" enctype="multipart/form-data">{{ csrf() }}<input type="hidden" name="accion" value="excel">
 <div class="dlg-head"><h3>Cargar proyección (Excel)</h3><button class="ibtn" data-close aria-label="Cerrar">{{ ic('x') }}</button></div>
-<div class="dlg-body"><p class="small">Columnas: <b>mes</b> (AAAA-MM o fecha), <b>producto</b> (código), <b>cantidad</b>; opcionales <b>canal</b> y <b>observación</b>.</p><input type="file" name="archivo" accept=".xlsx,.xlsm" required></div>
+<div class="dlg-body"><p class="small">Se acepta el archivo de Comercial tal cual (hojas <b>IMPORTADO</b> y <b>NACIONAL</b> con «CODIGO DE PRODUCTO», «UM» y «CANTIDAD PROYECTADA» en kg; el mes se toma del título «PROY NOV 26» o del campo de abajo) o una plantilla con columnas <b>mes</b> (AAAA-MM o fecha), <b>producto</b> (código), <b>cantidad</b> y, opcionales, <b>canal</b> y <b>observación</b>.</p>
+<label>Mes de la proyección (si el archivo no lo indica)</label><input type="month" name="mes_excel"><input type="file" name="archivo" accept=".xlsx,.xlsm" required></div>
 <div class="dlg-foot"><button class="btn sec" data-close>Cancelar</button><button class="btn">Cargar</button></div></form></dialog>{% endif %}{% endblock %}
