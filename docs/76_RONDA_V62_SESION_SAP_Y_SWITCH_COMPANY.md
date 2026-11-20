@@ -42,4 +42,4 @@ base de la empresa y Service Layer).
 
   Son las más pesadas.
 
-**Pruebas:** `tests/test_v62.py` (casos de V63 incluidos).
+**Pruebas:** `tests/test_v62.py` (casos de V63 incluidos). Suite completa: 712 pruebas pasan.
