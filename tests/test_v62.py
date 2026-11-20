@@ -101,3 +101,34 @@ def test_rechazo_de_sap_queda_registrado_y_espera(app, s, U, monkeypatch):
     sap_vigia.vigilar(app, cada_seg=0, una_vez=True)
     st = sap_sl.connection_state()
     assert llamadas == [1] and st.get("ok") is False and "-5027" in st.get("error", "")
+
+
+def test_stock_sin_lote_se_lee_a_lo_mas_cada_hora(app, s):
+    from app.services import sap_sl
+    from app.services.core import set_param
+    set_param("sap_consultas", {"STOCK": "CPOPS_STOCK_LOTE"})
+    s.commit()
+    pedidos = []
+
+    class SL:
+        def sql_query(self, code):
+            return []
+
+        def get_all(self, path, params=None):
+            pedidos.append(path)
+            return [{"ItemCode": "AB-1", "ItemName": "x", "ItemWarehouseInfoCollection": [{"WarehouseCode": "W1", "InStock": 3}]}]
+    a = sap_sl.fetch("STOCK", SL())
+    b = sap_sl.fetch("STOCK", SL())
+    assert a == b and pedidos == ["Items"]  # la segunda vez usa la última lectura
+
+
+def test_vigilante_pausado_no_consulta_sap(app, s, monkeypatch):
+    from app.services import sap_sl, sap_vigia
+    from app.services.core import set_param
+    set_param("sap_vigia_pausado", True)
+    s.commit()
+    llamadas = []
+    monkeypatch.setattr(sap_sl, "configured", lambda: True)
+    monkeypatch.setattr(sap_vigia, "ciclo", lambda *a, **k: llamadas.append(1))
+    sap_vigia.vigilar(app, cada_seg=0, una_vez=True)
+    assert llamadas == []

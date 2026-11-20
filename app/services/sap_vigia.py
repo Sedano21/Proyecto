@@ -262,8 +262,10 @@ def vigilar(app, cada_seg=None, una_vez=False):
                 db().commit()
                 pedido = _p("sap_vigia_pedido")
                 ahora = datetime.now()
-                if sap_sl.configured() and (pedido or (time.time() - ultimo >= cada and time.time() >= espera_hasta
-                                                       and _en_horario(ahora))):
+                pausado = bool(_p("sap_vigia_pausado", False))  # V63: Sistemas puede pausarlo desde Configuración
+                if sap_sl.configured() and not pausado and (pedido or (time.time() - ultimo >= cada
+                                                                       and time.time() >= espera_hasta
+                                                                       and _en_horario(ahora))):
                     u = _usuario()
                     if u is not None:
                         ini = ahora.isoformat(timespec="seconds")

@@ -484,7 +484,27 @@ def rows_stock(sl):
     """Stock por lote (consulta guardada) más el stock de los artículos sin lote."""
     if not (param("sap_consultas", {}) or {}).get("STOCK"):
         return rows_consulta(sl, "STOCK")  # sin la consulta configurada: el mismo aviso de siempre
-    return list(rows_consulta(sl, "STOCK")) + rows_stock_sin_lote(sl)
+    return list(rows_consulta(sl, "STOCK")) + _sin_lote_cacheado(sl)
+
+
+def _sin_lote_cacheado(sl):
+    """V63: la lectura de los artículos sin lote (todos los artículos con sus almacenes) es pesada para SAP: se hace a lo
+    más cada «sap_stock_sin_lote_min» minutos (60) y, entre tanto, se reutiliza la última."""
+    from .core import set_param
+    cache = param("sap_stock_sin_lote_cache", {}) or {}
+    cada = int(param("sap_stock_sin_lote_min", 60) or 60)
+    try:
+        fresca = cache.get("ts") and (datetime.now() - datetime.fromisoformat(cache["ts"])).total_seconds() < cada * 60
+    except ValueError:
+        fresca = False
+    if fresca:
+        return list(cache.get("filas") or [])
+    filas = rows_stock_sin_lote(sl)
+    try:
+        set_param("sap_stock_sin_lote_cache", {"ts": datetime.now().isoformat(timespec="seconds"), "filas": filas})
+    except BusinessError:
+        pass
+    return filas
 
 
 def fetch(tipo, sl):

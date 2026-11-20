@@ -3342,3 +3342,15 @@ PARAMS += [
 PARAMS_CAMBIO.append(("compras_no_comprables", ["PT"], ["PT", "MQ", "MP"],
                       f"{V60}: Compras no compra PT ni MQ; MP solo harinas y quinua («compras_mp_excepciones»)"))
 PARAMS = [(k, (["PT", "MQ", "MP"] if k == "compras_no_comprables" else v), *rest) for k, v, *rest in PARAMS]
+# ------------------------------------------------------------------ V63 (20-nov-2026)
+V63 = "Observaciones V63 (20-nov-2026): SAP con «Switch company error -5027»"
+PARAMS += [
+    ("sap_vigia_pausado", False, "bool", "Integración SAP",
+     "Pausa el vigilante de SAP (no consulta SAP; lo registrado queda en cola). Úselo mientras SAP tenga problemas.",
+     "DEFINIDO", V63),
+    ("sap_stock_sin_lote_min", 60, "int", "Integración SAP",
+     "Cada cuántos minutos, como máximo, se lee de SAP el stock de los artículos sin lote (consulta pesada).",
+     "DEFINIDO", V63),
+    ("sap_stock_sin_lote_cache", {}, "dict", "Integración SAP",
+     "Última lectura del stock de artículos sin lote (la escribe el sistema).", "DEFINIDO", V63),
+]

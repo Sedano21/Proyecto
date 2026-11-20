@@ -29,3 +29,17 @@ No se probó contra el SAP real. Si el error continúa, lo debe revisar el sopor
 base de la empresa y Service Layer).
 
 **Pruebas:** `tests/test_v62.py`. Suite completa: 710 pruebas pasan.
+
+## V63 (20-nov-2026): menos carga a SAP y pausa del vigilante
+- **Consulta de artículos sin lote.** Lee todos los artículos con sus almacenes, así que pesa para SAP. Desde V57 se
+  hacía en cada cambio de inventario; ahora se hace a lo más cada 60 minutos (`sap_stock_sin_lote_min`) y entre tanto
+  se reutiliza la última lectura.
+- **Pausa del vigilante.** El parámetro `sap_vigia_pausado` (Configuración → Integración SAP) deja de consultar SAP
+  sin entrar al servidor. Lo registrado queda en cola y, al desactivarlo, todo se pone al día solo.
+- **Desde el 18 y el 19 de noviembre** (V55 a V59) el vigilante hace, una sola vez, lecturas completas:
+  - el historial desde 2025, para traer el valor de las líneas;
+  - las órdenes de compra y las entradas de mercancía desde 2025, con el país de cada proveedor.
+
+  Son las más pesadas.
+
+**Pruebas:** `tests/test_v62.py` (casos de V63 incluidos).
