@@ -20,10 +20,19 @@ set SSH=%SystemRoot%\System32\OpenSSH\ssh.exe
 title Tunel SAP - no cerrar (minimice esta ventana)
 if not exist "%SSH%" (echo No se encontro %SSH%. Use la version con plink de PuTTY portable. & pause & exit /b 1)
 if not exist "%LLAVE%" (echo Falta la llave %LLAVE%. Genere la llave como indica el encabezado. & pause & exit /b 1)
+REM Si ya hay un tunel abierto (otra ventana o la tarea programada), esta copia se cierra: dos copias se pelean el
+REM puerto 50000 del servidor ("remote port forwarding failed for listen port 50000").
+call :otro_tunel && (echo [%date% %time%] Ya hay un tunel SAP activo en esta VM: esta copia se cierra. & exit /b 0)
 :loop
 echo [%date% %time%] Conectando tunel a %SERVIDOR% ...
 "%SSH%" -N -T -i "%LLAVE%" -o ExitOnForwardFailure=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o StrictHostKeyChecking=accept-new -o BatchMode=yes -R 127.0.0.1:50000:%SAP% tunelsap@%SERVIDOR%
 echo [%date% %time%] Tunel cortado. Reintento en 15 segundos...
 REM ping en lugar de timeout: funciona tambien como tarea programada sin ventana
 ping -n 16 127.0.0.1 >nul
+call :otro_tunel && (echo [%date% %time%] Otro tunel SAP ya esta activo: esta copia se cierra. & exit /b 0)
 goto loop
+
+:otro_tunel
+REM Devuelve 0 si hay un ssh.exe conectado al usuario tunelsap (otro tunel en marcha).
+powershell -NoProfile -Command "if (Get-CimInstance Win32_Process -Filter \"Name='ssh.exe'\" | Where-Object { $_.CommandLine -like '*tunelsap@*' }) { exit 0 } else { exit 1 }"
+exit /b %errorlevel%
