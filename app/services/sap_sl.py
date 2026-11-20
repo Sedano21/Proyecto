@@ -97,6 +97,16 @@ def configured():
     return bool(c["url"] and c["company"] and c["user"] and c["password"])
 
 
+def explicar_error(msg):
+    """V62: agrega qué revisar a los errores conocidos del Service Layer (el texto de SAP se conserva)."""
+    m = msg or ""
+    if "-5027" in m or "switch company" in m.lower():
+        return (m + " · SAP no pudo abrir la empresa: el problema está en el servidor SAP (servidor de licencias, base "
+                "de datos de la empresa o sesiones del Service Layer), no en el módulo. Lo registrado queda en cola y "
+                "se envía solo al volver; si continúa, avise al soporte de SAP.")
+    return m
+
+
 class SapConnectionError(BusinessError):
     """SAP no responde (túnel o red caídos): lo pendiente queda en cola y se reintenta; no es un rechazo de SAP."""
 
@@ -148,7 +158,17 @@ class ServiceLayer:
                 msg = msg.get("value") if isinstance(msg, dict) else msg
             except Exception:  # noqa: BLE001
                 msg = str(e)
-            raise BusinessError(f"SAP respondió {e.code}: {msg}")
+            # V62: sesión vencida (se reutiliza entre revisiones): se vuelve a ingresar una vez y se repite la llamada
+            if e.code == 401 and self.session and not getattr(self, "_reintento", False) and \
+                    path not in ("Login", "Logout"):
+                self._reintento = True
+                try:
+                    self.session = None
+                    self.login()
+                    return self._req(method, path, body, headers)
+                finally:
+                    self._reintento = False
+            raise BusinessError(explicar_error(f"SAP respondió {e.code}: {msg}"))
         except (urllib.error.URLError, OSError) as e:
             raise SapConnectionError(f"No se pudo conectar con SAP: {e}")
         return json.loads(raw.decode() or "{}") if raw else {}

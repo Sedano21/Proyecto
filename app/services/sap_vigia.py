@@ -101,12 +101,27 @@ def cambios(sl, previas, hoy=None):
     return out, nuevas
 
 
+_SL = None
+
+
+def _sesion():
+    """Cliente del Service Layer del vigilante, con su sesión abierta entre revisiones. Si cambia la configuración, se
+    crea otro. La sesión vencida se renueva sola (ServiceLayer._req)."""
+    from . import sap_sl
+    global _SL
+    cfg = sap_sl.config()
+    if _SL is None or _SL.cfg != cfg:
+        _SL = sap_sl.ServiceLayer(cfg)
+    return _SL
+
+
 def ciclo(user, upload_dir, forzar=False, sl=None):
     """Una revisión. Devuelve el resumen de lo que se trajo."""
     from ..db import db
     from . import balance_of, facturas_reserva, sap_sl, sap_v31
     propio = sl is None
-    sl = sl or sap_sl.ServiceLayer()
+    if propio:  # V62: la sesión de SAP se reutiliza entre revisiones (no se ingresa y sale cada minuto)
+        sl = _sesion()
     res = {}
     tipos = param("sap_sync_tipos", []) or []
     auto = param("sap_autoconfirmar", []) or []
@@ -136,8 +151,12 @@ def ciclo(user, upload_dir, forzar=False, sl=None):
         _set(f"sap_revision_{tipo}", datetime.now().isoformat(timespec="seconds"), f"Última revisión de {tipo} en SAP (interno)")
         return "sin cambios" if b is None else f"carga #{b.id} ({b.estado.lower()})"
     try:
-        if propio:
-            sl.login()
+        if propio and not sl.session:
+            try:
+                sl.login()
+            except Exception:
+                sl.session = None
+                raise
         sap_sl._set_state(True)
         previas = _p("sap_vigia_firmas", {}) or {}
         cambio, nuevas = cambios(sl, previas)
@@ -209,11 +228,7 @@ def ciclo(user, upload_dir, forzar=False, sl=None):
             _set("sap_vigia_ultimo_cambio", ahora, "Último cambio traído de SAP (interno)")
         db().commit()
     finally:
-        if propio:
-            try:
-                sl.logout()
-            except Exception:  # noqa: BLE001
-                pass
+        pass  # V62: la sesión compartida no se cierra al terminar la revisión (se reutiliza en la siguiente)
     return res
 
 
@@ -238,7 +253,8 @@ def vigilar(app, cada_seg=None, una_vez=False):
     from ..db import SessionLocal, db
     from . import sap_sl
     cada = int(cada_seg or os.environ.get("SAP_VIGIA_SEG", "60") or 60)
-    ultimo = 0.0
+    ultimo = espera_hasta = 0.0
+    fallos = 0
     while True:
         with app.app_context():
             try:
@@ -246,7 +262,8 @@ def vigilar(app, cada_seg=None, una_vez=False):
                 db().commit()
                 pedido = _p("sap_vigia_pedido")
                 ahora = datetime.now()
-                if sap_sl.configured() and (pedido or (time.time() - ultimo >= cada and _en_horario(ahora))):
+                if sap_sl.configured() and (pedido or (time.time() - ultimo >= cada and time.time() >= espera_hasta
+                                                       and _en_horario(ahora))):
                     u = _usuario()
                     if u is not None:
                         ini = ahora.isoformat(timespec="seconds")
@@ -261,6 +278,18 @@ def vigilar(app, cada_seg=None, una_vez=False):
                         except sap_sl.SapConnectionError as e:
                             db().rollback()
                             sap_sl._set_state(False, str(e))
+                            fallos = 0
+                        except BusinessError as e:  # V62: SAP respondió pero rechazó (p. ej. «Switch company error»)
+                            db().rollback()
+                            sap_sl._set_state(False, str(e))
+                            fallos += 1
+                            # se espacian los reintentos automáticos (2, 4, 8… hasta 15 min); el botón sigue forzando
+                            espera_hasta = time.time() + min(60 * 2 ** fallos, 900)
+                            if pedido:
+                                sap_sl._job_set("ACTUALIZAR", {"estado": "ERROR", "inicio": ini, "usuario": pedido.get("usuario", ""),
+                                                               "fin": datetime.now().isoformat(timespec="seconds"), "error": str(e)[:300]})
+                        else:
+                            fallos = 0
                             if pedido:
                                 sap_sl._job_set("ACTUALIZAR", {"estado": "ERROR", "inicio": ini, "usuario": pedido.get("usuario", ""),
                                                                "fin": datetime.now().isoformat(timespec="seconds"), "error": str(e)[:300]})
