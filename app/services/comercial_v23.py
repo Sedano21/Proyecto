@@ -105,10 +105,8 @@ def nivel_periodo(desde=None, hasta=None, hoy=None):
 # ---------------------------------------------------------------- indicadores comerciales adicionales
 
 def _kg(l):
-    p = l.product
-    if p is None:
-        return 0.0
-    return l.cantidad * (p.peso_kg or (1 if (p.um or "").upper().startswith("K") else 0))
+    from .orders import kg_unidad
+    return (l.cantidad or 0) * kg_unidad(l.product)
 
 
 def _vendedor(o, nombres):
@@ -215,7 +213,7 @@ def precio_realizado(ovs, ver_costos, desde, hasta):
             a = acc[can]
             a["kg"] += _kg(l)
             a["lineas"] += 1
-            base, _ = price_for(l.product, o.customer, o.canal_precio or None) if l.product is not None else (None, "")
+            base, _ = price_for(l.product, o.customer, o.canal_precio or None, l.cantidad) if l.product is not None else (None, "")
             if not base:
                 a["sin_lista"] += 1
                 continue

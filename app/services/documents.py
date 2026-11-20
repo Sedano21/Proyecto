@@ -52,16 +52,17 @@ def monto_en_letras(monto, moneda="SOLES"):
 
 def ov_document(order):
     """Datos de la OV para el formato impreso. El IGV se calcula solo en líneas con código de impuesto IGV."""
+    from .orders import es_afecta, igv_tasa
     lineas = []
     importe = igv = 0.0
-    tasa = 0.18
+    tasa = igv_tasa()  # V64: tasa y códigos de impuesto configurables (igv_tasa, ov_tax_code_afecto)
     for l in order.lines:
         if not l.activa:
             continue
         bruto = (l.cantidad or 0) * (l.precio_unitario or 0)
         imp = round(bruto - (l.descuento or 0), 2)
         importe += imp
-        if (l.tax_code or "").upper() == "IGV":
+        if es_afecta(l.tax_code):
             igv += round(imp * tasa, 2)
         p = l.product
         cant, vuni = l.cantidad, l.precio_unitario or 0

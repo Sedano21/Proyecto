@@ -12,6 +12,7 @@
 <div><label>Fecha comprometida de despacho</label><input type="date" name="fecha_compromiso" id="fecha_compromiso" min="{{ today.isoformat() }}" required></div>
 <div><label>Canal / grupo de precios</label><select name="canal_precio" id="canal_precio"><option value="">(según ficha del cliente)</option>{% for x in canales %}<option>{{ x }}</option>{% endfor %}</select><small class="muted" id="canal_cli"></small></div>
 <div><label>N° de orden de compra del cliente</label><input name="oc_numero" placeholder="OC / pedido"></div>
+<div><label>Total de la OC (S/, con IGV)</label><input name="oc_total" id="oc_total" type="number" step="any" min="0" inputmode="decimal" placeholder="para contrastar" title="Total que figura en la orden de compra del cliente: se compara con el total de la OV"></div>
 <div><label{{ ' class=req' if exigir_oc }}>Orden de compra (archivo)</label><input type="file" name="oc_archivo" accept=".pdf,.jpg,.jpeg,.png,.webp,.xlsx,.xls,.docx,.msg,.eml"><small class="muted">PDF, imagen, Excel o correo</small></div>
 <div><label>Ejecutivo comercial responsable</label><select name="vendedor_id"><option value="">(—)</option>{% for v in vendedores %}<option value="{{ v.id }}" {{ 'selected' if v.id==user.id }}>{{ v.nombre }}</option>{% endfor %}</select></div>
 </div>
@@ -20,7 +21,8 @@
 <div class="row" data-entrega>
 <div class="grow"><label>Lugar de entrega del cliente</label><select name="site_id" id="site_id"><option value="FISCAL">Dirección 1 (fiscal)</option><option value="OTRO">Otra dirección…</option></select></div>
 <div><label>Hora de cita (24 h)</label><select name="hora_cita" id="hora_cita"><option value="">Sin cita / horario del cliente</option>{% for h in horas %}<option>{{ h }}</option>{% endfor %}</select></div>
-<div><label><input type="checkbox" name="cita_confirmada" value="1"> Cita confirmada</label><label><input type="checkbox" name="urgente" value="1"> Urgente</label><label title="Sin precio: la OV queda detenida hasta la confirmación del Coordinador o Jefe Comercial"><input type="checkbox" name="muestra" id="muestra" value="1"> Muestra comercial (sin precio)</label></div>
+<div><label><input type="checkbox" name="cita_confirmada" value="1"> Cita confirmada</label><label><input type="checkbox" name="urgente" value="1"> Urgente</label><label title="Sin precio: la OV queda detenida hasta la confirmación del Coordinador o Jefe Comercial"><input type="checkbox" name="muestra" id="muestra" value="1"> Muestra comercial (sin precio)</label>
+<label title="Se completa con la ficha del cliente; depende de la negociación de cada OV"><input type="checkbox" name="requiere_auxiliar" id="req_aux" value="1"> Entrega con auxiliar</label><label title="El cliente pide estiba (descarga) en la entrega; se completa con la ficha del cliente"><input type="checkbox" name="requiere_estiba" id="req_est" value="1"> Requiere estiba</label></div>
 </div>
 <div id="otro" class="row" style="display:none"><div class="grow"><label>Nombre del lugar (opcional: almacén, tienda, sede)</label><input name="lugar_otro" id="lugar_otro"></div>
 <p class="small muted">La nueva dirección se guarda sola en la ficha del cliente como una dirección más (no reemplaza las anteriores) y aparecerá en esta lista en la próxima OV.</p></div>
@@ -31,11 +33,18 @@
 </fieldset>
 <label>Comentarios</label><textarea name="comentarios"></textarea>
 <h3>Líneas</h3>
-<div class="tw"><table><thead><tr><th>Producto (código, nombre y presentación)</th><th>Unidad</th><th>Cantidad</th><th>Precio unitario S/ (por la unidad elegida)</th><th></th></tr></thead><tbody id="ov-lineas">
-{% for i in range(3) %}<tr class="dynrow"><td><input name="product_code" list="prods" class="prod" style="min-width:280px;width:100%" autocomplete="off" placeholder="Escriba o elija"></td>
-<td><select name="um_venta" class="um" aria-label="Unidad"><option value="">—</option></select></td>
-<td><input name="cantidad" type="number" step="any" min="0.0001" inputmode="decimal" aria-label="Cantidad"></td><td><input name="precio_unitario" type="number" step="any" min="0.01" inputmode="decimal" aria-label="Precio unitario"><div class="precio-aviso small" aria-live="polite"></div></td><td><button type="button" class="ibtn" data-delrow title="Quitar línea" aria-label="Quitar línea">{{ ic('x') }}</button></td></tr>{% endfor %}</tbody></table></div>
+<div class="tw"><table><thead><tr><th>Producto (código, nombre y presentación)</th><th>Unidad</th><th>Cantidad</th><th title="Por la unidad elegida">Precio unit. S/ sin IGV</th><th>IGV</th><th></th></tr></thead><tbody id="ov-lineas">
+{% for i in range(3) %}<tr class="dynrow"><td><input name="product_code" list="prods" class="prod" style="min-width:200px;width:100%" autocomplete="off" placeholder="Escriba o elija"></td>
+<td><select name="um_venta" class="um" aria-label="Unidad" style="width:110px"><option value="">—</option></select></td>
+<td><input name="cantidad" type="number" step="any" min="0.0001" inputmode="decimal" aria-label="Cantidad" style="width:110px"></td><td><input name="precio_unitario" type="number" step="any" min="0.01" inputmode="decimal" aria-label="Precio unitario" style="width:110px"><div class="small muted">Importe S/ <span class="imp">—</span></div><div class="precio-aviso small" aria-live="polite"></div></td>
+<td><select name="tax_code" class="tax" aria-label="IGV" style="width:150px"><option value="{{ tax_codes[0] }}">Afecto</option><option value="{{ tax_codes[1] }}">Exonerado / inafecto</option></select></td>
+<td><button type="button" class="ibtn" data-delrow title="Quitar línea" aria-label="Quitar línea">{{ ic('x') }}</button></td></tr>{% endfor %}</tbody></table></div>
 <p><button type="button" class="sec small" data-addrow="#ov-lineas">{{ ic('plus') }} Agregar producto</button></p>
+<div class="card small" id="ov-totales" aria-live="polite" style="max-width:420px;margin-left:auto">
+<div class="row" style="justify-content:space-between"><span>Subtotal (sin IGV)</span><b id="t_sub">S/ 0.00</b></div>
+<div class="row" style="justify-content:space-between"><span>IGV ({{ (igv_tasa * 100)|round(0)|int }} % de las líneas afectas)</span><b id="t_igv">S/ 0.00</b></div>
+<div class="row" style="justify-content:space-between"><span>Total de la OV</span><b id="t_tot">S/ 0.00</b></div>
+<div id="t_oc" class="muted"></div></div>
 <p class="small muted">En cada línea con producto, la <b>cantidad</b> y el <b>precio</b> son obligatorios. La primera línea es obligatoria.</p>
 <datalist id="prods">{% for p in products %}<option value="{{ p.code }} · {{ p.descripcion }}{{ ' · ' ~ p.presentacion if p.presentacion }}">{{ p.um }}{{ ' · se vende por kg o por saco' if p.code in granel }}</option>{% endfor %}</datalist>
 <p class="small muted">La unidad se completa al elegir el producto. Granel en kilos: puede elegir «Saco» para vender por saco (se convierte a kg con los kg por saco de la lista mayorista granel).</p>
@@ -91,7 +100,8 @@
     var p = tr.querySelector('.prod'), pr = tr.querySelector('[name=precio_unitario]'), um = tr.querySelector('.um'), av = tr.querySelector('.precio-aviso');
     if (!p || !av) return;
     if (!p.value.trim() || !pr.value || !cid.value) { av.textContent = ''; av.className = 'precio-aviso small'; tr.classList.remove('precio-bajo'); return; }
-    var q = new URLSearchParams({producto: p.value, cliente: cid.value, precio: pr.value, um: um ? um.value : '', canal: (document.getElementById('canal_precio') || {}).value || ''});
+    var qq = tr.querySelector('[name=cantidad]');
+    var q = new URLSearchParams({producto: p.value, cliente: cid.value, precio: pr.value, um: um ? um.value : '', canal: (document.getElementById('canal_precio') || {}).value || '', cantidad: qq ? qq.value : ''});
     fetch('{{ url_for('com.price_check_api') }}?' + q, {credentials: 'same-origin'}).then(function(r){ return r.json(); }).then(function(d){
       tr.classList.toggle('precio-bajo', d.estado === 'DEBAJO');
       av.className = 'precio-aviso small ' + (d.estado === 'DEBAJO' ? 'err' : 'muted');  // V9 (C03): solo bajo el precio base
@@ -99,13 +109,39 @@
         d.estado === 'SIN_MINIMO' ? d.detalle : '';
     }).catch(function(){});
   }
-  form.addEventListener('input', function(e){ var tr = e.target.closest && e.target.closest('tr.dynrow'); if (tr && e.target.name === 'precio_unitario') { clearTimeout(tmP); tmP = setTimeout(function(){ revisarPrecio(tr); }, 350); } });
+  form.addEventListener('input', function(e){ var tr = e.target.closest && e.target.closest('tr.dynrow'); if (tr && (e.target.name === 'precio_unitario' || e.target.name === 'cantidad')) { clearTimeout(tmP); tmP = setTimeout(function(){ revisarPrecio(tr); }, 350); } });
   form.addEventListener('change', function(e){ var tr = e.target.closest && e.target.closest('tr.dynrow'); if (tr) revisarPrecio(tr); else if (e.target === cli || e.target.id === 'canal_precio') form.querySelectorAll('tr.dynrow').forEach(revisarPrecio); });
   form.addEventListener('submit', function(e){
     var bajos = [].map.call(form.querySelectorAll('tr.precio-bajo .prod'), function(x){ return x.value.split(' ')[0]; });
     if (bajos.length && !form.dataset.precioOk && !confirm('Precio bajo el precio base en: ' + bajos.join(', ') + '.\n\nAceptar: registrar igual (la OV queda retenida hasta la aprobación del precio).\nCancelar: volver y modificar el precio.')) { e.preventDefault(); e.stopImmediatePropagation(); return; }
     form.dataset.precioOk = '1';
   });
+  // V64: impuesto por línea (afecto o exonerado/inafecto; se propone el último usado para el artículo), importe,
+  // subtotal, IGV y total en vivo, contrastados con el total de la orden de compra del cliente
+  var TX = {{ impuestos|tojson }}, TXD = {{ tax_def|tojson }}, TASA = {{ igv_tasa|tojson }}, AFECTO = {{ tax_codes[0]|tojson }};
+  function soles(n){ return 'S/ ' + n.toLocaleString('es-PE', {minimumFractionDigits: 2, maximumFractionDigits: 2}); }
+  function taxDefault(tr){ var p = tr.querySelector('.prod'), t = tr.querySelector('.tax'); if (!p || !t || t.dataset.touched) return;
+    var code = p.value.split(' ')[0].trim().toUpperCase(); var v = TX[code] || TXD; if ([].some.call(t.options, function(o){ return o.value === v; })) t.value = v; }
+  function totales(){ var sub = 0, igv = 0;
+    form.querySelectorAll('tr.dynrow').forEach(function(tr){ var q = parseFloat((tr.querySelector('[name=cantidad]') || {}).value) || 0,
+      pr = parseFloat((tr.querySelector('[name=precio_unitario]') || {}).value) || 0, t = tr.querySelector('.tax'), c = tr.querySelector('.imp');
+      var imp = Math.round(q * pr * 100) / 100; if (c) c.textContent = imp ? imp.toLocaleString('es-PE', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '—';
+      sub += imp; if (t && t.value === AFECTO) igv += Math.round(imp * TASA * 100) / 100; });
+    var tot = Math.round((sub + igv) * 100) / 100;
+    document.getElementById('t_sub').textContent = soles(sub); document.getElementById('t_igv').textContent = soles(igv); document.getElementById('t_tot').textContent = soles(tot);
+    var oc = parseFloat(document.getElementById('oc_total').value) || 0, d = document.getElementById('t_oc');
+    if (!oc) { d.textContent = 'Indique el total de la OC del cliente para contrastarlo.'; d.className = 'muted'; return; }
+    var dif = Math.round((tot - oc) * 100) / 100;
+    d.textContent = Math.abs(dif) <= 1 ? 'Cuadra con la OC (' + soles(oc) + ').' : 'No cuadra con la OC: ' + soles(oc) + ' (diferencia ' + soles(dif) + '). Revise precios, cantidades o el IGV.';
+    d.className = Math.abs(dif) <= 1 ? 'ok' : 'err'; }
+  form.addEventListener('change', function(e){ if (e.target.classList && e.target.classList.contains('tax')) e.target.dataset.touched = 1;
+    if (e.target.classList && e.target.classList.contains('prod')) taxDefault(e.target.closest('tr')); totales(); });
+  form.addEventListener('input', function(e){ if (e.target.classList && e.target.classList.contains('prod')) taxDefault(e.target.closest('tr')); totales(); });
+  totales();
+  function apoyo(){ var e = EC[cid.value]; if (!e) return; var a = document.getElementById('req_aux'), b = document.getElementById('req_est');
+    if (!a.dataset.touched) a.checked = !!e.auxiliar; if (!b.dataset.touched) b.checked = !!e.estiba; }
+  ['req_aux','req_est'].forEach(function(i){ document.getElementById(i).addEventListener('change', function(){ this.dataset.touched = 1; }); });
+  cli.addEventListener('change', apoyo); cli.addEventListener('input', apoyo);
   function avisoCli(){ var e = EC[cid.value], a = document.getElementById('aviso_cli'); if (!e) { a.textContent = ''; return; }
     a.textContent = e.prospecto ? 'Prospecto: solo admite OV de muestra hasta que pase a cliente (Oportunidades).' :
       (e.condicion !== 'APROBADA' ? 'Sin condición de pago aprobada por Finanzas: solo admite OV de muestra.' : ''); a.className = a.textContent ? 'small warn' : 'small'; }

@@ -2,8 +2,9 @@
 {% block content %}
 {% set editable = o.estado in ['BORRADOR','REGISTRADA','EVALUADA','EN_PREPARACION','PREPARADA'] %}
 {% set puede_editar = editable and (can('ov.modificar') or can('ov.solicitar_modificacion')) %}
-{% set gestionable = o.estado not in ['CANCELADA','DESPACHADA','ENTREGADA','ENTREGA_PARCIAL','RECHAZADA','DEVUELTA','EN_RUTA'] %}
-{% set puede_gestionar = gestionable and (can('ov.renegociar') or can('ov.cancelar')) %}
+{% set gestionable = o.estado not in ['CANCELADA','CERRADA','DESPACHADA','ENTREGADA','ENTREGA_PARCIAL','DESPACHO_PARCIAL','RECHAZADA','DEVUELTA','EN_RUTA','REGULARIZADA_CERRADA'] %}
+{% set cerrable = can('ov.cancelar') and (gestionable or o.estado in ['ENTREGA_PARCIAL','DESPACHO_PARCIAL']) %}
+{% set puede_gestionar = (gestionable and (can('ov.renegociar') or can('ov.cancelar'))) or cerrable %}
 <p class="small"><a href="{{ url_for('com.orders') }}">← Órdenes de venta</a></p>
 <div class="page-head"><div><h1>{{ 'Orden de servicio' if o.clase == 'SERVICIO' else 'OV' }} {{ o.numero }}</h1>
 <p class="sub">{{ o.customer.nombre }} · comprometida <b>{{ o.fecha_compromiso|d }}</b> · {{ b(o.estado) }} {{ b(o.estado_stock) }} {% if o.urgente %}<span class="b ALTA">URGENTE</span>{% endif %}{% if o.regularizacion %} <span class="b MEDIA">REGULARIZACIÓN</span>{% endif %}</p></div>
@@ -65,8 +66,13 @@
 <tr><td>Condición del cliente</td><td>{% if o.customer.vida_util_min_dias %}Vida útil mínima {{ o.customer.vida_util_min_dias }} días. {% endif %}{% set cc = cond_cliente(o.customer) %}{% if cc %}<b>{{ cc }}</b>{% elif not o.customer.vida_util_min_dias %}Sin condiciones registradas{% endif %}</td></tr>
 {% if penal %}<tr><td>Penalidad estimada</td><td>{% for x in penal %}<div class="small">{{ x.texto|capitalize }}: {% if x.monto is not none %}<b class="{{ 'err' if x.riesgo }}">S/ {{ '{:,.2f}'.format(x.monto) }}</b>{% else %}<span class="muted">monto no definido</span>{% endif %}{% if x.riesgo %} <span class="b ALTA">en riesgo</span>{% endif %} <span class="muted">— {{ x.base }}</span></div>{% endfor %}</td></tr>{% endif %}
 <tr><td>Emisión / comprometida</td><td>{{ o.fecha_emision|d }} / <b>{{ o.fecha_compromiso|d }}</b> · corte {{ o.corte or '-' }}</td></tr>
+<tr><td>Ingresada al sistema</td><td>{{ o.creado_ts.strftime('%d/%m/%Y %H:%M') if o.creado_ts else '-' }} <span class="small muted">· {{ dias_atencion }} día(s) de la emisión a la fecha comprometida</span></td></tr>
 <tr><td>Ejecutivo comercial</td><td>{{ o.vendedor_nombre or '-' }}</td></tr>
 <tr><td>Canal de precios</td><td>{{ o.canal_precio or 'según ficha del cliente' }}</td></tr>
+<tr><td>Subtotal / IGV / total</td><td>S/ {{ '{:,.2f}'.format(tot.subtotal) }} + IGV S/ {{ '{:,.2f}'.format(tot.igv) }} = <b>S/ {{ '{:,.2f}'.format(tot.total) }}</b>
+{% if tot.oc_total %} · OC del cliente S/ {{ '{:,.2f}'.format(tot.oc_total) }} {% if tot.cuadra_oc %}<span class="b BAJA">cuadra</span>{% else %}<span class="b ALTA">no cuadra: diferencia S/ {{ '{:,.2f}'.format(tot.dif_oc) }}</span>{% endif %}{% endif %}</td></tr>
+{% if o.requiere_auxiliar or o.requiere_estiba %}<tr><td>Apoyo en la entrega</td><td>{{ 'Con auxiliar' if o.requiere_auxiliar }}{{ ' · ' if o.requiere_auxiliar and o.requiere_estiba }}{{ 'Requiere estiba' if o.requiere_estiba }}</td></tr>{% endif %}
+{% if o.cierre %}<tr><td>{{ 'Cancelada' if o.cierre.tipo == 'CANCELADA' else 'Cerrada' }}</td><td><b>{{ o.cierre.causal }}</b>{{ ': ' ~ o.cierre.comentario if o.cierre.comentario }} <span class="small muted">— {{ o.cierre.user }}, {{ o.cierre.ts[:16]|replace('T',' ') }}{% if o.cierre.tipo == 'CERRADA' %} · {{ 'venta perdida: ' ~ ('%.2f'|format(o.cierre.kg_perdidos or 0)) ~ ' kg sin despachar' if o.cierre.venta_perdida else 'no es venta perdida (se reprograma o ya se atendió)' }}{% endif %}</span></td></tr>{% endif %}
 <tr><td>Monto / volumen</td><td>S/ {{ monto|n }} · {{ peso|n }} kg {% if sin_peso %}<span class="small muted">(sin peso: {{ sin_peso|join(', ') }})</span>{% endif %}</td></tr>
 <tr><td>Versión / origen</td><td>v{{ o.version }} · {{ o.origen }}</td></tr>
 {% if o.regularizacion %}<tr><td>Regularización</td><td>{{ o.regularizacion.motivo }} <span class="muted small">— {{ o.regularizacion.user }}, {{ o.regularizacion.ts[:16]|replace('T',' ') }}. No reserva stock.</span></td></tr>{% endif %}
@@ -76,6 +82,8 @@
 <div class="card"><h3>Orden de compra y compromiso de entrega</h3>
 {% if o.estado == 'BORRADOR' %}<div class="note warn"><b>Borrador:</b> {{ (o.motivo_detencion or 'falta la orden de compra del cliente.')|replace('Borrador: ','') }} La OV no se evalúa ni reserva stock mientras sea borrador.
 {% if o.oc_archivo and (can('ov.crear') or can('ov.modificar')) %}<form method="post" class="inline" action="{{ url_for('com.order_action', oid=o.id, accion='registrar') }}">{{ csrf() }}<button class="small">Registrar ahora</button></form>{% endif %}</div>{% endif %}
+{% if (o.sap_envio or {}).get('por_validar') %}<div class="note warn small"><b>OV cargada con plantilla ({{ o.sap_envio.carga }}):</b> revise los datos (cliente, productos, cantidades, precios, IGV y total de la OC). No se envía a SAP hasta validarla.
+{% if can('ov.crear') or can('ov.modificar') %}<form method="post" class="inline" action="{{ url_for('com.order_action', oid=o.id, accion='validar_carga') }}" data-confirm="¿Los datos de la OV están correctos? Se enviará a SAP como una OV real.">{{ csrf() }}<button class="small">Validar y enviar a SAP</button></form>{% endif %}</div>{% endif %}
 {% if o.origen == 'MODULO' %}{% set env = o.sap_envio or {} %}<p>SAP: {% if o.sap_docnum %}<b>OV {{ o.sap_docnum }}</b> en SAP{% if env.estado == 'CANCELADA' %} (cancelada){% endif %}{% elif o.estado in ['BORRADOR','BLOQUEADA'] or o.retenida_precio or o.estado.startswith('REGULARIZ') %}<span class="muted">se crea en SAP al quedar registrada</span>{% else %}<span class="b MEDIA">pendiente de envío</span>{% endif %}
 {% if env.estado == 'ERROR' %} · <span class="b ALTA">error</span> <span class="small">{{ env.error }}</span>{% endif %}
 {% if env.estado == 'EN_COLA' %} · <span class="b MEDIA">en cola</span> <span class="small">SAP no responde; se enviará automáticamente al restablecerse la conexión.</span>{% endif %}
@@ -107,7 +115,7 @@
 {% if o.retenida_precio %}<div class="card" style="border-left:4px solid var(--err)"><b>OV detenida por precio</b> (en el límite o por debajo de la lista de precios mínimos o del costo). No se prepara ni se despacha hasta la confirmación del Coordinador Comercial o del Jefe Comercial.
 {% if can('ov.aprobar_precio') %}<form method="post" action="{{ url_for('com.order_action', oid=o.id, accion='confirmar_precio') }}" class="row" data-confirm="Usted queda registrado como quien aprueba este precio fuera del rango. ¿Continuar?">{{ csrf() }}<input name="comentario" placeholder="motivo de la confirmación (obligatorio)" required style="width:60%"><button>Confirmar precio y liberar</button></form>{% endif %}</div>
 {% elif o.aprobacion_precio %}<div class="note small"><b>Precio fuera del rango aprobado por {{ o.aprobacion_precio.user }}</b>{% if o.aprobacion_precio.rol %} ({{ o.aprobacion_precio.rol|replace('_',' ')|lower }}){% endif %} el {{ o.aprobacion_precio.ts[:16]|replace('T',' ') }}. Motivo: {{ o.aprobacion_precio.comentario }}</div>{% endif %}
-{% set obs = [] %}{% for l in o.lines if l.activa and l.precio_origen and not l.precio_origen.startswith('Sobre') %}{% set _ = obs.append(l) %}{% endfor %}{% if obs %}<div class="note small"><b>Precio vs lista de precios mínimos:</b> {% for l in obs %}{{ l.product_code }} {{ pd(l.product_code) }}: {{ l.precio_origen }}{{ '; ' if not loop.last }}{% endfor %}.</div>{% endif %}
+{% set obs = [] %}{% for l in o.lines if l.activa and l.precio_origen and not l.precio_origen.startswith('Sobre') %}{% set _ = obs.append(l) %}{% endfor %}{% if obs %}<div class="note small"><b>Precio vs lista de precios mínimos:</b> {% for l in obs %}{{ l.product_code }} {{ pd(l.product_code) }}: {{ l.precio_origen }}{% if costos_lineas.get(l.id) is not none %} · <b>costo empresa S/ {{ '%.4f'|format(costos_lineas[l.id]) }}</b> (precio {{ 'bajo' if (l.precio_unitario or 0) < costos_lineas[l.id] else 'sobre' }} el costo){% endif %}{{ '; ' if not loop.last }}{% endfor %}.</div>{% endif %}
 <p>Evaluada: {{ o.evaluado_ts|d }} · Preparación: {{ prep }}%</p>
 {% if o.motivo_detencion %}<div class="note">{{ o.motivo_detencion }}</div>{% endif %}
 {% if o.decision_parcial %}<p>Despacho parcial: {{ b(o.decision_parcial) }}{% if o.fecha_saldo %} · saldo reprogramado al <b>{{ o.fecha_saldo|d }}</b>{% endif %}</p>
@@ -186,26 +194,36 @@
 <div class="row"><div><label>Fecha comprometida</label><input type="date" name="fecha_compromiso" value="{{ o.fecha_compromiso.isoformat() }}" min="{{ today.isoformat() }}"></div>
 <div><label><input type="checkbox" name="urgente" value="1" {{ 'checked' if o.urgente }}> Urgente</label></div>
 <div><label>Hora cita (24 h)</label><select name="hora_cita"><option value="">Sin cita</option>{% for h in horas %}<option {{ 'selected' if o.hora_cita == h }}>{{ h }}</option>{% endfor %}{% if o.hora_cita and o.hora_cita not in horas %}<option selected>{{ o.hora_cita }}</option>{% endif %}</select></div><div><label><input type="checkbox" name="cita_confirmada" value="1" {{ 'checked' if o.cita_confirmada }}> Cita confirmada</label></div></div>
+<div class="row"><div><label>Total de la OC (S/, con IGV)</label><input type="number" step="any" min="0" name="oc_total" value="{{ o.oc_total if o.oc_total }}"></div>
+<div><label><input type="checkbox" name="requiere_auxiliar" value="1" {{ 'checked' if o.requiere_auxiliar }}> Entrega con auxiliar</label><label><input type="checkbox" name="requiere_estiba" value="1" {{ 'checked' if o.requiere_estiba }}> Requiere estiba</label></div></div>
 <label>Comentarios</label><textarea name="comentarios">{{ o.comentarios }}</textarea>
-<p class="small muted">Para quitar una línea deje el producto vacío. Cada línea con producto requiere cantidad y precio.</p>
-<div class="tw"><table><tr><th>Producto</th><th>Cantidad</th><th>Precio</th></tr>
-{% for l in o.lines if l.activa %}<tr><td><input type="hidden" name="um_venta" value="{{ 'KG' if l.um_venta == 'SACO' else l.um_venta }}"><input name="product_code" value="{{ l.product_code }}" list="prods" aria-label="Producto">{% if l.um_venta == 'SACO' %}<span class="small muted"> ({{ l.cantidad_venta|n }} sacos; cantidad y precio en kg)</span>{% endif %}</td><td><input name="cantidad" type="number" step="any" min="0.0001" value="{{ l.cantidad }}" aria-label="Cantidad"></td><td><input name="precio_unitario" type="number" step="any" min="0" value="{{ l.precio_unitario }}" aria-label="Precio"></td></tr>{% endfor %}
-{% for i in range(3) %}<tr><td><input type="hidden" name="um_venta" value=""><input name="product_code" list="prods" aria-label="Producto nuevo"></td><td><input name="cantidad" type="number" step="any" min="0.0001" aria-label="Cantidad"></td><td><input name="precio_unitario" type="number" step="any" min="0" aria-label="Precio"></td></tr>{% endfor %}</table></div>
+<p class="small muted">Para quitar una línea deje el producto vacío. Cada línea con producto requiere cantidad y precio (sin IGV). Al cambiar la cantidad, el precio mínimo se toma del tramo de esa cantidad.</p>
+<div class="tw"><table><tr><th>Producto</th><th>Cantidad</th><th>Precio</th><th>IGV</th></tr>
+{% for l in o.lines if l.activa %}<tr><td><input type="hidden" name="um_venta" value="{{ 'KG' if l.um_venta == 'SACO' else l.um_venta }}"><input name="product_code" value="{{ l.product_code }}" list="prods" aria-label="Producto">{% if l.um_venta == 'SACO' %}<span class="small muted"> ({{ l.cantidad_venta|n }} sacos; cantidad y precio en kg)</span>{% endif %}</td><td><input name="cantidad" type="number" step="any" min="0.0001" value="{{ l.cantidad }}" aria-label="Cantidad"></td><td><input name="precio_unitario" type="number" step="any" min="0" value="{{ l.precio_unitario }}" aria-label="Precio"></td><td><select name="tax_code" aria-label="IGV"><option value="{{ tax_codes[0] }}" {{ 'selected' if (l.tax_code or '')|upper == tax_codes[0] }}>Afecto</option><option value="{{ tax_codes[1] }}" {{ 'selected' if (l.tax_code or '')|upper != tax_codes[0] and l.tax_code }}>Exonerado / inafecto</option></select></td></tr>{% endfor %}
+{% for i in range(3) %}<tr><td><input type="hidden" name="um_venta" value=""><input name="product_code" list="prods" aria-label="Producto nuevo"></td><td><input name="cantidad" type="number" step="any" min="0.0001" aria-label="Cantidad"></td><td><input name="precio_unitario" type="number" step="any" min="0" aria-label="Precio"></td><td><select name="tax_code" aria-label="IGV"><option value="">Según artículo</option><option value="{{ tax_codes[0] }}">Afecto</option><option value="{{ tax_codes[1] }}">Exonerado / inafecto</option></select></td></tr>{% endfor %}</table></div>
 {% if not can('ov.modificar') %}<label>Motivo</label><input name="motivo" style="width:100%" required>{% endif %}
 <p><button>{{ 'Guardar y reevaluar' if can('ov.modificar') else 'Enviar solicitud' }}</button></p></form>
 </section>{% endif %}
 
 {% if puede_gestionar %}
 <section class="tabpane" id="gestionar" aria-label="Gestionar OV">
-{% if can('ov.renegociar') %}<div class="grid g2">
+{% if can('ov.renegociar') and gestionable %}<div class="grid g2">
 <form class="card" id="renegociar" method="post" action="{{ url_for('com.order_action', oid=o.id, accion='renegociar') }}" data-confirm="¿Registrar la nueva fecha comprometida? La OV se reevalúa.">{{ csrf() }}<h3>Renegociar fecha</h3>
 <label>Nueva fecha comprometida</label><input type="date" name="nueva_fecha" min="{{ today.isoformat() }}" required><label>Comentario</label><input name="comentario" style="width:100%"><p><button class="sec">Registrar renegociación</button></p></form>
 <form class="card" id="proponer" method="post" action="{{ url_for('com.order_action', oid=o.id, accion='cambiar_producto') }}" data-confirm="¿Cambiar el producto de la línea? La OV se reevalúa.">{{ csrf() }}<h3>Proponer producto disponible</h3>
 <label>Línea</label><select name="line_id" required>{% for l in o.lines if l.activa %}<option value="{{ l.id }}">{{ l.product_code }} {{ pd(l.product_code) }}</option>{% endfor %}</select>
 <label>Nuevo producto</label><input name="nuevo_codigo" list="prods" placeholder="código" required><label>Cantidad</label><input type="number" step="any" min="0.0001" name="cantidad" style="width:120px" required>
+<label>Precio unitario sin IGV (vacío: el de la línea)</label><input type="number" step="any" min="0" name="precio" style="width:120px">
 <label>Comentario</label><input name="comentario" style="width:100%"><p><button class="sec">Cambiar producto</button></p></form></div>{% endif %}
-{% if can('ov.cancelar') %}<form class="card" id="cancelar" method="post" action="{{ url_for('com.order_action', oid=o.id, accion='cancelar') }}" data-confirm="¿Cancelar la OV {{ o.numero }}? Se liberan reservas y ruta.">{{ csrf() }}<h3>Cancelar OV</h3>
-<input name="motivo" placeholder="motivo (obligatorio)" required style="width:60%"> <button class="danger">Cancelar OV</button></form>{% endif %}
+{% if cerrable %}<div class="grid g2">
+<form class="card" id="cerrar" method="post" action="{{ url_for('com.order_action', oid=o.id, accion='cerrar') }}" data-confirm="¿Cerrar la OV {{ o.numero }}? Lo no despachado se registra como venta perdida, salvo que la causal sea de reprogramación.">{{ csrf() }}<h3>Cerrar OV</h3>
+<p class="small muted">La OV no se despachará (o no se despachará su saldo). <b>Cuenta como pedido</b>; el saldo no despachado es <b>venta perdida</b>, salvo que se reprograme.</p>
+<label class="req">Causal</label><select name="causal" required><option value="">Elija…</option>{% for c in causales.CERRADA %}<option>{{ c }}</option>{% endfor %}</select>
+<label>Comentario</label><input name="comentario" style="width:100%"><p><button class="sec">Cerrar OV</button></p></form>
+{% if gestionable %}<form class="card" id="cancelar" method="post" action="{{ url_for('com.order_action', oid=o.id, accion='cancelar') }}" data-confirm="¿Cancelar la OV {{ o.numero }}? Se liberan reservas y ruta y no cuenta como pedido ni como venta.">{{ csrf() }}<h3>Cancelar OV</h3>
+<p class="small muted">El cliente <b>ya no quiere</b> el pedido: no cuenta como pedido ni como venta.</p>
+<label class="req">Causal</label><select name="causal" required><option value="">Elija…</option>{% for c in causales.CANCELADA %}<option>{{ c }}</option>{% endfor %}</select>
+<label>Comentario</label><input name="motivo" style="width:100%"><p><button class="danger">Cancelar OV</button></p></form>{% endif %}</div>{% endif %}
 </section>{% endif %}
 
 <section class="tabpane" id="expediente" aria-label="Expediente de la OV">

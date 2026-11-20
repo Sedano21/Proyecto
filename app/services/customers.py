@@ -117,6 +117,15 @@ def save_customer(user, c, datos):
             raise BusinessError("Correo inválido.")
         c.correos = mails
         c.correo = mails[0] if mails else ""
+    # V64 (marcha blanca comercial): correos por uso; el de envío recibe la guía y la factura
+    for k in ("correo_envio", "correo_facturacion", "correo_logistica"):
+        if k in datos:
+            v = ", ".join(x.strip() for x in str(datos.get(k) or "").replace(";", ",").split(",") if x.strip())
+            if v and any("@" not in x for x in v.split(", ")):
+                raise BusinessError("Correo inválido (varios correos se separan con coma).")
+            setattr(c, k, v[:250])
+    if "requiere_estiba" in datos:  # el cliente pide estiba (descarga) en la entrega; pasa a la OV
+        c.requiere_estiba = str(datos["requiere_estiba"]) in ("1", "true", "True", "on")
     if "tiene_contrato" in datos:
         c.tiene_contrato = str(datos["tiene_contrato"]) in ("1", "true", "True", "on")
     if datos.get("contrato_archivo"):
@@ -302,3 +311,22 @@ def add_group(user, nombre, canal=""):
         set_param("canal_precio_por_grupo", m, user)
     audit(user, "GRUPO_CLIENTE_AGREGADO", "Param", "grupos_cliente_adicionales", {"grupo": n, "canal": canal})
     return n
+
+
+def add_debt_note(user, c, texto):
+    """V64: nota del ejecutivo sobre la deuda del cliente (p. ej. «el cliente ya pagó y sigue figurando la deuda») para
+    que Finanzas y las demás áreas la vean; se puede ir agregando (queda el historial con usuario y fecha)."""
+    texto = (texto or "").strip()
+    if not texto:
+        raise BusinessError("Escriba la nota.")
+    if not (has_perm(user, "clientes.editar") or has_perm(user, "clientes.ver")):
+        raise BusinessError("Su rol no registra notas del cliente.")
+    from ..models import now
+    notas = list(c.notas_deuda or [])
+    notas.append({"texto": texto[:500], "user": user.nombre, "user_id": user.id, "ts": now().isoformat(timespec="seconds")})
+    c.notas_deuda = notas
+    audit(user, "CLIENTE_NOTA_DEUDA", "Customer", c.ruc, {"texto": texto[:500]})
+    from . import alerts
+    alerts.emit("CLIENTE_NOTA_DEUDA", f"Nota sobre la deuda de {c.nombre}", f"{user.nombre}: {texto[:300]}", "Customer", c.id,
+                creado_por=user, dedup_key=f"NOTA_DEUDA:{c.id}:{len(notas)}")
+    return notas

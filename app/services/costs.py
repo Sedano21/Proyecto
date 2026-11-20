@@ -82,6 +82,22 @@ def cost_for_line(line, kg_saco=None):
     return c["KG"].costo * p.peso_kg if p.peso_kg else None
 
 
+def cost_for_price_item(item):
+    """V64: costo de la empresa en la unidad del precio de lista (GENERAL: por la unidad del artículo; GRANEL: por kg)
+    para mostrarlo al lado del precio mínimo. None si no hay costo."""
+    p = db().get(Product, item.product_code)
+    if p is None:
+        c = current_cost(item.product_code)
+        x = c.get("KG" if item.lista == "GRANEL" else "UND")
+        return x.costo if x else None
+    if item.lista == "GRANEL" or (p.um or "").upper().startswith("K"):
+        return cost_per_kg(p)
+    c = current_cost(p.code)
+    if "UND" in c:
+        return c["UND"].costo
+    return c["KG"].costo * p.peso_kg if "KG" in c and p.peso_kg else None
+
+
 # ------------------------------ mercado --------------------------------------
 def add_market_prices(rows, user, origen):
     _require(user)

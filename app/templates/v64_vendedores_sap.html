@@ -1,0 +1,14 @@
+{% extends "base.html" %}{% from "_m.html" import csrf %}
+{% block content %}<h1>Vendedores de SAP por usuario</h1>
+<p class="muted small">Cada ejecutivo ve y gestiona sus OV. Si en SAP sus OV salen a nombre de otro vendedor, asígnele aquí ese nombre de vendedor de SAP: verá también esas OV (lista de OV, Estado de OV, expedientes, seguimiento y sus indicadores). Las OV que se carguen de SAP con un vendedor que no es usuario se asignan al usuario que lo tiene aquí (si es uno solo).</p>
+{% if sin_usuario %}<div class="card small"><b>Vendedores de SAP sin usuario</b> (OV que hoy no son de nadie en el módulo):
+{% for n, c in sin_usuario.items() %}<span class="chip">{{ n }} · {{ c }} OV</span> {% endfor %}</div>{% endif %}
+<div class="tw"><table class="small apilable"><tr><th>Usuario</th><th>Perfil</th><th>Vendedores de SAP asignados</th><th></th></tr>
+{% for u in usuarios %}<tr><td data-label="Usuario"><b>{{ u.nombre }}</b></td><td data-label="Perfil">{{ u.role.nombre if u.role else u.role_code }}</td>
+<td data-label="Vendedores de SAP"><form method="post" id="f{{ u.id }}">{{ csrf() }}<input type="hidden" name="user_id" value="{{ u.id }}">
+<select name="vendedores" multiple size="{{ [vistos|length, 4]|min if vistos else 2 }}" aria-label="Vendedores de SAP de {{ u.nombre }}">{% for n in vistos if n != u.nombre %}<option {{ 'selected' if n in (u.vendedores_sap or []) }}>{{ n }}</option>{% endfor %}</select>
+<textarea name="otros" rows="1" placeholder="otro nombre (uno por línea)" aria-label="Otros nombres">{% for n in (u.vendedores_sap or []) if n not in vistos %}{{ n }}
+{% endfor %}</textarea></form></td>
+<td><button class="small" form="f{{ u.id }}">Guardar</button></td></tr>{% else %}<tr><td colspan="4" class="muted">Sin usuarios comerciales activos.</td></tr>{% endfor %}</table></div>
+<p class="small muted">Con Ctrl (o Cmd) se eligen varios. Para quitar todos, deselecciónelos y guarde.</p>
+{% endblock %}

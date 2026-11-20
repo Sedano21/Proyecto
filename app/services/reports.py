@@ -66,7 +66,7 @@ def line_kind(product):
 
 def comercial(desde=None, hasta=None, ver_costos=False, canal="", customer_id=None, vendedor="", tipo=""):
     from .costs import cost_for_line
-    from .orders import order_amount
+    from .orders import kg_unidad, order_amount
     desde, hasta = periodo(desde, hasta)
     s = db()
     todas = filter_orders([o for o in s.execute(select(SalesOrder).where(SalesOrder.fecha_emision >= desde,
@@ -81,7 +81,7 @@ def comercial(desde=None, hasta=None, ver_costos=False, canal="", customer_id=No
     prod_soles, prod_qty, pres = defaultdict(float), defaultdict(float), Counter()
     cli = defaultdict(lambda: {"soles": 0.0, "ovs": 0, "fechas": []})
     marg_prod = defaultdict(lambda: [0.0, 0.0])  # ventas, costo (solo líneas con costo)
-    inc_qty = inc_soles = 0.0
+    inc_qty = inc_soles = inc_kg = 0.0
     inc_ovs = 0
     def _lineas(o):
         return [l for l in o.lines if l.activa and (not tipo or line_kind(l.product) == tipo)]
@@ -103,7 +103,7 @@ def comercial(desde=None, hasta=None, ver_costos=False, canal="", customer_id=No
         incompleta = False
         for l in _lineas(o):
             p = l.product
-            kg = l.cantidad * (p.peso_kg or (1 if (p.um or "").upper().startswith("K") else 0)) if p else 0
+            kg = l.cantidad * kg_unidad(p)
             v["kg"] += kg
             prod_kg[l.product_code] += kg
             venta = l.cantidad * (l.precio_unitario or 0)
@@ -114,9 +114,13 @@ def comercial(desde=None, hasta=None, ver_costos=False, canal="", customer_id=No
             if costo is not None and venta:
                 marg_prod[l.product_code][0] += venta
                 marg_prod[l.product_code][1] += costo * l.cantidad
-            if o.estado in CERRADAS and l.despachado + 1e-9 < l.cantidad:
+            # V64: venta perdida = saldo no despachado de la OV ya cerrada, salvo que se reprogramó (en kg, no en
+            # unidades: no se suman kilos con unidades)
+            if (o.estado in CERRADAS and l.despachado + 1e-9 < l.cantidad
+                    and not (o.cierre or {}).get("reprogramada")):
                 falta = l.cantidad - l.despachado
                 inc_qty += falta
+                inc_kg += falta * kg_unidad(p)
                 inc_soles += falta * (l.precio_unitario or 0)
                 incompleta = True
         inc_ovs += incompleta
@@ -160,7 +164,11 @@ def comercial(desde=None, hasta=None, ver_costos=False, canal="", customer_id=No
     top = sorted(prod_soles.items(), key=lambda x: -x[1])[:15]
     top_kg = sorted(prod_kg.items(), key=lambda x: -x[1])[:15]
     nombres.update({p.code: p.descripcion for p in s.execute(select(Product).where(Product.code.in_(list(prod_kg) or [""]))).scalars()})
-    motivos = Counter((o.cancelacion_motivo or o.motivo_detencion.replace("Cancelada: ", "") or "(sin motivo)") for o in canceladas)
+    motivos = Counter(((o.cierre or {}).get("causal") or o.cancelacion_motivo or o.motivo_detencion.replace("Cancelada: ", "")
+                       or "(sin motivo)") for o in canceladas)
+    cerradas = [o for o in ovs if o.estado == "CERRADA"]  # V64: cerradas (cuentan como pedido) aparte de las canceladas
+    causales_cierre = Counter(((o.cierre or {}).get("causal") or o.motivo_detencion.replace("Cerrada: ", "") or "(sin causal)")
+                              for o in cerradas)
     reco = []
     var_sem = _var([v for _, v in serie_sem])
     if var_sem is not None and var_sem <= -10:
@@ -193,7 +201,9 @@ def comercial(desde=None, hasta=None, ver_costos=False, canal="", customer_id=No
         "margen_promedio": round(margen_prom, 1) if margen_prom is not None and ver_costos else None,
         "margen_producto": sorted(((k, nombres.get(k, ""), round(m, 1)) for k, m in margen.items()), key=lambda x: x[2])
         if ver_costos else [],
-        "incompletas": {"ovs": inc_ovs, "unidades": inc_qty, "soles": inc_soles},
+        "incompletas": {"ovs": inc_ovs, "unidades": inc_qty, "kg": round(inc_kg, 2), "soles": inc_soles},
+        "cerradas": {"ovs": len(cerradas), "causales": causales_cierre.most_common(10),
+                     "kg_perdidos": round(sum((o.cierre or {}).get("kg_perdidos") or 0 for o in cerradas), 2)},
         "pendientes": len(pendientes),
         "pendientes_vencidas": len([o for o in pendientes if o.fecha_compromiso < date.today()]),
         "modificadas": {"ovs": len(ov_mod), "pct": _pct(len(ov_mod), len(ovs)), "eventos": len(mods),
@@ -370,7 +380,7 @@ def produccion_fuentes(desde, hasta, partes=None):
 
     def kg(code, q):
         p = pesos.get(code)
-        return q * (p.peso_kg or (1 if (p.um or "").upper().startswith("K") else 0)) if p else 0
+        return q * __import__("app.services.orders", fromlist=["x"]).kg_unidad(p)
     por_prod = defaultdict(lambda: [0.0, 0.0])
     for m in movs:
         por_prod[m.product_code][0] += m.cantidad or 0

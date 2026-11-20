@@ -18,8 +18,9 @@ ETAPAS = [
     ("PARCIAL", "Despacho parcial (saldo pendiente)", ("DESPACHO_PARCIAL",)),
     ("DESPACHADA", "Despachada (con guía)", ("DESPACHADA",)),
     ("ENTREGADA", "Entregada", ("ENTREGADA", "ENTREGA_PARCIAL")),
-    ("CERRADA", "Cerrada / cancelada", ("CERRADA", "CANCELADA", "DEVUELTA", "REGULARIZADA", "REGULARIZADA_CERRADA",
-                                        "REGULARIZACION_OBSERVADA")),
+    # V64: cerrada (cuenta como pedido; el saldo es venta perdida) y cancelada (el cliente no lo quiso) van aparte
+    ("CERRADA", "Cerrada", ("CERRADA", "DEVUELTA", "REGULARIZADA", "REGULARIZADA_CERRADA", "REGULARIZACION_OBSERVADA")),
+    ("CANCELADA", "Cancelada", ("CANCELADA",)),
 ]
 _DE = {e: k for k, _, ests in ETAPAS for e in ests}
 
@@ -65,6 +66,14 @@ def pasos(o, picking, parada, factura, guias=None):
     ]
 
 
+def kilos(o):
+    """V64: kg pedidos y kg despachados de la OV (envasados con su peso por unidad; granel y MP ya en kilos)."""
+    from .orders import kg_unidad
+    ls = [l for l in o.lines if l.activa]
+    return (round(sum((l.cantidad or 0) * kg_unidad(l.product) for l in ls), 2),
+            round(sum(min(l.despachado or 0, l.cantidad or 0) * kg_unidad(l.product) for l in ls), 2))
+
+
 def tablero(desde=None, hasta=None, q="", vendedor_id=None, etapa_f=""):
     hoy = date.today()
     desde = desde or hoy - timedelta(days=15)
@@ -72,7 +81,7 @@ def tablero(desde=None, hasta=None, q="", vendedor_id=None, etapa_f=""):
     s = db()
     qry = select(SalesOrder).where(SalesOrder.fecha_compromiso >= desde, SalesOrder.fecha_compromiso <= hasta)
     if vendedor_id:
-        qry = qry.where(SalesOrder.vendedor_id == int(vendedor_id))
+        qry = qry.where(__import__("app.services.orders", fromlist=["x"]).clausula_vendedor(vendedor_id))
     ords = list(s.execute(qry.order_by(SalesOrder.fecha_compromiso, SalesOrder.id)).scalars())
     if q:
         qq = q.upper()
@@ -94,11 +103,14 @@ def tablero(desde=None, hasta=None, q="", vendedor_id=None, etapa_f=""):
         tot[e] += 1
         if etapa_f and e != etapa_f:
             continue
-        atrasada = o.fecha_compromiso < hoy and e not in ("DESPACHADA", "ENTREGADA", "CERRADA")
-        filas.append({"o": o, "etapa": e, "pasos": pasos(o, picks.get(o.id, []), paradas.get(o.id), facts.get(o.id, []),
+        atrasada = o.fecha_compromiso < hoy and e not in ("DESPACHADA", "ENTREGADA", "CERRADA", "CANCELADA")
+        kp, kd = kilos(o)
+        filas.append({"o": o, "etapa": e, "kg_pedido": kp, "kg_despachado": kd, "avance": round(100 * kd / kp, 1) if kp else None,
+                      "pasos": pasos(o, picks.get(o.id, []), paradas.get(o.id), facts.get(o.id, []),
                                                          guias.get(o.id)),
                       "atrasada": atrasada, "motivo": (o.bloqueo_ov or {}).get("motivo") if o.estado == "BLOQUEADA"
                       else (o.motivo_detencion if o.retenida_precio else "")})
     tot["ATRASADAS"] = sum(1 for o in ords if o.fecha_compromiso < hoy
-                           and etapa(o) not in ("DESPACHADA", "ENTREGADA", "CERRADA"))
-    return {"filas": filas, "tot": tot, "total": len(ords), "desde": desde, "hasta": hasta, "etapas": ETAPAS}
+                           and etapa(o) not in ("DESPACHADA", "ENTREGADA", "CERRADA", "CANCELADA"))
+    return {"filas": filas, "tot": tot, "total": len(ords), "desde": desde, "hasta": hasta, "etapas": ETAPAS,
+            "kg_pedido": round(sum(f["kg_pedido"] for f in filas), 2), "kg_despachado": round(sum(f["kg_despachado"] for f in filas), 2)}

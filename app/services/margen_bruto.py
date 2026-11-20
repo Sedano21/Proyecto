@@ -71,7 +71,7 @@ def calcular(desde=None, hasta=None, canal=""):
         venta = _venta(l, q)
         cu = cost_for_line(l)
         costo = q * cu if cu is not None else 0.0
-        kg = q * ((p.peso_kg or (1 if (p.um or "").upper().startswith("K") else 0)) if p else 0)
+        kg = q * __import__("app.services.orders", fromlist=["x"]).kg_unidad(p)
         claves = {"canal": can, "subfamilia": ((p.subfamilia or p.familia) if p else "") or "(en blanco)",
                   "subsubfamilia": (p.producto_base if p else "") or "(en blanco)", "cliente": o.customer.nombre,
                   "producto": f"{l.product_code} · {(p.descripcion if p else '')[:40]}"}

@@ -19,6 +19,10 @@
 <div class="row"><div><label>Horario de recepción</label><input name="horario_recepcion" value="{{ c.horario_recepcion }}" placeholder="08:00-12:00" {{ ro }}></div><div><label>Requiere cita</label><select name="requiere_cita" {{ ro }}><option value="0">No</option><option value="1" {{ 'selected' if c.requiere_cita }}>Sí</option></select></div><div><label>Entrega con auxiliar</label><select name="requiere_auxiliar" {{ ro }}><option value="0">No</option><option value="1" {{ 'selected' if c.requiere_auxiliar }}>Sí, lo pide el cliente</option></select></div><div><label>Vida útil mín. (días)</label><input name="vida_util_min_dias" value="{{ c.vida_util_min_dias or '' }}" size="5" {{ ro }}></div></div>
 <div class="row">{% for i in range(3) %}<div><label>Celular {{ i+1 }}</label><input name="celulares" type="tel" value="{{ (c.celulares or [])[i] if (c.celulares or [])|length > i else '' }}" {{ ro }}></div>{% endfor %}</div>
 {% set mails = c.correos or ([c.correo] if c.correo else []) %}<div class="row">{% for i in range(3) %}<div class="grow"><label>Correo {{ i+1 }}</label><input name="correos" type="email" value="{{ mails[i] if mails|length > i else '' }}" {{ ro }}></div>{% endfor %}</div>
+<div class="row"><div class="grow"><label title="A este correo se envían la guía de remisión y la factura">Correo de envío (guía y factura)</label><input name="correo_envio" value="{{ c.correo_envio }}" placeholder="varios: separados con coma" {{ ro }}></div>
+<div class="grow"><label>Correo de facturación / pagos</label><input name="correo_facturacion" value="{{ c.correo_facturacion }}" {{ ro }}></div>
+<div class="grow"><label>Correo de logística (citas, recepción)</label><input name="correo_logistica" value="{{ c.correo_logistica }}" {{ ro }}></div>
+<div><label>Requiere estiba</label><select name="requiere_estiba" {{ ro }}><option value="0">No</option><option value="1" {{ 'selected' if c.requiere_estiba }}>Sí</option></select></div></div>
 <div class="row"><div><label>Ejecutivo comercial responsable</label><select name="vendedor_id" {{ ro }}><option value="">—</option>{% for u in vendedores %}<option value="{{ u.id }}" {{ 'selected' if c.vendedor_id==u.id }}>{{ u.nombre }}</option>{% endfor %}</select></div>
 <div><label>¿Tiene contrato?</label><select name="tiene_contrato" {{ ro }}><option value="0">No</option><option value="1" {{ 'selected' if c.tiene_contrato }}>Sí</option></select></div>
 <div class="grow"><label>Contrato (PDF o imagen){% if c.contrato_archivo %} · <a href="{{ url_for('main.evidence', name=c.contrato_archivo) }}">ver contrato cargado</a>{% endif %}</label><input type="file" name="contrato" accept=".pdf,image/*" {{ ro }}></div></div>
@@ -82,6 +86,10 @@
 <div class="row">{% for k, v in docs_nombres.items() %}<div><label>{{ v }}{% if c.condicion_docs.get(k) %} ✔{% endif %}</label><input type="file" name="doc_{{ k }}"></div>{% endfor %}</div>
 <label>Comentario</label><input name="comentario" style="width:100%"><p><button>Enviar a Finanzas</button></p></form></details>{% endif %}
 </div>
+<div class="card" id="cuenta"><h3>Notas sobre la deuda</h3>
+<p class="small muted">El ejecutivo deja aquí lo que sabe de la deuda del cliente (p. ej. «ya pagó y sigue figurando»); Finanzas recibe una alerta. Queda el historial.</p>
+{% for n in (c.notas_deuda or [])|reverse %}<div class="small"><b>{{ n.user }}</b> <span class="muted">{{ n.ts[:16]|replace('T',' ') }}</span>: {{ n.texto }}</div>{% else %}<p class="small muted">Sin notas.</p>{% endfor %}
+<form method="post" class="row">{{ csrf() }}<input type="hidden" name="accion" value="nota_deuda"><div class="grow"><input name="texto" placeholder="nueva nota" required maxlength="500" style="width:100%" aria-label="Nueva nota sobre la deuda"></div><div><button class="small">Agregar nota</button></div></form></div>
 {% if can('finanzas.ver') %}<div class="card"><h3>Estado de cuenta</h3>
 <p>Deuda <b>S/ {{ est.deuda|n }}</b> · vencida <b class="{{ 'err' if est.deuda_vencida }}">S/ {{ est.deuda_vencida|n }}</b> · facturado S/ {{ est.facturado|n }}</p>
 <div class="tw"><table class="small"><tr><th>Documento</th><th>OV</th><th>Emisión</th><th>Vence</th><th class="r">Monto</th><th class="r">Saldo</th><th>Estado</th></tr>

@@ -261,7 +261,8 @@ def next_cutoff(ts=None):
 
 def create_order(user, numero, customer_id, fecha_compromiso, lines, urgente=False, comentarios="", hora_cita="",
                  cita_confirmada=False, vendedor_id=None, fecha_emision=None, origen="MODULO", evaluar=True,
-                 tipo_venta="", vendedor_nombre="", entrega=None, canal_precio="", regularizacion="", oc_archivo="", oc_numero=""):
+                 tipo_venta="", vendedor_nombre="", entrega=None, canal_precio="", regularizacion="", oc_archivo="", oc_numero="",
+                 oc_total=None, requiere_auxiliar=None, requiere_estiba=None):
     """entrega: dict de resolve_delivery (lugar, dirección, distrito, provincia). En el módulo es obligatorio.
     regularizacion: motivo; registra una OV con fecha pasada u hora transcurrida sin reservar stock (obs. demo v0.7)."""
     regularizacion = (regularizacion or "").strip()
@@ -310,7 +311,16 @@ def create_order(user, numero, customer_id, fecha_compromiso, lines, urgente=Fal
                    vendedor_nombre=vend.nombre if vend else vendedor_nombre, fecha_emision=fecha_emision or date.today(),
                    tipo_venta=tipo_venta or "", canal_precio=(canal_precio or "").strip(),
                    origen=origen, creado_por=user.id if user else None, corte=next_cutoff(),
-                   oc_archivo=oc_archivo or "", oc_numero=(oc_numero or "").strip())
+                   oc_archivo=oc_archivo or "", oc_numero=(oc_numero or "").strip(),
+                   oc_total=float(oc_total) if oc_total else None,
+                   requiere_auxiliar=bool(c.requiere_auxiliar) if requiere_auxiliar is None else bool(requiere_auxiliar),
+                   requiere_estiba=bool(c.requiere_estiba) if requiere_estiba is None else bool(requiere_estiba))
+    if origen == "MODULO":  # V64: cada línea va afecta o exonerada al IGV; si no se indicó, la última usada o la de defecto
+        previo = None
+        for ln in lines:
+            if not (ln.get("tax_code") or "").strip():
+                previo = previo if previo is not None else tax_por_defecto()
+                ln["tax_code"] = previo.get(ln["product_code"].strip(), str(param("ov_tax_code_por_defecto", "IGV") or "IGV").upper())
     for ln in lines:
         o.lines.append(SalesOrderLine(product_code=ln["product_code"].strip(), cantidad=float(ln["cantidad"]),
                                       precio_unitario=float(ln.get("precio_unitario") or 0),
@@ -596,9 +606,11 @@ def _apply_changes(order, user, changes):
         if fc != order.fecha_compromiso:
             check_not_past(fc)
         order.fecha_compromiso = fc
-    for k in ("urgente", "cita_confirmada"):
-        if k in changes:
+    for k in ("urgente", "cita_confirmada", "requiere_auxiliar", "requiere_estiba"):
+        if k in changes and changes[k] is not None:
             setattr(order, k, bool(changes[k]))
+    if "oc_total" in changes:  # V64: total de la OC del cliente para contrastar con el de la OV
+        order.oc_total = float(changes["oc_total"]) if changes["oc_total"] else None
     if changes.get("hora_cita"):
         changes["hora_cita"] = normalize_hour(changes["hora_cita"])
     for k in ("comentarios", "hora_cita"):
@@ -658,7 +670,7 @@ def snapshot(order):
 def modify_order(order, user, changes):
     if not has_perm(user, "ov.modificar"):
         raise BusinessError("Su rol no modifica OV directamente; use 'solicitar modificación' (IF §5).")
-    if user.role_code == "EJECUTIVO_VENTAS" and order.vendedor_id != user.id:
+    if user.role_code == "EJECUTIVO_VENTAS" and not es_del_vendedor(order, user):
         raise BusinessError("Solo puede modificar las OV de las que es ejecutivo comercial responsable.")
     _apply_changes(order, user, changes)
 
@@ -689,7 +701,7 @@ def can_authorize_change(user, order):
     if not has_perm(user, "ov.autorizar_modificacion"):
         return False
     if user.role_code == "EJECUTIVO_VENTAS":
-        return order.vendedor_id == user.id
+        return es_del_vendedor(order, user)
     return True
 
 
@@ -710,12 +722,103 @@ def resolve_change(req, user, aprobar, comentario=""):
     alerts.close_by_system(f"OV_MODIF:{req.id}", "Resuelta")
 
 
-def cancel_order(order, user, motivo):
+def causales():
+    """V64 (marcha blanca comercial): causales de cancelación (el cliente ya no quiere el pedido; no se considera venta
+    ni pedido) y de cierre (la OV termina sin despacharse completa; el saldo es venta perdida salvo que se reprograme)."""
+    return {"CANCELADA": [str(x) for x in (param("ov_causales_cancelacion", []) or []) if str(x).strip()],
+            "CERRADA": [str(x) for x in (param("ov_causales_cierre", []) or []) if str(x).strip()]}
+
+
+def _causal_valida(tipo, causal):
+    causal = (causal or "").strip()
+    if not causal:
+        raise BusinessError("Elija la causal: es obligatoria para " + ("cancelar" if tipo == "CANCELADA" else "cerrar") + " la OV.")
+    lista = causales()[tipo]
+    if lista and causal not in lista:
+        raise BusinessError(f"Causal no válida: {causal}. Elija una de la lista.")
+    return causal
+
+
+def kg_unidad(product):
+    """V64: kilos por unidad de venta del artículo. Los que se venden en kilos (granel, MP) valen 1; los envasados, su
+    peso del maestro y, si no lo tiene, el de la presentación de la descripción («* 500 G» → 0,5). Así los informes
+    muestran kilos y no comparan unidades con kilos."""
+    if product is None:
+        return 0.0
+    if (product.um or "").upper().startswith("K"):
+        return 1.0
+    if product.peso_kg:
+        return product.peso_kg
+    from .uploads import parse_presentation
+    return parse_presentation(product.descripcion or "")[1] or 0.0
+
+
+def _kg_linea(l, q):
+    return (q or 0) * kg_unidad(l.product)
+
+
+def saldo_kg(order):
+    """kg pedidos que no se despacharon (líneas activas)."""
+    return sum(_kg_linea(l, max(0.0, (l.cantidad or 0) - (l.despachado or 0))) for l in order.lines if l.activa)
+
+
+def _liberar(order, motivo):
+    liberadas = release_order(order, motivo)
+    paradas = 0
+    for stop in list(db().execute(select(RouteStop).where(RouteStop.order_id == order.id)).scalars()):
+        if stop.route.estado in ("PROPUESTA", "CONFIRMADA"):
+            route = stop.route
+            route.stops.remove(stop)
+            db().delete(stop)
+            route.peso_total = sum(s.peso_kg for s in route.stops)
+            paradas += 1
+    return liberadas, paradas
+
+
+def close_order(order, user, causal, comentario=""):
+    """V64: CERRAR no es CANCELAR. Se cierra la OV que no se despachará (completa o en su saldo): cuenta como pedido; lo
+    no despachado es venta perdida, salvo que la causal sea de reprogramación («ov_causales_cierre_reprogramacion»).
+    La causal es obligatoria. Si la OV ya está en SAP, también se cierra allí."""
+    if not has_perm(user, "ov.cancelar"):
+        raise BusinessError("Solo el Coordinador de Ventas o el Jefe de Ventas pueden cerrar una OV.")
+    if order.estado in ("CANCELADA", "CERRADA", "DESPACHADA", "ENTREGADA", "EN_RUTA", "REGULARIZADA_CERRADA"):
+        raise BusinessError(f"La OV está {order.estado}; no se puede cerrar.")
+    causal = _causal_valida("CERRADA", causal)
+    reprog = causal in [str(x) for x in (param("ov_causales_cierre_reprogramacion", []) or [])]
+    kg = round(saldo_kg(order), 2)
+    liberadas, paradas = _liberar(order, f"OV cerrada: {causal}")
+    order.estado = "CERRADA"
+    order.motivo_detencion = f"Cerrada: {causal}"
+    order.cierre = {"tipo": "CERRADA", "causal": causal, "comentario": (comentario or "").strip(), "user": user.nombre,
+                    "user_id": user.id, "ts": now().isoformat(timespec="seconds"), "origen": "MODULO",
+                    "venta_perdida": bool(kg > 1e-9 and not reprog), "kg_perdidos": 0.0 if reprog else kg,
+                    "reprogramada": reprog}
+    for k in (f"OV_FALTANTE:{order.id}", f"OV_DECISION_PARCIAL:{order.id}"):
+        alerts.close_by_system(k, "OV cerrada")
+    alerts.emit("OV_CERRADA", f"OV {order.numero} cerrada: {causal}",
+                f"{order.customer.nombre}. " + (f"Saldo no despachado: {kg:,.2f} kg" + (" (se reprograma; no es venta perdida)."
+                                                                                      if reprog else " (venta perdida).")
+                                                if kg > 1e-9 else "Sin saldo pendiente.")
+                + (f" {comentario.strip()}" if (comentario or "").strip() else ""), "SalesOrder", order.id,
+                extra_users=[order.vendedor_id] if order.vendedor_id else None, creado_por=user)
+    audit(user, "OV_CERRADA", "SalesOrder", order.numero, {"causal": causal, "comentario": comentario, "kg_saldo": kg,
+                                                           "reservas_liberadas": liberadas, "paradas_retiradas": paradas})
+    from .stock import reevaluate_pending
+    if param("reevaluar_tras_carga", True):
+        reevaluate_pending(user, [l.product_code for l in order.lines])
+
+
+def cancel_order(order, user, motivo, causal=None):
+    """Cancelar: el cliente ya no quiere el pedido. No cuenta como pedido ni como venta (V64). La causal es obligatoria
+    (en el módulo se elige de «ov_causales_cancelacion»; «motivo» queda como comentario)."""
     if not has_perm(user, "ov.cancelar"):
         raise BusinessError("Solo el Coordinador de Ventas o el Jefe de Ventas pueden cancelar una OV (IF §5).")
     if order.estado in ORDEN_ESTADOS_CERRADOS or order.estado == "EN_RUTA":
         raise BusinessError(f"La OV está {order.estado}; no se puede cancelar.")
-    if not motivo.strip():
+    if causal is not None:
+        causal = _causal_valida("CANCELADA", causal)
+        motivo = f"{causal}" + (f" — {motivo.strip()}" if (motivo or "").strip() else "")
+    if not (motivo or "").strip():
         raise BusinessError("Indique el motivo de la cancelación.")
     liberadas = release_order(order, f"OV cancelada: {motivo}")
     paradas = 0
@@ -729,10 +832,13 @@ def cancel_order(order, user, motivo):
     order.estado = "CANCELADA"
     order.motivo_detencion = f"Cancelada: {motivo}"
     order.cancelacion_motivo = motivo.strip()
+    order.cierre = {"tipo": "CANCELADA", "causal": causal or motivo.strip(), "comentario": "", "user": user.nombre,
+                    "user_id": user.id, "ts": now().isoformat(timespec="seconds"), "origen": "MODULO"}
     alerts.close_by_system(f"OV_FALTANTE:{order.id}", "OV cancelada")
     alerts.close_by_system(f"OV_DECISION_PARCIAL:{order.id}", "OV cancelada")
     alerts.emit("OV_CANCELADA", f"OV {order.numero} cancelada", f"Motivo: {motivo}. Reservas liberadas: {liberadas}; "
-                f"paradas de ruta retiradas: {paradas}.", "SalesOrder", order.id, creado_por=user)
+                f"paradas de ruta retiradas: {paradas}.", "SalesOrder", order.id, creado_por=user,
+                extra_users=[order.vendedor_id] if order.vendedor_id else None)
     audit(user, "OV_CANCELADA", "SalesOrder", order.numero, {"motivo": motivo, "reservas_liberadas": liberadas,
                                                              "paradas_retiradas": paradas})
     # el stock liberado puede cubrir otras OV
@@ -882,7 +988,9 @@ def renegotiate_date(order, user, nueva_fecha, comentario=""):
         open_commitment(order)
 
 
-def change_product(order, user, line_id, nuevo_codigo, cantidad, comentario=""):
+def change_product(order, user, line_id, nuevo_codigo, cantidad, comentario="", precio=None):
+    """Propone otra presentación o producto en una línea. V64: el nuevo producto puede tener otro precio (se indica; si
+    no, conserva el de la línea) y se valida contra la lista del canal y el tramo de su cantidad."""
     if not has_perm(user, "ov.renegociar"):
         raise BusinessError("Su rol no registra cambios de producto.")
     lines = []
@@ -892,7 +1000,8 @@ def change_product(order, user, line_id, nuevo_codigo, cantidad, comentario=""):
             continue
         if l.id == int(line_id):
             found = True
-            lines.append({"product_code": nuevo_codigo, "cantidad": cantidad})
+            lines.append({"product_code": nuevo_codigo, "cantidad": cantidad, "tax_code": l.tax_code,
+                          "precio_unitario": precio if precio else l.precio_unitario})
         else:
             lines.append({"product_code": l.product_code, "cantidad": l.cantidad, "precio_unitario": l.precio_unitario})
     if not found:
@@ -1054,13 +1163,106 @@ def order_weight_kg(order, base="reservado"):
         else:
             q = line_reserved(l) if l.preparado <= 0 else l.preparado
         p = l.product
-        if p.um == "KILOGRAMO":
-            total += q
-        elif p.peso_kg:
-            total += q * p.peso_kg
+        k = kg_unidad(p)
+        if k:
+            total += q * k
         else:
             sin_peso.append(p.code)
     return total, sin_peso
+
+
+# ------------------------------ V64: vendedores de SAP por usuario ------------------------------
+def alias_vendedor(user_id):
+    """Nombres de vendedor de SAP cuyas OV también son de este usuario (además de las suyas)."""
+    if not user_id:
+        return []
+    u = db().get(User, int(user_id))
+    return [str(x).strip() for x in ((u.vendedores_sap if u else None) or []) if str(x).strip()]
+
+
+def clausula_vendedor(user_id):
+    """Condición SQL «OV de este vendedor»: las asignadas a él y las que en SAP salen a nombre de sus vendedores de SAP."""
+    from sqlalchemy import or_
+    alias = alias_vendedor(user_id)
+    if alias:
+        return or_(SalesOrder.vendedor_id == int(user_id), SalesOrder.vendedor_nombre.in_(alias))
+    return SalesOrder.vendedor_id == int(user_id)
+
+
+def es_del_vendedor(order, user):
+    return order.vendedor_id == user.id or (order.vendedor_nombre or "") in alias_vendedor(user.id)
+
+
+def usuario_por_nombre_sap(nombre):
+    """Usuario del vendedor que SAP nombra: el que tiene ese nombre o, si no hay, el único que lo tiene como vendedor
+    de SAP."""
+    nombre = (nombre or "").strip()
+    if not nombre:
+        return None
+    u = db().execute(select(User).where(User.nombre == nombre)).scalars().first()
+    if u is not None:
+        return u
+    duenos = [x for x in db().execute(select(User).where(User.activo.is_(True))).scalars()
+              if nombre in [str(a).strip() for a in (x.vendedores_sap or [])]]
+    return duenos[0] if len(duenos) == 1 else None
+
+
+def vendedores_sap_vistos():
+    """Nombres de vendedor que traen las OV (de SAP o del módulo), para asignarlos a los usuarios."""
+    return sorted({n for n, in db().execute(select(SalesOrder.vendedor_nombre).distinct()) if (n or "").strip()})
+
+
+def asignar_vendedores_sap(user, usuario, nombres):
+    if not (has_perm(user, "usuarios.administrar") or has_perm(user, "comercial.configurar")):
+        raise BusinessError("Asignan vendedores de SAP Sistemas o la Jefatura Comercial.")
+    limpios = sorted({str(n).strip() for n in nombres if str(n).strip()})
+    antes = list(usuario.vendedores_sap or [])
+    usuario.vendedores_sap = limpios
+    audit(user, "VENDEDORES_SAP_ASIGNADOS", "User", usuario.username, {"antes": antes, "despues": limpios})
+    return limpios
+
+
+# ------------------------------ V64: IGV, totales y contraste con la OC ------------------------------
+def igv_tasa():
+    return float(param("igv_tasa", 0.18) or 0)
+
+
+def tax_codes():
+    """Códigos de impuesto de SAP para una línea afecta al IGV y para una exonerada/inafecta."""
+    return (str(param("ov_tax_code_afecto", "IGV") or "IGV").upper(),
+            str(param("ov_tax_code_exonerado", "EXO") or "EXO").upper())
+
+
+def es_afecta(tax_code):
+    return (tax_code or "").upper() == tax_codes()[0]
+
+
+def tax_por_defecto():
+    """Código de impuesto que se propone por artículo al registrar una OV: el último usado para ese artículo en las OV
+    (las de SAP traen su código); si no hay, el de «ov_tax_code_por_defecto»."""
+    from ..models import SalesOrderLine
+    out = {}
+    for code, tc in db().execute(select(SalesOrderLine.product_code, SalesOrderLine.tax_code)
+                                 .where(SalesOrderLine.tax_code != "").order_by(SalesOrderLine.id)):
+        out[code] = (tc or "").upper()
+    return out
+
+
+def totales(order, lineas=None):
+    """Subtotal (valor de venta sin IGV, descuentos incluidos), IGV de las líneas afectas y total de la OV, y la
+    diferencia con el total de la orden de compra del cliente si se registró."""
+    tasa = igv_tasa()
+    sub = igv = 0.0
+    for l in (lineas if lineas is not None else [x for x in order.lines if x.activa]):
+        imp = round((l.cantidad or 0) * (l.precio_unitario or 0) - (l.descuento or 0), 2)
+        sub += imp
+        if es_afecta(l.tax_code):
+            igv += round(imp * tasa, 2)
+    total = round(sub + igv, 2)
+    dif = round(total - order.oc_total, 2) if getattr(order, "oc_total", None) else None
+    tol = float(param("ov_tolerancia_total_oc", 1.0) or 0)
+    return {"subtotal": round(sub, 2), "igv": round(igv, 2), "total": total, "tasa": tasa, "oc_total": getattr(order, "oc_total", None),
+            "dif_oc": dif, "cuadra_oc": None if dif is None else abs(dif) <= tol}
 
 
 def order_amount(order):

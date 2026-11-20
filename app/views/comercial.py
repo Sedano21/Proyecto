@@ -1,5 +1,5 @@
 """Vistas de Comercial (OV, decisiones ante faltantes) y preparación."""
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from flask import Blueprint, abort, flash, g, redirect, render_template, request, url_for
 from sqlalchemy import select
@@ -35,6 +35,7 @@ def _lines_from_form():
     qtys = request.form.getlist("cantidad")
     prices = request.form.getlist("precio_unitario")
     ums = request.form.getlist("um_venta")
+    taxes = request.form.getlist("tax_code")  # V64: afecto o exonerado/inafecto al IGV por línea
     for i, code in enumerate(codes):
         code = (code or "").strip().upper().split(" ")[0]  # el combo muestra "CÓDIGO · descripción"
         if not code:
@@ -43,7 +44,8 @@ def _lines_from_form():
             continue
         lines.append({"product_code": code, "cantidad": qtys[i] if i < len(qtys) else "",
                       "precio_unitario": prices[i] if i < len(prices) and prices[i] else 0,
-                      "um_venta": ums[i] if i < len(ums) else ""})
+                      "um_venta": ums[i] if i < len(ums) else "",
+                      "tax_code": (taxes[i] if i < len(taxes) else "").strip().upper()[:10]})
     return lines
 
 
@@ -58,8 +60,11 @@ def orders():
     if stock:
         q = q.where(SalesOrder.estado_stock == stock)
     if g.user.role_code == "EJECUTIVO_VENTAS" and request.args.get("mias") != "0":
-        q = q.where(SalesOrder.vendedor_id == g.user.id)
+        q = q.where(osvc.clausula_vendedor(g.user.id))  # V64: también sus vendedores de SAP
     rows = sorted(db().execute(q).scalars(), key=priority_key)  # el orden por prioridad se calcula; luego se pagina
+    orden = request.args.get("orden", "")
+    if orden == "emision":  # V64: por fecha de emisión (lo último ingresado primero)
+        rows.sort(key=lambda o: (o.fecha_emision or date.min, o.creado_ts or datetime.min, o.id), reverse=True)
     pend = list(db().execute(select(OVChangeRequest).where(OVChangeRequest.estado == "PENDIENTE")).scalars())
     pend = [r for r in pend if osvc.can_authorize_change(g.user, r.order) or r.solicitado_por == g.user.id]
     from ..services.stock import line_reserved
@@ -76,7 +81,7 @@ def orders():
                                "proxima": min([o.fecha_compromiso for o in ovs if o.fecha_compromiso] or [None])}
                               for c, ovs in gr.items()), key=lambda x: (x["proxima"] or date.max, x["cliente"].nombre if x["cliente"] else ""))
     return render_template("ov_list.html", rows=paginate(rows), estado=estado or "", estado_stock=stock or "", pend=pend,
-                           reservado=line_reserved, vista=vista, por_cliente=por_cliente)
+                           reservado=line_reserved, vista=vista, por_cliente=por_cliente, orden=orden)
 
 
 @bp.route("/api/precio")
@@ -93,7 +98,11 @@ def price_check_api():
         precio = float(request.args.get("precio") or 0)
     except ValueError:
         precio = 0
-    return jsonify(check_line_price(p, c, precio, request.args.get("um", ""), request.args.get("canal") or None))
+    try:
+        cantidad = float(request.args.get("cantidad") or 0) or None
+    except ValueError:
+        cantidad = None
+    return jsonify(check_line_price(p, c, precio, request.args.get("um", ""), request.args.get("canal") or None, cantidad))
 
 
 @bp.route("/carga-sap", methods=["GET", "POST"])
@@ -188,7 +197,8 @@ def order_new():
                                   cita_confirmada=f_bool("cita_confirmada"), vendedor_id=fm.get("vendedor_id") or None,
                                   entrega=entrega, canal_precio=fm.get("canal_precio", ""),
                                   tipo_venta="Muestra comercial" if f_bool("muestra") else "", oc_archivo=oc,
-                                  oc_numero=fm.get("oc_numero", ""))
+                                  oc_numero=fm.get("oc_numero", ""), oc_total=f_float("oc_total"),
+                                  requiere_auxiliar=f_bool("requiere_auxiliar"), requiere_estiba=f_bool("requiere_estiba"))
             holder["o"] = o
             return o
         resp = act(_do, lambda o: (f"OV {o.numero} guardada como BORRADOR (no se ejecuta todavía). "
@@ -209,11 +219,14 @@ def order_new():
     canales = sorted(set(psvc.canales()) | set(param("lista_granel_canales", []) or []))
     canal_cliente = {c.id: psvc.channel_of(c) for c in customers}
     unidades = {p.code: osvc.unit_for(p) for p in products}
-    estado_cli = {c.id: {"prospecto": c.es_prospecto, "condicion": c.condicion_estado} for c in customers}
+    estado_cli = {c.id: {"prospecto": c.es_prospecto, "condicion": c.condicion_estado, "auxiliar": bool(c.requiere_auxiliar),
+                         "estiba": bool(c.requiere_estiba)} for c in customers}
+    impuestos = osvc.tax_por_defecto()
     return render_template("ov_new.html", customers=customers, vendedores=vendedores, products=products, sitios=sitios,
                            horas=osvc.horas_cita(), granel=granel, canales=canales, canal_cliente=canal_cliente,
                            unidades=unidades, estado_cli=estado_cli, corte=param("hora_corte_ov_dia_siguiente", ""),
-                           exigir_oc=param("exigir_oc_ov_modulo", True))
+                           exigir_oc=param("exigir_oc_ov_modulo", True), impuestos=impuestos, tax_codes=osvc.tax_codes(),
+                           tax_def=str(param("ov_tax_code_por_defecto", "IGV") or "IGV").upper(), igv_tasa=osvc.igv_tasa())
 
 
 @bp.route("/<int:oid>")
@@ -252,7 +265,14 @@ def order_detail(oid):
     from ..services import ov_sap
     guias_ov = ov_sap.guias_de([o]).get(o.id, [])  # V54: guías de SAP y del módulo de la OV
     from ..services.prefacturas import de_la_orden as _pf_ov, total as _pf_total
-    return render_template("ov_detail.html", prefacturas=_pf_ov(o.id), pf_total=_pf_total, guias_ov=guias_ov, motivo_det=ov_sap.motivo_detencion(o), o=o, sap_pendiente=__import__("app.services.sap_sl", fromlist=["x"]).pending_action(o), prioridades_gg=osvc.PRIORIDADES_GG, alts=alts, paradas=paradas, docs=order_documents(o), tipos_doc=TIPOS_DOC_OV,
+    # V64: costo de la empresa al lado del precio para quien aprueba precios fuera de lista y ve costos
+    costos_lineas = {}
+    if "costos.ver" in g.perms and "ov.aprobar_precio" in g.perms:
+        from ..services.costs import cost_for_line
+        costos_lineas = {l.id: cost_for_line(l) for l in o.lines if l.activa}
+    dias_atencion = (o.fecha_compromiso - o.fecha_emision).days if o.fecha_compromiso and o.fecha_emision else "-"
+    return render_template("ov_detail.html", prefacturas=_pf_ov(o.id), tot=osvc.totales(o), tax_codes=osvc.tax_codes(),
+                           costos_lineas=costos_lineas, dias_atencion=dias_atencion, causales=osvc.causales(), pf_total=_pf_total, guias_ov=guias_ov, motivo_det=ov_sap.motivo_detencion(o), o=o, sap_pendiente=__import__("app.services.sap_sl", fromlist=["x"]).pending_action(o), prioridades_gg=osvc.PRIORIDADES_GG, alts=alts, paradas=paradas, docs=order_documents(o), tipos_doc=TIPOS_DOC_OV,
                            comp_estados=cmsvc.ESTADOS, dias_prod=cmsvc.production_days(), whs=whs, reqs=reqs, decs=decs, hist=hist, certs=certs,
                            products=products, line_reserved=line_reserved, monto=osvc.order_amount(o), peso=peso,
                            sin_peso=sin_peso, can_auth=osvc.can_authorize_change(g.user, o), prep=osvc.prep_progress(o),
@@ -392,6 +412,9 @@ def order_action(oid, accion):
     def changes():
         ch = {"fecha_compromiso": f_date("fecha_compromiso"), "urgente": f_bool("urgente"),
               "comentarios": f.get("comentarios"), "hora_cita": f.get("hora_cita"), "cita_confirmada": f_bool("cita_confirmada")}
+        if "oc_total" in f:  # V64
+            ch.update(oc_total=f_float("oc_total"), requiere_auxiliar=f_bool("requiere_auxiliar"),
+                      requiere_estiba=f_bool("requiere_estiba"))
         lines = _lines_from_form()
         if lines:
             ch["lines"] = lines
@@ -400,7 +423,13 @@ def order_action(oid, accion):
     actions = {
         "modificar": (lambda: osvc.modify_order(o, u, changes()), "OV modificada y reevaluada."),
         "solicitar": (lambda: osvc.request_change(o, u, changes(), f.get("motivo", "")), "Solicitud enviada para autorización."),
-        "cancelar": (lambda: osvc.cancel_order(o, u, f.get("motivo", "")), "OV cancelada: reservas y ruta liberadas."),
+        "cancelar": (lambda: osvc.cancel_order(o, u, f.get("motivo", ""), f.get("causal") if "causal" in f else None),
+                     "OV cancelada: reservas y ruta liberadas. No cuenta como pedido ni como venta."),
+        "validar_carga": (lambda: __import__("app.services.carga_ov", fromlist=["x"]).validar(u, o),
+                          "OV validada: se enviará a SAP."),
+        "cerrar": (lambda: osvc.close_order(o, u, f.get("causal", ""), f.get("comentario", "")),
+                   lambda r: "OV cerrada: " + ("el saldo se registró como venta perdida." if (o.cierre or {}).get("venta_perdida")
+                                               else "sin venta perdida.")),
         "reevaluar": (lambda: __import__("app.services.stock", fromlist=["x"]).evaluate_order(o, u, "REEVALUACION"), "OV reevaluada."),
         "parcial_si": (lambda: osvc.decide_partial(o, u, True, f.get("comentario", ""), f_date("fecha_saldo")),
                        lambda r: "Despacho parcial aprobado; ruta programada. El saldo se reprogramará al salir el despacho." if o.decision_parcial == "APROBADA"
@@ -414,7 +443,8 @@ def order_action(oid, accion):
         "decision_gg": (lambda: osvc.decide_gg(o, u, f.get("aprobar") == "1", f.get("comentario", ""), f.get("prioridad", "NORMAL")),
                         "Decisión registrada."),
         "cambiar_producto": (lambda: osvc.change_product(o, u, f.get("line_id"), f.get("nuevo_codigo", "").strip().upper(),
-                                                          f_float("cantidad", True), f.get("comentario", "")), "Producto cambiado; OV reevaluada."),
+                                                          f_float("cantidad", True), f.get("comentario", ""), f_float("precio")),
+                             "Producto cambiado; OV reevaluada."),
         "traslado": (lambda: tsvc.request_transfer(u, f.get("lot_id"), f.get("destino"), f_float("cantidad", True), o,
                                                    f.get("observacion", "")), "Traslado solicitado (lo aprueba el Jefe o el Coordinador de Logística)."),
         "reempaque": (lambda: rsvc.request(u, f.get("tipo"), f.get("lot_id"), f_float("cantidad", True), f.get("producto_destino") or None,
@@ -540,7 +570,7 @@ def prices():
         fm = request.form
         return act(lambda: psvc.add_item(g.user, fm.get("lista", "GENERAL"), fm.get("sku", ""), canal=fm.get("canal", ""),
                                          precio=f_float("precio"), precio_saco=f_float("precio_saco"), kg_saco=f_float("kg_saco"),
-                                         motivo=fm.get("motivo", "")),
+                                         motivo=fm.get("motivo", ""), cantidad_desde=f_float("cantidad_desde")),
                    "Precio mínimo agregado.", url_for("com.prices", lista=fm.get("lista", "GENERAL"), q=fm.get("sku", "")))
     if request.method == "POST" and request.form.get("accion") == "vigencia":
         fm = request.form
@@ -565,7 +595,26 @@ def prices():
     from ..models import Alert
     faltantes = list(db().execute(select(Alert).where(Alert.type_code == "PRECIO_FALTANTE", Alert.estado != "CERRADA")
                                   .order_by(Alert.id.desc()).limit(30)).scalars())
-    return render_template("prices.html", rows=paginate(rows), total=len(rows), lista=lista, q=q, canal=canal,
+    # V64: el costo de la empresa al lado del precio mínimo (solo para quien ve costos) y filtro por margen sobre el costo
+    costos = {}
+    if "costos.ver" in g.perms:
+        from ..services.core import param as _param
+        from ..services.costs import cost_for_price_item
+        for r in rows:
+            costos[r.id] = cost_for_price_item(r)
+        filtro = request.args.get("costo", "")
+        margen_min = float(_param("precio_margen_minimo_costo_pct", 10) or 0)
+        if filtro:
+            def _pasa(r):
+                c = costos.get(r.id)
+                ref = r.precio if r.lista == "GENERAL" else r.precio_kg
+                if filtro == "sin_costo":
+                    return c is None
+                if c is None or not ref:
+                    return False
+                return ref < c - 1e-9 if filtro == "bajo_costo" else ref < c * (1 + margen_min / 100) - 1e-9
+            rows = [r for r in rows if _pasa(r)]
+    return render_template("prices.html", rows=paginate(rows), total=len(rows), lista=lista, q=q, canal=canal, costos=costos,
                            canales=psvc.canales(), hist=hist, sku=request.args.get("sku", ""), metas=metas,
                            canal_granel=(param("lista_granel_canales", []) or ["-"])[0], faltantes=faltantes)
 
@@ -645,6 +694,9 @@ def customer_card(cid):
                        url_for("com.customer_card", cid=cid))
         if acc in ("condicion", "condicion_resolver", "pago", "pago_confirmar", "convertir"):
             return _customer_finance_action(c, acc)
+        if acc == "nota_deuda":  # V64: nota sobre la deuda para Finanzas y las demás áreas
+            return act(lambda: csv_.add_debt_note(g.user, c, request.form.get("texto", "")), "Nota registrada; se avisó a Finanzas.",
+                       url_for("com.customer_card", cid=cid) + "#cuenta")
         from ..services import penalties as pen
         if acc == "penalidad":
             fm = request.form
@@ -879,3 +931,69 @@ def order_status():
     vendedores = list(db().execute(select(User).where(User.role_code.in_(("EJECUTIVO_VENTAS", "COORD_VENTAS", "JEFE_VENTAS")))
                                    .order_by(User.nombre)).scalars())
     return render_template("estado_ov.html", d=d, f=a, filas=paginate(d["filas"], 30), vendedores=vendedores)
+
+
+# ------------------------------ V64: vendedores de SAP por usuario --------
+@bp.route("/vendedores-sap", methods=["GET", "POST"])
+@perm_required("usuarios.administrar", "comercial.configurar")
+def sap_sellers():
+    """Cada usuario comercial ve y gestiona sus OV y, además, las que en SAP salen a nombre de los vendedores de SAP que
+    se le asignan aquí (marcha blanca comercial: OV de una ejecutiva que SAP registra a nombre de otro vendedor)."""
+    if request.method == "POST":
+        u = db().get(User, int(request.form.get("user_id") or 0)) or abort(404)
+        nombres = request.form.getlist("vendedores") + [x for x in (request.form.get("otros") or "").splitlines()]
+        return act(lambda: osvc.asignar_vendedores_sap(g.user, u, nombres), f"Vendedores de SAP de {u.nombre} guardados.",
+                   url_for("com.sap_sellers"))
+    usuarios = list(db().execute(select(User).where(User.role_code.in_(("EJECUTIVO_VENTAS", "COORD_VENTAS", "JEFE_VENTAS",
+                                                                         "ASIST_VENTAS", "GERENTE_COMERCIAL")),
+                                                    User.activo.is_(True)).order_by(User.nombre)).scalars())
+    nombres_usuarios = {u.nombre for u in db().execute(select(User)).scalars()}
+    vistos = osvc.vendedores_sap_vistos()
+    from sqlalchemy import func
+    sin_usuario = {n: c for n, c in db().execute(select(SalesOrder.vendedor_nombre, func.count(SalesOrder.id))
+                                                 .where(SalesOrder.vendedor_id.is_(None))
+                                                 .group_by(SalesOrder.vendedor_nombre)) if (n or "").strip()}
+    return render_template("v64_vendedores_sap.html", usuarios=usuarios, vistos=vistos, sin_usuario=sin_usuario,
+                           nombres_usuarios=nombres_usuarios)
+
+
+# ------------------------------ V64: carga masiva de OV con plantilla ------
+@bp.route("/carga-plantilla", methods=["GET", "POST"])
+@perm_required("ov.crear")
+def bulk_upload():
+    """Plantilla homologada (Excel o CSV) para registrar varias OV de una vez; cada OV se valida antes de ir a SAP."""
+    import os
+    from flask import current_app, send_file
+    from io import BytesIO
+    from ..services import carga_ov
+    if request.args.get("descargar"):
+        return send_file(BytesIO(carga_ov.plantilla()), as_attachment=True, download_name="plantilla_ov.xlsx",
+                         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    if request.method == "POST":
+        def _do():
+            fs = request.files.get("archivo")
+            if not fs or not fs.filename.lower().endswith((".xlsx", ".xlsm", ".csv")):
+                raise BusinessError("Suba la plantilla en Excel (.xlsx) o CSV.")
+            up = current_app.config["UPLOAD_DIR"]
+            os.makedirs(up, exist_ok=True)
+            ext = ".csv" if fs.filename.lower().endswith(".csv") else ".xlsx"
+            path = os.path.join(up, f"carga_ov_{os.urandom(4).hex()}{ext}")
+            fs.save(path)
+            try:
+                return carga_ov.importar(g.user, path, fs.filename)
+            finally:
+                os.remove(path)
+
+        def _msg(r):
+            partes = []
+            if r["creadas"]:
+                partes.append(f"OV registradas: {', '.join(r['creadas'])}.")
+            if r["borradores"]:
+                partes.append(f"En borrador (falta adjuntar la OC u otro dato): {', '.join(r['borradores'])}.")
+            if r["errores"]:
+                partes.append("No se cargaron: " + " | ".join(r["errores"][:8]) + (" …" if len(r["errores"]) > 8 else ""))
+            partes.append("Revise y valide cada OV antes de que se envíe a SAP.")
+            return " ".join(partes)
+        return act(_do, _msg, url_for("com.bulk_upload"))
+    from ..services.carga_ov import COLUMNAS, por_validar
+    return render_template("v64_carga_ov.html", columnas=COLUMNAS, pendientes=por_validar())

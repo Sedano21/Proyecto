@@ -67,6 +67,9 @@ class User(Base):
     clave_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     intentos_fallidos: Mapped[int] = mapped_column(Integer, default=0)
     bloqueado_hasta: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # V64 (marcha blanca comercial, 20-nov-2026): nombres de vendedor de SAP cuyas OV también ve y gestiona este usuario
+    # (p. ej. una ejecutiva cuyas OV salen en SAP a nombre de otro vendedor)
+    vendedores_sap: Mapped[list] = mapped_column(JSON, default=list, server_default="[]")
     role = relationship("Role")
 
 
@@ -218,6 +221,12 @@ class Customer(Base):
     # V30: revisión de clientes sin movimiento (18 meses): EXCLUIDO / INCLUIDO, con motivo, usuario y fecha
     inactividad: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}")
     excluido: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    # V64: correos por uso (envío de guía y factura, facturación, logística), estiba y notas de deuda del ejecutivo
+    correo_envio: Mapped[str] = mapped_column(String(250), default="", server_default="")
+    correo_facturacion: Mapped[str] = mapped_column(String(250), default="", server_default="")
+    correo_logistica: Mapped[str] = mapped_column(String(250), default="", server_default="")
+    requiere_estiba: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    notas_deuda: Mapped[list] = mapped_column(JSON, default=list, server_default="[]")
     vendedor = relationship("User", foreign_keys=[vendedor_id])
     sites = relationship("CustomerSite", back_populates="customer", order_by="CustomerSite.id")
 
@@ -459,6 +468,12 @@ class SalesOrder(Base):
     oc_numero: Mapped[str] = mapped_column(String(60), default="")
     compromiso: Mapped[dict] = mapped_column(JSON, default=dict)
     cancelacion_motivo: Mapped[str] = mapped_column(Text, default="")
+    # V64: total de la orden de compra del cliente (para contrastar con el total de la OV), cierre o cancelación con
+    # causal {tipo CERRADA/CANCELADA, causal, comentario, user, ts, venta_perdida} y apoyo en la entrega
+    oc_total: Mapped[float | None] = mapped_column(Float, nullable=True)
+    cierre: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}")
+    requiere_auxiliar: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    requiere_estiba: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     lines = relationship("SalesOrderLine", back_populates="order", cascade="all, delete-orphan",
                          order_by="SalesOrderLine.id")
     parent = relationship("SalesOrder", remote_side="SalesOrder.id")
@@ -1308,6 +1323,8 @@ class PriceItem(Base):
     precio_kg: Mapped[float | None] = mapped_column(Float, nullable=True)  # GRANEL
     precio_saco: Mapped[float | None] = mapped_column(Float, nullable=True)
     kg_saco: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # V64: precio mínimo por tramo de cantidad (desde esta cantidad en la unidad del artículo; vacío = cualquier cantidad)
+    cantidad_desde: Mapped[float | None] = mapped_column(Float, nullable=True)
     vigente: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     desde: Mapped[datetime] = mapped_column(DateTime, default=now)
     hasta: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

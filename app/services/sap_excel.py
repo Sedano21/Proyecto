@@ -246,7 +246,8 @@ def import_detail(user, path, numero=None, nombre_archivo=""):
         raise BusinessError(f"La OV {numero} no tiene cantidades pendientes: ya está atendida en SAP.")
     c = _customer(h)
     from ..models import User
-    vend = db().execute(select(User).where(User.nombre == h.vendedor)).scalars().first()
+    from .orders import usuario_por_nombre_sap
+    vend = usuario_por_nombre_sap(h.vendedor)  # V64: también por los vendedores de SAP asignados a cada usuario
     entrega = {"site_id": None, "lugar_entrega": "Destino SAP" if h.destino else "", "direccion": h.destino,
                "distrito": "", "provincia": ""}
     o = create_order(user, numero, c.id, h.fecha_venc or h.fecha, list(lineas.values()), comentarios=h.comentario,

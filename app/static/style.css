@@ -889,3 +889,7 @@ a.kpi,.kpi-clic{padding-right:30px}
 .cuadro-linea table input,.cuadro-linea table select{min-width:0}.cuadro-linea tr.nueva td{background:var(--panel-2,#fafafa)}
 .cuadro-linea td.r{white-space:nowrap}
 .motivo-est summary{cursor:pointer;list-style:none}.motivo-est[open]{background:var(--bg2,rgba(0,0,0,.03));border-radius:8px;padding:6px}
+
+/* V64 (marcha blanca comercial): textos de los indicadores legibles (no se encima todo en una línea) */
+.kpis>.kpi small,.kpis>a.kpi small,.kpis-fila .kpi small{display:block;line-height:1.35;overflow-wrap:anywhere;white-space:normal}
+.kpis>.kpi span,.kpis>a.kpi span{display:block;line-height:1.3}

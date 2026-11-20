@@ -76,7 +76,8 @@ def delay(o, hoy=None):
 def seller_orders(user, incluir_cerradas_dias=7):
     """OV del ejecutivo comercial (abiertas y las cerradas en los últimos días) con área, avance y retraso."""
     desde = date.today() - timedelta(days=incluir_cerradas_dias)
-    q = _con_lineas(select(SalesOrder)).where(SalesOrder.vendedor_id == user.id).order_by(SalesOrder.fecha_compromiso)
+    from .orders import clausula_vendedor
+    q = _con_lineas(select(SalesOrder)).where(clausula_vendedor(user.id)).order_by(SalesOrder.fecha_compromiso)
     out = []
     for o in db().execute(q).scalars():
         if o.estado in CERRADAS and (o.fecha_compromiso or date.min) < desde:
@@ -110,7 +111,7 @@ def groups(desde=None, hasta=None, customer_id=None, vendedor_id=None, solo_abie
     if customer_id:
         q = q.where(SalesOrder.customer_id == int(customer_id))
     if vendedor_id:
-        q = q.where(SalesOrder.vendedor_id == int(vendedor_id))
+        q = q.where(__import__("app.services.orders", fromlist=["x"]).clausula_vendedor(vendedor_id))
     por = defaultdict(list)
     for o in db().execute(q).scalars():
         if solo_abiertas and o.estado in ("CANCELADA", "CERRADA"):
@@ -185,16 +186,23 @@ def service_month(ref=None, customer_id=None, vendedor_id=None, desde=None, hast
     # guías (las OV del módulo no siempre registran la salida: el despacho se hace en SAP)
     from .core import param
     fuente = fuente or param("otif_fuente", "SAP") or "SAP"
-    if fuente == "SAP" and not vendedor_id:
+    if fuente == "SAP":
         from .sap_v31 import tiene_historial
         if tiene_historial():
-            return service_month_sap(ini, fin, customer_id, canal)
+            d = service_month_sap(ini, fin, customer_id, canal)
+            if not vendedor_id:
+                return d
+            # V64 (OTIF único): el del ejecutivo es el de SAP de sus OV (las suyas y las de sus vendedores de SAP)
+            from .orders import clausula_vendedor
+            nums = {o.sap_docnum or o.numero for o in db().execute(select(SalesOrder).where(clausula_vendedor(vendedor_id))).scalars()}
+            filas = [f for f in d["filas"] if str(f["o"].numero) in nums]
+            return dict(_metricas(filas, ini, fin), fuente="SAP")
     q = _con_lineas(select(SalesOrder)).where(SalesOrder.fecha_compromiso >= ini, SalesOrder.fecha_compromiso <= fin,
                                  SalesOrder.estado.notin_(("CANCELADA", "BORRADOR", "REGULARIZACION_OBSERVADA")))
     if customer_id:
         q = q.where(SalesOrder.customer_id == int(customer_id))
     if vendedor_id:
-        q = q.where(SalesOrder.vendedor_id == int(vendedor_id))
+        q = q.where(__import__("app.services.orders", fromlist=["x"]).clausula_vendedor(vendedor_id))
     universo = list(db().execute(q).scalars())
     if canal:  # V30: filtro por canal (el de la OV o, si no tiene, el del cliente)
         from .margin import channel
@@ -316,13 +324,24 @@ def service_month_sap(ini, fin, customer_id=None, canal=""):
     return dict(_metricas(filas, ini, fin), fuente="SAP")
 
 
-def nivel_comercial_sap(desde, hasta, canal=""):
-    """V42: el nivel de servicio de SAP con el formato del tablero comercial; None si no hay historial de SAP."""
+def nivel_sap_de(d_sap, numeros, ini, fin):
+    """V64 (OTIF único): el nivel de servicio de SAP de un grupo de OV (por su número de SAP), a partir de un cálculo
+    ya hecho, con el formato del tablero comercial."""
+    nums = {str(n) for n in numeros if n}
+    filas = [f for f in d_sap["filas"] if str(f["o"].numero) in nums]
+    return nivel_comercial_sap(ini, fin, d=dict(_metricas(filas, ini, fin), fuente="SAP"))
+
+
+def nivel_comercial_sap(desde, hasta, canal="", d=None):
+    """V42: el nivel de servicio de SAP con el formato del tablero comercial; None si no hay historial de SAP.
+    V64: «d» es un resultado ya calculado (p. ej. solo las OV de un ejecutivo o de un canal) para que todas las áreas
+    usen el mismo OTIF."""
     from .core import param
     from .sap_v31 import tiene_historial
-    if (param("otif_fuente", "SAP") or "SAP") != "SAP" or not tiene_historial():
-        return None
-    d = service_month_sap(desde, hasta, canal=canal)
+    if d is None:
+        if (param("otif_fuente", "SAP") or "SAP") != "SAP" or not tiene_historial():
+            return None
+        d = service_month_sap(desde, hasta, canal=canal)
     filas = d["filas"]
     hoy = date.today()
     fallas = [{"numero": f["o"].numero, "id": None, "cliente": f["o"].customer.nombre, "fecha": f["o"].fecha_compromiso,

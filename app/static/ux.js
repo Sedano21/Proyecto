@@ -331,7 +331,7 @@
       $all('input,select,textarea', n).forEach(function (el) {
         if (el.type === 'checkbox' || el.type === 'radio') el.checked = false;
         else if (el.tagName === 'SELECT') el.selectedIndex = 0; else if (el.type !== 'hidden' || el.hasAttribute('data-clear')) el.value = '';
-        el.removeAttribute('required'); el.classList.remove('falta');
+        el.removeAttribute('required'); el.classList.remove('falta'); delete el.dataset.touched;
       });
       ult.parentNode.insertBefore(n, ult.nextSibling);
       var foco = n.querySelector('input:not([type=hidden]),select'); if (foco) foco.focus();

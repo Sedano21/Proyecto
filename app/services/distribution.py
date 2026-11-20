@@ -778,7 +778,8 @@ def _return_lines(order, user, lineas, motivo):
         order.estado = "ENTREGA_PARCIAL"
     alerts.emit("STOCK_PENDIENTE_REVISION", f"Rechazo parcial de OV {order.numero}: {motivo}",
                 "; ".join(f"{x['producto']}: devuelto {float(x['devuelto']):g} ({x['motivo']})" for x in lineas),
-                "SalesOrder", order.id, creado_por=user)
+                "SalesOrder", order.id, creado_por=user,
+                extra_users=[order.vendedor_id] if order.vendedor_id else None)  # V64: el ejecutivo se entera del rechazo
 
 
 def _return_goods(order, user, motivo):
@@ -795,7 +796,8 @@ def _return_goods(order, user, motivo):
         add_or_increase_lot(l.product_code, ref.warehouse_code, ref.lote, devuelto, "PENDIENTE_REVISION", ref.fecha_venc,
                             ref.fecha_fab, origen=f"RETORNO-{order.numero}")
     alerts.emit("STOCK_PENDIENTE_REVISION", f"Retorno de OV {order.numero}: {motivo}",
-                "Producto devuelto ingresó como Pendiente de revisión.", "SalesOrder", order.id, creado_por=user)
+                "Producto devuelto ingresó como Pendiente de revisión.", "SalesOrder", order.id, creado_por=user,
+                extra_users=[order.vendedor_id] if order.vendedor_id else None)
 
 
 # ------------------- Seguridad: horas del despacho (obs. demo v0.7) -------------------

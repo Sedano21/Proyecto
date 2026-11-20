@@ -1,0 +1,14 @@
+{% extends "base.html" %}{% from "_m.html" import csrf, ic, b %}
+{% block content %}<h1>Carga de OV con plantilla</h1>
+<p class="muted small">Para registrar varias OV de una vez con la plantilla homologada del módulo (a mano, con una macro o con el CSV que arma la IA). Las filas con el mismo cliente (RUC), N° de OC y fecha comprometida forman una OV. Cada OV pasa por las mismas validaciones del formulario: precio mínimo del canal y del tramo de cantidad, IGV por línea (afecto o exonerado) y total de la OC.</p>
+<div class="note warn small"><b>Módulo en prueba:</b> las OV cargadas <b>no se envían a SAP</b> hasta que alguien de Comercial las revise y pulse «Validar y enviar a SAP» en cada OV. Sin el archivo de la OC quedan en borrador hasta adjuntarlo. No cargue pedidos de práctica: al validarlos se crean en SAP como OV reales.</div>
+<div class="grid g2">
+<div class="card"><h3>1. Descargue la plantilla</h3><p><a class="btn" href="{{ url_for('com.bulk_upload', descargar=1) }}">{{ ic('download') }}Plantilla de OV (Excel)</a></p>
+<p class="small muted">Columnas: {{ columnas|join(' · ') }}. También se acepta CSV con las mismas columnas.</p></div>
+<div class="card"><h3>2. Súbala</h3><form method="post" enctype="multipart/form-data">{{ csrf() }}<input type="file" name="archivo" accept=".xlsx,.xlsm,.csv" required>
+<p><button>{{ ic('upload') }}Cargar y registrar</button></p></form></div></div>
+<div class="card"><h3>OV cargadas por validar ({{ pendientes|length }})</h3>
+{% if pendientes %}<div class="tw"><table class="small apilable"><tr><th>OV</th><th>Cliente</th><th>OC</th><th>Emisión</th><th>Comprometida</th><th>Estado</th><th>Carga</th></tr>
+{% for o in pendientes %}<tr><td data-label="OV"><a href="{{ url_for('com.order_detail', oid=o.id) }}"><b>{{ o.numero }}</b></a></td><td data-label="Cliente">{{ o.customer.nombre }}</td><td data-label="OC">{{ o.oc_numero or '—' }}</td><td data-label="Emisión">{{ o.fecha_emision|d }}</td><td data-label="Comprometida">{{ o.fecha_compromiso|d }}</td><td data-label="Estado">{{ b(o.estado) }}</td><td data-label="Carga" class="muted">{{ (o.sap_envio or {}).get('carga', '') }}</td></tr>{% endfor %}</table></div>
+{% else %}<p class="muted small">No hay OV cargadas pendientes de validación.</p>{% endif %}</div>
+{% endblock %}

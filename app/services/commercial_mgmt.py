@@ -34,15 +34,13 @@ def _pct(a, b):
 
 
 def _kg(line):
-    p = line.product
-    if p is None:
-        return 0.0
-    return line.cantidad * (p.peso_kg or (1 if (p.um or "").upper().startswith("K") else 0))
+    from .orders import kg_unidad  # V64: kilos de verdad (peso del maestro o de la presentación)
+    return (line.cantidad or 0) * kg_unidad(line.product)
 
 
 def _kg_q(line, q):
-    p = line.product
-    return q * ((p.peso_kg or (1 if (p.um or "").upper().startswith("K") else 0)) if p else 0)
+    from .orders import kg_unidad
+    return (q or 0) * kg_unidad(line.product)
 
 
 def options():
@@ -66,7 +64,9 @@ def _filtrar(ovs, f):
             ovs = [o for o in ovs if order_channel(o) in canales]
     vs = {str(v) for v in (f.get("vendedores") or [])}
     if vs:
-        ovs = [o for o in ovs if str(o.vendedor_id or "") in vs]
+        from .orders import alias_vendedor  # V64: también las OV que en SAP salen a nombre de sus vendedores de SAP
+        alias = {a for v in vs if v.isdigit() for a in alias_vendedor(int(v))}
+        ovs = [o for o in ovs if str(o.vendedor_id or "") in vs or (o.vendedor_nombre or "") in alias]
     cs = {str(c) for c in (f.get("clientes") or [])}
     if cs:
         ovs = [o for o in ovs if str(o.customer_id) in cs]
@@ -204,10 +204,19 @@ def gestion(desde=None, hasta=None, filtros=None, ver_costos=False, user=None):
     hasta_nivel = max(hasta, fin_de_mes(hasta)) if hasta.month == hoy.month and hasta.year == hoy.year else hasta
     base_nivel = [o for o in _filtrar(base_mes(desde, hasta_nivel), f) if _lineas(o, tipo)]
     nivel = _nivel(base_nivel, tipo)
-    if not any(f.get(x) for x in ("clientes", "canales", "vendedores")):
-        # V42: sin filtros, el nivel general se mide con las OV de SAP frente a sus guías (si hay historial de SAP)
-        from .seguimiento import nivel_comercial_sap
-        nivel = nivel_comercial_sap(desde, hasta_nivel) or nivel
+    # V42/V64 (OTIF único): con historial de SAP, el nivel de servicio se mide con las OV de SAP frente a sus guías, el
+    # general y el de cada grupo (ejecutivo, canal, cliente) o filtro, igual que en el resto de áreas
+    from .seguimiento import nivel_comercial_sap, nivel_sap_de, service_month_sap
+    from .sap_v31 import tiene_historial
+    d_sap = None
+    if not tipo and (param("otif_fuente", "SAP") or "SAP") == "SAP" and tiene_historial():
+        d_sap = service_month_sap(desde, hasta_nivel)
+
+    def _nums(lst):
+        return {o.sap_docnum or o.numero for o in lst}
+    if d_sap is not None:
+        nivel = (nivel_comercial_sap(desde, hasta_nivel, d=d_sap) if not any(f.get(x) for x in ("clientes", "canales", "vendedores"))
+                 else nivel_sap_de(d_sap, _nums(base_nivel), desde, hasta_nivel))
     # por vendedor, canal y cliente
     grupos = {"vendedor": defaultdict(list), "canal": defaultdict(list), "cliente": defaultdict(list)}
     for o in ovs:
@@ -227,7 +236,8 @@ def gestion(desde=None, hasta=None, filtros=None, ver_costos=False, user=None):
         so = sum(monto(o) for o in lst)
         base_g = [o for o in base_nivel if claves[grupo](o) == nombre] if grupo else lst
         r = {"ovs": len(lst), "soles": round(so, 2), "kg": round(sum(kg(o) for o in lst), 1),
-             "ticket": round(so / len(lst), 2) if lst else 0, "nivel": _nivel(base_g, tipo),
+             "ticket": round(so / len(lst), 2) if lst else 0,
+             "nivel": nivel_sap_de(d_sap, _nums(base_g), desde, hasta_nivel) if d_sap is not None else _nivel(base_g, tipo),
              "modificadas": sum(1 for o in lst if o.numero in mods)}
         r["pct_modificadas"] = _pct(r["modificadas"], len(lst))
         return r
@@ -238,7 +248,14 @@ def gestion(desde=None, hasta=None, filtros=None, ver_costos=False, user=None):
     for n, r in por["vendedor"]:
         op = [x for x in opps if (x.vendedor.nombre if x.vendedor else "") == n]
         p = pen.get(n, {})
+        # V64: si el ejecutivo vende en más de un canal, sus OV ingresadas por canal
+        por_canal = defaultdict(list)
+        for o in grupos["vendedor"][n]:
+            por_canal[order_channel(o) or "(sin canal)"].append(o)
+        canales_p = sorted(({"canal": c, "ovs": len(v), "soles": round(sum(monto(o) for o in v), 2),
+                             "kg": round(sum(kg(o) for o in v), 2)} for c, v in por_canal.items()), key=lambda x: -x["soles"])
         personas.append(dict(r, nombre=n, meta=meta_v.get(n), oportunidades=len(op),
+                             canales=canales_p if len(canales_p) > 1 else [],
                              ganadas=sum(1 for x in op if x.estado == "GANADA"),
                              perdidas=sum(1 for x in op if x.estado == "PERDIDA"),
                              penalidad_calc=p.get("calculada", 0), penalidad_pag=p.get("pagada", 0)))
@@ -279,6 +296,7 @@ def gestion(desde=None, hasta=None, filtros=None, ver_costos=False, user=None):
         margen = margin(desde, hasta, "CANAL", "PEDIDO")
     mercado = _mercado(desde, hasta, ver_costos)
     reco = _recomendaciones(nivel, metas, personas, pendientes, sin_mov, con_stock, pagos, ingresadas)
+    ingresadas["por_canal"] = [{"canal": n, "ovs": r["ovs"], "soles": r["soles"], "kg": r["kg"]} for n, r in por["canal"]]
     return {"desde": desde, "hasta": hasta, "filtros": f, "ingresadas": ingresadas, "atendidas": atendidas,
             "pendientes": pendientes, "facturacion": facturacion, "nivel": nivel, "formulas": FORMULAS, "por": por,
             "metas": metas, "personas": personas, "embudo": embudo, "menos_vendidos": menos,

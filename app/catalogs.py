@@ -3354,3 +3354,48 @@ PARAMS += [
     ("sap_stock_sin_lote_cache", {}, "dict", "Integración SAP",
      "Última lectura del stock de artículos sin lote (la escribe el sistema).", "DEFINIDO", V63),
 ]
+# ------------------------------------------------------------------ V64 (20-nov-2026)
+V64 = "Marcha blanca del área comercial (20-nov-2026)"
+PARAMS += [
+    ("igv_tasa", 0.18, "float", "Comercial", "Tasa del IGV para el subtotal, IGV y total de la OV.", "DEFINIDO", V64),
+    ("ov_tax_code_afecto", "IGV", "str", "Comercial",
+     "Código de impuesto de SAP de una línea afecta al IGV (el que trae la plantilla de OV de SAP).", "DEFINIDO", V64),
+    ("ov_tax_code_exonerado", "EXO", "str", "Comercial",
+     "Código de impuesto de SAP de una línea exonerada o inafecta al IGV.", "DEFINIDO", V64),
+    ("ov_tax_code_por_defecto", "IGV", "str", "Comercial",
+     "Impuesto que se propone en una línea si el artículo no tiene uno usado antes (se puede cambiar en cada línea).",
+     "PROPUESTO", V64),
+    ("ov_tolerancia_total_oc", 1.0, "float", "Comercial",
+     "Diferencia máxima (S/) entre el total de la OV y el de la orden de compra del cliente para considerar que cuadran.",
+     "PROPUESTO", V64),
+    ("precio_margen_minimo_costo_pct", 10, "float", "Comercial",
+     "Filtro «margen sobre el costo bajo el mínimo» de la lista de precios: margen mínimo esperado sobre el costo (%).",
+     "PROPUESTO", V64),
+    ("ov_causales_cancelacion",
+     ["El cliente ya no quiere el pedido", "El cliente no concretó la compra (no pagó)", "Solo pidió precio (prospección)",
+      "Pedido registrado por error o duplicado", "Otra causa"], "list", "Comercial",
+     "Causales para CANCELAR una OV (el cliente no la quiso): obligatoria; no cuenta como pedido ni como venta.",
+     "PROPUESTO", V64),
+    ("ov_causales_cierre",
+     ["Despacho parcial: el saldo no se atenderá", "Sin stock: no se pudo atender", "El cliente no recibió el saldo",
+      "Saldo reprogramado en otra OV", "Otra causa"], "list", "Comercial",
+     "Causales para CERRAR una OV (no se despachará o no se despachará su saldo): obligatoria; cuenta como pedido.",
+     "PROPUESTO", V64),
+    ("homologacion_sku_cliente", {}, "dict", "Comercial",
+     "Carga de OV con plantilla: códigos de producto de cada cliente → código del módulo ({RUC: {código del cliente: código}}). "
+     "Lo entrega Comercial.", "PENDIENTE", V64),
+    ("ov_causales_cierre_reprogramacion", ["Saldo reprogramado en otra OV"], "list", "Comercial",
+     "Causales de cierre en las que el saldo NO es venta perdida porque se reprograma (se pide de nuevo).", "PROPUESTO", V64),
+]
+ALERT_TYPES += [
+    ("OV_CERRADA", "OV cerrada (con su causal)", "Comercial", "Cambios de OV", "MEDIA",
+     ["COORD_VENTAS", "JEFE_VENTAS"] + _ALM, "DEFINIDO", V64,
+     "La OV se cerró: el saldo no despachado es venta perdida salvo que se reprogramó. Llega al ejecutivo comercial.", True),
+    ("OV_STOCK_DISPONIBLE", "Stock disponible: la OV se puede atender antes", "Comercial", "Faltantes y cobertura", "MEDIA",
+     ["COORD_VENTAS"], "DEFINIDO", V64,
+     "Operaciones ya tiene todo el stock de una OV que se despacha más adelante: el ejecutivo puede ofrecer la entrega "
+     "o el recojo antes, sin esperar la fecha original.", False),
+    ("CLIENTE_NOTA_DEUDA", "Nota del ejecutivo sobre la deuda del cliente", "Finanzas", "Cobranza", "MEDIA",
+     ["COORD_FINANZAS", "JEFE_ADMIN_FINANZAS", "GERENTE_ADMIN_FINANZAS", "COORD_VENTAS", "JEFE_VENTAS"], "PROPUESTO", V64,
+     "El ejecutivo dejó una nota sobre la deuda del cliente (p. ej. ya pagó y sigue figurando la deuda).", True),
+]

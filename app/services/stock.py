@@ -388,7 +388,17 @@ def evaluate_order(order, user=None, motivo="CREACION", hoy=None):
     order.cobertura_unidades = round(100.0 * total_res / total_req, 2) if total_req else 100.0
     order.cobertura_lineas = round(100.0 * lineas_cubiertas / lineas, 2) if lineas else 100.0
     hay_faltante = any(r["faltante"] > 1e-9 for r in resumen)
+    estado_previo = order.estado_stock
     order.estado_stock = "COMPLETA" if not hay_faltante else ("SIN_STOCK" if total_res <= 1e-9 else "INCOMPLETA")
+    if (order.estado_stock == "COMPLETA" and estado_previo in ("INCOMPLETA", "SIN_STOCK") and order.fecha_compromiso
+            and order.fecha_compromiso > date.today()):
+        # V64 (marcha blanca comercial): Operaciones ya tiene todo el stock antes de la fecha: el ejecutivo puede
+        # ofrecer la entrega o el recojo antes, sin esperar la fecha original
+        alerts.emit("OV_STOCK_DISPONIBLE", f"OV {order.numero}: ya hay stock para atenderla",
+                    f"Cliente {order.customer.nombre}. La OV tenía faltante y ahora está completa; la fecha comprometida es "
+                    f"{order.fecha_compromiso:%d/%m/%Y}. Si el cliente lo desea, se puede adelantar la entrega o el recojo.",
+                    "SalesOrder", order.id, extra_users=[order.vendedor_id] if order.vendedor_id else None,
+                    dedup_key=f"OV_STOCK_DISP:{order.id}", creado_por=user)
     order.evaluado_ts = now()
     if order.estado == "REGISTRADA":
         order.estado = "EVALUADA"

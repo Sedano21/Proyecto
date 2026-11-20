@@ -149,7 +149,7 @@ def funnel(desde, hasta, vendedor_id=None):
     qo = select(SalesOrder).where(SalesOrder.fecha_emision >= desde, SalesOrder.fecha_emision <= hasta,
                                   SalesOrder.estado != "CANCELADA")
     if vendedor_id:
-        qo = qo.where(SalesOrder.vendedor_id == int(vendedor_id))
+        qo = qo.where(__import__("app.services.orders", fromlist=["x"]).clausula_vendedor(vendedor_id))
     ovs = list(db().execute(qo).scalars())
     entregadas = [o for o in ovs if o.estado in ("ENTREGADA", "ENTREGA_PARCIAL")]
     filas = []

@@ -57,11 +57,11 @@ def replace_list(lista, items, user, origen):
     _require(user)
     s = db()
     ts = now()
-    anteriores = {(i.product_code, i.canal): i for i in s.execute(select(PriceItem).where(
+    anteriores = {(i.product_code, i.canal, i.cantidad_desde or 0): i for i in s.execute(select(PriceItem).where(
         PriceItem.lista == lista, PriceItem.vigente.is_(True))).scalars()}
     cambios = nuevos = 0
     for it in items:
-        old = anteriores.pop((it["product_code"], it.get("canal", "")), None)
+        old = anteriores.pop((it["product_code"], it.get("canal", ""), it.get("cantidad_desde") or 0), None)
         if old is not None:
             iguales = all(abs((getattr(old, k) or 0) - (it.get(k) or 0)) < 1e-9 for k in ("precio", "precio_kg", "precio_saco", "kg_saco"))
             if iguales:
@@ -74,7 +74,7 @@ def replace_list(lista, items, user, origen):
         s.add(PriceItem(lista=lista, product_code=it["product_code"], descripcion=it.get("descripcion", ""),
                         canal=it.get("canal", ""), precio=it.get("precio"), precio_kg=it.get("precio_kg"),
                         precio_saco=it.get("precio_saco"), kg_saco=it.get("kg_saco"), desde=ts, origen=origen,
-                        user_id=user.id))
+                        cantidad_desde=it.get("cantidad_desde") or None, user_id=user.id))
     retirados = 0
     for old in anteriores.values():
         old.vigente, old.hasta = False, ts
@@ -100,7 +100,7 @@ def edit_item(item, user, motivo="", **valores):
     item.vigente, item.hasta = False, ts
     nuevo = PriceItem(lista=item.lista, product_code=item.product_code, descripcion=item.descripcion, canal=item.canal,
                       precio=item.precio, precio_kg=item.precio_kg, precio_saco=item.precio_saco, kg_saco=item.kg_saco,
-                      desde=ts, origen="Edición manual", motivo=motivo.strip(), user_id=user.id)
+                      cantidad_desde=item.cantidad_desde, desde=ts, origen="Edición manual", motivo=motivo.strip(), user_id=user.id)
     for k, v in campos.items():
         setattr(nuevo, k, v)
     if item.lista == "GRANEL" and "precio_saco" in campos and "precio_kg" not in campos and nuevo.kg_saco:
@@ -130,9 +130,29 @@ def channel_of(customer):
     return (param("canal_precio_por_grupo", {}) or {}).get((customer.grupo or "").strip().upper(), "")
 
 
-def minimum_for(product, customer, canal=None):
+def _tramo(items, cantidad):
+    """V64: de los precios vigentes de un artículo, el del tramo de cantidad que corresponde (el mayor «desde» que no
+    supera la cantidad; sin cantidad, el tramo base). Así un mismo artículo puede tener un mínimo para 5 kg y otro para
+    500 kg."""
+    items = [i for i in items if i is not None]
+    if not items:
+        return None
+    q = float(cantidad or 0)
+    aplican = [i for i in items if (i.cantidad_desde or 0) <= q + 1e-9] or [min(items, key=lambda i: i.cantidad_desde or 0)]
+    return max(aplican, key=lambda i: i.cantidad_desde or 0)
+
+
+def tramos(product_code, canal="", lista="GENERAL"):
+    return sorted(db().execute(select(PriceItem).where(PriceItem.lista == lista, PriceItem.vigente.is_(True),
+                                                       PriceItem.product_code == product_code,
+                                                       PriceItem.canal == canal)).scalars(),
+                  key=lambda i: i.cantidad_desde or 0)
+
+
+def minimum_for(product, customer, canal=None, cantidad=None):
     """Mínimo aplicable: dict(tipo='GENERAL', precio, canal) o dict(tipo='GRANEL', precio_kg, precio_saco, kg_saco),
-    o (None, motivo) si no hay. 'canal' es el canal o grupo elegido en la OV (si no, el del cliente)."""
+    o (None, motivo) si no hay. 'canal' es el canal o grupo elegido en la OV (si no, el del cliente). V64: con
+    «cantidad» se usa el tramo de precio que corresponde a esa cantidad."""
     if product is None or customer is None:
         return None, "producto o cliente no identificado"
     canal = canal or channel_of(customer)
@@ -140,26 +160,24 @@ def minimum_for(product, customer, canal=None):
         return None, f"el cliente {customer.nombre} (grupo '{customer.grupo or '-'}') no tiene canal de precios asignado"
     s = db()
     if canal in (param("lista_granel_canales", []) or []):
-        g = s.execute(select(PriceItem).where(PriceItem.lista == "GRANEL", PriceItem.vigente.is_(True),
-                                              PriceItem.product_code == product.code)).scalars().first()
+        g = _tramo(tramos(product.code, "", "GRANEL"), cantidad)
         if g is None or not (g.precio_kg or g.precio_saco):
             return None, f"{product.code} no figura en la lista mayorista granel"
         return {"tipo": "GRANEL", "canal": canal, "precio_kg": g.precio_kg, "precio_saco": g.precio_saco,
                 "kg_saco": g.kg_saco}, ""
-    it = s.execute(select(PriceItem).where(PriceItem.lista == "GENERAL", PriceItem.vigente.is_(True),
-                                           PriceItem.product_code == product.code, PriceItem.canal == canal)).scalars().first()
+    it = _tramo(tramos(product.code, canal), cantidad)
     if it is None or not it.precio:
         return None, f"{product.code} no tiene precio mínimo para el canal {canal}"
-    return {"tipo": "GENERAL", "canal": canal, "precio": it.precio}, ""
+    return {"tipo": "GENERAL", "canal": canal, "precio": it.precio, "desde": it.cantidad_desde}, ""
 
 
-def price_for(product, customer, canal=None):
+def price_for(product, customer, canal=None, cantidad=None):
     """(mínimo de referencia en la unidad de venta, descripción) o (None, motivo)."""
-    m, motivo = minimum_for(product, customer, canal)
+    m, motivo = minimum_for(product, customer, canal, cantidad)
     if m is None:
         return None, "Sin precio mínimo: " + motivo
     if m["tipo"] == "GENERAL":
-        return m["precio"], f"Lista de precios, canal {m['canal']}"
+        return m["precio"], f"Lista de precios, canal {m['canal']}" + (f" (desde {m['desde']:g})" if m.get("desde") else "")
     if _es_kg(product):
         return m["precio_kg"], "Lista mayorista granel (por kg)"
     return m["precio_saco"], "Lista mayorista granel (por saco)"
@@ -209,7 +227,7 @@ def check_order_prices(order, user=None):
     for l in order.lines:
         if not l.activa:
             continue
-        m0, _ = minimum_for(l.product, order.customer, order.canal_precio or None)
+        m0, _ = minimum_for(l.product, order.customer, order.canal_precio or None, l.cantidad)
         costo = cost_for_line(l, (m0 or {}).get("kg_saco") if m0 else None)
         if costo is not None and (l.precio_unitario or 0) < costo - 1e-9 and l.precio_unitario:
             # R4 (13-oct): ninguna venta por debajo del costo. El texto visible en la OV no muestra el costo.
@@ -218,13 +236,13 @@ def check_order_prices(order, user=None):
                               f"{' por ' + l.um_venta.lower() if l.um_venta else ''}")
         m, motivo = m0, _
         if m is None:
-            m, motivo = minimum_for(l.product, order.customer, order.canal_precio or None)
+            m, motivo = minimum_for(l.product, order.customer, order.canal_precio or None, l.cantidad)
         if m is None:
             l.precio_minimo = None
             l.precio_origen = ("Sin precio mínimo: " + motivo)[:160]
             faltantes.append(motivo)
             continue
-        ref, _ = price_for(l.product, order.customer, order.canal_precio or None)
+        ref, _ = price_for(l.product, order.customer, order.canal_precio or None, l.cantidad)
         l.precio_minimo = ref
         estado, detalle = _compare(l, l.product, m, margen)
         sin = "" if l.precio_unitario else " (OV sin precio de venta)"
@@ -327,8 +345,9 @@ def reject_price(order, user, comentario):
     audit(user, "OV_PRECIO_DESAPROBADO", "SalesOrder", order.numero, {"comentario": comentario.strip()})
 
 def add_item(user, lista, product_code, descripcion="", canal="", precio=None, precio_kg=None, precio_saco=None,
-             kg_saco=None, motivo=""):
-    """El Jefe Comercial completa un precio faltante (alerta PRECIO_FALTANTE)."""
+             kg_saco=None, motivo="", cantidad_desde=None):
+    """El Jefe Comercial completa un precio faltante (alerta PRECIO_FALTANTE). V64: también agrega un tramo de precio
+    por cantidad («cantidad_desde»: desde qué cantidad rige, en la unidad del artículo)."""
     _require(user)
     code = (product_code or "").strip().upper()
     if not code:
@@ -344,14 +363,16 @@ def add_item(user, lista, product_code, descripcion="", canal="", precio=None, p
         precio_kg = precio_kg or precio_saco / kg_saco
         canal = ""
     s = db()
-    if s.execute(select(PriceItem).where(PriceItem.lista == lista, PriceItem.product_code == code, PriceItem.canal == canal,
-                                         PriceItem.vigente.is_(True))).scalars().first():
+    if cantidad_desde is not None and cantidad_desde < 0:
+        raise BusinessError("La cantidad desde la que rige el precio no puede ser negativa.")
+    cantidad_desde = cantidad_desde or None
+    if any((i.cantidad_desde or 0) == (cantidad_desde or 0) for i in tramos(code, canal, lista)):
         raise BusinessError("Ese precio ya existe: modifíquelo en la lista.")
     from ..models import Product
     p = s.get(Product, code)
     it = PriceItem(lista=lista, product_code=code, descripcion=descripcion or (p.descripcion if p else ""), canal=canal,
                    precio=precio, precio_kg=precio_kg, precio_saco=precio_saco, kg_saco=kg_saco, origen="Alta manual",
-                   motivo=motivo.strip(), user_id=user.id)
+                   cantidad_desde=cantidad_desde, motivo=motivo.strip(), user_id=user.id)
     s.add(it)
     s.flush()
     audit(user, "PRECIO_AGREGADO", "PriceItem", f"{lista}:{code}:{canal}", {"precio": precio, "precio_saco": precio_saco})
@@ -391,18 +412,22 @@ def check_validity(today):
     return n
 
 
-def check_line_price(product, customer, precio, um_venta="", canal=None):
+def check_line_price(product, customer, precio, um_venta="", canal=None, cantidad=None):
     """V7: verificación en vivo para quien registra la OV (antes de guardar). No crea alertas: solo informa para que
-    confirme o modifique. Devuelve dict(estado SOBRE/LIMITE/DEBAJO/SIN_MINIMO, minimo, detalle)."""
+    confirme o modifique. Devuelve dict(estado SOBRE/LIMITE/DEBAJO/SIN_MINIMO, minimo, detalle). V64: la cantidad
+    elige el tramo de precio."""
     from types import SimpleNamespace
-    m, motivo = minimum_for(product, customer, canal)
+    if cantidad and (um_venta or "").upper() == "SACO":
+        from .orders import kg_por_saco
+        cantidad = float(cantidad) * (kg_por_saco(product.code) or 1)
+    m, motivo = minimum_for(product, customer, canal, cantidad)
     if m is None:
         return {"estado": "SIN_MINIMO", "minimo": None, "detalle": "Sin precio base: " + motivo}
     if m["tipo"] == "GRANEL" and (um_venta or "").upper() == "SACO":
         ref = m["precio_saco"]
         prod = SimpleNamespace(um="SACO")
     else:
-        ref, _ = price_for(product, customer, canal)
+        ref, _ = price_for(product, customer, canal, cantidad)
         prod = product
     estado, detalle = _compare(SimpleNamespace(precio_unitario=float(precio or 0)), prod, m,
                                float(param("margen_alerta_precio_pct", 0) or 0))

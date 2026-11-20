@@ -54,7 +54,8 @@ def create_for(order, user, tipo="TOTAL", incident=None, stop=None, lineas=None)
     alerts.emit("DEVOLUCION_POR_RECIBIR", f"Devolución {tipo.lower()} de OV {order.numero} por recibir",
                 f"{order.customer.nombre}: " + "; ".join(f"{e['producto']} {e['cantidad']:g}" for e in esperado)
                 + f". Contrastar con la guía {r.guia_numero or '-'} cuando llegue el vehículo.",
-                "ReturnReceipt", r.id, dedup_key=f"DEVREC:{r.id}", creado_por=user)
+                "ReturnReceipt", r.id, dedup_key=f"DEVREC:{r.id}", creado_por=user,
+                extra_users=[order.vendedor_id] if order.vendedor_id else None)  # V64: el ejecutivo se entera
     return r
 
 
@@ -107,7 +108,8 @@ def receive(user, r, datos, evidencias=None, observacion=""):
     if difs:
         alerts.emit("DEVOLUCION_OBSERVADA", f"Devolución de OV {r.order.numero} con observaciones",
                     "; ".join(difs) + (f". {observacion}" if observacion else ""), "ReturnReceipt", r.id,
-                    dedup_key=f"DEVOBS:{r.id}", creado_por=user)
+                    dedup_key=f"DEVOBS:{r.id}", creado_por=user,
+                    extra_users=[r.order.vendedor_id] if r.order and r.order.vendedor_id else None)
     audit(user, "DEVOLUCION_RECIBIDA", "ReturnReceipt", r.id, {"estado": r.estado, "diferencias": difs,
                                                                 "evidencias": len(evidencias)})
     return difs

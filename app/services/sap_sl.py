@@ -864,8 +864,13 @@ def pending_action(o):
     env = o.sap_envio or {}
     if env.get("conflicto"):  # V15: cambió en SAP; no se pisa hasta que alguien decida
         return None
+    if env.get("por_validar") and not o.sap_docentry:  # V64: OV de la carga masiva: Comercial la revisa antes de SAP
+        return None
     if o.estado == "CANCELADA":
         return "CANCELAR" if o.sap_docentry and not env.get("cancelada") else None
+    if o.estado == "CERRADA":  # V64: cierre registrado en el módulo (no el que viene de SAP): se cierra también en SAP
+        return "CERRAR" if (o.sap_docentry and (o.cierre or {}).get("origen") == "MODULO"
+                            and not env.get("cerrada")) else None
     if not o.sap_docentry:
         return "CREAR"
     if o.estado in OV_SE_ACTUALIZAN and env.get("hash") != _hash(order_payload(o)):
@@ -934,7 +939,7 @@ def push_order(o, user=None, sl=None, forzar=False):
     env.update({"ts": datetime.now().isoformat(timespec="seconds"), "accion": accion})
     own = sl is None
     try:
-        if accion != "CANCELAR":
+        if accion not in ("CANCELAR", "CERRAR"):
             if not body["CardCode"]:
                 raise BusinessError(f"El cliente {o.customer.nombre} no tiene código de SAP: créelo en SAP o registre su código.")
             if not body["DocumentLines"]:
@@ -967,6 +972,9 @@ def push_order(o, user=None, sl=None, forzar=False):
                     return None
                 if accion == "ACTUALIZAR":
                     sl._req("PATCH", f"Orders({o.sap_docentry})", body, headers={"B1S-ReplaceCollectionsOnPatch": "true"})
+                elif accion == "CERRAR":
+                    sl._req("POST", f"Orders({o.sap_docentry})/Close")
+                    env["cerrada"] = True
                 else:
                     sl._req("POST", f"Orders({o.sap_docentry})/Cancel")
                     env["cancelada"] = True
@@ -989,7 +997,7 @@ def push_order(o, user=None, sl=None, forzar=False):
         raise
     if env.get("estado") == "CONFLICTO" and env.get("conflicto"):
         return None
-    env.update({"estado": "CANCELADA" if accion == "CANCELAR" else "ENVIADA", "error": "", "intentos": 0,
+    env.update({"estado": {"CANCELAR": "CANCELADA", "CERRAR": "CERRADA"}.get(accion, "ENVIADA"), "error": "", "intentos": 0,
                 "hash": _hash(body)})
     alerts.close_by_system(f"SAP_OV_CONF:{o.id}", "Resuelto")
     o.sap_envio = env
@@ -1062,7 +1070,7 @@ def push_pending_orders(ahora=None, sl=None):
     for o in db().execute(select(SalesOrder).where(SalesOrder.origen == "MODULO",
                                                    SalesOrder.estado.notin_(OV_NO_SE_ENVIAN),
                                                    or_(SalesOrder.sap_docentry.is_(None),
-                                                       SalesOrder.estado.in_(OV_SE_ACTUALIZAN + ("CANCELADA",))))).scalars():
+                                                       SalesOrder.estado.in_(OV_SE_ACTUALIZAN + ("CANCELADA", "CERRADA"))))).scalars():
         env = o.sap_envio or {}
         if env.get("estado") == "ERROR" and env.get("ts") and \
                 (ahora - datetime.fromisoformat(env["ts"])).total_seconds() < REINTENTO_MIN * 60:

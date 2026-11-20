@@ -151,6 +151,11 @@ def sincronizar(user=None, orders=None):
             res["canceladas"].append(o.numero)
         elif est_sap == "CERRADA":
             release_order(o, "OV cerrada en SAP")
+            from .orders import saldo_kg
+            kg = round(saldo_kg(o), 2)  # V64: cerrada (no cancelada): cuenta como pedido; el saldo es venta perdida
+            o.cierre = o.cierre or {"tipo": "CERRADA", "causal": "Cerrada en SAP", "comentario": "", "user": "SAP",
+                                    "ts": datetime.now().isoformat(timespec="seconds"), "origen": "SAP",
+                                    "venta_perdida": kg > TOL, "kg_perdidos": kg}
             o.estado = "CERRADA"
             o.motivo_detencion = (f"Cerrada en SAP con despacho parcial ({docs}); el saldo no se atenderá" if guiado > TOL
                                   else "Cerrada en SAP sin guía")
