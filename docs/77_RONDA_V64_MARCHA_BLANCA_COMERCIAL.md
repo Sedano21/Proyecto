@@ -124,4 +124,4 @@ ni se copiaron nombres, clientes ni precios: las pruebas usan solo datos fictici
 - Falta confirmar que los códigos IGV y EXO sean los mismos en la base productiva.
 
 ## Pruebas
-`tests/test_v64.py` (11 pruebas).
+`tests/test_v64.py` (11 pruebas). Suite completa: 723 pruebas pasan.
