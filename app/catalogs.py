@@ -3399,3 +3399,12 @@ ALERT_TYPES += [
      ["COORD_FINANZAS", "JEFE_ADMIN_FINANZAS", "GERENTE_ADMIN_FINANZAS", "COORD_VENTAS", "JEFE_VENTAS"], "PROPUESTO", V64,
      "El ejecutivo dejó una nota sobre la deuda del cliente (p. ej. ya pagó y sigue figurando la deuda).", True),
 ]
+
+# ------------------------------------------------------------------ V65 (20-nov-2026)
+V65 = "Observaciones V65 (20-nov-2026): el primer ingreso a SAP falla con -5027 y el segundo entra"
+PARAMS += [
+    ("sap_login_reintentos", 3, "int", "Integración SAP",
+     "Intentos de ingreso a SAP cuando responde «Switch company error: -5027» (el segundo intento suele entrar).",
+     "DEFINIDO", V65),
+    ("sap_login_espera_seg", 2, "float", "Integración SAP", "Segundos entre esos intentos.", "DEFINIDO", V65),
+]

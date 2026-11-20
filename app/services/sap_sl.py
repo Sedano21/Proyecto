@@ -173,9 +173,25 @@ class ServiceLayer:
             raise SapConnectionError(f"No se pudo conectar con SAP: {e}")
         return json.loads(raw.decode() or "{}") if raw else {}
 
-    def login(self):
-        r = self._req("POST", "Login", {"CompanyDB": self.cfg["company"], "UserName": self.cfg["user"],
-                                         "Password": self.cfg["password"]})
+    def login(self, intentos=None, espera=None):
+        """V65 (20-nov-2026): en la base productiva el primer ingreso suele fallar con «Switch company error: -5027» y el
+        segundo entra bien (probado a mano). Se reintenta solo ese error, unas veces y con una pausa corta; cualquier otro
+        error (clave, usuario, licencia) se informa de inmediato."""
+        import time
+        try:
+            intentos = int(intentos if intentos is not None else (param("sap_login_reintentos", 3) or 1))
+            espera = float(espera if espera is not None else (param("sap_login_espera_seg", 2) or 0))
+        except Exception:  # sin base de datos (herramientas sueltas): valores por defecto
+            intentos, espera = intentos or 3, 2.0 if espera is None else espera
+        for n in range(1, max(intentos, 1) + 1):
+            try:
+                r = self._req("POST", "Login", {"CompanyDB": self.cfg["company"], "UserName": self.cfg["user"],
+                                                 "Password": self.cfg["password"]})
+                break
+            except BusinessError as e:
+                if "-5027" not in str(e) or n >= intentos:
+                    raise
+                time.sleep(espera)
         self.session = r.get("SessionId")
         if not self.session:
             raise BusinessError("SAP no devolvió la sesión (revise la empresa, el usuario y la contraseña).")
