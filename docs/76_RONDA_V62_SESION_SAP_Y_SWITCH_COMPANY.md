@@ -28,4 +28,4 @@ revisión. Eso carga justamente el paso que está fallando.
 No se probó contra el SAP real. Si el error continúa, lo debe revisar el soporte de SAP del servidor (licencias,
 base de la empresa y Service Layer).
 
-**Pruebas:** `tests/test_v62.py`.
+**Pruebas:** `tests/test_v62.py`. Suite completa: 710 pruebas pasan.
