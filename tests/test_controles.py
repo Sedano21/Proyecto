@@ -317,7 +317,7 @@ def test_matriz_permisos_reglas_documentadas(s):
     assert roles_con("reempaque.solicitar") == {"COORD_ALMACEN", "COORD_ALMACEN_MP", "SUPERV_ALMACEN", "COORD_LOGISTICA",
                                                 "GERENCIA_GENERAL"}
     assert roles_con("calidad.certificado_revisar") == {"JEFE_CALIDAD", "SUPERV_CALIDAD", "GERENCIA_GENERAL"}
-    assert roles_con("distribucion.confirmar_salida") == {"LIDER_ALMACEN", "GERENCIA_GENERAL"}
+    assert roles_con("distribucion.confirmar_salida") == {"LIDER_ALMACEN", "ASIST_ALMACEN", "GERENCIA_GENERAL"}  # V66: el Asistente hace lo mismo que el Líder
     # Q3: despacho parcial lo aprueba GO o Jefatura de Logística (y GG por acceso completo)
     assert roles_con("ov.aprobar_parcial") == {"JEFE_LOGISTICA", "GERENCIA_GENERAL"}  # V16: GO → Gerente General Adjunto
     aprob = {p.code for p in s.query(Permission).filter_by(tipo="aprobacion")}

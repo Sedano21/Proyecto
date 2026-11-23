@@ -21,9 +21,14 @@ def upgrade():
         b.add_column(sa.Column('fotos', sa.JSON(), nullable=False, server_default='[]'))
     with op.batch_alter_table('chat_messages') as b:
         b.add_column(sa.Column('archivo', sa.String(250), nullable=False, server_default=''))
+    op.execute("UPDATE label_specs SET ts = CURRENT_TIMESTAMP WHERE ts IS NULL")
+    with op.batch_alter_table('label_specs') as b:  # el modelo la define no nula
+        b.alter_column('ts', existing_type=sa.DateTime(), nullable=False)
 
 
 def downgrade():
+    with op.batch_alter_table('label_specs') as b:
+        b.alter_column('ts', existing_type=sa.DateTime(), nullable=True)
     with op.batch_alter_table('chat_messages') as b:
         b.drop_column('archivo')
     with op.batch_alter_table('move_requests') as b:
