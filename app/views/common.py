@@ -373,6 +373,12 @@ def install(app):
         return Markup('<span class="dictfmt">' + " · ".join(partes) + "</span>")
     app.jinja_env.filters["dictfmt"] = dictfmt
 
+    def usuario_nombre(uid):  # V66: nombre de un usuario por su id (equipos de movimientos)
+        from ..models import User
+        u = db().get(User, int(uid)) if str(uid).isdigit() else None
+        return u.nombre if u else str(uid)
+    app.jinja_env.filters["usuario_nombre"] = usuario_nombre
+
 
 def fail(msg, redirect_to):
     flash(msg, "error")

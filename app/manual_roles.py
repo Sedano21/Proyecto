@@ -311,3 +311,9 @@ ROLES["JEFE_OPERACIONES"] = {
                   "Pulse un indicador para ver las OV que lo componen (las que no cumplen, las tardías o las incompletas)."),
                _t("Revisar tiempos de respuesta y desempeño", "Almacén · Tiempos de respuesta y desempeño",
                   "Elija el periodo: verá cuánto tardan los movimientos y traslados por tipo de solicitud y lo que hizo cada persona.")]}
+
+# V66 (23-nov-2026): Asistente de Almacén: lo mismo que el Líder Operativo y lo pedido en la capacitación de almacén
+ROLES["ASIST_ALMACEN"] = dict(ROLES["LIDER_ALMACEN"], resumen=(
+    "Hace lo mismo que el Líder Operativo. Además ve la recepción e ingreso de mercadería, las liquidaciones y lo que se "
+    "produce en el día, hace requerimientos a Producción, saca el consolidado del picking y valida los pedidos grandes "
+    "de última hora."))

@@ -70,7 +70,7 @@
       {% if can('facturacion.cargar') or can('finanzas.ver') %}{{ nl(url_for('fac.prefacturas'), 'file', 'Facturación (pre-facturas)') }}{% endif %}
       {% if ve('clientes.ver') and not ve('ov.ver') %}{{ nl(url_for('com.customer_list'), 'users', 'Clientes') }}{% endif %}
     </div>{% endif %}
-    {% if ve('stock.ver') or ve('traslados.ver') or ve('reempaque.ver') or ve('tareas.ejecutar') or ve('movimiento.solicitar') or ve('movimiento.ejecutar') or ve('demanda.ver') or ve('ingresos.ver') or ve('asistencia.area') %}<div class="grp" data-grupo="Almacén"><h4><span class="lbl">Almacén</span></h4>
+    {% if ve('stock.ver') or ve('traslados.ver') or ve('reempaque.ver') or ve('tareas.ejecutar') or ve('movimiento.solicitar') or ve('movimiento.ejecutar') or ve('demanda.ver') or ve('ingresos.ver') or ve('asistencia.area') or ve('almacen.consolidado') %}<div class="grp" data-grupo="Almacén"><h4><span class="lbl">Almacén</span></h4>
       {% if ve('stock.ver') %}{{ nl(url_for('alm.stock'), 'box', 'Stock y reservas') }}{{ nl(url_for('alm.lot_review'), 'tag', 'Lotes y variantes') }}{% endif %}
       {% if ve('expedientes.ver') and not ve('ov.ver') %}{{ nl(url_for('seg.groups'), 'layers', 'Expedientes por cliente y despacho') }}{% endif %}
       {% if ve('indicadores.servicio') %}{{ nl(url_for('seg.service'), 'gauge', 'Nivel de servicio (OTIF, fill rate)') }}{% endif %}
@@ -86,6 +86,9 @@
       {% if (can('fumigacion.solicitar') or can('fumigacion.ingreso')) and not ve('calidad.ver') %}{{ nl(url_for('cal.fumigation_requests'), 'shield', 'Solicitudes de fumigación') }}{% endif %}
       {% if ve('stock.ver') and not ve('calidad.ver') %}{{ nl(url_for('cal.fumigated'), 'shield', 'Producto fumigado almacenado') }}{% endif %}
       {% if ve('ingresos.ver') %}{{ nl(url_for('alm.entries'), 'download', 'Ingresos a almacén') }}{% endif %}
+      {% if ve('almacen.consolidado') %}{{ nl(url_for('alm.consolidated'), 'layers', 'Consolidado del picking') }}{% endif %}
+      {% if ve('almacen.validar_ov_tardia') %}{{ nl(url_for('alm.late_orders'), 'alert', 'Pedidos de última hora') }}{% endif %}
+      {% if ve('produccion.solicitud') and user.role.area == 'Almacén' %}{{ nl(url_for('prod.requests'), 'factory', 'Requerimientos a Producción') }}{% endif %}
       {% if (ve('asistencia.area') or ve('asistencia.ver_area') or ve('asistencia.todas')) and not ve('produccion.asistencia') %}{{ nl(url_for('prod.attendance'), 'users', 'Asistencia de mi personal' if not ve('asistencia.todas') else 'Asistencia del personal') }}{% endif %}
       {% if ve('demanda.ver') and not ve('demanda.cargar') %}{{ nl(url_for('sup.demand'), 'trend', 'Proyección de demanda') }}{% endif %}
       {% if ve('stock.cargar') %}{{ nl(url_for('alm.uploads', area='Almacén'), 'upload', 'Cargas de archivos') }}{% endif %}
@@ -110,6 +113,7 @@
       {% if ve('produccion.bom_cargar') or ve('produccion.liquidar') %}{{ nl(url_for('alm.uploads', area='Producción'), 'upload', 'Cargas de archivos') }}{% endif %}
     </div>{% endif %}
     {% if ve('calidad.ver') or ve('distribucion.seguridad') %}<div class="grp" data-grupo="Calidad"><h4><span class="lbl">{{ 'Calidad' if can('calidad.ver') else 'Seguridad' }}</span></h4>
+      {% if ve('calidad.etiquetas') %}{{ nl(url_for('cal.labels'), 'tag', 'Etiquetas para el despacho') }}{% endif %}
       {% if ve('calidad.ver') %}{{ nl(url_for('cal.inbox'), 'clipboard', 'Bandeja de Calidad') }}
       {{ nl(url_for('cal.home'), 'shield', 'Liberación y registros') }}
       {{ nl(url_for('cal.fumigation_requests'), 'shield', 'Solicitudes de fumigación') }}

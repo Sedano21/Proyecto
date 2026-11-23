@@ -2,7 +2,10 @@
 {% block content %}<p class="small"><a href="{{ url_for('alm.picking_schedule', fecha=t.fecha.isoformat()) }}">← Programación de picking</a></p>
 <div class="page-head"><div><h1>Picking OV {{ o.numero }}</h1><p class="sub">{{ b(t.estado) }} · {{ t.warehouse_code }} · programado {{ t.fecha|d }} · {{ o.customer.nombre }}</p></div>
 <div class="row">{% if can('picking.asignar') and t.estado != 'LISTO' %}<a class="btn sec" href="#asignar">{{ ic('users') }}Asignar o modificar</a>{% endif %}<a class="btn sec" href="{{ url_for('alm.picking_format', tid=t.id) }}">{{ ic('file') }}Imprimir formato</a></div></div>
-{% include "_nc_ov.html" %}
+{% set solo_picking = true %}{% include "_nc_ov.html" %}
+{% if etiquetas %}<div class="card" id="etiquetas"><h3>{{ ic('tag') }} Etiquetas que indica Calidad para este despacho</h3>
+{% for e in etiquetas %}<div class="row" style="align-items:flex-start;border-top:1px solid var(--line,#e3e8ef);padding-top:6px">{% if e.foto %}<a href="{{ url_for('main.evidence', name=e.foto) }}"><img src="{{ url_for('main.evidence', name=e.foto) }}" alt="Etiqueta de {{ e.product_code }}" style="max-width:140px;max-height:110px;border-radius:6px"></a>{% endif %}
+<div class="grow small"><b>{{ e.product_code }}</b> {{ pd(e.product_code) }}{% if e.marca %} · marca <b>{{ e.marca }}</b>{% endif %}{% if e.customer %} · solo para {{ e.customer.nombre }}{% endif %}<br>{{ e.instrucciones }}</div></div>{% endfor %}</div>{% endif %}
 <ol class="steps" aria-label="Avance del picking"><li class="{{ 'done' if t.estado != 'PROGRAMADO' else 'now' }}">1. Iniciar con foto</li><li class="{{ 'now' if t.estado == 'EN_PROCESO' else ('done' if t.estado == 'LISTO' else '') }}">2. Registrar en el formato</li><li class="{{ 'done' if t.estado == 'LISTO' else '' }}">3. Listo para despacho (foto)</li></ol>
 <div class="card"><table class="kv"><tr><td>Cliente / entrega</td><td>{{ o.customer.nombre }} · {{ o.lugar_entrega or '-' }} {{ o.distrito }} · comprometida {{ o.fecha_compromiso|d }}</td></tr>
 <tr><td>Asignado a</td><td>{% for i in t.asignados %}{{ usuarios[i].nombre if i in usuarios }}{{ ', ' if not loop.last }}{% else %}<span class="b ALTA">sin asignar</span>{% endfor %}{% if t.asignados|length > 1 %} <span class="b info">grupo</span>{% endif %}</td></tr>
@@ -41,6 +44,14 @@
 <p><button>Registrar cambio de lote</button></p></form>{% else %}<p class="small muted">Ninguno de estos lotes se puede usar para esta OV (condición del cliente o sin saldo libre).</p>{% endif %}
 {% else %}<p class="small muted">No hay otro lote del producto {{ l.product_code }} con stock en {{ t.warehouse_code }}.</p>{% endif %}</details>{% endfor %}{% endfor %}
 </div>
+{% for l in o.lines if l.activa and falta_reservar(l) > 0.0001 %}{% set alt = opciones_lote(l)|selectattr('ok')|list %}
+<details class="card" id="al{{ l.id }}" open><summary><b>Agregar otro lote</b> — {{ l.product_code }} {{ pd(l.product_code) }}: faltan {{ falta_reservar(l)|n }} por reservar (un lote no alcanza)</summary>
+{% if alt %}<form method="post" class="row" data-confirm="¿Agregar este lote para completar la línea?">{{ csrf() }}<input type="hidden" name="accion" value="agregar_lote"><input type="hidden" name="line_id" value="{{ l.id }}">
+<div class="grow"><label>Lote</label><select name="lot_id" required data-lote-fechas><option value="">Elija el lote</option>{% for x in alt %}<option value="{{ x.lot.id }}" data-fp="{{ x.lot.fecha_fab|d }}" data-fv="{{ x.lot.fecha_venc|d }}">{{ x.lot.lote }} · prod. {{ x.lot.fecha_fab|d }} · vence {{ x.lot.fecha_venc|d }} · libre {{ x.libre|n }}</option>{% endfor %}</select></div>
+<div><label>F. producción</label><input data-fp readonly tabindex="-1" style="width:110px"></div><div><label>F. vencimiento</label><input data-fv readonly tabindex="-1" style="width:110px"></div>
+<div><label>Cantidad</label><input type="number" step="any" min="0.0001" max="{{ falta_reservar(l) }}" name="cantidad" value="{{ falta_reservar(l) }}" required style="width:100px"></div>
+<div class="grow"><label>Observación</label><input name="observacion"></div><div><button>Agregar lote</button></div></form>
+{% else %}<p class="small muted">No hay otro lote utilizable con saldo libre del producto en {{ t.warehouse_code }}.</p>{% endif %}</details>{% endfor %}
 <form class="card" method="post" enctype="multipart/form-data" data-confirm="¿Marcar el picking como listo para trasladar al despacho?">{{ csrf() }}<input type="hidden" name="accion" value="listo"><h3>3. Todo listo para trasladar al despacho</h3><label>Foto de la mercadería lista</label><input type="file" name="foto" accept="image/*" capture="environment" required><label>Observación</label><input name="observacion" style="width:100%"><p><button>Marcar listo</button></p></form>
 {% endif %}{% endif %}
 

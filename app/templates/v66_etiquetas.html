@@ -1,0 +1,17 @@
+{% extends "base.html" %}{% from "_m.html" import csrf, ic %}
+{% block content %}<h1>Etiquetas para el despacho</h1>
+<p class="muted small">Calidad registra la etiqueta que se pega en el despacho (por ejemplo, producto con marca de terceros): instrucciones y foto, por producto y, si aplica, solo para un cliente. Almacén la ve en el picking de las OV de ese producto y la pega sin esperar a Calidad.</p>
+{% if can('calidad.etiquetas') %}<form class="card" method="post" enctype="multipart/form-data">{{ csrf() }}<h3>Nueva etiqueta</h3>
+<div class="row"><div class="grow"><label class="req">Producto</label><input name="product_code" list="et-prods" required placeholder="código"></div>
+<div class="grow"><label>Solo para el cliente (opcional)</label><select name="customer_id"><option value="">Todos los clientes</option>{% for c in clientes %}<option value="{{ c.id }}">{{ c.nombre }}</option>{% endfor %}</select></div>
+<div><label>Marca</label><input name="marca"></div></div>
+<label>Instrucciones (qué etiqueta, cuántas por bulto, dónde se pega)</label><textarea name="instrucciones"></textarea>
+<label>Foto de la etiqueta</label><input type="file" name="foto" accept="image/*,.pdf" capture="environment">
+<p><button>{{ ic('plus') }} Guardar etiqueta</button></p>
+<datalist id="et-prods">{% for p in productos %}<option value="{{ p.code }} · {{ p.descripcion }}"></option>{% endfor %}</datalist></form>{% endif %}
+<div class="card"><h3>Etiquetas vigentes ({{ rows|length }})</h3>
+{% for e in rows %}<div class="row" style="align-items:flex-start;border-top:1px solid #e3e8ef;padding-top:6px">{% if e.foto %}<a href="{{ url_for('main.evidence', name=e.foto) }}"><img src="{{ url_for('main.evidence', name=e.foto) }}" alt="Etiqueta {{ e.product_code }}" style="max-width:120px;max-height:90px;border-radius:6px"></a>{% endif %}
+<div class="grow small"><b>{{ e.product_code }}</b> {{ pd(e.product_code) }}{% if e.marca %} · marca <b>{{ e.marca }}</b>{% endif %} · {{ e.customer.nombre if e.customer else 'todos los clientes' }}<br>{{ e.instrucciones }}</div>
+{% if can('calidad.etiquetas') %}<form method="post">{{ csrf() }}<input type="hidden" name="accion" value="desactivar"><input type="hidden" name="eid" value="{{ e.id }}"><button class="small sec">Retirar</button></form>{% endif %}</div>
+{% else %}<p class="muted small">Sin etiquetas registradas.</p>{% endfor %}</div>
+{% endblock %}

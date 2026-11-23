@@ -19,7 +19,7 @@ from ..models import PickingRecord, PickingTask, SalesOrder, User, now
 from . import alerts
 from .core import BusinessError, audit, has_perm, param, wh_in
 
-ROLES_PICKING = ("AUX_ALMACEN", "AUX_DESPACHO", "LIDER_ALMACEN", "MONTACARGUISTA")
+ROLES_PICKING = ("AUX_ALMACEN", "AUX_DESPACHO", "LIDER_ALMACEN", "ASIST_ALMACEN", "MONTACARGUISTA")
 # obs. demo v0.7: el prepicking propone al auxiliar de almacén o de despacho del almacén donde está el pedido
 ROLES_PROPUESTA = ("AUX_ALMACEN", "AUX_DESPACHO")
 # motivo del cambio de lote en el picking -> (texto, estado en que queda el lote original o None si sigue disponible)
@@ -146,6 +146,8 @@ def start(t, user, foto):
         raise BusinessError("Este picking no le fue asignado.")
     if t.estado != "PROGRAMADO":
         raise BusinessError("El picking ya fue iniciado.")
+    if (t.order.validacion_almacen or {}).get("estado") == "PENDIENTE":
+        raise BusinessError("Pedido grande de última hora: espere la validación del Líder, el Asistente o el Coordinador de Almacén.")
     if not foto:
         raise BusinessError("Tome la foto al iniciar el picking.")
     t.estado, t.inicio_ts, t.foto_inicio = "EN_PROCESO", now(), foto
@@ -278,6 +280,57 @@ def change_lot(t, user, reservation_id, nuevo_lot_id, cantidad, motivo, observac
         f"{user.nombre}: cambio de lote {viejo.lote} → {nuevo.lote} ({qty:g}) por {texto.lower()}: {observacion.strip()}")
     audit(user, "PICKING_CAMBIO_LOTE", "SalesOrder", t.order.numero, cambio)
     db().flush()
+    return cambio
+
+
+def falta_reservar(t, line):
+    """Lo que la línea aún no tiene reservado (no alcanzó un solo lote): se completa con otro lote."""
+    from .stock import line_reserved
+    return max(0.0, (line.cantidad or 0) - (line.despachado or 0) - line_reserved(line))
+
+
+def add_lot(t, user, line_id, lot_id, cantidad, observacion=""):
+    """V66 (marcha blanca almacén): cuando un solo lote no cubre lo pedido, quien hace el picking agrega otro lote para
+    completar la línea. El lote debe ser del mismo producto y almacén, utilizable para el cliente y con saldo libre; el
+    formato toma sus fechas de producción y vencimiento."""
+    from ..models import Reservation, StockLot
+    from .stock import free_qty, lot_usable
+    if not _es_asignado(t, user):
+        raise BusinessError("Este picking no le fue asignado.")
+    if t.estado != "EN_PROCESO":
+        raise BusinessError("El lote se agrega durante el picking (iniciado con su foto).")
+    line = next((l for l in t.order.lines if l.id == int(line_id or 0) and l.activa), None)
+    if line is None:
+        raise BusinessError("Línea no encontrada.")
+    lot = db().get(StockLot, int(lot_id or 0))
+    if lot is None or lot.product_code != line.product_code or lot.warehouse_code != t.warehouse_code:
+        raise BusinessError("Elija un lote del mismo producto en el almacén del picking.")
+    ok, porque = lot_usable(lot, t.order.fecha_compromiso, t.order.customer)
+    if not ok:
+        raise BusinessError(f"El lote {lot.lote} no se puede usar: {porque}.")
+    falta = falta_reservar(t, line)
+    if falta <= 1e-9:
+        raise BusinessError("La línea ya tiene todo reservado: si picó otro lote, use «Cambiar lote».")
+    q = min(float(cantidad or falta), falta)
+    if q <= 0:
+        raise BusinessError("Cantidad inválida.")
+    if free_qty(lot) + 1e-9 < q:
+        raise BusinessError(f"El lote {lot.lote} solo tiene {free_qty(lot):g} libre.")
+    r = Reservation(ov_line_id=line.id, lot_id=lot.id, cantidad=q, estado="ACTIVA")
+    db().add(r)
+    line.reservations.append(r)
+    lot.reservations.append(r)
+    cambio = {"ts": now().isoformat(), "user": user.nombre, "producto": line.product_code, "lote_anterior": "",
+              "lote_nuevo": lot.lote, "cantidad": q, "motivo": "Lote adicional (un lote no alcanzaba)",
+              "observacion": (observacion or "").strip(), "estado_lote_anterior": ""}
+    t.cambios_lote = list(t.cambios_lote or []) + [cambio]
+    audit(user, "PICKING_LOTE_ADICIONAL", "SalesOrder", t.order.numero, cambio)
+    db().flush()
+    from .stock import evaluate_order  # la cobertura de la OV se recalcula con el nuevo lote
+    try:
+        evaluate_order(t.order, user, "REEVALUACION")
+    except BusinessError:
+        pass
     return cambio
 
 

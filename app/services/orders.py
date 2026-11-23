@@ -373,6 +373,9 @@ def create_order(user, numero, customer_id, fecha_compromiso, lines, urgente=Fal
         o.motivo_detencion = "Borrador: falta adjuntar la orden de compra del cliente"
         return o
     _activate(o, user, evaluar)
+    if origen == "MODULO":  # V66: pedido grande de última hora: Almacén lo valida antes de prepararlo
+        from .almacen_v66 import revisar_tardia
+        revisar_tardia(o, user, "REGISTRO")
     return o
 
 
@@ -653,6 +656,10 @@ def _apply_changes(order, user, changes):
     order.version += 1
     db().flush()
     audit(user, "OV_MODIFICADA", "SalesOrder", order.numero, {"antes": antes, "despues": snapshot(order)})
+    if order.origen == "MODULO" and sum(x["cantidad"] for x in snapshot(order)["lineas"]) > \
+            sum(x["cantidad"] for x in (antes or {}).get("lineas", [])) + 1e-9:
+        from .almacen_v66 import revisar_tardia  # V66: se agregó cantidad a última hora
+        revisar_tardia(order, user, "AUMENTO")
     if order.estado == "BORRADOR":  # se registra y evalúa cuando cumple todo (orden de compra, fecha, corte)
         _complete_draft(order, user)
         return
@@ -1016,6 +1023,8 @@ def change_product(order, user, line_id, nuevo_codigo, cantidad, comentario="", 
 def ready_for_preparation(order):
     if order.retenida_precio:
         return False  # detenida por precio hasta la confirmación comercial
+    if (order.validacion_almacen or {}).get("estado") == "PENDIENTE":
+        return False  # V66: pedido grande de última hora por validar por Almacén
     return order.estado in ("EVALUADA", "EN_PREPARACION") and (
         order.estado_stock == "COMPLETA" or order.decision_parcial == "APROBADA")
 

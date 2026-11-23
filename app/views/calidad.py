@@ -298,3 +298,26 @@ def fumigation_requests():
     return render_template("fumigacion_solicitudes.html", reqs=fs.listar(request.args.get("estado", "")),
                            lotes=fs.lotes_disponibles() if "fumigacion.solicitar" in g.perms else [],
                            lugares=fs.lugares(), areas=areas, estado=request.args.get("estado", ""))
+
+
+# ------------------------------------------------------------------ V66: etiquetas para el despacho
+@bp.route("/etiquetas", methods=["GET", "POST"])
+@perm_required("calidad.etiquetas", "calidad.ver")
+def labels():
+    """Calidad registra la etiqueta que se pega en el despacho (marca de terceros) con su foto; Almacén la ve en el picking."""
+    from ..models import Customer, LabelSpec
+    from ..services import etiquetas as esvc
+    from ..services.distribution import save_upload
+    back = url_for("cal.labels")
+    if request.method == "POST":
+        f = request.form
+        if f.get("accion") == "desactivar":
+            e = db().get(LabelSpec, int(f.get("eid") or 0)) or abort(404)
+            return act(lambda: esvc.desactivar(g.user, e), "Etiqueta retirada.", back)
+        return act(lambda: esvc.guardar(g.user, f.get("product_code", ""), f.get("customer_id") or None, f.get("marca", ""),
+                                        f.get("instrucciones", ""),
+                                        save_upload(request.files.get("foto"), current_app.config["UPLOAD_DIR"], "etiqueta"),
+                                        f.get("eid") or None), "Etiqueta guardada: se verá en el picking.", back)
+    productos = list(db().execute(select(Product).order_by(Product.code)).scalars())
+    clientes = list(db().execute(select(Customer).order_by(Customer.nombre)).scalars())
+    return render_template("v66_etiquetas.html", rows=esvc.listar(), productos=productos, clientes=clientes)

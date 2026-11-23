@@ -1,0 +1,21 @@
+{% extends "base.html" %}{% from "_m.html" import ic %}
+{% block content %}<div class="page-head"><div><h1>Consolidado del picking</h1><p class="sub">Lo que falta preparar de las OV abiertas, sumado por producto. Varias OV de un mismo cliente para la misma fecha (p. ej. varias sedes) se suman.</p></div>
+<div class="row noprint"><a class="btn" href="{{ request.path }}?{{ request.query_string.decode() }}{{ '&' if request.query_string }}formato=pdf">{{ ic('download') }}PDF</a>
+<a class="btn sec" href="{{ request.path }}?{{ request.query_string.decode() }}{{ '&' if request.query_string }}formato=xlsx">{{ ic('download') }}Excel</a></div></div>
+<form class="card row filters noprint" method="get">
+<div><label>Desde</label><input type="date" name="desde" value="{{ d.desde.isoformat() }}"></div>
+<div><label>Hasta</label><input type="date" name="hasta" value="{{ d.hasta.isoformat() }}"></div>
+<div class="grow"><label>Cliente</label><select name="cliente"><option value="">(todos)</option>{% for c in clientes %}<option value="{{ c.id }}" {{ 'selected' if f.cliente == c.id|string }}>{{ c.nombre }}</option>{% endfor %}</select></div>
+<div><label>Sede / lugar de entrega</label><input name="sede" value="{{ f.sede or '' }}" placeholder="texto"></div>
+<div><label>Producto</label><input name="producto" value="{{ f.producto or '' }}" placeholder="código o nombre"></div>
+<div><label>Almacén</label><select name="almacen"><option value="">(todos)</option>{% for w in almacenes %}<option {{ 'selected' if f.almacen == w.code }}>{{ w.code }}</option>{% endfor %}</select></div>
+<div><label>Agrupar por</label><select name="agrupar">{% for k, t in [('cliente', 'Cliente y fecha'), ('fecha', 'Fecha'), ('sede', 'Sede y fecha'), ('producto', 'Producto'), ('almacen', 'Almacén y fecha')] %}<option value="{{ k }}" {{ 'selected' if d.agrupar == k }}>{{ t }}</option>{% endfor %}</select></div>
+<div><button>Ver</button></div></form>
+<div class="kpis"><div class="kpi"><b>{{ d.n_ovs }}</b><span>OV por preparar</span></div><div class="kpi"><b>{{ '{:,.2f}'.format(d.kg) }}</b><span>kg por preparar</span></div><div class="kpi"><b>{{ d.total|length }}</b><span>Productos</span></div></div>
+{% for g in d.grupos %}<div class="card"><h3>{% for x in g.clave %}{{ x.strftime('%d/%m/%Y') if x.strftime is defined else x }}{{ ' · ' if not loop.last }}{% endfor %} <span class="small muted">· {{ g.ovs|length }} OV · {{ '{:,.2f}'.format(g.kg) }} kg</span></h3>
+<div class="tw"><table class="small apilable"><tr><th>Código</th><th>Descripción</th><th class="r">Cantidad</th><th>UM</th><th class="r">Kg</th><th>OV</th><th>Sedes</th><th>Almacén</th></tr>
+{% for p in g.productos.values() %}<tr><td data-label="Código">{{ p.codigo }}</td><td data-label="Descripción">{{ p.descripcion }}</td><td class="r" data-label="Cantidad"><b>{{ '{:,.2f}'.format(p.cantidad) }}</b></td><td data-label="UM">{{ p.um }}</td><td class="r" data-label="Kg">{{ '{:,.2f}'.format(p.kg) }}</td><td data-label="OV">{{ p.ovs|sort|join(', ') }}</td><td data-label="Sedes">{{ p.sedes|sort|join(', ') }}</td><td data-label="Almacén">{{ p.almacen|sort|join(', ') }}</td></tr>{% endfor %}</table></div></div>
+{% else %}<div class="card muted">No hay OV abiertas por preparar con esos filtros.</div>{% endfor %}
+{% if d.grupos|length > 1 %}<div class="card"><h3>Total general por producto</h3><div class="tw"><table class="small apilable"><tr><th>Código</th><th>Descripción</th><th class="r">Cantidad</th><th>UM</th><th class="r">Kg</th></tr>
+{% for c, t in d.total %}<tr><td data-label="Código">{{ c }}</td><td data-label="Descripción">{{ t.descripcion }}</td><td class="r" data-label="Cantidad"><b>{{ '{:,.2f}'.format(t.cantidad) }}</b></td><td data-label="UM">{{ t.um }}</td><td class="r" data-label="Kg">{{ '{:,.2f}'.format(t.kg) }}</td></tr>{% endfor %}</table></div></div>{% endif %}
+{% endblock %}

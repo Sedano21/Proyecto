@@ -1,0 +1,10 @@
+{% extends "base.html" %}{% from "_m.html" import csrf, b %}
+{% block content %}<h1>Pedidos grandes de última hora</h1>
+<p class="muted small">OV para hoy o mañana que Comercial registró (o aumentó) a última hora y que superan la cantidad configurada. No se preparan hasta que el Líder, el Asistente o el Coordinador de Almacén las valide u observe con su motivo; Comercial recibe la respuesta.</p>
+{% for o in rows %}{% set v = o.validacion_almacen %}<div class="card"><div class="card-head"><h3 style="flex:1"><a href="{{ url_for('com.order_detail', oid=o.id) }}">OV {{ o.numero }}</a> · {{ o.customer.nombre }}</h3>{{ b('PENDIENTE') }}</div>
+<p class="small">Despacho <b>{{ o.fecha_compromiso|d }}</b> · {{ '{:,.0f}'.format(v.unidades or 0) }} unidades/kg · {{ 'agregado a una OV existente' if v.motivo == 'AUMENTO' else 'registrada' }} {{ (v.ts or '')[:16]|replace('T',' ') }}{{ ' por ' ~ v.por if v.por }}</p>
+<div class="tw"><table class="small"><tr><th>Producto</th><th class="r">Cantidad</th></tr>{% for l in o.lines if l.activa %}<tr><td>{{ l.product_code }} {{ pd(l.product_code) }}</td><td class="r">{{ l.cantidad|n }}</td></tr>{% endfor %}</table></div>
+<form method="post" class="row">{{ csrf() }}<input type="hidden" name="oid" value="{{ o.id }}"><div class="grow"><input name="comentario" placeholder="comentario (obligatorio si observa)" style="width:100%" aria-label="Comentario"></div>
+<div><button name="aprobar" value="1">Validar: se prepara</button> <button class="sec" name="aprobar" value="0">Observar</button></div></form></div>
+{% else %}<div class="card muted">No hay pedidos de última hora por validar.</div>{% endfor %}
+{% endblock %}

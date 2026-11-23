@@ -183,6 +183,13 @@ def create_request(product_code, cantidad, user, order=None, fecha_requerida=Non
     db().add(r)
     db().flush()
     audit(user, "PRODUCCION_SOLICITUD_CREADA", "ProductionRequest", r.id, {"producto": product_code, "cantidad": cantidad})
+    if origen == "MANUAL" and user is not None and user.role is not None and user.role.area == "Almacén":
+        # V66: requerimiento directo de Almacén a Producción (antes, en la pizarra)
+        from . import alerts as _al
+        _al.emit("REQUERIMIENTO_PRODUCCION", f"Requerimiento de Almacén: {product_code} × {cantidad:g}",
+                 f"{user.nombre} pide producir {product_code} {p.descripcion} × {cantidad:g}"
+                 + (f" para el {r.fecha_requerida:%d/%m/%Y}" if r.fecha_requerida else "")
+                 + (f". {observacion}" if observacion else "."), "ProductionRequest", r.id, creado_por=user)
     return r
 
 

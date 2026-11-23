@@ -114,13 +114,16 @@ def _avisar(o, items, user):
         o.estado = "CERRADA"
         o.motivo_detencion = "Cerrada por nota de crédito en SAP: no queda nada por despachar."[:250]
     msg = "; ".join(detalle) + "."
+    picados = [f"{line.product_code} ({line.preparado:g} preparado)" for _, line in items if (line.preparado or 0) > TOL]
+    if picados and not sobrepreparado:  # V66: la nota llegó con el picking ya hecho o en curso: Comercial y Almacén coordinan
+        msg += " La OV ya estaba picada en: " + ", ".join(picados) + ". Coordinar con Almacén lo que se devuelve al stock."
     if sobrepreparado:
         msg += " ATENCIÓN, ya se preparó de más: " + "; ".join(sobrepreparado) + "."
     if o.estado == "CERRADA":
         msg += " La OV queda CERRADA en el módulo: no se despacha."
     alerts.emit("OV_NOTA_CREDITO", f"Nota de crédito en la OV {o.numero} ({o.customer.nombre if o.customer else ''}): "
                                    f"cambia lo que se despacha", msg, "SalesOrder", o.id,
-                prioridad="ALTA" if sobrepreparado or o.estado in ("EN_PREPARACION", "LISTA", "PREPARADA") else None,
+                prioridad="ALTA" if sobrepreparado or picados or o.estado in ("EN_PREPARACION", "LISTA", "PREPARADA") else None,
                 extra_users=[o.vendedor_id] if o.vendedor_id else None,
                 dedup_key=f"OV_NC:{o.id}:{','.join(nc.clave for nc, _ in items)}"[:120], creado_por=user)
 

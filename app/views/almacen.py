@@ -415,13 +415,16 @@ def picking_task(tid):
                                            bultos=f_float("bultos")),  # V18: los bultos los completa quien hace el picking
             "cambiar_lote": lambda: pk.change_lot(t, g.user, f.get("reservation_id"), f.get("lot_id"), f_float("cantidad"),
                                                   f.get("motivo", ""), f.get("observacion", "")),
+            "agregar_lote": lambda: pk.add_lot(t, g.user, f.get("line_id"), f.get("lot_id"), f_float("cantidad"),
+                                               f.get("observacion", "")),
             "listo": lambda: pk.finish(t, g.user, save_upload(request.files.get("foto"), up, f"picking{t.id}_fin"),
                                        f.get("observacion", "")),
             # V18: la validación de la planificación también desde esta misma pantalla
             "validar_plan": lambda: __import__("app.services.orders", fromlist=["x"]).validate_picking_plan(t.order, g.user),
         }.get(acc) or abort(400)
-        destino = url_for("alm.picking_task", tid=tid) + ("#formato" if acc in ("iniciar", "registrar", "cambiar_lote") else "")
+        destino = url_for("alm.picking_task", tid=tid) + ("#formato" if acc in ("iniciar", "registrar", "cambiar_lote", "agregar_lote") else "")
         msg = {"iniciar": "Picking iniciado: complete el formato de control de despacho.", "cambiar_lote": "Lote cambiado: formato y stock actualizados.",
+               "agregar_lote": "Lote adicional agregado: complete lo picado de ese lote.",
                "asignar": "Asignación guardada."}.get(acc, "Picking actualizado.")
         return act(fn, msg, destino)
     from ..models import PickingRecord
@@ -433,7 +436,9 @@ def picking_task(tid):
     carga = Counter(i for x in plan for i in (x.asignados or []))
     return render_template("picking_task.html", t=t, o=t.order, usuarios=pk.users_by_id(), personal=pk.staff(t.warehouse_code),
                            recs=recs, line_reserved=line_reserved, plan=plan, carga=carga, motivos=pk.MOTIVOS_CAMBIO_LOTE,
-                           opciones_lote=lambda l: pk.lot_options(t, l, todos=True), free=free_qty)
+                           opciones_lote=lambda l: pk.lot_options(t, l, todos=True), free=free_qty,
+                           falta_reservar=lambda l: pk.falta_reservar(t, l),
+                           etiquetas=__import__("app.services.etiquetas", fromlist=["x"]).para_orden(t.order))
 
 
 @bp.route("/picking/cliente/<int:cid>/<fecha>/<almacen>", methods=["GET", "POST"])
@@ -662,3 +667,56 @@ def sap_dispatch_check():
                            mes=mes, sit=situacion, meses=ds.meses_historial(), job_hist=sap_sl.job_state("ORDENES"),
                            series_servicio=param("sap_series_orden_servicio", []) or [],
                            configurado=sap_sl.configured())
+
+
+# ------------------------------------------------------------------ V66: marcha blanca de almacén
+@bp.route("/consolidado")
+@perm_required("almacen.consolidado")
+def consolidated():
+    """Consolidado del picking por sede, fecha, cliente, producto y almacén (como la tabla dinámica de Almacén), en
+    pantalla, PDF y Excel."""
+    import io
+    from flask import send_file
+    from ..models import Customer
+    from ..services import almacen_v66 as av
+    a = request.args
+    d = av.consolidado(f_date("desde"), f_date("hasta"), a.get("cliente") or None, a.get("producto", ""),
+                       a.get("almacen", ""), a.get("sede", ""), a.get("agrupar", "cliente"))
+    fmt = a.get("formato", "")
+    if fmt in ("pdf", "xlsx"):
+        cols, filas = av.tabla_pdf(d)
+        titulo = f"Consolidado del picking {d['desde']:%d/%m/%Y} – {d['hasta']:%d/%m/%Y}"
+        if fmt == "pdf":
+            from ..services import pdfreport
+            data = pdfreport.table_pdf(titulo, cols, filas, [f"{d['n_ovs']} OV · {d['kg']:,.2f} kg por preparar. "
+                                                             f"Agrupado por {d['agrupar']}."])
+            return send_file(io.BytesIO(data), as_attachment=True, download_name="consolidado_picking.pdf",
+                             mimetype="application/pdf")
+        from openpyxl import Workbook
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Consolidado"
+        ws.append(cols)
+        for f in filas:
+            ws.append(f)
+        buf = io.BytesIO()
+        wb.save(buf)
+        return send_file(io.BytesIO(buf.getvalue()), as_attachment=True, download_name="consolidado_picking.xlsx",
+                         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    clientes = list(db().execute(select(Customer).order_by(Customer.nombre)).scalars())
+    almacenes = list(db().execute(select(Warehouse).where(Warehouse.habilitado.is_(True)).order_by(Warehouse.code)).scalars())
+    return render_template("v66_consolidado.html", d=d, f=a, clientes=clientes, almacenes=almacenes)
+
+
+@bp.route("/pedidos-ultima-hora", methods=["GET", "POST"])
+@perm_required("almacen.validar_ov_tardia")
+def late_orders():
+    from ..models import SalesOrder
+    from ..services import almacen_v66 as av
+    if request.method == "POST":
+        o = db().get(SalesOrder, int(request.form.get("oid") or 0)) or abort(404)
+        aprobar = request.form.get("aprobar") == "1"
+        return act(lambda: av.validar(g.user, o, aprobar, request.form.get("comentario", "")),
+                   "Pedido validado: ya se puede preparar." if aprobar else "Pedido observado: se avisó a Comercial.",
+                   url_for("alm.late_orders"))
+    return render_template("v66_ultima_hora.html", rows=av.por_validar())

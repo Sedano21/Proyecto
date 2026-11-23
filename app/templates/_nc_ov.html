@@ -1,4 +1,4 @@
-{% set _ncs = notas_credito_ov(o) %}{% if _ncs %}{% set _apl = _ncs|selectattr('estado', 'equalto', 'APLICADA')|list %}
+{% set _ncs = notas_credito_ov(o) %}{% if solo_picking %}{% set _cods = o.lines|map(attribute='product_code')|list %}{% set _ncs = _ncs|selectattr('estado', 'equalto', 'APLICADA')|selectattr('product_code', 'in', _cods)|list %}{% endif %}{% if _ncs %}{% set _apl = _ncs|selectattr('estado', 'equalto', 'APLICADA')|list %}
 <div class="card {{ 'warn' if _apl else '' }}" id="notas-credito"><h3>{{ ic('alert') }} Notas de crédito de SAP sobre esta OV</h3>
 {% if _apl %}<p><b>NO DESPACHAR</b> lo que indica la nota de crédito: ya se descontó de la cantidad a preparar y despachar{% if _apl|sum(attribute='liberado') > 0 %} y se liberaron las reservas que sobraban{% endif %}.</p>{% endif %}
 <div class="tw"><table class="small apilable"><tr><th>Nota de crédito</th><th>Factura</th><th>Fecha</th><th>Producto</th><th class="r">Cantidad de la nota</th><th class="r">No se despacha</th><th>Situación</th></tr>

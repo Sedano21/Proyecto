@@ -102,7 +102,11 @@ def moves():
                 return ssvc.request_move(g.user, ssvc.zone_from_form(f, "origen"), ssvc.zone_from_form(f, "destino"),
                                          f.get("detalle", ""), f.get("cantidad", ""),
                                          f.get("prioridad"), f.get("almacen", ""), f.get("observacion", ""), prog,
-                                         f.get("asignado_id") or None, f.get("aviso_min"), carga=carga)
+                                         f.get("asignado_id") or None, f.get("aviso_min"), carga=carga,
+                                         adicionales=[{"producto": a, "cantidad": b, "unidad": c} for a, b, c in
+                                                      zip(f.getlist("adic_producto"), f.getlist("adic_cantidad"),
+                                                          f.getlist("adic_unidad"))],
+                                         equipo=f.getlist("equipo"))
             return act(_sol, "Movimiento solicitado.", back)
         m = db().get(MoveRequest, int(f.get("move_id") or 0)) or abort(404)
         if acc == "iniciar":
@@ -124,7 +128,7 @@ def moves():
     prods = list(db().execute(select(Product).order_by(Product.code)).scalars())
     from ..services.stock import product_kind
     return render_template("moves.html", rows=paginate(ssvc.moves(g.user), 20), ejecutores=ssvc.move_executors(),
-                           tipos_carga=ssvc.TIPOS_CARGA, prod_pt=[p for p in prods if product_kind(p) == "PT"],
+                           tipos_carga=ssvc.TIPOS_CARGA, prod_pt=[p for p in prods if product_kind(p) == "PT"], prods=prods,
                            prod_mp=[p for p in prods if product_kind(p) in ("MP", "GR")],
                            clientes=list(db().execute(select(Customer).order_by(Customer.nombre)).scalars()),
                            hora_def=__import__("app.services.core", fromlist=["x"]).param("hora_movimiento_programado", "08:00"),

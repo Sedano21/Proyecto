@@ -3408,3 +3408,59 @@ PARAMS += [
      "DEFINIDO", V65),
     ("sap_login_espera_seg", 2, "float", "Integración SAP", "Segundos entre esos intentos.", "DEFINIDO", V65),
 ]
+# ------------------------------------------------------------------ V66 (23-nov-2026)
+V66 = "Marcha blanca del área de almacén (20-nov-2026)"
+# El Asistente de Almacén hace lo mismo que el Líder Operativo (y lo pedido en la capacitación)
+ROLES += [("ASIST_ALMACEN", "Asistente de Almacén", "Almacén", V66,
+           "Hace lo mismo que el Líder Operativo; además ve la recepción e ingreso de mercadería, las liquidaciones y lo que "
+           "se produce, hace requerimientos a Producción y saca el consolidado del picking.")]
+ROLE_PERMISSIONS["ASIST_ALMACEN"] = [(p[0], "DEFINIDO", V66) for p in ROLE_PERMISSIONS.get("LIDER_ALMACEN", [])]
+for _code, _n, _m, _t in [
+        ("almacen.consolidado", "Consolidado del picking por sede, fecha, cliente, producto y almacén (PDF y Excel)",
+         "Almacén", "consulta"),
+        ("almacen.validar_ov_tardia", "Validar los pedidos grandes que entran a última hora antes de prepararlos",
+         "Almacén", "aprobacion"),
+        ("calidad.etiquetas", "Registrar las etiquetas que se pegan en el despacho (marca de terceros) con su foto",
+         "Calidad", "edicion"),
+]:
+    PERMISSIONS.append((_code, _n, _m, _t))
+for _r, _ps in [
+        ("LIDER_ALMACEN", ["ingresos.ver", "compras.ver", "compras.recibir", "produccion.ver", "produccion.partes_ver",
+                           "produccion.solicitud", "almacen.consolidado", "almacen.validar_ov_tardia"]),
+        ("ASIST_ALMACEN", ["ingresos.ver", "compras.ver", "compras.recibir", "produccion.ver", "produccion.partes_ver",
+                           "produccion.solicitud", "almacen.consolidado", "almacen.validar_ov_tardia"]),
+        ("COORD_ALMACEN", ["almacen.consolidado", "almacen.validar_ov_tardia"]),
+        ("COORD_ALMACEN_MP", ["almacen.consolidado", "almacen.validar_ov_tardia"]),
+        ("SUPERV_ALMACEN", ["almacen.consolidado"]),
+        ("JEFE_LOGISTICA", ["almacen.consolidado", "almacen.validar_ov_tardia"]),
+        ("JEFE_CALIDAD", ["calidad.etiquetas"]), ("SUPERV_CALIDAD", ["calidad.etiquetas"]), ("ASIST_CALIDAD", ["calidad.etiquetas"]),
+]:
+    for _p in _ps:
+        if any(x[0] == _p for x in PERMISSIONS) and not any(x[0] == _p for x in ROLE_PERMISSIONS.setdefault(_r, [])):
+            ROLE_PERMISSIONS[_r].append((_p, "DEFINIDO", V66))
+PARAMS += [
+    ("almacen_ov_tardia_unidades", 500, "float", "Almacén",
+     "Pedido grande de última hora: si una OV para hoy o mañana se registra (o se le agrega cantidad) después de "
+     "«almacen_ov_tardia_hora» con más de estas unidades (o kg en granel), Almacén la valida antes de prepararla.",
+     "PROPUESTO", V66),
+    ("almacen_ov_tardia_hora", "09:00", "str", "Almacén",
+     "Hora desde la que una OV para hoy o mañana se considera «de última hora» para la validación de Almacén.",
+     "PROPUESTO", V66),
+    ("almacen_ov_tardia_activa", True, "bool", "Almacén",
+     "Pedir la validación de Almacén para los pedidos grandes de última hora.", "PROPUESTO", V66),
+    ("sap_almacenes_equivalencia", {}, "dict", "Integración SAP",
+     "Código de almacén del módulo → código en SAP, si no son iguales (traslados que se registran en SAP). Vacío: los "
+     "mismos códigos. Lo completa Almacén con la clasificación que usa Producción.", "PENDIENTE", V66),
+    ("sap_traslados_activo", True, "bool", "Integración SAP",
+     "Registrar en SAP (transferencia de stock) los traslados recibidos en el módulo, en las bases con escritura permitida.",
+     "DEFINIDO", V66),
+]
+ALERT_TYPES += [
+    ("OV_VALIDAR_ALMACEN", "Pedido grande de última hora: validar antes de preparar", "Almacén", "Estados de pedidos", "ALTA",
+     ["LIDER_ALMACEN", "ASIST_ALMACEN", "COORD_ALMACEN", "COORD_ALMACEN_MP"], "DEFINIDO", V66,
+     "Comercial registró o aumentó a última hora una OV grande para hoy o mañana: el Líder, el Asistente o el Coordinador "
+     "de Almacén la valida (o la observa) antes de prepararla.", False),
+    ("REQUERIMIENTO_PRODUCCION", "Requerimiento de Almacén a Producción", "Producción", "Solicitudes", "MEDIA",
+     ["JEFE_PRODUCCION", "JEFE_OPERACIONES"], "DEFINIDO", V66,
+     "Almacén pide producir un producto (antes lo escribía en la pizarra).", False),
+]

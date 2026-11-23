@@ -149,6 +149,8 @@ def receive(t, user, cantidad_recibida, observacion=""):
     if cantidad_recibida > 0:
         add_or_increase_lot(t.lot.product_code, t.destino_code, t.lot.lote, cantidad_recibida, t.lot.estado,
                             t.lot.fecha_venc, t.lot.fecha_fab, origen=f"TRASLADO-{t.id}")
+    from .traslados_sap import marcar  # V66: el traslado recibido se registra también en SAP (cola del vigilante)
+    marcar(t)
     if t.estado == "RECIBIDO_CON_DIFERENCIA":
         alerts.emit("TRASLADO_DIFERENCIA", f"Diferencia en traslado #{t.id}",
                     f"Enviado {t.cantidad:g}, recibido {cantidad_recibida:g}. {observacion}", "Transfer", t.id, creado_por=user)

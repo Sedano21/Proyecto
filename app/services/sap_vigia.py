@@ -219,8 +219,9 @@ def ciclo(user, upload_dir, forzar=False, sl=None):
                     if t not in hechos:
                         paso(t, lambda t=t: carga(t))
             _set("sap_vigia_horario", datetime.now().isoformat(timespec="seconds"), "Última revisión horaria (interno)")
+        from . import traslados_sap
         paso("envios", lambda: (sap_sl.push_pending_orders(sl=sl), sap_sl.push_pending_guides(sl=sl),
-                                prefacturas.enviar_pendientes(sl=sl)) and "ok")
+                                prefacturas.enviar_pendientes(sl=sl), traslados_sap.push_pendientes(sl=sl)) and "ok")
         _set("sap_vigia_firmas", nuevas, "Firmas de los documentos de SAP de ayer y hoy (interno)")
         ahora = datetime.now().isoformat(timespec="seconds")
         _set("sap_vigia_revision", ahora, "Última revisión completa de SAP (interno)")

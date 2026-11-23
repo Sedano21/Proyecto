@@ -524,14 +524,57 @@ def move_cargo(datos):
     return c, det
 
 
+def _adicionales(items):
+    """V66 (marcha blanca almacén): otros productos que se mueven en la misma solicitud (pares que combinan productos
+    de lo picado). [{producto, cantidad, unidad}] validados."""
+    from ..models import Product
+    out = []
+    for it in items or []:
+        code = (it.get("producto") or "").strip().upper().split(" ")[0]
+        q = str(it.get("cantidad") or "").strip()
+        if not code and not q:
+            continue
+        p = db().get(Product, code) if code else None
+        if p is None:
+            raise BusinessError(f"Producto adicional no válido: «{it.get('producto') or ''}». Elíjalo de la lista.")
+        try:
+            qq = float(q.replace(",", "."))
+        except ValueError:
+            raise BusinessError(f"Indique la cantidad del producto adicional {code}.")
+        if qq <= 0:
+            raise BusinessError(f"La cantidad del producto adicional {code} debe ser mayor que cero.")
+        out.append({"producto": p.code, "descripcion": p.descripcion, "cantidad": qq,
+                    "unidad": (it.get("unidad") or "").strip()[:20]})
+    return out
+
+
 def request_move(user, origen, destino, detalle="", cantidad="", prioridad="MEDIA", almacen="", observacion="",
-                 programado_para=None, asignado_id=None, aviso_min=None, carga=None):
+                 programado_para=None, asignado_id=None, aviso_min=None, carga=None, adicionales=None, equipo=None):
     if not has_perm(user, "movimiento.solicitar"):
         raise BusinessError("Su rol no solicita movimientos al montacarguista.")
     carga_d, det = move_cargo(carga or {})
     if det:
         detalle = det + ((" · " + detalle.strip()) if (detalle or "").strip() else "")
         cantidad = str(carga_d.get("cantidad") or carga_d.get("kg") or cantidad or "")
+    extra = _adicionales(adicionales)
+    if extra:
+        carga_d = dict(carga_d, adicionales=extra)
+        detalle = ((detalle + " · ") if detalle else "") + "además: " + "; ".join(
+            f"{x['producto']} {x['descripcion']} × {x['cantidad']:g}{(' ' + x['unidad']) if x['unidad'] else ''}" for x in extra)
+    from ..models import User as _U
+    ids = []
+    for x in (equipo or []):
+        if str(x).strip().isdigit() and int(x) not in ids:
+            ids.append(int(x))
+    if len(ids) > 1:  # V66: varias personas a la vez (p. ej. dos montacarguistas)
+        for i in ids:
+            u = db().get(_U, i)
+            if u is None or u.role_code not in EJECUTORES_MOV:
+                raise BusinessError("Asigne el movimiento a montacarguistas, auxiliares de almacén o de distribución.")
+        asignado_id = None
+    elif ids:
+        asignado_id = ids[0]
+        ids = []
     if isinstance(programado_para, str):
         try:
             programado_para = datetime.fromisoformat(programado_para) if programado_para.strip() else None
@@ -557,15 +600,18 @@ def request_move(user, origen, destino, detalle="", cantidad="", prioridad="MEDI
                     detalle=(detalle or "").strip(), cantidad=(cantidad or "").strip(), prioridad=prioridad,
                     observacion=(observacion or "").strip(), solicitado_por=user.id,
                     tipo="PROGRAMADO" if programado_para else "INMEDIATO", programado_para=programado_para,
-                    asignado_a=ejecutor.id if ejecutor else None, carga=carga_d,
+                    asignado_a=ejecutor.id if ejecutor else None, carga=carga_d, equipo=ids,
                     aviso_min=_aviso(aviso_min) if programado_para else None)
     db().add(m)
     db().flush()
+    nombres_equipo = [db().get(_U, i).nombre for i in ids]
     cuando = f" Programado para el {programado_para:%d/%m %H:%M}." if programado_para else " Inmediato."
     alerts.emit("MOVIMIENTO_SOLICITADO", f"Movimiento #{m.id}: {origen} → {destino}",
                 f"{m.area}: {m.detalle or 'sin detalle'} {m.cantidad}. Prioridad {prioridad.lower()}.{cuando}"
-                + (f" Asignado a {ejecutor.nombre}." if ejecutor else ""), "MoveRequest", m.id,
-                prioridad="ALTA" if prioridad == "ALTA" else None, extra_users=[ejecutor.id] if ejecutor else None,
+                + (f" Asignado a {ejecutor.nombre}." if ejecutor else "")
+                + (f" Asignado a {', '.join(nombres_equipo)} (juntos)." if nombres_equipo else ""), "MoveRequest", m.id,
+                prioridad="ALTA" if prioridad == "ALTA" else None,
+                extra_users=([ejecutor.id] if ejecutor else []) + ids or None,
                 dedup_key=f"MOV:{m.id}", creado_por=user)
     audit(user, "MOVIMIENTO_SOLICITADO", "MoveRequest", m.id, {"origen": origen, "destino": destino})
     return m
@@ -663,6 +709,8 @@ def start_move(user, m, foto):
         raise BusinessError("El movimiento ya fue tomado o cerrado.")
     if m.asignado_a and m.asignado_a != user.id:
         raise BusinessError(f"El movimiento está asignado a {m.operador.nombre}.")
+    if m.equipo and user.id not in m.equipo:
+        raise BusinessError("El movimiento está asignado a otras personas.")
     if not foto:
         raise BusinessError("Tome la foto del punto de origen antes de iniciar.")
     m.estado, m.asignado_a, m.inicio_ts, m.foto_inicio = "EN_CURSO", user.id, now(), foto
@@ -671,8 +719,8 @@ def start_move(user, m, foto):
 
 
 def finish_move(user, m, foto, observacion=""):
-    if m.estado != "EN_CURSO" or m.asignado_a != user.id:
-        raise BusinessError("Solo quien inició el movimiento lo termina.")
+    if m.estado != "EN_CURSO" or (m.asignado_a != user.id and user.id not in (m.equipo or [])):
+        raise BusinessError("Solo quien inició el movimiento (o su equipo) lo termina.")
     if not foto:
         raise BusinessError("La foto de validación en el destino es obligatoria.")
     m.estado, m.fin_ts, m.foto_fin = "COMPLETADA", now(), foto

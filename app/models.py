@@ -474,6 +474,8 @@ class SalesOrder(Base):
     cierre: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}")
     requiere_auxiliar: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     requiere_estiba: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    # V66: pedido grande que entra a última hora: Almacén lo valida antes de prepararlo {estado, motivo, user, ts, ...}
+    validacion_almacen: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}")
     lines = relationship("SalesOrderLine", back_populates="order", cascade="all, delete-orphan",
                          order_by="SalesOrderLine.id")
     parent = relationship("SalesOrder", remote_side="SalesOrder.id")
@@ -601,6 +603,8 @@ class Transfer(Base):
     diferencia: Mapped[float] = mapped_column(Float, default=0)
     observacion: Mapped[str] = mapped_column(Text, default="")
     llegada_estimada: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)  # alerta a Calidad y Almacén
+    # V66: el traslado recibido se registra en SAP (StockTransfers) {estado, docentry, docnum, error, ts}
+    sap: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}")
     ts: Mapped[datetime] = mapped_column(DateTime, default=now)
     lot = relationship("StockLot")
     order = relationship("SalesOrder")
@@ -1957,6 +1961,8 @@ class MoveRequest(Base):
     aviso_min: Mapped[int | None] = mapped_column(Integer, nullable=True)  # V8 (A04): aviso antes de la hora programada
     avisado_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     historial: Mapped[list] = mapped_column(JSON, default=list)  # V8 (A05): reasignaciones con rastro
+    # V66 (marcha blanca almacén): varias personas asignadas a la vez (p. ej. dos montacarguistas)
+    equipo: Mapped[list] = mapped_column(JSON, default=list, server_default="[]")
     # V12: qué se mueve: {tipo: PALLET_PT/MERMA/REMANENTE/MUESTRA/PALLET, cantidad, producto, kg, mp, customer_id}
     carga: Mapped[dict] = mapped_column(JSON, default=dict)
     estado: Mapped[str] = mapped_column(String(15), default="SOLICITADA")  # SOLICITADA / EN_CURSO / COMPLETADA / ANULADA
@@ -2927,3 +2933,19 @@ class Prefactura(Base):
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     ts: Mapped[datetime] = mapped_column(DateTime, default=now)
     order = relationship("SalesOrder", foreign_keys=[order_id], viewonly=True)
+
+
+class LabelSpec(Base):
+    """V66: etiqueta que Calidad indica para despachar un producto (p. ej. marca de terceros): texto, cantidad por bulto y
+    foto, por producto y, si aplica, por cliente. Se muestra en el picking para pegarla sin esperar a Calidad."""
+    __tablename__ = "label_specs"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    product_code: Mapped[str] = mapped_column(String(40), index=True)
+    customer_id: Mapped[int | None] = mapped_column(ForeignKey("customers.id"), nullable=True, index=True)
+    marca: Mapped[str] = mapped_column(String(120), default="")
+    instrucciones: Mapped[str] = mapped_column(Text, default="")
+    foto: Mapped[str] = mapped_column(String(250), default="")
+    activa: Mapped[bool] = mapped_column(Boolean, default=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    customer = relationship("Customer")
