@@ -91,4 +91,4 @@ pruebas usan solo datos ficticios.
 - Antes de usarla en producción conviene probarla en la base de pruebas.
 
 ## Pruebas
-`tests/test_v66.py` (8 pruebas).
+`tests/test_v66.py` (8 pruebas). Suite completa: 732 pasaron y 2 fallas, ya corregidas (la nulabilidad de una columna en la migración y la regla documentada de quién confirma la salida, que ahora incluye al Asistente).

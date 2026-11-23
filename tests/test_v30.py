@@ -21,8 +21,8 @@ def test_ubicacion_del_lote(app, s, U):
     from app.services import v30
     from app.services.core import BusinessError
     lot = s.query(StockLot).filter(StockLot.cantidad > 0).first()
-    with pytest.raises(BusinessError):
-        v30.set_location(U("aux.almacen"), lot, "A-01")
+    with pytest.raises(BusinessError):  # V67: auxiliar y montacarguista sí registran la ubicación; Comercial no
+        v30.set_location(U("coord.ventas"), lot, "A-01")
     for u in ("superv.almacen", "jefe.logistica", "lider.almacen", "coord.logistica"):
         v30.set_location(U(u), lot, f"  rack {u[:3]} 01 ")
     s.commit()
@@ -33,7 +33,9 @@ def test_ubicacion_del_lote(app, s, U):
     s.refresh(lot)
     assert lot.ubicacion == "B-02-1"
     html = _cliente(app, "aux.almacen").get("/almacen/stock?q=B-02").get_data(as_text=True)
-    assert "B-02-1" in html and f'action="/almacen/lote/{lot.id}/ubicacion"' not in html  # la ve pero no la edita
+    assert "B-02-1" in html and f'action="/almacen/lote/{lot.id}/ubicacion"' in html  # V67: el auxiliar también la registra
+    html = _cliente(app, "coord.ventas").get("/almacen/stock?q=B-02").get_data(as_text=True)
+    assert f'action="/almacen/lote/{lot.id}/ubicacion"' not in html  # Comercial la ve pero no la edita
 
 
 def test_documentos_del_cliente(app, s, U, cust, new_order):

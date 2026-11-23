@@ -78,4 +78,4 @@ se agregó el usuario «asist.almacen» (Asistente de Almacén).
 | Usuario dual en pantallas que filtran por perfil (por ejemplo, la lista de conductores de una ruta) | Esas listas siguen usando el perfil principal. Si hace falta, se ajustan pantalla por pantalla. |
 
 ## Pruebas
-`tests/test_v67.py` (4 pruebas).
+`tests/test_v67.py` (4 pruebas). Suite completa: 736 de 738 pasaron. Las otras 2 (test_v22 y test_v30) esperaban el comportamiento anterior: el montacarguista no entraba directo a sus tareas y el auxiliar no editaba la ubicación. Se actualizaron y pasan.

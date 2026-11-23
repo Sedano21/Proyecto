@@ -356,7 +356,7 @@ def test_inicio_de_gerencia_con_indicadores_por_area(app):
 def test_boton_reportar_averia_en_todas_las_pantallas(app, s):
     from app.models import Ticket
     c = _cliente(app, "montacarguista")
-    html = c.get("/").get_data(as_text=True)
+    html = c.get("/", follow_redirects=True).get_data(as_text=True)  # V67: el montacarguista entra a sus movimientos
     assert 'id="dlg-averia' in html and "Reportar avería" in html
     tok = html.split('name="csrf" content="')[1].split('"')[0]
     r = c.post("/operacion/tickets/nuevo", data={"_csrf": tok, "destino": "MANTENIMIENTO", "categoria": "Luz / eléctrico",
