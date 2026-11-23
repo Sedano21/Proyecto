@@ -840,7 +840,14 @@ def rotation_ranking(dias=None, hoy=None, top=20, almacen=None):
             reco = "Nunca tuvo salida: proponerlo como «producto del mes», muestra comercial o combo con un producto líder."
         else:
             reco = "Incluirlo en la próxima campaña y revisar el precio frente al mercado."
+        # V68: en qué almacén está y cuánto en cada uno (con su kg)
+        por_alm = defaultdict(float)
+        for l in ls:
+            por_alm[l.warehouse_code] += l.cantidad or 0
+        por_almacen = [{"almacen": a, "cantidad": round(q, 2), "kg": round(q * kg_u, 1) if kg_u else None}
+                       for a, q in sorted(por_alm.items(), key=lambda t: -t[1])]
         filas.append(dict(x, dias_sin=dias_sin, duracion=_duracion(dias_sin), kg=kg if kg_u else None, vence=venc,
+                          por_almacen=por_almacen,
                           dias_venc=dias_venc, desde_ingreso=desde_ingreso, cant_vencida=cant_vencida,
                           venc_mas_antiguo=venc_mas_antiguo,
                           valor=round(kg * c, 2) if c and kg else None, compradores=quienes, recomendacion=reco,
