@@ -31,6 +31,7 @@ DEMO_USERS = [
     ("coord.almacen.mp", "Supervisor de Almacén 1524", "COORD_ALMACEN_MP"),
     ("superv.almacen", "Supervisión de Almacén (por almacén) 1560", "SUPERV_ALMACEN"),
     ("lider.almacen", "Líder Operativo 1560", "LIDER_ALMACEN"),
+    ("asist.almacen", "Asistente de Almacén 1560", "ASIST_ALMACEN"),
     ("aux.almacen", "Auxiliar de Almacén 1", "AUX_ALMACEN"),
     ("aux.almacen2", "Auxiliar de Almacén 2", "AUX_ALMACEN"),
     ("aux.almacen3", "Auxiliar de Almacén 3", "AUX_ALMACEN"),
@@ -346,7 +347,7 @@ def add_missing_demo_users():
         u = create_user(username, nombre, rol)
         u.aviso_aceptado = {"version": _param("aviso_datos_version", ""), "ts": "demo", "ip": ""}
         u.clave_ts = datetime.now()
-        if rol in ("AUX_ALMACEN", "AUX_DESPACHO", "LIDER_ALMACEN", "MONTACARGUISTA", "SUPERV_ALMACEN"):
+        if rol in ("AUX_ALMACEN", "AUX_DESPACHO", "LIDER_ALMACEN", "ASIST_ALMACEN", "MONTACARGUISTA", "SUPERV_ALMACEN"):
             u.almacen = "EXT-002" if username.endswith(".mp") else "ALM-001"
         nuevos.append(username)
     return nuevos
@@ -383,7 +384,7 @@ def seed_demo(upload_dir=None, today=None):
         _u.aviso_aceptado = {"version": _param("aviso_datos_version", ""), "ts": "demo", "ip": ""}
         _u.clave_ts = datetime.now()
     for u in users.values():  # almacén del personal operativo (para programar el picking)
-        if u.role_code in ("AUX_ALMACEN", "AUX_DESPACHO", "LIDER_ALMACEN", "MONTACARGUISTA", "SUPERV_ALMACEN"):
+        if u.role_code in ("AUX_ALMACEN", "AUX_DESPACHO", "LIDER_ALMACEN", "ASIST_ALMACEN", "MONTACARGUISTA", "SUPERV_ALMACEN"):
             u.almacen = "EXT-002" if u.username.endswith(".mp") else "ALM-001"
     admin = users["sistemas"]
     # parámetros de demostración (marcados DEMO; no son valores aprobados)

@@ -286,6 +286,8 @@ class StockLot(Base):
     # V30: ubicación física del lote en el almacén (la editan Supervisor de Almacén, Líder Operativo y Logística)
     ubicacion: Mapped[str] = mapped_column(String(80), default="", server_default="")
     ubicacion_hist: Mapped[list] = mapped_column(JSON, default=list, server_default="[]")  # [{de, a, user, ts}]
+    # V67: un mismo lote puede estar repartido en varios lugares [{ubicacion, cantidad}]
+    ubicaciones: Mapped[list] = mapped_column(JSON, default=list, server_default="[]")
     liberacion_solicitada: Mapped[dict] = mapped_column(JSON, default=dict)  # {user, ts, motivo}
     product = relationship("Product")
     warehouse = relationship("Warehouse")
@@ -1963,6 +1965,8 @@ class MoveRequest(Base):
     historial: Mapped[list] = mapped_column(JSON, default=list)  # V8 (A05): reasignaciones con rastro
     # V66 (marcha blanca almacén): varias personas asignadas a la vez (p. ej. dos montacarguistas)
     equipo: Mapped[list] = mapped_column(JSON, default=list, server_default="[]")
+    # V67: fotos adicionales del movimiento (p. ej. contenedor vacío, firma) además de la de inicio y la de fin
+    fotos: Mapped[list] = mapped_column(JSON, default=list, server_default="[]")
     # V12: qué se mueve: {tipo: PALLET_PT/MERMA/REMANENTE/MUESTRA/PALLET, cantidad, producto, kg, mp, customer_id}
     carga: Mapped[dict] = mapped_column(JSON, default=dict)
     estado: Mapped[str] = mapped_column(String(15), default="SOLICITADA")  # SOLICITADA / EN_CURSO / COMPLETADA / ANULADA
@@ -2645,6 +2649,7 @@ class ChatMessage(Base):
     texto: Mapped[str] = mapped_column(Text)
     ref_url: Mapped[str] = mapped_column(String(300), default="")
     ref_titulo: Mapped[str] = mapped_column(String(160), default="")
+    archivo: Mapped[str] = mapped_column(String(250), default="", server_default="")  # V67: foto adjunta
     leido_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     ts: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)
     de = relationship("User", foreign_keys=[de_id])

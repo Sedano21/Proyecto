@@ -12,13 +12,14 @@
 </aside>
 <section class="card chat-main">{% if otro %}
 <div class="card-head"><h3>{{ otro.nombre }}</h3><small class="muted">{{ otro.role.nombre }}</small></div>
-<div class="chat-msgs" id="chat-msgs">{% for m in msgs %}<div class="chat-msg {{ 'mio' if m.de_id == user.id else 'suyo' }}"><p>{{ m.texto }}</p>
+<div class="chat-msgs" id="chat-msgs">{% for m in msgs %}<div class="chat-msg {{ 'mio' if m.de_id == user.id else 'suyo' }}"><p>{{ m.texto }}</p>{% if m.archivo %}<a href="{{ url_for('main.evidence', name=m.archivo) }}"><img src="{{ url_for('main.evidence', name=m.archivo) }}" alt="Foto adjunta" style="max-width:220px;max-height:180px;border-radius:8px"></a>{% endif %}
 {% if m.ref_url %}<a class="small" href="{{ m.ref_url }}">{{ ic('eye') }} {{ m.ref_titulo or 'Ver la pantalla' }}</a>{% endif %}
 <small>{{ m.ts|d }}{% if m.de_id == user.id %} · {{ 'Leído' if m.leido_ts else 'Enviado' }}{% endif %}</small></div>
 {% else %}{{ empty('Sin mensajes todavía. Escriba el primero.') }}{% endfor %}</div>
-<form method="post" class="chat-send">{{ csrf() }}<input type="hidden" name="para_id" value="{{ otro.id }}">
+<form method="post" class="chat-send" enctype="multipart/form-data">{{ csrf() }}<input type="hidden" name="para_id" value="{{ otro.id }}">
 {% if ref_url %}<input type="hidden" name="ref_url" value="{{ ref_url }}"><input type="hidden" name="ref_titulo" value="{{ ref_titulo }}"><p class="small muted">Se adjunta el enlace a: <b>{{ ref_titulo or ref_url }}</b></p>{% endif %}
-<label class="sr" for="chat-txt">Mensaje</label><textarea id="chat-txt" name="texto" rows="2" maxlength="2000" required placeholder="Escriba su mensaje…"></textarea>
+<label class="sr" for="chat-txt">Mensaje</label><textarea id="chat-txt" name="texto" rows="2" maxlength="2000" placeholder="Escriba su mensaje (o solo adjunte una foto)…"></textarea>
+<label class="btn sec small" title="Adjuntar foto">📷 Foto<input type="file" name="foto" accept="image/*" capture="environment" hidden aria-label="Adjuntar foto"></label>
 <button>{{ ic('chat') }} Enviar</button></form>
 <script>(function(){var b=document.getElementById('chat-msgs');if(b)b.scrollTop=b.scrollHeight;})();</script>
 {% else %}{{ empty('Elija una conversación o a quién escribir.') }}{% endif %}</section>

@@ -14,8 +14,11 @@ def home():
     con = request.values.get("con", type=int)
     if request.method == "POST":
         def _env():
+            from flask import current_app
+            from ..services.distribution import save_upload
+            foto = save_upload(request.files.get("foto"), current_app.config["UPLOAD_DIR"], "chat")
             svc.enviar(g.user, request.form.get("para_id"), request.form.get("texto"),
-                       request.form.get("ref_url", ""), request.form.get("ref_titulo", ""))
+                       request.form.get("ref_url", ""), request.form.get("ref_titulo", ""), foto)
         return act(_env, None, url_for("chat.home", con=request.form.get("para_id", type=int)))
     otro, msgs = (None, [])
     if con:

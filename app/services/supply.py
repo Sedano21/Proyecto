@@ -718,12 +718,24 @@ def start_move(user, m, foto):
     return m
 
 
-def finish_move(user, m, foto, observacion=""):
+def finish_move(user, m, foto, observacion="", fotos_extra=None, lote_id=None, ubicacion=""):
+    """V67: además de la foto del destino se pueden adjuntar más (p. ej. contenedor vacío, firma) y registrar en qué
+    ubicación quedó el lote movido (un lote puede quedar repartido en varios lugares)."""
     if m.estado != "EN_CURSO" or (m.asignado_a != user.id and user.id not in (m.equipo or [])):
         raise BusinessError("Solo quien inició el movimiento (o su equipo) lo termina.")
     if not foto:
-        raise BusinessError("La foto de validación en el destino es obligatoria.")
+        raise BusinessError("Falta la foto de validación en el destino (cómo quedó la carga).")
     m.estado, m.fin_ts, m.foto_fin = "COMPLETADA", now(), foto
+    if fotos_extra:
+        m.fotos = list(m.fotos or []) + [f for f in fotos_extra if f]
+    if lote_id and (ubicacion or "").strip():
+        from ..models import StockLot
+        from .v30 import set_location
+        lot = db().get(StockLot, int(lote_id))
+        if lot is None:
+            raise BusinessError("Lote no encontrado.")
+        set_location(user, lot, ubicacion)
+        m.observacion = ((m.observacion + "\n") if m.observacion else "") + f"Lote {lot.lote} quedó en {lot.ubicacion}"
     if observacion:
         m.observacion = ((m.observacion + "\n") if m.observacion else "") + observacion.strip()
     alerts.close_by_system(f"MOV:{m.id}", f"Movimiento completado por {user.nombre}")

@@ -269,6 +269,13 @@ def privacy_notice():
 @login_required
 def dashboard():
     from ..services import indicators as ind
+    from ..services.core import param as _p
+    inicio = (_p("inicio_por_rol", {}) or {}).get(g.user.role_code)
+    if inicio and not request.args:  # V67: p. ej. el montacarguista entra directo a sus tareas (movimientos)
+        try:
+            return redirect(url_for(inicio))
+        except Exception:
+            pass
     from ..services.kpis import compute
     desde = request.args.get("desde")
     hasta = request.args.get("hasta")
@@ -1026,6 +1033,25 @@ def channels():
 @perm_required("usuarios.administrar")
 def users():
     s = db()
+    if request.method == "POST" and request.form.get("accion") == "perfil_adicional":
+        # V67: usuario «dual» (p. ej. montacarguista que también hace de chofer): perfiles adicionales por usuario
+        def _dual():
+            from ..services.core import param as _pp, set_param as _sp
+            u = s.get(User, int(request.form.get("user_id") or 0))
+            if u is None:
+                raise BusinessError("Usuario no válido.")
+            roles = [r for r in request.form.getlist("roles") if r and s.get(Role, r) is not None and r != u.role_code]
+            cfg = dict(_pp("produccion_alcance_usuarios", {}) or {})
+            d = dict(cfg.get(u.username) or {})
+            antes = d.get("permisos_de")
+            if roles:
+                d["permisos_de"] = roles
+            else:
+                d.pop("permisos_de", None)
+            cfg[u.username] = d
+            _sp("produccion_alcance_usuarios", cfg)
+            audit(g.user, "USUARIO_PERFIL_ADICIONAL", "User", u.username, {"antes": antes, "despues": roles})
+        return act(_dual, "Perfiles adicionales guardados.", url_for("main.users"))
     if request.method == "POST" and request.form.get("accion") == "excel":
         def _xls():
             import os
@@ -1086,7 +1112,10 @@ def users():
     roles = list(s.execute(select(Role).order_by(Role.area, Role.nombre)).scalars())
     from ..services.core import param
     from ..models import Warehouse
-    return render_template("users.html", users=list(s.execute(select(User).order_by(User.role_code, User.username)).scalars()), roles=roles,
+    _alc = param("produccion_alcance_usuarios", {}) or {}
+    duales = {u: (v.get("permisos_de") if isinstance(v.get("permisos_de"), list) else [v.get("permisos_de")])
+              for u, v in _alc.items() if isinstance(v, dict) and v.get("permisos_de")}
+    return render_template("users.html", duales=duales, users=list(s.execute(select(User).order_by(User.role_code, User.username)).scalars()), roles=roles,
                            almacenes=list(s.execute(select(Warehouse).order_by(Warehouse.code)).scalars()),
                            now_=datetime.now(), minimo=int(param("clave_longitud_minima", 8) or 8))
 

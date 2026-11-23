@@ -114,7 +114,10 @@ def moves():
                        "Movimiento iniciado.", back)
         if acc == "terminar":
             return act(lambda: ssvc.finish_move(g.user, m, save_upload(request.files.get("foto"), up, f"mov{m.id}_fin"),
-                                                f.get("observacion", "")), "Movimiento completado y validado.", back)
+                                                f.get("observacion", ""),
+                                                [save_upload(x, up, f"mov{m.id}_extra") for x in request.files.getlist("fotos")],
+                                                f.get("lote_id") or None, f.get("ubicacion", "")),
+                       "Movimiento completado y validado.", back)
         if acc == "reasignar":
             return act(lambda: ssvc.reassign_move(g.user, m, f.get("asignado_id") or None, f.get("motivo", "")),
                        "Movimiento reasignado (queda registrado el cambio).", back)
@@ -133,6 +136,9 @@ def moves():
                            clientes=list(db().execute(select(Customer).order_by(Customer.nombre)).scalars()),
                            hora_def=__import__("app.services.core", fromlist=["x"]).param("hora_movimiento_programado", "08:00"),
                            puntos=ssvc.move_points(g.user.almacen or ""),
+                           lotes_alm=list(db().execute(select(__import__("app.models", fromlist=["x"]).StockLot).where(
+                               __import__("app.models", fromlist=["x"]).StockLot.cantidad > 0).order_by(
+                               __import__("app.models", fromlist=["x"]).StockLot.product_code)).scalars())[:800],
                            almacenes=list(db().execute(select(Warehouse).where(Warehouse.habilitado.is_(True))
                                                        .order_by(Warehouse.code)).scalars()))
 

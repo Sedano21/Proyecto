@@ -15,10 +15,43 @@ from .core import BusinessError, audit, has_perm, param
 
 
 # ------------------------------------------------------------------ 1. ubicación del lote
+def parse_ubicaciones(texto):
+    """V67: «A-01-2: 30; B-03-1: 20» → [{ubicacion, cantidad}] (un lote repartido en varios lugares). Sin cantidad, una
+    sola ubicación con todo el lote."""
+    out = []
+    for parte in (texto or "").replace("\n", ";").split(";"):
+        parte = parte.strip()
+        if not parte:
+            continue
+        if ":" in parte:
+            u, q = parte.rsplit(":", 1)
+            try:
+                cant = float(q.strip().replace(",", "."))
+            except ValueError:
+                raise BusinessError(f"Cantidad no válida en «{parte}» (use «UBICACIÓN: cantidad»).")
+            if cant <= 0:
+                raise BusinessError(f"La cantidad de «{u.strip()}» debe ser mayor que cero.")
+        else:
+            u, cant = parte, None
+        u = " ".join(u.split()).upper()[:40]
+        if u:
+            out.append({"ubicacion": u, "cantidad": cant})
+    return out
+
+
 def set_location(user, lot, ubicacion):
+    """Ubicación del lote. V67: admite varias, con su cantidad («A-01-2: 30; B-03-1: 20»), porque un mismo lote puede
+    estar en diferentes lugares. Lo pueden registrar también el montacarguista y el auxiliar al moverlo."""
     if not has_perm(user, "stock.ubicacion"):
-        raise BusinessError("La ubicación la editan el Supervisor de Almacén, el Líder Operativo y Logística.")
-    nueva = " ".join((ubicacion or "").split()).upper()[:80]
+        raise BusinessError("La ubicación la editan el Supervisor de Almacén, el Líder Operativo, el montacarguista y Logística.")
+    items = parse_ubicaciones(ubicacion)
+    if len(items) > 1:
+        conocidas = [x["cantidad"] for x in items if x["cantidad"] is not None]
+        if len(conocidas) == len(items) and sum(conocidas) > (lot.cantidad or 0) + 1e-6:
+            raise BusinessError(f"Las cantidades suman {sum(conocidas):g} y el lote tiene {lot.cantidad:g}.")
+    lot.ubicaciones = items if len(items) > 1 or (items and items[0]["cantidad"] is not None) else []
+    nueva = ("; ".join(f"{x['ubicacion']}" + (f": {x['cantidad']:g}" if x["cantidad"] is not None else "") for x in items)
+             if len(items) > 1 else (items[0]["ubicacion"] if items else ""))[:80]
     if nueva == (lot.ubicacion or ""):
         return lot
     hist = list(lot.ubicacion_hist or [])
@@ -30,8 +63,13 @@ def set_location(user, lot, ubicacion):
 
 
 def ubicaciones_usadas():
-    return sorted({u for (u,) in db().execute(select(StockLot.ubicacion).where(StockLot.ubicacion != "",
-                                                                               StockLot.cantidad > 0).distinct())})
+    out = set()
+    for u, varias in db().execute(select(StockLot.ubicacion, StockLot.ubicaciones).where(StockLot.cantidad > 0)):
+        if varias:
+            out |= {x.get("ubicacion") for x in varias if x.get("ubicacion")}
+        elif u:
+            out.add(u)
+    return sorted(out)
 
 
 # ------------------------------------------------------------------ 2. clientes sin movimiento

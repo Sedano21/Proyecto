@@ -346,6 +346,38 @@
     }
   });
 
+  /* V67 (marcha blanca montacarguista): si falta un dato obligatorio, se dice CUÁL (p. ej. «Foto de validación en el
+     destino») en un aviso visible, se resalta el campo y se lleva la pantalla hasta él. Antes solo salía «complete este
+     campo» y no se entendía qué faltaba. */
+  var avisoT = null;
+  function nombreCampo(el) {
+    var lab = el.id && document.querySelector('label[for="' + el.id + '"]');
+    if (!lab) {
+      var c = el.closest('label') || (el.parentElement && el.parentElement.querySelector('label'));
+      var p = el.previousElementSibling;
+      while (!c && p) { if (p.tagName === 'LABEL') c = p; p = p.previousElementSibling; }
+      lab = c;
+    }
+    var t = (lab && lab.textContent) || el.getAttribute('aria-label') || el.getAttribute('placeholder') || el.name || 'un dato';
+    return t.replace(/\s+/g, ' ').trim();
+  }
+  document.addEventListener('invalid', function (e) {
+    var el = e.target; if (!el || !el.form) return;
+    el.classList.add('falta');
+    if (avisoT) return;  // un solo aviso por envío: el primer campo que falta
+    var txt = (el.type === 'file' ? 'Falta adjuntar: ' : 'Falta completar: ') + nombreCampo(el) + '.';
+    var box = document.getElementById('aviso-falta');
+    if (!box) { box = document.createElement('div'); box.id = 'aviso-falta'; box.setAttribute('role', 'alert');
+      box.style.cssText = 'position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:9999;max-width:92vw;background:#b42318;color:#fff;padding:10px 16px;border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.25);font-weight:600';
+      document.body.appendChild(box); }
+    box.textContent = txt; box.hidden = false;
+    try { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (x) {}
+    avisoT = setTimeout(function () { avisoT = null; }, 400);
+    setTimeout(function () { box.hidden = true; }, 6000);
+  }, true);
+  document.addEventListener('input', function (e) { if (e.target.classList) e.target.classList.remove('falta'); }, true);
+  document.addEventListener('change', function (e) { if (e.target.classList) e.target.classList.remove('falta'); }, true);
+
   /* 7. recarga periódica */
   $all('[data-refresh]').forEach(function (el) {
     var s = parseInt(el.getAttribute('data-refresh'), 10) || 60;

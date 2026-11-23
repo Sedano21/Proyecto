@@ -159,8 +159,8 @@ def roles_of(user, equivalentes=True):
     Finanzas tiene el mismo poder y autoridad que la Coordinación de Finanzas)."""
     if user is None:
         return set()
-    extra = user_scope(user).get("permisos_de")
-    out = {user.role_code} | ({extra} if extra else set())
+    extra = user_scope(user).get("permisos_de")  # V67: uno o varios perfiles adicionales (usuario «dual»)
+    out = {user.role_code} | (set(extra) if isinstance(extra, (list, tuple)) else ({extra} if extra else set()))
     if equivalentes:
         eq = param("roles_equivalentes", {}) or {}
         for r in list(out):

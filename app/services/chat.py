@@ -1,6 +1,6 @@
 """V25 (08-nov-2026): chat interno uno a uno. Cada persona elige a quién escribir; puede adjuntar la pantalla de la que
 escribe («sobre esto») para que quien recibe vaya directo. El destinatario ve el contador de no leídos en la barra superior
-y recibe una notificación en el celular si las activó. No hay grupos ni archivos adjuntos (para eso están las alertas)."""
+y recibe una notificación en el celular si las activó. No hay grupos. V67: se puede adjuntar una foto."""
 from sqlalchemy import and_, func, or_, select
 
 from ..db import db
@@ -20,9 +20,11 @@ def contactos(user):
             if not u.username.startswith("sim.")]
 
 
-def enviar(user, para_id, texto, ref_url="", ref_titulo=""):
+def enviar(user, para_id, texto, ref_url="", ref_titulo="", archivo=""):
     _req(user)
     texto = (texto or "").strip()
+    if not texto and archivo:
+        texto = "(foto)"  # V67: se puede enviar solo una foto
     if not texto:
         raise BusinessError("Escriba el mensaje.")
     if len(texto) > MAX:
@@ -33,7 +35,8 @@ def enviar(user, para_id, texto, ref_url="", ref_titulo=""):
     ref_url = (ref_url or "").strip()
     if ref_url and not (ref_url.startswith("/") and not ref_url.startswith("//")):
         ref_url = ""  # solo enlaces internos del sistema
-    m = ChatMessage(de_id=user.id, para_id=para.id, texto=texto, ref_url=ref_url[:300], ref_titulo=(ref_titulo or "").strip()[:160])
+    m = ChatMessage(de_id=user.id, para_id=para.id, texto=texto, ref_url=ref_url[:300], ref_titulo=(ref_titulo or "").strip()[:160],
+                    archivo=archivo or "")
     db().add(m)
     db().flush()
     _notificar(m, user, para)

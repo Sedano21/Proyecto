@@ -3464,3 +3464,15 @@ ALERT_TYPES += [
      ["JEFE_PRODUCCION", "JEFE_OPERACIONES"], "DEFINIDO", V66,
      "Almacén pide producir un producto (antes lo escribía en la pizarra).", False),
 ]
+# ------------------------------------------------------------------ V67 (23-nov-2026)
+V67 = "Marcha blanca del montacarguista (20-nov-2026)"
+for _p in ("stock.ubicacion", "stock.cambiar_estado"):
+    if any(x[0] == _p for x in PERMISSIONS) and not any(x[0] == _p for x in ROLE_PERMISSIONS.setdefault("MONTACARGUISTA", [])):
+        ROLE_PERMISSIONS["MONTACARGUISTA"].append((_p, "DEFINIDO", f"{V67}: registra la ubicación del lote y lo observa si llega roto"))
+for _r in ("AUX_ALMACEN", "LIDER_ALMACEN", "ASIST_ALMACEN"):
+    if not any(x[0] == "stock.ubicacion" for x in ROLE_PERMISSIONS.setdefault(_r, [])):
+        ROLE_PERMISSIONS[_r].append(("stock.ubicacion", "DEFINIDO", f"{V67}: registra en qué lugar queda cada lote"))
+PARAMS += [
+    ("inicio_por_rol", {"MONTACARGUISTA": "sup.moves"}, "dict", "General",
+     "Pantalla de inicio por perfil (p. ej. el montacarguista entra directo a sus tareas de movimiento).", "DEFINIDO", V67),
+]
