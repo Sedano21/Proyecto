@@ -179,7 +179,10 @@ def analyze(mes=None, hoy=None):
     # presolicitudes de compra de MP
     from .purchasing import lead_time_for
     presol = []
+    from .production import _is_material
     for code, req in sorted(mp_req.items()):
+        if not _is_material(code):
+            continue  # V69: mano de obra y costos CIF (RE-) no se compran
         p = db().get(Product, code)
         disp = sum(stock.get(code, {}).values()) + entrante.get(code, 0)
         falta = round(max(req - disp, 0), 2)

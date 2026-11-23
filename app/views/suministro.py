@@ -15,6 +15,13 @@ from .common import act, f_date, paginate, perm_required
 bp = Blueprint("sup", __name__, url_prefix="/suministro")
 
 
+def _ejecutivos():
+    """V69: ejecutivos comerciales activos, para asignarles la proyección."""
+    from ..models import User
+    return list(db().execute(select(User).where(User.activo.is_(True), User.role_code.in_(
+        ["EJECUTIVO_VENTAS", "COORD_VENTAS", "JEFE_VENTAS"])).order_by(User.nombre)).scalars())
+
+
 @bp.route("/demanda", methods=["GET", "POST"])
 @perm_required("demanda.ver", "demanda.cargar")
 def demand():
@@ -42,9 +49,10 @@ def demand():
                 return ssvc.import_forecast(g.user, path, (f.get("mes_excel") or "").strip()[:7] or None)
             return act(_x, lambda r: f"{r[0]} fila(s) cargadas." + (f" Errores: {' | '.join(r[1][:5])}" if r[1] else ""), back)
         if f.get("accion") == "grupo":
-            filas = [{"product_code": p, "cantidad": q, "canal": c, "customer_id": cl, "observacion": o} for p, q, c, cl, o in
-                     zip(f.getlist("product_code"), f.getlist("cantidad"), f.getlist("canal"), f.getlist("customer_id"),
-                         f.getlist("observacion"))]
+            ejes = f.getlist("ejecutivo_id") or [""] * len(f.getlist("product_code"))
+            filas = [{"product_code": p, "cantidad": q, "canal": c, "customer_id": cl, "observacion": o, "ejecutivo_id": e}
+                     for p, q, c, cl, o, e in zip(f.getlist("product_code"), f.getlist("cantidad"), f.getlist("canal"),
+                                                  f.getlist("customer_id"), f.getlist("observacion"), ejes)]
             return act(lambda: ssvc.save_forecast_group(g.user, f.get("mes"), filas),
                        lambda r: f"{r['nuevas']} proyección(es) registradas" + (f"; {r['cambios']} cambio(s) enviados a "
                                                                               "Gerencia General para su autorización" if r["cambios"] else "") + ".",
@@ -60,7 +68,7 @@ def demand():
     vistas = {v: dp.can_see(g.user, v) for v in ("compras", "llegadas", "produccion")}
     an = dp.analyze(mes) if any(vistas.values()) or "demanda.cargar" in g.perms else None
     return render_template("demand.html", d=d, prods=prods, f=request.args, canales=_canales(), clientes=clientes,
-                           pendientes=ssvc.pending_changes(), an=an, vistas=vistas, mes=mes)
+                           pendientes=ssvc.pending_changes(), an=an, vistas=vistas, mes=mes, ejecutivos=_ejecutivos())
 
 
 @bp.route("/demanda/cambio/<int:fid>", methods=["POST"])

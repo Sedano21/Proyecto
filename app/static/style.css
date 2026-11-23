@@ -895,3 +895,8 @@ a.kpi,.kpi-clic{padding-right:30px}
 .kpis>.kpi span,.kpis>a.kpi span{display:block;line-height:1.3}
 /* V67: campo obligatorio que falta (lo marca ux.js con el aviso de qué falta) */
 .falta{outline:3px solid #d92d20!important;outline-offset:2px}
+/* V69: las cifras se ven completas, nunca partidas en dos líneas */
+td.r,th.r,.nw,.kpi b,.tile .v,.ec-v{white-space:nowrap}
+.kpi b,.tile .v{font-size:clamp(16px,1.7vw,24px)}
+.ec-v{font-size:clamp(1.15em,2vw,1.6em)}
+.kpi,.tile,.ec{min-width:0}

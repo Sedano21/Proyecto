@@ -1,0 +1,14 @@
+{% extends "base.html" %}{% from "_m.html" import empty, paginacion, ic %}
+{% block content %}<div class="page-head"><div><h1>Por despachar</h1>
+<p class="sub">Saldo de las órdenes de venta abiertas de SAP (sin anuladas, cerradas ni líneas cerradas). <b>Vencido</b>: su fecha de entrega ya pasó. <b>En plazo</b>: la fecha de entrega es hoy o después. Valor en soles con IGV, proporcional al saldo; kilos con el peso por unidad del producto.</p></div>
+<div class="row noprint"><a class="btn sec" href="?tipo={{ tipo }}&formato=pdf">{{ ic('download') }} PDF</a><a class="btn sec" href="?tipo={{ tipo }}&formato=xlsx">{{ ic('download') }} Excel</a></div></div>
+{% if d is none %}{{ empty('Todavía no hay OV de SAP leídas.', 'cart') }}{% else %}
+<div class="kpis"><a class="kpi err {{ 'on' if tipo == 'VENCIDO' }}" href="?tipo=VENCIDO&canal={{ canal }}"><span>Vencido ({{ d.VENCIDO.n }} OV)</span><b>S/ {{ '{:,.0f}'.format(d.VENCIDO.soles) }}</b><small>{{ '{:,.0f}'.format(d.VENCIDO.kg) }} kg</small></a>
+<a class="kpi ok {{ 'on' if tipo == 'EN_PLAZO' }}" href="?tipo=EN_PLAZO&canal={{ canal }}"><span>En plazo ({{ d.EN_PLAZO.n }} OV)</span><b>S/ {{ '{:,.0f}'.format(d.EN_PLAZO.soles) }}</b><small>{{ '{:,.0f}'.format(d.EN_PLAZO.kg) }} kg</small></a>
+<div class="kpi"><span>Total por despachar</span><b>S/ {{ '{:,.0f}'.format(d.total_soles) }}</b><small>{{ '{:,.0f}'.format(d.total_kg) }} kg</small></div></div>
+<form class="row card noprint" method="get"><input type="hidden" name="tipo" value="{{ tipo }}"><input type="hidden" name="canal" value="{{ canal }}"><div class="grow"><label>OV o cliente</label><input name="q" type="search" value="{{ q }}" placeholder="Buscar…"></div><div><button class="sec">Ver</button></div></form>
+<div data-lista id="lista-por-despachar">{% if filas.total %}<div class="tw"><table class="small"><tr><th>OV</th><th>Cliente</th><th>Emisión</th><th>Entrega</th><th class="r">{{ 'Días de atraso' if tipo == 'VENCIDO' else 'Faltan (días)' }}</th><th class="r">Saldo kg</th><th class="r">Saldo S/</th><th>Productos</th></tr>
+{% for o in filas %}<tr><td><b>{{ o.docnum }}</b></td><td>{{ o.cliente }}</td><td>{{ o.emision|d if o.emision }}</td><td>{{ o.entrega|d if o.entrega }}</td>
+<td class="r {{ 'err' if tipo == 'VENCIDO' }}">{{ (o.dias if tipo == 'VENCIDO' else -o.dias) if o.dias is not none else '—' }}</td><td class="r">{{ o.kg|n }}</td><td class="r">{{ o.soles|n }}</td>
+<td><details><summary>{{ o.lineas|length }} línea(s)</summary><table class="small">{% for l in o.lineas %}<tr><td><b>{{ l.code }}</b> {{ l.descripcion }}</td><td class="r">pedido {{ l.pedido|n }}</td><td class="r">entregado {{ l.entregado|n }}</td><td class="r">saldo {{ l.saldo|n }}</td><td class="r">{{ l.kg|n }} kg</td></tr>{% endfor %}</table></details></td></tr>{% endfor %}</table></div>
+{{ paginacion(filas, 'OV') }}{% else %}{{ empty('No hay OV en este grupo.', 'cart') }}{% endif %}</div>{% endif %}{% endblock %}

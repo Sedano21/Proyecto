@@ -236,10 +236,11 @@ def requerimiento(mes, hoy=None):
         if c.startswith("RE"):
             return "Otros insumos"
         return segmento(p) if p else "Otros"
-    grupos = defaultdict(lambda: {"items": 0, "requerido": 0.0, "faltante": 0.0})
+    grupos = defaultdict(lambda: {"n_items": 0, "requerido": 0.0, "faltante": 0.0, "lista": []})
     for x in a["presolicitudes"]:
         g = grupos[tipo(x["code"])]
-        g["items"] += 1
+        g["n_items"] += 1
+        g["lista"].append({"code": x["code"], "descripcion": x["descripcion"], "faltante": x["faltante"]})
         g["requerido"] += x["requerido"]
         g["faltante"] += x["faltante"]
     return {"analisis": a, "por_tipo": [dict(tipo=k, **{kk: round(vv, 1) if isinstance(vv, float) else vv for kk, vv in v.items()})

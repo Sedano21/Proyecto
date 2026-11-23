@@ -1938,12 +1938,15 @@ class DemandForecast(Base):
     canal: Mapped[str] = mapped_column(String(60), default="")
     customer_id: Mapped[int | None] = mapped_column(ForeignKey("customers.id"), nullable=True)
     observacion: Mapped[str] = mapped_column(String(250), default="")
+    # V69: ejecutivo comercial al que corresponde la proyección (si no se indica, el ejecutivo del cliente)
+    ejecutivo_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     # V7: cambio solicitado sobre una proyección ya registrada; lo autoriza Gerencia General
     cambio: Mapped[dict] = mapped_column(JSON, default=dict)
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     ts: Mapped[datetime] = mapped_column(DateTime, default=now)
     product = relationship("Product")
     customer = relationship("Customer")
+    ejecutivo = relationship("User", foreign_keys=[ejecutivo_id])
 
 
 class MoveRequest(Base):
@@ -2954,3 +2957,18 @@ class LabelSpec(Base):
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     ts: Mapped[datetime] = mapped_column(DateTime, default=now)
     customer = relationship("Customer")
+
+
+class ReplenishmentAnalysis(Base):
+    """V69 (23-nov-2026): análisis adjuntos al informe de reposición (fichas en PDF, presentaciones, Excel) para que
+    Gerencia y Compras los vean junto con el informe."""
+    __tablename__ = "analisis_reposicion"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    titulo: Mapped[str] = mapped_column(String(200))
+    familia: Mapped[str] = mapped_column(String(120), default="")
+    comentario: Mapped[str] = mapped_column(String(2000), default="")
+    archivos: Mapped[list] = mapped_column(JSON, default=list)  # [{"archivo", "nombre"}]
+    vigente: Mapped[bool] = mapped_column(Boolean, default=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    user = relationship("User")

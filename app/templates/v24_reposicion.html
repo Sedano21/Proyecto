@@ -1,8 +1,22 @@
-{% extends "base.html" %}{% from "_m.html" import ic, empty %}
+{% extends "base.html" %}{% from "_m.html" import ic, empty, csrf %}
 {% block content %}<div class="dir-head"><h1>Informe de reposición</h1><p>{{ d.hoy|d }} · qué comprar, cuánto y hasta cuándo</p></div>
 <div class="row noprint" style="justify-content:flex-end"><a class="btn sec" href="?formato=pdf">{{ ic('download') }} PDF</a> <a class="btn sec" href="?formato=xlsx">{{ ic('download') }} Excel</a></div>
 <section class="card msg-clave"><h3>Resumen</h3><p>{{ d.resumen }}</p>
 {% if d.por_tipo %}<table class="small"><tr><th>Tipo</th><th class="r">Productos</th><th class="r">Por comprar</th><th class="r">Cantidad total</th></tr>{% for t, v in d.por_tipo.items() %}<tr><td>{{ t }}</td><td class="r">{{ v.productos }}</td><td class="r">{{ v.comprar }}</td><td class="r">{{ v.cantidad|n }}</td></tr>{% endfor %}</table>{% endif %}</section>
+<section class="card"><h3>Análisis adjuntos</h3>
+<p class="small muted">Fichas ejecutivas, presentaciones y Excel del análisis de abastecimiento (por ejemplo, la ficha de una familia o la ficha general). Se ven aquí, junto con el informe, para entenderlo mejor.</p>
+{% if analisis %}<div class="tw"><table class="list small"><thead><tr><th>Análisis</th><th>Familia</th><th>Archivos</th><th>Subido por</th><th class="noprint"></th></tr></thead>
+{% for a in analisis %}<tr><td><b>{{ a.titulo }}</b>{% if a.comentario %}<br><span class="muted">{{ a.comentario }}</span>{% endif %}</td><td>{{ a.familia }}</td>
+<td>{% for x in a.archivos %}<a href="{{ url_for('main.evidence', name=x.archivo) }}" target="_blank" rel="noopener">{{ ic('download') }} {{ x.nombre }}</a><br>{% endfor %}</td>
+<td>{{ a.user.nombre if a.user }} <span class="muted">{{ a.ts.strftime('%d/%m/%Y %H:%M') }}</span></td>
+<td class="noprint"><form method="post" onsubmit="return confirm('¿Retirar este análisis?')">{{ csrf() }}<input type="hidden" name="accion" value="retirar"><input type="hidden" name="aid" value="{{ a.id }}"><button class="sec small">Retirar</button></form></td></tr>{% endfor %}</table></div>
+{% else %}<p class="muted small">Aún no hay análisis adjuntos.</p>{% endif %}
+<details class="noprint"><summary><b>Adjuntar un análisis</b></summary><form method="post" enctype="multipart/form-data" class="row">{{ csrf() }}<input type="hidden" name="accion" value="subir">
+<div class="grow"><label>Título</label><input name="titulo" required maxlength="200" placeholder="Ej.: Ficha ejecutiva de una familia"></div>
+<div><label>Familia (opcional)</label><input name="familia" maxlength="120"></div>
+<div class="grow"><label>Comentario (opcional)</label><input name="comentario" maxlength="2000"></div>
+<div><label>Archivos (PDF, PowerPoint, Excel, Word, CSV o imagen)</label><input type="file" name="archivos" multiple required accept=".pdf,.pptx,.ppt,.xlsx,.xls,.docx,.doc,.csv,.png,.jpg,.jpeg"></div>
+<div><button>Adjuntar</button></div></form></details></section>
 {% for k, titulo, cls in [('YA', 'Comprar ya', 'err'), ('SEMANA', 'Comprar esta semana', 'warn'), ('PROGRAMAR', 'Programar', ''), ('CUBIERTO', 'Cubierto', 'ok'), ('SIN_DATOS', 'Faltan datos', 'info')] %}{% set lst = d.grupos[k] %}
 {% if lst %}<section class="card repo-g {{ cls }}"><h3>{{ titulo }} <span class="b {{ cls or 'info' }}">{{ lst|length }}</span></h3>
 <table class="small"><tr><th>Producto</th><th>Tipo</th>{% if k in ('YA', 'SEMANA', 'PROGRAMAR') %}<th class="r">Comprar</th><th>Pedir hasta</th>{% endif %}<th>Por qué</th></tr>

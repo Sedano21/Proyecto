@@ -96,7 +96,7 @@ def _mes(v):
     return v
 
 
-def save_forecast(user, mes, product_code, cantidad, canal="", customer_id=None, observacion=""):
+def save_forecast(user, mes, product_code, cantidad, canal="", customer_id=None, observacion="", ejecutivo_id=None):
     if not has_perm(user, "demanda.cargar"):
         raise BusinessError("La proyección de demanda la carga Comercial.")
     mes = _mes(mes)
@@ -113,6 +113,8 @@ def save_forecast(user, mes, product_code, cantidad, canal="", customer_id=None,
     q = select(DemandForecast).where(DemandForecast.mes == mes, DemandForecast.product_code == code,
                                      DemandForecast.canal == canal, DemandForecast.customer_id.is_(customer_id) if customer_id
                                      is None else DemandForecast.customer_id == customer_id)
+    ejecutivo_id = int(ejecutivo_id) if str(ejecutivo_id or "").isdigit() else None  # V69: cada ejecutivo su proyección
+    q = q.where(DemandForecast.ejecutivo_id.is_(None) if ejecutivo_id is None else DemandForecast.ejecutivo_id == ejecutivo_id)
     f = db().execute(q).scalars().first()
     obs = (observacion or "").strip()[:250]
     if f is not None and param("demanda_cambio_requiere_gg", True) and abs(f.cantidad - cantidad) > 1e-9:
@@ -128,7 +130,8 @@ def save_forecast(user, mes, product_code, cantidad, canal="", customer_id=None,
         audit(user, "DEMANDA_CAMBIO_SOLICITADO", "DemandForecast", f.id, f.cambio)
         return f
     if f is None:
-        f = DemandForecast(mes=mes, product_code=code, canal=canal, customer_id=customer_id, cantidad=cantidad)
+        f = DemandForecast(mes=mes, product_code=code, canal=canal, customer_id=customer_id, cantidad=cantidad,
+                           ejecutivo_id=ejecutivo_id)
         db().add(f)
     f.cantidad, f.observacion, f.user_id = cantidad, obs, user.id
     db().flush()
@@ -157,12 +160,13 @@ def save_forecast_group(user, mes, filas):
             errores.append(f"Fila {i}: cantidad inválida.")
             continue
         cid = int(r["customer_id"]) if str(r.get("customer_id") or "").isdigit() else None
-        clave = (code, (r.get("canal") or "").strip().upper(), cid)
+        eid = int(r["ejecutivo_id"]) if str(r.get("ejecutivo_id") or "").isdigit() else None
+        clave = (code, (r.get("canal") or "").strip().upper(), cid, eid)
         if clave in vistos:
             errores.append(f"Fila {i}: {code} repetido con el mismo canal y cliente.")
             continue
         vistos.add(clave)
-        validas.append(dict(r, product_code=code, cantidad=q, customer_id=cid))
+        validas.append(dict(r, product_code=code, cantidad=q, customer_id=cid, ejecutivo_id=eid))
     if errores:
         raise BusinessError(" ".join(errores[:8]))
     if not validas:
@@ -170,7 +174,7 @@ def save_forecast_group(user, mes, filas):
     res = {"nuevas": 0, "cambios": 0}
     for r in validas:
         f = save_forecast(user, mes, r["product_code"], r["cantidad"], r.get("canal", ""), r["customer_id"],
-                          r.get("observacion", ""))
+                          r.get("observacion", ""), r.get("ejecutivo_id"))
         c = f.cambio or {}
         pendiente = c.get("estado") == "PENDIENTE" and abs(float(c.get("cantidad", -1)) - r["cantidad"]) < 1e-9 \
             and abs(f.cantidad - r["cantidad"]) > 1e-9
@@ -264,6 +268,14 @@ def _import_comercial(user, wb, mes):
     return n, errores
 
 
+def _ejecutivo_por_nombre(txt):
+    """V69: usuario por su nombre, su usuario o su nombre de vendedor en SAP."""
+    from ..models import User
+    from .orders import usuario_por_nombre_sap
+    t = str(txt).strip()
+    return (db().execute(select(User).where(User.username == t)).scalars().first() or usuario_por_nombre_sap(t))
+
+
 def import_forecast(user, path, mes=None):
     """Excel con columnas: mes (AAAA-MM), producto (código), cantidad y, opcionales, canal y observación.
     V60: también el archivo de Comercial tal cual (hojas IMPORTADO y NACIONAL con «CODIGO DE PRODUCTO» y «CANTIDAD
@@ -290,6 +302,7 @@ def import_forecast(user, path, mes=None):
         return next((i for i, c in enumerate(cab) if c in n), None)
     im, ip, iq = col("mes", "periodo"), col("producto", "codigo", "código", "articulo", "artículo"), col("cantidad", "proyeccion", "proyección")
     ic, io = col("canal"), col("observacion", "observación")
+    ie = col("ejecutivo", "vendedor", "ejecutivo comercial")  # V69: opcional, por nombre o usuario
     if None in (im, ip, iq):
         raise BusinessError("Faltan columnas: mes, producto y cantidad.")
     n, errores = 0, []
@@ -298,7 +311,13 @@ def import_forecast(user, path, mes=None):
             continue
         mes = r[im].strftime("%Y-%m") if isinstance(r[im], (date, datetime)) else r[im]
         try:
-            save_forecast(user, mes, r[ip], r[iq], r[ic] if ic is not None else "", None, r[io] if io is not None else "")
+            eje = None
+            if ie is not None and str(r[ie] or "").strip():
+                eje = _ejecutivo_por_nombre(r[ie])
+                if eje is None:
+                    raise BusinessError(f"ejecutivo «{r[ie]}» no es un usuario.")
+            save_forecast(user, mes, r[ip], r[iq], r[ic] if ic is not None else "", None, r[io] if io is not None else "",
+                          eje.id if eje else None)
             n += 1
         except BusinessError as e:
             errores.append(f"Fila {k}: {e}")

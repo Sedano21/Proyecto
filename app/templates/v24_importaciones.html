@@ -25,7 +25,7 @@
 <div><button>Guardar</button></div></form>{% endmacro %}
 
 {% block content %}<div class="page-head"><div><h1>Seguimiento de importaciones</h1><p class="sub">Llegada, días libres, SENASA, BL, retiro y almacén de cada contrato · gastos extra, contratos y penalidades.</p></div>
-<div class="row noprint"><a class="btn sec" href="?salida=xlsx">{{ ic('download') }} Excel</a>{% if puede %}<button class="btn" data-open="dlg-imp">{{ ic('plus') }} Nueva importación</button>{% endif %}</div></div>
+<div class="row noprint"><a class="btn sec" href="?salida=xlsx">{{ ic('download') }} Excel</a>{% if puede %}<button class="btn sec" data-open="dlg-xls">{{ ic('upload') }} Cargar Excel</button> <button class="btn" data-open="dlg-imp">{{ ic('plus') }} Nueva importación</button>{% endif %}</div></div>
 
 <div class="kpis"><div class="kpi primary"><b>{{ d.tot.contenedores }}</b><span>Contenedores en seguimiento</span><small>{{ d.tot.por_retirar }} por retirar</small></div>
 <div class="kpi {{ 'warn' if d.tot.en_riesgo }}"><b>{{ d.tot.en_riesgo }}</b><span>En riesgo</span><small>retiro próximo o vencido</small></div>
@@ -69,7 +69,10 @@
 <form method="post" enctype="multipart/form-data" class="row">{{ csrf() }}<input type="hidden" name="accion" value="excel"><div class="grow"><input type="file" name="archivo" accept=".xlsx" required data-plain></div><div><button class="sec">Cargar</button></div></form></section>{% endif %}
 </div>
 
-{% if puede %}<dialog class="modal" id="dlg-imp"><div class="dlg-head"><h3>Nueva importación</h3><button class="ibtn" type="button" data-close>{{ ic('x') }}</button></div><div class="dlg-body">{{ form_imp() }}</div></dialog>
+{% if puede %}<dialog class="modal" id="dlg-xls"><div class="dlg-head"><h3>Cargar el cuadro desde Excel</h3><button class="ibtn" type="button" data-close>{{ ic('x') }}</button></div><div class="dlg-body">
+<p class="small">Suba el cuadro de seguimiento (.xlsx) con la fila de cabecera: {{ 'CÓDIGO SAP, CONTRATO, PROVEEDOR, ITEM, PAÍS DE ORIGEN, CONTENEDORES, FECHA DE LLEGADA, DÍAS LIBRES, 1 STATUS DE SENASA, 2 STATUS-LIBERACIÓN DE BL, 3 STATUS-RETIRO, INFORMACIÓN DEL ALMACÉN' }}. Si el contrato ya existe, se actualiza; si no, se crea. <a href="?salida=plantilla">{{ ic('download') }} Descargar la plantilla</a></p>
+<form method="post" enctype="multipart/form-data" class="row">{{ csrf() }}<input type="hidden" name="accion" value="excel"><div class="grow"><input type="file" name="archivo" accept=".xlsx" required data-plain></div><div><button>Cargar</button></div></form></div></dialog>
+<dialog class="modal" id="dlg-imp"><div class="dlg-head"><h3>Nueva importación</h3><button class="ibtn" type="button" data-close>{{ ic('x') }}</button></div><div class="dlg-body">{{ form_imp() }}</div></dialog>
 {% for x in d.filas %}{% set f = x.f %}<dialog class="modal" id="dlg-e{{ f.id }}"><div class="dlg-head"><h3>{{ f.item }} · {{ f.contrato }}</h3><button class="ibtn" type="button" data-close>{{ ic('x') }}</button></div><div class="dlg-body">
 {{ form_imp(f) }}
 <h4>Gasto extra</h4><form method="post" enctype="multipart/form-data" class="row">{{ csrf() }}<input type="hidden" name="accion" value="gasto"><input type="hidden" name="id" value="{{ f.id }}">

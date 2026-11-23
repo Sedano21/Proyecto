@@ -147,6 +147,9 @@ def imports():
                 return imp.import_excel(g.user, os.path.join(_up(), ruta))
             return act(_cargar, lambda r: f"Cuadro cargado: {r[0]} nuevas, {r[1]} actualizadas.", back)
         abort(400)
+    if request.args.get("salida") == "plantilla":  # V69: plantilla con las columnas que lee la carga desde Excel
+        return Response(imp.plantilla(), headers={"Content-Disposition": "attachment; filename=plantilla_seguimiento_importaciones.xlsx"},
+                        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     if request.args.get("salida") == "xlsx":
         return Response(imp.excel(), headers={"Content-Disposition": f"attachment; filename=importaciones_{date.today():%Y%m%d}.xlsx"},
                         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
@@ -226,10 +229,25 @@ def company():
     return _descarga(html, "Cómo va la empresa", "como_va_la_empresa")
 
 
-@bp.route("/reposicion")
+@bp.route("/reposicion", methods=["GET", "POST"])
 @perm_required("tablero.empresa", "compras.ver", "compras.consolidado")
 def replenishment():
-    html = render_template("v24_reposicion.html", d=emp.reposicion())
+    from ..services import analisis_reposicion as ar
+    if request.method == "POST":  # V69: análisis adjuntos (fichas, presentaciones, Excel)
+        f = request.form
+        back = url_for("v24.replenishment")
+        if f.get("accion") == "retirar":
+            from ..models import ReplenishmentAnalysis
+            a = db().get(ReplenishmentAnalysis, int(f.get("aid") or 0)) or abort(404)
+            return act(lambda: ar.retirar(g.user, a), "Análisis retirado.", back)
+
+        def _subir():
+            ar._puede(g.user)
+            return ar.registrar(g.user, f.get("titulo"), ar.guardar_archivos(request.files.getlist("archivos"),
+                                                                             current_app.config["UPLOAD_DIR"]),
+                                f.get("familia", ""), f.get("comentario", ""))
+        return act(_subir, lambda a: f"Análisis «{a.titulo}» adjuntado ({len(a.archivos)} archivo(s)).", back)
+    html = render_template("v24_reposicion.html", d=emp.reposicion(), analisis=ar.vigentes())
     return _descarga(html, "Informe de reposición", "informe_reposicion")
 
 
@@ -329,6 +347,23 @@ def ov_mes_sap():
         filas = [f for f in filas if q in f["docnum"] or q in (f["cliente"] or "").upper()]
     return render_template("v55_ov_mes_sap.html", r=ov_del_periodo(desde, hasta), filas=paginate(filas, 50), desde=desde,
                            hasta=hasta, q=q)
+
+
+@bp.route("/por-despachar")
+@perm_required("tablero.empresa", "ov.ver")
+def por_despachar():
+    """V69: detalle de lo que falta despachar de las OV abiertas de SAP (vencido / en plazo)."""
+    from ..services.por_despachar import calcular
+    from .common import paginate
+    canal = (request.args.get("canal") or "").strip()
+    d = calcular(canal=canal)
+    tipo = request.args.get("tipo") or "VENCIDO"
+    filas = [o for o in (d["ovs"] if d else []) if o["tipo"] == tipo]
+    q = (request.args.get("q") or "").strip().upper()
+    if q:
+        filas = [o for o in filas if q in o["docnum"] or q in (o["cliente"] or "").upper()]
+    html = render_template("v69_por_despachar.html", d=d, tipo=tipo, filas=paginate(filas, 50), q=q, canal=canal)
+    return _descarga(html, "Por despachar", "por_despachar")
 
 
 @bp.route("/entregado-sap")

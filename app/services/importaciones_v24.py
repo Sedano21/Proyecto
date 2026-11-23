@@ -360,6 +360,21 @@ def import_excel(user, path):
     return nuevos, act
 
 
+def plantilla():
+    """V69: Excel vacío con las columnas que lee import_excel."""
+    import io
+    from openpyxl import Workbook
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Importaciones"
+    ws.append(COLUMNAS_EXCEL)
+    for i in range(1, len(COLUMNAS_EXCEL) + 1):
+        ws.column_dimensions[ws.cell(1, i).column_letter].width = 22
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
 def excel(hoy=None):
     """Excel del cuadro con las mismas columnas (más semáforo, gastos y penalidades)."""
     from io import BytesIO

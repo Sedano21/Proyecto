@@ -142,6 +142,16 @@ def tablero(hoy=None, ver_costos=False, canal=""):
                                 + (f" · {var_e:+.0f} % vs el mismo corte del mes anterior" if var_e is not None else "")
                                 + (f" · {en['estimadas']} línea(s) valorizadas con el precio de su OV hasta releer SAP"
                                    if en["estimadas"] else ""), "", _url("v24.entregado_sap", "/gestion/entregado-sap")))
+    # V69: diferencia por despachar de las OV abiertas de SAP: cuánto está vencido y cuánto en plazo
+    from .por_despachar import calcular as _por_desp
+    pd = _por_desp(hoy, canal)
+    if pd is not None and (pd["VENCIDO"]["n"] or pd["EN_PLAZO"]["n"]):
+        v, e = pd["VENCIDO"], pd["EN_PLAZO"]
+        pos = next((i + 1 for i, c in enumerate(cards) if c["titulo"].startswith("OV con despacho")), min(3, len(cards)))
+        cards.insert(pos, _card("Comercial", "Por despachar (OV abiertas SAP)", f"S/ {pd['total_soles']:,.0f}",
+                                f"vencido S/ {v['soles']:,.0f} ({v['n']} OV · {v['kg']:,.0f} kg) · en plazo "
+                                f"S/ {e['soles']:,.0f} ({e['n']} OV · {e['kg']:,.0f} kg)",
+                                "err" if v["n"] else "", _url("v24.por_despachar", "/gestion/por-despachar")))
     if canal:
         from .comercial_v23 import base_mes, fin_de_mes, nivel
         n = nivel(del_canal(base_mes(ini, fin_de_mes(ini))), hoy=hoy)

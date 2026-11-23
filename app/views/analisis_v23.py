@@ -45,7 +45,12 @@ def demand():
                           title="Proyectado vs pedido vs despachado")
     from ..services import sap_sl
     from flask import g
-    html = render_template("v23_demanda.html", d=d, meses=meses, gran=gran, graf=graf, cat_f=cat_f, clase=clase, ej_pag=ej_pag,
+    # V69: avance de lo proyectado por ejecutivo (el ejecutivo ve solo su cartera)
+    from ..services import demanda_ejecutivo as dej
+    propio = g.user.role_code == "EJECUTIVO_VENTAS"
+    ej_sel = g.user.id if propio else (request.args.get("ejecutivo") or None)
+    d["por_ejecutivo"] = dej.avance(mes, ej_sel)
+    html = render_template("v23_demanda.html", d=d, ej_sel=ej_sel, ej_propio=propio, meses=meses, gran=gran, graf=graf, cat_f=cat_f, clase=clase, ej_pag=ej_pag,
                            puede_sap=sap_sl.configured() and bool(g.perms & {"ov.importar", "ov.ver", "demanda.analisis"}),
                            job_ord=sap_sl.job_state("ORDENES"))
     formato = request.args.get("formato")

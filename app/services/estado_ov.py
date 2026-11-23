@@ -1,11 +1,11 @@
 """V27 (11-nov-2026): «Estado de OV»: en qué etapa está cada OV del módulo, con indicadores por etapa (mismo estilo
 de la pantalla «OV abiertas vs guías de SAP»). Solo consulta."""
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from sqlalchemy import select
 
 from ..db import db
-from ..models import CustomerInvoice, PickingTask, RouteStop, SalesOrder
+from ..models import CustomerInvoice, PickingTask, Route, RouteStop, SalesOrder
 
 # etapa visible → estados de la OV
 ETAPAS = [
@@ -74,6 +74,22 @@ def kilos(o):
             round(sum(min(l.despachado or 0, l.cantidad or 0) * kg_unidad(l.product) for l in ls), 2))
 
 
+def fecha_despacho(o, parada, guias):
+    """V69: cuándo sale la OV. Si ya salió: la fecha de su guía (SAP o SUNAT) o de la salida registrada (REAL).
+    Si no: la fecha de la ruta en que está programada (PROGRAMADA). Si no tiene ruta: None."""
+    fechas = sorted(g["fecha"] for g in (guias or []) if g.get("fecha"))
+    if fechas:
+        f = fechas[0]
+        return {"fecha": f.date() if isinstance(f, datetime) else f, "tipo": "REAL", "ultima": fechas[-1]}
+    if o.salida_ts:
+        return {"fecha": o.salida_ts.date(), "tipo": "REAL", "ultima": None}
+    if parada is not None:
+        r = db().get(Route, parada.route_id)
+        if r is not None and r.fecha:
+            return {"fecha": r.fecha, "tipo": "PROGRAMADA", "ultima": None}
+    return None
+
+
 def tablero(desde=None, hasta=None, q="", vendedor_id=None, etapa_f=""):
     hoy = date.today()
     desde = desde or hoy - timedelta(days=15)
@@ -105,7 +121,8 @@ def tablero(desde=None, hasta=None, q="", vendedor_id=None, etapa_f=""):
             continue
         atrasada = o.fecha_compromiso < hoy and e not in ("DESPACHADA", "ENTREGADA", "CERRADA", "CANCELADA")
         kp, kd = kilos(o)
-        filas.append({"o": o, "etapa": e, "kg_pedido": kp, "kg_despachado": kd, "avance": round(100 * kd / kp, 1) if kp else None,
+        fd = fecha_despacho(o, paradas.get(o.id), guias.get(o.id))
+        filas.append({"o": o, "etapa": e, "despacho": fd, "kg_pedido": kp, "kg_despachado": kd, "avance": round(100 * kd / kp, 1) if kp else None,
                       "pasos": pasos(o, picks.get(o.id, []), paradas.get(o.id), facts.get(o.id, []),
                                                          guias.get(o.id)),
                       "atrasada": atrasada, "motivo": (o.bloqueo_ov or {}).get("motivo") if o.estado == "BLOQUEADA"
@@ -113,4 +130,5 @@ def tablero(desde=None, hasta=None, q="", vendedor_id=None, etapa_f=""):
     tot["ATRASADAS"] = sum(1 for o in ords if o.fecha_compromiso < hoy
                            and etapa(o) not in ("DESPACHADA", "ENTREGADA", "CERRADA", "CANCELADA"))
     return {"filas": filas, "tot": tot, "total": len(ords), "desde": desde, "hasta": hasta, "etapas": ETAPAS,
-            "kg_pedido": round(sum(f["kg_pedido"] for f in filas), 2), "kg_despachado": round(sum(f["kg_despachado"] for f in filas), 2)}
+            "kg_pedido": round(sum(f["kg_pedido"] for f in filas), 2), "kg_despachado": round(sum(f["kg_despachado"] for f in filas), 2),
+            "filtrado": bool(etapa_f)}
