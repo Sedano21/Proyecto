@@ -180,7 +180,9 @@ def route_detail(rid):
     from ..models import User
     auxiliares = list(db().execute(select(User).where(User.role_code == "AUX_DESPACHO", User.activo.is_(True))
                                    .order_by(User.nombre)).scalars())
-    return render_template("route_detail.html", r=r, vehicles=vehicles, drivers=drivers, others=others, auxiliares=auxiliares,
+    from ..services.ov_sap import guias_de  # V70: guía y factura de SAP de cada OV para validar la carga
+    return render_template("route_detail.html", r=r, guias=guias_de([st.order for st in r.stops]),
+                           vehicles=vehicles, drivers=drivers, others=others, auxiliares=auxiliares,
                            gmaps=maps.gmaps_link(r), embed=maps.embed_url(r), estimado=maps.estimate(r) if not maps.api_key() else None,
                            maps_ok=bool(maps.api_key()),
                            checklist=dsvc.CHECKLIST, expected=dsvc.expected_lines(r), tipos=INCIDENT_TYPES,
@@ -272,7 +274,8 @@ def tracking():
 
 
 @bp.route("/ruta/<int:rid>/folio")
-@perm_required("distribucion.ver")
+@perm_required("distribucion.ver", "distribucion.carga", "distribucion.visto_bueno_salida", "distribucion.seguridad",
+               "distribucion.visto_bueno_calidad", "calidad.ver", "picking.asignar", "tareas.ejecutar")  # V70: todos los que validan
 def folio(rid):
     """Pre-guía / guía del sistema y folio de documentos por pedido (imprimible)."""
     r = db().get(Route, rid) or abort(404)

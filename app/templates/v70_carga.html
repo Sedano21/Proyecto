@@ -5,6 +5,7 @@
 <section class="card" id="ruta{{ r.id }}"><h3><a href="{{ url_for('dist.route_detail', rid=r.id) }}">Ruta #{{ r.id }}</a> · {{ r.fecha|d }} · {{ r.vehicle.placa if r.vehicle else (r.transportista or {}).get('placa', 'sin unidad') }} · {{ r.driver.nombre if r.driver else (r.transportista or {}).get('nombre', 'sin chofer') }}
 <span class="b {{ 'ok' if rs else ('warn' if al else '') }}">{{ 'carga en curso' if rs else ('unidad lista: esperando a Almacén' if al else 'sin aviso') }}</span></h3>
 <p class="small">Cargar en: <b>{{ cv.almacenes_de(r)|join(' y ') or '—' }}</b> · OV: {% for st in r.stops %}{{ st.order.numero }} ({{ st.order.customer.nombre }}){{ ', ' if not loop.last }}{% endfor %} · Auxiliar de despacho: <b>{{ (r.auxiliares or ([r.auxiliar_id] if r.auxiliar_id else []))|map('usuario_nombre')|join(', ') or 'sin auxiliar' }}</b></p>
+{% include "_docs_ruta.html" %}
 {% if al %}<p class="small">✓ <b>Unidad lista</b> ({{ al.ts|replace('T', ' ') }}, {{ al.user }}): limpia, en <b>{{ al.ubicacion }}</b>{{ ' · ' ~ al.nota if al.nota }}</p>{% endif %}
 {% if rs %}<p class="small">✓ <b>Almacén inició el traslado y la carga</b> ({{ rs.ts|replace('T', ' ') }}, {{ rs.user }}): asignado a <b>{{ rs.asignados|map(attribute='nombre')|join(', ') }}</b>{{ ' · ' ~ rs.nota if rs.nota }}</p>{% endif %}
 {% if r.estado in ('PROPUESTA', 'CONFIRMADA') %}

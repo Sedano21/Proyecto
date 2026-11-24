@@ -194,3 +194,27 @@ def test_guia_de_sap_se_ve_e_imprime(app, s, U, new_order):
     assert r.status_code == 200 and r.data[:4] == b"%PDF"
     assert "/ov/guia-sap/777001" in c.get(f"/ov/{o.id}").get_data(as_text=True)
     assert "/ov/guia-sap/777001" in c.get("/ov/estado").get_data(as_text=True)
+
+
+def test_todos_los_que_validan_ven_guia_factura_y_preguia(app, s, U, cust):
+    from app.models import SapBilling, SapMovement
+    r, o = _route(s, U, cust)
+    s.add(SapMovement(clave="GUIA:777002:0", tipo="GUIA", docentry=777002, documento="T001-998", fecha=date.today(),
+                      ov_numero=o.numero, factura="F001-555", cliente="CLIENTE FICTICIO SAC", product_code="PT-905",
+                      cantidad=5, total=50, igv=9))
+    s.add(SapBilling(clave="FACTURA:888001", tipo="FACTURA", numero="F001-555", fecha=date.today(),
+                     cliente="CLIENTE FICTICIO SAC", total=59, igv=9))
+    s.commit()
+    for u in ("aux.despacho", "seguridad", "superv.calidad", "lider.almacen", "aux.almacen", "conductor1"):
+        if s.query(type(U("lider.almacen"))).filter_by(username=u).first() is None:
+            continue
+        c = _cliente(app, u)
+        assert c.get("/ov/guia-sap/777002?sap=0").status_code == 200, u
+        html = c.get("/ov/factura-sap?doc=F001-555&sap=0").get_data(as_text=True)
+        assert "F001-555" in html and "T001-998" in html, u
+    c = _cliente(app, "aux.despacho")
+    assert c.get(f"/distribucion/ruta/{r.id}/folio?tipo=preguia").status_code == 200
+    carga = _cliente(app, "lider.almacen").get("/almacen/carga").get_data(as_text=True)
+    assert "pre-guía de la ruta" in carga and "/ov/guia-sap/777002" in carga and "factura F001-555" in carga
+    det = _cliente(app, "coord.distribucion").get(f"/distribucion/ruta/{r.id}").get_data(as_text=True)
+    assert "Documentos para validar la carga" in det and "/ov/factura-sap?doc=F001-555" in det

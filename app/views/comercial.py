@@ -999,9 +999,14 @@ def bulk_upload():
     return render_template("v64_carga_ov.html", columnas=COLUMNAS, pendientes=por_validar())
 
 
+# V70: ven la guía, la factura y la pre-guía todos los que validan la carga (Almacén, Auxiliar de Despacho, chofer,
+# Seguridad, Calidad) además de Comercial, Distribución y Facturación
+VALIDAN_DOCS = ("ov.ver", "expedientes.ver", "distribucion.ver", "facturacion.cargar", "guias.estado", "ov.reservas_ver", "distribucion.carga", "distribucion.entrega", "distribucion.seguridad", "distribucion.visto_bueno_salida", "distribucion.visto_bueno_calidad", "calidad.ver", "picking.asignar", "tareas.ejecutar", "finanzas.ver")
+
+
 @bp.route("/guia-sap")
 @bp.route("/guia-sap/<int:docentry>")
-@perm_required("ov.ver", "expedientes.ver", "distribucion.ver", "facturacion.cargar", "guias.estado", "ov.reservas_ver")
+@perm_required(*VALIDAN_DOCS)
 def sap_guide(docentry=None):
     """V70: ver e imprimir (o descargar en PDF) una guía de remisión de SAP con sus productos, cantidades y lotes."""
     import io
@@ -1023,4 +1028,22 @@ def sap_guide(docentry=None):
         from ..services import pdfreport
         return send_file(io.BytesIO(pdfreport.html_to_pdf(html, f"Guía {gd['documento']}")), mimetype="application/pdf",
                          as_attachment=True, download_name=f"guia_{gd['documento']}.pdf")
+    return html
+
+
+@bp.route("/factura-sap")
+@perm_required(*VALIDAN_DOCS)
+def sap_invoice():
+    """V70: ver e imprimir (o PDF) una factura de SAP por su número."""
+    import io
+    from flask import send_file
+    from ..services import ov_sap
+    fd = ov_sap.factura_sap((request.args.get("doc") or "").strip(), leer_sap=request.args.get("sap", "1") != "0")
+    if fd is None:
+        abort(404)
+    html = render_template("v70_factura_sap.html", fd=fd, ov=osvc.order_by_number(fd["ov"]) if fd.get("ov") else None)
+    if request.args.get("formato") == "pdf":
+        from ..services import pdfreport
+        return send_file(io.BytesIO(pdfreport.html_to_pdf(html, f"Factura {fd['numero']}")), mimetype="application/pdf",
+                         as_attachment=True, download_name=f"factura_{fd['numero']}.pdf")
     return html

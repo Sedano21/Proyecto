@@ -41,7 +41,7 @@ def guias_de(orders):
             oid = por_num[m.ov_numero]
             g = out[oid].setdefault(m.documento or f"SAP {m.docentry}",
                                     {"documento": m.documento or f"SAP {m.docentry}", "fecha": m.fecha, "origen": "SAP",
-                                     "docentry": m.docentry, "lineas": defaultdict(float)})
+                                     "docentry": m.docentry, "factura": m.factura or "", "lineas": defaultdict(float)})
             g["lineas"][m.product_code] += m.cantidad or 0
     ids = [o.id for o in orders] or [-1]
     for i in range(0, len(ids), 500):
@@ -294,3 +294,58 @@ def guia_sap(docentry, leer_sap=True):
         except Exception as e:  # noqa: BLE001 - sin conexión: se muestra lo ya leído
             g["aviso_sap"] = f"No se pudo leer la guía en SAP en este momento ({str(e)[:120]}); se muestra lo ya leído."
     return g
+
+
+def factura_sap(numero, leer_sap=True):
+    """V70: la factura de SAP para verla e imprimirla: cabecera leída (SapBilling) y líneas de SAP (lectura de solo
+    consulta); si SAP no responde, las líneas de las guías que la citan."""
+    from ..models import Product, SapBilling, SapMovement
+    if not numero:
+        return None
+    b = db().execute(select(SapBilling).where(SapBilling.numero == numero)).scalars().first()
+    movs = list(db().execute(select(SapMovement).where(SapMovement.tipo == "GUIA", SapMovement.factura == numero)).scalars())
+    if b is None and not movs:
+        return None
+    from .orders import kg_unidad
+    lineas = []
+    for m in movs:
+        p = db().get(Product, m.product_code)
+        lineas.append({"code": m.product_code, "descripcion": p.descripcion if p else "", "cantidad": m.cantidad or 0,
+                       "precio": None, "total": round((m.total or 0) + (m.igv or 0), 2),
+                       "kg": round((m.cantidad or 0) * kg_unidad(p), 2) if p else None})
+    f = {"numero": numero, "fecha": b.fecha if b else (movs[0].fecha if movs else None), "cliente": b.cliente if b else movs[0].cliente,
+         "cardcode": b.cardcode if b else "", "tipo": b.tipo if b else "FACTURA", "moneda": b.moneda if b else "",
+         "total": b.total if b else round(sum(x["total"] for x in lineas), 2), "igv": b.igv if b else None,
+         "ov": movs[0].ov_numero if movs else "", "guias": sorted({m.documento for m in movs if m.documento}),
+         "lineas": lineas, "fuente": "vigilante"}
+    docentry = None
+    if b is not None and ":" in (b.clave or ""):
+        try:
+            docentry = int(b.clave.split(":")[1])
+        except ValueError:
+            docentry = None
+    if leer_sap and docentry:
+        try:
+            from . import sap_sl
+            if sap_sl.configured():
+                sl = sap_sl.ServiceLayer()
+                sl.login()
+                try:
+                    d = sl._req("GET", f"{'CreditNotes' if f['tipo'] == 'NOTA_CREDITO' else 'Invoices'}({docentry})")
+                finally:
+                    sl.logout()
+                f["direccion"] = d.get("Address") or ""
+                f["comentarios"] = d.get("Comments") or ""
+                f["fuente"] = "SAP"
+                lin = []
+                for ln in d.get("DocumentLines") or []:
+                    p = db().get(Product, ln.get("ItemCode") or "")
+                    lin.append({"code": ln.get("ItemCode"), "descripcion": ln.get("ItemDescription") or (p.descripcion if p else ""),
+                                "cantidad": ln.get("Quantity") or 0, "precio": ln.get("Price"),
+                                "total": round((ln.get("LineTotal") or 0) + (ln.get("TaxTotal") or 0), 2),
+                                "kg": round((ln.get("Quantity") or 0) * kg_unidad(p), 2) if p else None})
+                if lin:
+                    f["lineas"] = lin
+        except Exception as e:  # noqa: BLE001
+            f["aviso_sap"] = f"No se pudo leer la factura en SAP en este momento ({str(e)[:120]}); se muestra lo ya leído."
+    return f

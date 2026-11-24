@@ -314,8 +314,9 @@ def test_matriz_permisos_reglas_documentadas(s):
                                                       "GERENCIA_GENERAL"}
     assert roles_con("distribucion.aprobar_salida_discrepancia") == {"JEFE_LOGISTICA", "COORD_LOGISTICA", "GERENCIA_GENERAL"}
     # V17: la Coordinación de Logística hace lo de los Supervisores de Almacén 1560 y 1524
+    # V70: el Líder Operativo (y el Asistente, que tiene lo del Líder) tienen todas las opciones de reempaque
     assert roles_con("reempaque.solicitar") == {"COORD_ALMACEN", "COORD_ALMACEN_MP", "SUPERV_ALMACEN", "COORD_LOGISTICA",
-                                                "GERENCIA_GENERAL"}
+                                                "LIDER_ALMACEN", "ASIST_ALMACEN", "GERENCIA_GENERAL"}
     assert roles_con("calidad.certificado_revisar") == {"JEFE_CALIDAD", "SUPERV_CALIDAD", "GERENCIA_GENERAL"}
     assert roles_con("distribucion.confirmar_salida") == {"LIDER_ALMACEN", "ASIST_ALMACEN", "GERENCIA_GENERAL"}  # V66: el Asistente hace lo mismo que el Líder
     # Q3: despacho parcial lo aprueba GO o Jefatura de Logística (y GG por acceso completo)

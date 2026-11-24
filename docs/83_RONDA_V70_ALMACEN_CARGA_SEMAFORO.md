@@ -158,6 +158,18 @@ repositorio. Las pruebas usan solo datos ficticios.
   - la dirección, los comentarios y los lotes, de una lectura de **solo consulta** de la guía en SAP, en el momento.
   - Si SAP no responde, se muestra lo ya leído con un aviso.
 - Las guías SUNAT subidas al módulo abren su archivo.
+- **Facturas de SAP:** junto a cada guía sale el enlace a su factura («Factura», con Imprimir y PDF). La cabecera
+  viene de lo leído de SAP y el detalle, de una lectura de solo consulta de la factura en SAP; si SAP no responde, se
+  usan las líneas de la guía. Funciona igual para las notas de crédito.
+- **Regularización:** una OV con guía de SAP ya cuenta como despachada (total o parcial), y su factura se ve en la OV
+  (desde V54). Ahora además se pueden abrir e imprimir las dos.
+- **Para validar la carga** ven la pre-guía de la ruta y, por OV, la guía y la factura de SAP:
+  - Almacén;
+  - el Auxiliar de Despacho (antes no podía abrir la pre-guía);
+  - el chofer;
+  - Seguridad;
+  - Calidad.
+  - Están en «Carga de unidades» y en el detalle de la ruta («Documentos para validar la carga»).
 - **Es una representación interna** de los datos de SAP. El comprobante electrónico de SUNAT, con su código QR, se
   sigue imprimiendo desde SAP o el OSE.
 
@@ -178,5 +190,5 @@ repositorio. Las pruebas usan solo datos ficticios.
 - El aviso de carga y las firmas se probaron con rutas ficticias.
 
 ## Pruebas
-`tests/test_v70.py` (12 pruebas). Migración 0058: regla por cliente en el lote, aviso de carga en la ruta y OV fuera de
+`tests/test_v70.py` (13 pruebas). Se ajustaron también test_controles (reempaque del Líder), test_v45 (mensaje de la carga del plan) y test_v8 (vistos buenos de salida). Migración 0058: regla por cliente en el lote, aviso de carga en la ruta y OV fuera de
 horario. `tests/test_v27.py` se ajustó: Calidad ya no es obligatoria en la salida.

@@ -850,7 +850,9 @@ def loading():
     personal = list(db().execute(select(User).where(User.activo.is_(True)).order_by(User.nombre)).scalars())
     personal = [u for u in personal if u.role_code in ("AUX_ALMACEN", "MONTACARGUISTA", "LIDER_ALMACEN", "ASIST_ALMACEN",
                                                        "SUPERV_ALMACEN", "AUX_DESPACHO")]
-    return render_template("v70_carga.html", rutas=rutas, personal=personal, cv=cv, etapas=cv.ETAPAS,
+    from ..services.ov_sap import guias_de
+    guias = guias_de([st.order for r in rutas for st in r.stops])
+    return render_template("v70_carga.html", rutas=rutas, personal=personal, cv=cv, etapas=cv.ETAPAS, guias=guias,
                            es_chofer=lambda r: r.driver is not None and r.driver.user_id == g.user.id)
 
 

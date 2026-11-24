@@ -261,8 +261,10 @@ def importar(user, periodo, path, nombre=""):
                     borrados += 1
         res["reemplazadas"] = borrados
     if not filas:
-        raise BusinessError("Ninguna fila del Excel coincide con un artículo del sistema (por código o por nombre): "
-                            + "; ".join(f"fila {x['fila']} «{x['producto']}»" for x in sin[:8]) + ".")
+        raise BusinessError("Ninguna fila del Excel se pudo cargar (producto que no coincide con un artículo del sistema, "
+                            "sin fecha o línea no reconocida): "
+                            + "; ".join(f"fila {x['fila']} «{x['producto']}»" + (f" ({x['motivo']})" if x.get("motivo") else "")
+                                        for x in sin[:8]) + ".")
     audit(user, "PLAN_EXCEL", "ProductionPlan", nombre[:60], dict(res, periodo=periodo, filas=len(filas),
                                                                    sin_producto=[f"fila {x['fila']}: {x['producto']}"
                                                                                  for x in sin]))
