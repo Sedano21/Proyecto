@@ -11,6 +11,9 @@ Fuente: el mensaje del usuario del 24-nov. Las pruebas usan solo datos ficticios
   - los Coordinadores de Almacén 1560 y 1524, de Logística, de Distribución y de Ventas;
   - las Jefaturas de Logística, Operaciones, Producción y Comercial.
 - **Calidad no lo solicita.** Lo evalúa (aprueba o desaprueba), para no aprobar sus propias solicitudes (IF §9.1).
+- **La pre-solicitud automática** (la que genera el sistema desde una OV) la siguen aprobando el Supervisor y los
+  Coordinadores de Almacén y de Logística, como decidió Q12. Para eso se separó el permiso
+  «reempaque.presolicitud» del de solicitar.
 
 ### Gerencias: ven todo, aprueban lo suyo
 - La **Gerencia Comercial** y la **Gerencia de Administración y Finanzas** tienen la vista total: entran a todas las

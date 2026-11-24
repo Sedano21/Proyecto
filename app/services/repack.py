@@ -58,8 +58,8 @@ def request(user, tipo, lot_id, cantidad, producto_destino=None, cantidad_destin
 
 def approve_presolicitud(r, user, aprobar, comentario=""):
     """Q12: el Supervisor de Almacén aprueba la pre-solicitud y la envía a Calidad (o la desestima)."""
-    if not has_perm(user, "reempaque.solicitar"):
-        raise BusinessError("La pre-solicitud de reempaque la aprueba el Supervisor de Almacén (Q12).")
+    if not has_perm(user, "reempaque.presolicitud"):  # V72: separado de solicitar (que ahora tienen más perfiles)
+        raise BusinessError("La pre-solicitud de reempaque la aprueba el Supervisor o el Coordinador de Almacén (Q12).")
     if r.estado != "PRE_SOLICITUD":
         raise BusinessError("La solicitud no es una pre-solicitud pendiente.")
     lot = r.lot

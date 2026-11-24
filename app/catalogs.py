@@ -3606,3 +3606,13 @@ for _r in ("COORD_ALMACEN_MP", "COORD_ALMACEN", "SUPERV_ALMACEN", "LIDER_ALMACEN
     if not any(x[0] == "produccion.materiales_plan" for x in ROLE_PERMISSIONS.setdefault(_r, [])):
         ROLE_PERMISSIONS[_r].append(("produccion.materiales_plan", "DEFINIDO",
                                      f"{V72}: Almacén ve qué debe entregar a Producción según el plan"))
+# V72: aprobar la pre-solicitud automática de reempaque (Q12) queda en quienes la aprobaban, aunque ahora más perfiles
+# puedan solicitar
+PERMISSIONS += [
+    ("reempaque.presolicitud", "Aprobar o desestimar la pre-solicitud automática de reempaque y enviarla a Calidad (Q12)",
+     "Almacén", "aprobacion"),
+]
+for _r in ("COORD_ALMACEN", "COORD_ALMACEN_MP", "SUPERV_ALMACEN", "COORD_LOGISTICA", "GERENCIA_GENERAL", "GERENTE_GENERAL_ADJUNTO"):
+    if not any(x[0] == "reempaque.presolicitud" for x in ROLE_PERMISSIONS.setdefault(_r, [])):
+        ROLE_PERMISSIONS[_r].append(("reempaque.presolicitud", "DEFINIDO", f"{V72}: Q12, la pre-solicitud la aprueba el "
+                                                                           "Supervisor o el Coordinador de Almacén"))
