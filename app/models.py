@@ -289,6 +289,9 @@ class StockLot(Base):
     # V67: un mismo lote puede estar repartido en varios lugares [{ubicacion, cantidad}]
     ubicaciones: Mapped[list] = mapped_column(JSON, default=list, server_default="[]")
     liberacion_solicitada: Mapped[dict] = mapped_column(JSON, default=dict)  # {user, ts, motivo}
+    # V70: regla de Calidad por cliente {modo: SOLO (solo a estos clientes) / EXCEPTO (a todos menos estos),
+    # clientes: [{id, nombre}], motivo, user, ts}
+    restriccion_clientes: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}")
     product = relationship("Product")
     warehouse = relationship("Warehouse")
     reservations = relationship("Reservation", back_populates="lot")
@@ -409,6 +412,9 @@ class SalesOrder(Base):
     # ronda 26-oct-2026: OV BLOQUEADA (no compromete stock) cuando ninguna opción cumple la fecha o se emitió con menos
     # de un día de anticipación. {tipo, estado, lineas, solicitud, decision, historial}
     bloqueo_ov: Mapped[dict] = mapped_column(JSON, default=dict)
+    # V70: OV ingresada fuera del horario (después del corte): la aprueba el Jefe de Operaciones; si la desestima,
+    # Comercial puede elevarla a Gerencia General {estado, motivo, historial: [{accion, user, ts, comentario}]}
+    fuera_horario: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}")
     urgente: Mapped[bool] = mapped_column(Boolean, default=False)
     direccion: Mapped[str] = mapped_column(String(250), default="")
     distrito: Mapped[str] = mapped_column(String(80), default="")
@@ -1034,6 +1040,8 @@ class Route(Base):
     cambios: Mapped[list] = mapped_column(JSON, default=list, server_default="[]")  # [{campo, de, a, motivo, user, ts}]
     # V25: carga sin OV escrita a mano (p. ej. traslado no registrado, materiales) [{descripcion, destino, peso_kg}]
     carga_libre: Mapped[list] = mapped_column(JSON, default=list, server_default="[]")
+    # V70: aviso del chofer (unidad lista para cargar) y respuesta de Almacén {lista: {...}, respuesta: {...}}
+    aviso_carga: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}")
     vehicle = relationship("Vehicle")
     driver = relationship("Driver")
     stops = relationship("RouteStop", back_populates="route", order_by="RouteStop.orden",

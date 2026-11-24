@@ -900,3 +900,18 @@ td.r,th.r,.nw,.kpi b,.tile .v,.ec-v{white-space:nowrap}
 .kpi b,.tile .v{font-size:clamp(16px,1.7vw,24px)}
 .ec-v{font-size:clamp(1.15em,2vw,1.6em)}
 .kpi,.tile,.ec{min-width:0}
+/* V70: formularios apilados dentro de una celda (cambio de estado del lote, clientes de Calidad) */
+form.pila{display:flex;flex-direction:column;gap:6px;min-width:210px;margin-top:6px}
+form.pila .row{gap:6px}form.pila select,form.pila input{width:100%}
+/* V70: casillas en lugar de listas con Ctrl (cómodo en el celular) */
+.multi{border:1px solid var(--line,#d5dbde);border-radius:10px;padding:6px;background:#fff;max-width:100%}
+.multi input[type=search]{width:100%;margin-bottom:6px}
+.multi-lista{max-height:220px;overflow:auto;display:flex;flex-direction:column;gap:2px}
+.multi-lista label{display:flex;gap:10px;align-items:center;padding:9px 8px;border-radius:8px;cursor:pointer;font-weight:normal;min-height:40px}
+.multi-lista label:hover{background:#f3f6f4}.multi-lista input{width:20px;height:20px;flex:none}
+/* V70: recorrido punto a punto del vehículo */
+ol.recorrido{list-style:none;margin:8px 0 0;padding:0 0 0 18px;border-left:3px solid #d5dbde}
+ol.recorrido li{position:relative;padding:6px 0 10px 10px}
+ol.recorrido li::before{content:"";position:absolute;left:-27px;top:9px;width:14px;height:14px;border-radius:50%;background:#fff;border:3px solid #9aa4a8}
+ol.recorrido li.hecho::before{background:#2f7d32;border-color:#2f7d32}
+ol.recorrido li.paso-carga::before{border-radius:3px}ol.recorrido li.paso-retorno{color:#555}

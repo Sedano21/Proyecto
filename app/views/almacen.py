@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 
 from ..catalogs import REPACK_TYPES
 from ..db import db
-from ..models import (PhysicalCount, Product, RepackRequest, StockLot, Transfer, UploadBatch, UploadRow, Warehouse)
+from ..models import (Customer, PhysicalCount, Product, RepackRequest, StockLot, Transfer, UploadBatch, UploadRow, Warehouse)
 from ..services import inventory as isvc
 from ..services import repack as rsvc
 from ..services import transfers as tsvc
@@ -16,7 +16,7 @@ from ..services import uploads as usvc
 from ..services.core import BusinessError
 from ..services.stock import (BLOQUEADOS, ESTADOS_FISICOS, ESTADOS_LABEL, base_qty, change_lot_state, free_qty, product_stock_summary,
                               reserved_qty)
-from .common import act, f_date, f_float, fail, paginate, perm_required
+from .common import act, f_date, f_float, fail, login_required, paginate, perm_required
 
 bp = Blueprint("alm", __name__, url_prefix="/almacen")
 
@@ -86,7 +86,10 @@ def stock():
                                   .order_by(Product.code)).scalars())
     return render_template("stock.html", lots=lots, resumen=resumen, q=q, wh=wh, est=est, whs=whs, estados=ESTADOS_FISICOS,
                            labels=ESTADOS_LABEL, reserved=reserved_qty, free=free_qty, base=base_qty, productos=productos,
-                           blocked=BLOQUEADOS, ubicaciones=__import__("app.services.v30", fromlist=["x"]).ubicaciones_usadas())
+                           blocked=BLOQUEADOS, ubicaciones=__import__("app.services.v30", fromlist=["x"]).ubicaciones_usadas(),
+                           clientes=(list(db().execute(select(Customer).where(Customer.es_prospecto.is_(False))
+                                                       .order_by(Customer.nombre)).scalars())
+                                     if "lote.reglas_clientes" in g.perms else []))
 
 
 @bp.route("/lote/<int:lid>/estado", methods=["POST"])
@@ -97,8 +100,24 @@ def lot_state(lid):
     if nuevo == "DISPONIBLE" and "calidad.liberar" not in g.perms and lot.estado in ("PENDIENTE_REVISION", "NO_UTILIZABLE",
                                                                                    "EN_FUMIGACION"):
         return fail("La liberación a Disponible la realiza Calidad.", request.referrer or url_for("alm.stock"))
-    return act(lambda: change_lot_state(lot, nuevo, g.user, request.form.get("motivo", "")),
+    from ..services import lotes_v70  # V70: total o parcial (cantidad y ubicación)
+    f = request.form
+    return act(lambda: lotes_v70.cambiar_estado(g.user, lot, nuevo, f.get("motivo", ""), f.get("alcance", "TOTAL"),
+                                                f.get("cantidad"), f.get("ubicacion", "")),
                f"Lote {lot.lote} actualizado.", request.referrer or url_for("alm.stock"))
+
+
+@bp.route("/lote/<int:lid>/clientes", methods=["POST"])
+@perm_required("lote.reglas_clientes")
+def lot_customers(lid):
+    """V70: Calidad define que el lote solo se despache a ciertos clientes o que se bloquee para ciertos clientes."""
+    from ..services import lotes_v70
+    lot = db().get(StockLot, lid) or abort(404)
+    f = request.form
+    ids = [] if f.get("accion") == "quitar" else f.getlist("cliente_id")
+    return act(lambda: lotes_v70.restringir_clientes(g.user, lot, f.get("modo"), ids, f.get("motivo", "")),
+               lambda r: f"Lote {lot.lote}: " + ("regla de clientes guardada." if r else "regla de clientes quitada."),
+               request.referrer or url_for("alm.stock"))
 
 
 # ------------------------------- cargas ------------------------------------
@@ -320,10 +339,32 @@ def repacks():
                                         request.form.get("motivo", "")),
                    "Solicitud de reempaque enviada a Calidad.", url_for("alm.repacks"))
     rows = list(db().execute(select(RepackRequest).order_by(RepackRequest.id.desc())).scalars())
+    # V70: por cliente, fecha de despacho y OV
+    a = request.args
+    cli = (a.get("cliente") or "").strip().upper()
+    ovq = (a.get("ov") or "").strip().upper()
+    fd, fh = f_date("desde"), f_date("hasta")
+    if cli:
+        rows = [r for r in rows if r.order and cli in (r.order.customer.nombre or "").upper()]
+    if ovq:
+        rows = [r for r in rows if r.order and ovq in (r.order.numero or "").upper()]
+    if fd:
+        rows = [r for r in rows if r.order and r.order.fecha_compromiso >= fd]
+    if fh:
+        rows = [r for r in rows if r.order and r.order.fecha_compromiso <= fh]
+    vista = a.get("vista", "")
+    grupos = []
+    if vista == "ov":
+        por = {}
+        for r in rows:
+            k = r.order.id if r.order else 0
+            por.setdefault(k, {"order": r.order, "rows": []})["rows"].append(r)
+        grupos = sorted(por.values(), key=lambda x: (x["order"].fecha_compromiso if x["order"] else date.max))
     lots = list(db().execute(select(StockLot).where(StockLot.cantidad > 0, StockLot.estado.in_(["DISPONIBLE", "PENDIENTE_REVISION"]),
                                                     StockLot.product_code.like("P%")).order_by(StockLot.product_code)).scalars())
     prods = list(db().execute(select(Product).where(Product.tipo == "PT").order_by(Product.code)).scalars())
-    return render_template("repacks.html", rows=paginate(rows), lots=lots, prods=prods, tipos=REPACK_TYPES, free=free_qty)
+    return render_template("repacks.html", rows=paginate(rows), lots=lots, prods=prods, tipos=REPACK_TYPES, free=free_qty,
+                           vista=vista, grupos=grupos, f=a)
 
 
 @bp.route("/reempaques/<int:rid>", methods=["GET", "POST"])
@@ -720,3 +761,118 @@ def late_orders():
                    "Pedido validado: ya se puede preparar." if aprobar else "Pedido observado: se avisó a Comercial.",
                    url_for("alm.late_orders"))
     return render_template("v66_ultima_hora.html", rows=av.por_validar())
+
+
+# ------------------------------------------------------------------ V70: semáforo de inventarios y rotación
+@bp.route("/semaforo")
+@login_required
+def stock_light():
+    """Semáforo de inventarios por familia y producto: lo ven todos los perfiles."""
+    from ..services import semaforo as sem
+    a = request.args
+    d = sem.semaforo(familia=a.get("familia", ""), q=(a.get("q") or "").strip(), tipo=a.get("tipo", ""))
+    estado = a.get("estado", "")
+    filas = [f for f in d["filas"] if not estado or f["estado"] == estado]
+    if a.get("formato") == "xlsx":
+        import io
+        from flask import send_file
+        from openpyxl import Workbook
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Semaforo"
+        ws.append(["Estado", "Familia", "Código", "Descripción", "Tipo", "UM", "Stock", "OV abiertas", "OV vencidas", "Llegadas",
+                   "Saldo", "Venta mensual", "Stock de seguridad", "Plazo días", "Cobertura días", "Sin stock el", "Próx. llegada",
+                   "Compra/producción mínima", "Saldo kg"])
+        for f in filas:
+            ws.append([sem.NOMBRE[f["estado"]], f["familia"], f["code"], f["descripcion"], f["tipo"], f["um"], f["stock"], f["ov"],
+                       f["ov_vencidas"], f["llegadas"], f["saldo"], f["venta_mes"], f["seguridad"], f["plazo_dias"],
+                       f["cobertura_dias"], f["sin_stock"], f["proxima_llegada"], f["compra_minima"], f["kg"]["saldo"]])
+        buf = io.BytesIO()
+        wb.save(buf)
+        return send_file(io.BytesIO(buf.getvalue()), as_attachment=True, download_name=f"semaforo_{date.today():%Y%m%d}.xlsx",
+                         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    return render_template("v70_semaforo.html", d=d, filas=paginate(filas, 60), f=a, nombre=sem.NOMBRE)
+
+
+@bp.route("/rotacion-analisis")
+@perm_required("stock.ver", "rotacion.ver", "tablero.empresa", "demanda.ver")
+def rotation_analysis():
+    """Cómo ha rotado una familia: venta mensual vs el año anterior, picos, presentaciones preferidas, clientes
+    habituales y ocasionales, y el stock de seguridad que debería tener."""
+    from ..services import charts
+    from ..services import semaforo as sem
+    a = request.args
+    d = sem.rotacion(a.get("familia", ""), code=(a.get("code") or "").strip().upper())
+    etiquetas = [m[5:] + "/" + m[2:4] for m in d["meses"]]
+    graf = charts.columns(etiquetas, [("Últimos 12 meses (kg)", d["serie"]), ("Año anterior (kg)", d["serie_ant"])], "kg",
+                          title="Venta mensual en kg")
+    return render_template("v70_rotacion.html", d=d, graf=graf, f=a)
+
+
+@bp.route("/indicadores")
+@perm_required("almacen.indicadores")
+def indicators():
+    """V70: indicadores de pedidos y operación de Almacén (Líder, Asistente, Supervisor y Coordinador)."""
+    from ..services import indicadores_almacen as ia
+    return render_template("v70_indicadores.html", d=ia.tablero())
+
+
+@bp.route("/carga", methods=["GET", "POST"])
+@perm_required("picking.asignar", "distribucion.carga", "distribucion.ver", "distribucion.entrega", "tareas.ejecutar",
+               "distribucion.programar")
+def loading():
+    """V70: aviso de carga. El chofer avisa que la unidad está lista (limpia y dentro del almacén 1560 o 1524); al
+    almacén que corresponde le llega la alerta; Almacén responde a quién asignó el traslado y la carga y sube las
+    fotos del antes y el después y el video."""
+    from ..models import Route, User
+    from ..services import carga_v70 as cv
+    from ..services.distribution import save_evidences
+    if request.method == "POST":
+        f = request.form
+        r = db().get(Route, int(f.get("rid") or 0)) or abort(404)
+        acc = f.get("accion")
+        back = url_for("alm.loading") + f"#ruta{r.id}"
+        if acc == "lista":
+            return act(lambda: cv.unidad_lista(g.user, r, f.get("limpia") == "1", f.get("ubicacion"), f.get("otra", ""),
+                                               f.get("nota", "")),
+                       "Aviso enviado: Almacén recibió la alerta para trasladar y cargar.", back)
+        if acc == "responder":
+            return act(lambda: cv.responder(g.user, r, f.getlist("asignados"), f.get("nota", "")),
+                       "Respuesta enviada al chofer: traslado y carga iniciados.", back)
+        if acc == "evidencia":
+            def _ev():
+                arch = save_evidences(request.files.getlist("archivos"), current_app.config["UPLOAD_DIR"],
+                                      f"carga{r.id}_{f.get('etapa', '')}", videos=True, maximo=10)
+                return cv.subir_evidencia(g.user, r, f.get("etapa"), arch, f.get("nota", ""))
+            return act(_ev, "Evidencia de la carga guardada.", back)
+        abort(400)
+    rutas = cv.de_hoy()
+    personal = list(db().execute(select(User).where(User.activo.is_(True)).order_by(User.nombre)).scalars())
+    personal = [u for u in personal if u.role_code in ("AUX_ALMACEN", "MONTACARGUISTA", "LIDER_ALMACEN", "ASIST_ALMACEN",
+                                                       "SUPERV_ALMACEN", "AUX_DESPACHO")]
+    return render_template("v70_carga.html", rutas=rutas, personal=personal, cv=cv, etapas=cv.ETAPAS,
+                           es_chofer=lambda r: r.driver is not None and r.driver.user_id == g.user.id)
+
+
+@bp.route("/fuera-horario", methods=["GET", "POST"])
+@perm_required("ov.aprobar_fuera_horario", "ov.decision_gg", "ov.crear", "ov.modificar", "almacen.validar_ov_tardia",
+               "almacen.indicadores")
+def out_of_hours():
+    """V70: OV ingresadas fuera del horario: solicitud de Comercial, aprobación del Jefe de Operaciones, elevación a
+    Gerencia General y lista para Almacén."""
+    from ..models import SalesOrder
+    from ..services import fuera_horario as fh
+    if request.method == "POST":
+        f = request.form
+        o = db().get(SalesOrder, int(f.get("oid") or 0)) or abort(404)
+        acc = f.get("accion")
+        c = f.get("comentario", "")
+        back = url_for("alm.out_of_hours")
+        fns = {"solicitar": lambda: fh.solicitar(g.user, o, c),
+               "aprobar": lambda: fh.decidir_jo(g.user, o, True, c), "desestimar": lambda: fh.decidir_jo(g.user, o, False, c),
+               "elevar": lambda: fh.elevar(g.user, o, c),
+               "aprobar_gg": lambda: fh.decidir_gg(g.user, o, True, c), "rechazar_gg": lambda: fh.decidir_gg(g.user, o, False, c)}
+        if acc not in fns:
+            abort(400)
+        return act(fns[acc], f"OV {o.numero}: listo.", back)
+    return render_template("v70_fuera_horario.html", d=fh.listado(), nombre=fh.NOMBRE)

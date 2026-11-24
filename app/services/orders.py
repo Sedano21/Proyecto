@@ -571,7 +571,8 @@ def _complete_draft(order, user):
         order.motivo_detencion = "Borrador: falta adjuntar la orden de compra del cliente"
         return False
     check_not_past(order.fecha_compromiso, order.hora_cita)
-    if order.origen == "MODULO":
+    aprobada_fh = (order.fuera_horario or {}).get("estado") in ("APROBADA", "APROBADA_GG")  # V70
+    if order.origen == "MODULO" and not aprobada_fh:
         try:
             check_cutoff(order.fecha_compromiso, productos=[l.product_code for l in order.lines if l.activa])
         except BusinessError as e:  # se conservan los cambios; sigue en borrador hasta el horario permitido

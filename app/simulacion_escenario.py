@@ -609,7 +609,7 @@ class Escenario:
             if "CALIDAD" in dsp.required_exit_approvals():
                 self.paso("Visto bueno de Calidad a la carga", dsp.give_exit_ok, r,
                           self.actor("distribucion.visto_bueno_calidad"), "", "CALIDAD")
-            if "AUX_DESPACHO" in dsp.required_exit_approvals():
+            if "AUX_DESPACHO" in dsp.required_exit_approvals(r):
                 self.paso("Visto bueno del Auxiliar de Despacho", dsp.give_exit_ok, r,
                           self.actor("distribucion.visto_bueno_salida"), "", "AUX_DESPACHO")
             sim.fijar_hora(d, 15, self.rnd.randint(0, 40))

@@ -2,6 +2,8 @@
 {% block content %}<h1>Usuarios y permisos</h1>
 <div class="note">"Acceso completo" de Sistemas y Gerencia General: pueden ejecutar todas las funciones, pero <b>no se omiten pasos de aprobación</b> y todo queda auditado (decisión pendiente, IF §15/§20).</div>
 <h2>Usuarios</h2>
+{% set sin_nombre = users|selectattr('activo')|selectattr('nombre', 'in', users|map(attribute='username')|list)|list %}
+{% if sin_nombre %}<div class="note warn small"><b>{{ sin_nombre|length }} usuario(s) tienen como nombre su usuario</b> ({{ sin_nombre|map(attribute='username')|join(', ') }}). Al asignar tareas (picking, movimientos, carga) se muestra el nombre: complete aquí los apellidos y nombres de cada persona para que se vea quién es. También cada persona puede cambiar su nombre desde su perfil.</div>{% endif %}
 <details class="card"><summary><b>Cargar usuarios desde Excel</b></summary>
 <p class="small">Columnas: <b>Correo</b>, <b>Apellidos y nombres</b>, <b>Rol</b> (código o nombre del perfil del sistema) y, opcional, <b>Almacén</b>. El DNI no se guarda.
 Si el correo ya existe, se actualizan su nombre y su perfil. Las filas sin un perfil válido o con correo inválido no se cargan y se informan.
@@ -9,7 +11,7 @@ Ingresan con Microsoft 365; la clave local es aleatoria.</p>
 <form method="post" enctype="multipart/form-data">{{ csrf() }}<input type="hidden" name="accion" value="excel">
 <input type="file" name="archivo" accept=".xlsx,.xlsm" required> <button>Cargar</button></form></details>
 <div class="tbl"><div class="ftable"><div class="frow fh"><div class="fcell">Usuario</div><div class="fcell">Nombre</div><div class="fcell">Rol</div><div class="fcell">Almacén</div><div class="fcell">Correo</div><div class="fcell">Activo</div><div class="fcell">Nueva contraseña</div><div class="fcell"></div><div class="fcell">Acceso</div></div>
-{% for u in users %}<form class="frow" method="post">{{ csrf() }}<input type="hidden" name="id" value="{{ u.id }}"><div class="fcell mono">{{ u.username }}</div><div class="fcell"><input name="nombre" value="{{ u.nombre }}" size="18" required></div>
+{% for u in users %}<form class="frow" method="post">{{ csrf() }}<input type="hidden" name="id" value="{{ u.id }}"><div class="fcell mono">{{ u.username }}</div><div class="fcell"><input name="nombre" value="{{ u.nombre }}" size="18" required{% if u.nombre == u.username %} class="falta" title="Escriba los apellidos y nombres de la persona"{% endif %}></div>
 <div class="fcell"><select name="role_code">{% for r in roles %}<option value="{{ r.code }}" {{ 'selected' if r.code==u.role_code }}>{{ r.nombre }}</option>{% endfor %}</select></div>
 <div class="fcell"><select name="almacen"><option value="">—</option>{% for w in almacenes %}<option value="{{ w.code }}" {{ 'selected' if w.code==u.almacen }}>{{ w.code }}</option>{% endfor %}</select></div>
 <div class="fcell"><input name="email" value="{{ u.email }}" size="22"></div><div class="fcell"><select name="activo"><option value="1" {{ 'selected' if u.activo }}>Sí</option><option value="0" {{ 'selected' if not u.activo }}>No</option></select></div>

@@ -1,0 +1,11 @@
+{% extends "base.html" %}{% from "_m.html" import empty %}
+{% block content %}<div class="page-head"><div><h1>Recorrido de los vehículos</h1><p class="sub">{{ d.fecha|d }} · movimiento punto a punto de cada vehículo: central → clientes → retorno → nueva carga…, con el estado de cada entrega y el auxiliar de despacho de cada vuelta.</p></div></div>
+<form class="row card noprint" method="get"><div><label>Fecha</label><input type="date" name="fecha" value="{{ d.fecha.isoformat() }}"></div><div><button class="sec">Ver</button></div></form>
+{% for v in d.vehiculos %}<section class="card"><h3>{{ v.placa }}{% if v.capacidad %} <span class="muted small">({{ v.capacidad|n }} kg)</span>{% endif %} · {{ v.chofer or 'sin chofer' }} <span class="b {{ 'ok' if v.entregas and v.entregadas == v.entregas else 'info' }}">{{ v.entregadas }} de {{ v.entregas }} entregas · {{ v.vueltas }} vuelta(s)</span></h3>
+<ol class="recorrido">{% for p in v.pasos %}<li class="paso-{{ p.tipo|lower }} {{ 'hecho' if p.hecho or p.estado == 'hecho' }}">
+{% if p.tipo == 'CARGA' %}<b>{{ p.texto }}</b> · <a href="{{ url_for('dist.route_detail', rid=p.ruta.id) }}">ruta #{{ p.ruta.id }}</a>{% if p.hora %} · {{ p.hora }}{% endif %} · <span class="muted">{{ p.estado }}</span><br><span class="small">Auxiliar de despacho: <b>{{ p.auxiliares|join(', ') if p.auxiliares else 'sin auxiliar' }}</b></span>
+{% elif p.tipo == 'ENTREGA' %}<b>{{ p.texto }}</b> · OV <a href="{{ url_for('com.order_detail', oid=p.ov.id) }}">{{ p.ov.numero }}</a> · {{ p.kg|n }} kg · <span class="b {{ 'ok' if p.hecho else ('err' if p.estado in ('rechazado', 'no entregado', 'devuelto') else 'info') }}">{{ p.estado }}</span>{% if p.hora %} {{ p.hora }}{% endif %}
+{% else %}<b>{{ p.texto }}</b>{% if p.estado %} · <span class="muted">{{ p.estado }}</span>{% endif %}{% if p.hora %} {{ p.hora }}{% endif %}{% endif %}</li>{% endfor %}</ol></section>
+{% else %}{{ empty('No hay rutas programadas para ese día.', 'truck') }}{% endfor %}
+<p class="small muted">Cada ruta del vehículo es una vuelta (sale de la central, entrega y vuelve). El auxiliar de despacho se registra en cada ruta (Programación de distribución → ruta → auxiliares); si no se registra ninguno, va sin auxiliar y no se le pide su visto bueno para la salida.</p>
+{% endblock %}

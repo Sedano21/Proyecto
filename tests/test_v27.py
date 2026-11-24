@@ -317,4 +317,4 @@ def test_visto_bueno_de_calidad_dia_anterior_o_mismo_dia(app, s, U, cust):
     assert "CALIDAD" in s.get(Route, r.id).vistos_buenos
     assert "CALIDAD" in dsp.missing_exit_approvals(Route(vistos_buenos={}))
     from app import catalogs as C
-    assert dict((k, v) for k, v, *_ in C.PARAMS)["vistos_buenos_salida"][2] == "CALIDAD"  # valor de la empresa
+    assert "CALIDAD" not in dict((k, v) for k, v, *_ in C.PARAMS)["vistos_buenos_salida"]  # V70: Calidad es opcional

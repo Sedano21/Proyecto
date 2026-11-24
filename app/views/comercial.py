@@ -997,3 +997,30 @@ def bulk_upload():
         return act(_do, _msg, url_for("com.bulk_upload"))
     from ..services.carga_ov import COLUMNAS, por_validar
     return render_template("v64_carga_ov.html", columnas=COLUMNAS, pendientes=por_validar())
+
+
+@bp.route("/guia-sap")
+@bp.route("/guia-sap/<int:docentry>")
+@perm_required("ov.ver", "expedientes.ver", "distribucion.ver", "facturacion.cargar", "guias.estado", "ov.reservas_ver")
+def sap_guide(docentry=None):
+    """V70: ver e imprimir (o descargar en PDF) una guía de remisión de SAP con sus productos, cantidades y lotes."""
+    import io
+    from flask import send_file
+    from ..services import ov_sap
+    if docentry is None:  # por el número de la guía (serie-correlativo)
+        from ..models import SapMovement
+        doc = (request.args.get("doc") or "").strip()
+        m = db().execute(select(SapMovement).where(SapMovement.tipo == "GUIA", SapMovement.documento == doc)).scalars().first() \
+            if doc else None
+        if m is None:
+            abort(404)
+        docentry = m.docentry
+    gd = ov_sap.guia_sap(docentry, leer_sap=request.args.get("sap", "1") != "0")
+    if gd is None:
+        abort(404)
+    html = render_template("v70_guia_sap.html", gd=gd, ov=osvc.order_by_number(gd["ov"]) if gd["ov"] else None)
+    if request.args.get("formato") == "pdf":
+        from ..services import pdfreport
+        return send_file(io.BytesIO(pdfreport.html_to_pdf(html, f"Guía {gd['documento']}")), mimetype="application/pdf",
+                         as_attachment=True, download_name=f"guia_{gd['documento']}.pdf")
+    return html

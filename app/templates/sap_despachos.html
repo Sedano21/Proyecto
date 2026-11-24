@@ -39,7 +39,7 @@ y de <b>Entregas (guías)</b>{% if res.guias_batch %} (#{{ res.guias_batch.id }}
 {% for ln in f.lineas %}<tr{% if not ln.cuadra %} class="row-warn"{% endif %}><td data-label="Producto">{{ ln.producto }} <span class="muted">{{ ln.descripcion or pd(ln.producto) }}</span></td>
 <td class="r" data-label="Solicitado">{{ ln.solicitado|n }}</td><td class="r" data-label="Entregado">{{ ln.entregado|n }}</td>
 <td class="r" data-label="Pendiente">{{ ln.pendiente|n }}</td><td class="r" data-label="Nota de crédito">{{ ln.nota_credito|n if ln.nota_credito else '—' }}</td><td class="r" data-label="Guiado">{{ ln.guiado|n }}{% if not ln.cuadra %} ⚠{% endif %}</td></tr>{% endfor %}</table></div>
-<p class="small"><b>Guías:</b> {% for gn, gf in f.guias %}{{ gn }}{% if gf %} <span class="muted">({{ gf }})</span>{% endif %}{{ ', ' if not loop.last }}{% else %}—{% endfor %}
+<p class="small"><b>Guías:</b> {% for gn, gf in f.guias %}<a href="{{ url_for('com.sap_guide', doc=gn) }}" target="_blank" rel="noopener">{{ gn }}</a>{% if gf %} <span class="muted">({{ gf }})</span>{% endif %}{{ ', ' if not loop.last }}{% else %}—{% endfor %}
 · <b>Facturas:</b> {{ f.facturas|join(', ') or '—' }}
 {% if f.servicios %}· <b>Órdenes de fabricación:</b> {% for x in f.servicios %}OF {{ x.orden }} · {{ x.producto }} · {{ x.completado|n }}/{{ x.planificado|n }} · {{ x.estado|lower }}{{ '; ' if not loop.last }}{% endfor %}{% endif %}
 {% if f.modulo %}· <a href="{{ url_for('com.order_detail', oid=f.modulo.id) }}">ver en el módulo</a>{% endif %}</p></td></tr>

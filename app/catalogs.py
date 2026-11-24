@@ -3476,3 +3476,85 @@ PARAMS += [
     ("inicio_por_rol", {"MONTACARGUISTA": "sup.moves"}, "dict", "General",
      "Pantalla de inicio por perfil (p. ej. el montacarguista entra directo a sus tareas de movimiento).", "DEFINIDO", V67),
 ]
+# ------------------------------------------------------------------ V70 (24-nov-2026)
+V70 = "Observaciones de Operaciones y Almacén (24-nov-2026)"
+PARAMS += [
+    ("semaforo_z", 1.65, "float", "Almacén",
+     "Semáforo de inventarios: factor z del stock de seguridad (1,65 = 95 % de nivel de servicio). Stock de seguridad = "
+     "z × desviación de la venta mensual × √(plazo ÷ 30).", "PROPUESTO", V70),
+    ("semaforo_plazo_dias", 30, "int", "Almacén",
+     "Semáforo de inventarios: plazo de reposición (días) de los productos sin categoría de reposición.", "PROPUESTO", V70),
+]
+PERMISSIONS += [
+    ("almacen.indicadores", "Indicadores de pedidos y operación de Almacén (pedidos de hoy y mañana, atrasos, picking, "
+     "movimientos, reempaques, OTIF)", "Almacén", "consulta"),
+    ("lote.reglas_clientes", "Definir que un lote solo se despache a ciertos clientes o se bloquee para ciertos clientes",
+     "Calidad", "edicion"),
+]
+for _r, _ps, _why in (
+        ("LIDER_ALMACEN", ("almacen.indicadores", "indicadores.servicio", "desempeno.equipo", "dashboard.operaciones",
+                           "reempaque.ver", "reempaque.solicitar", "reempaque.ejecutar", "informes.reempaque", "rotacion.ver"),
+         "pidió más indicadores de pedidos y operación y todas las opciones de reempaque para el Líder Operativo"),
+        ("ASIST_ALMACEN", ("almacen.indicadores", "indicadores.servicio", "reempaque.ver", "reempaque.solicitar",
+                           "reempaque.ejecutar", "informes.reempaque", "rotacion.ver"),
+         "tiene lo del Líder Operativo"),
+        ("SUPERV_ALMACEN", ("almacen.indicadores", "indicadores.servicio", "desempeno.equipo", "produccion.partes_ver",
+                            "reempaque.ejecutar"),
+         "ve los indicadores de Almacén y el monitoreo de producción en tiempo real"),
+        ("COORD_ALMACEN", ("almacen.indicadores", "indicadores.servicio", "produccion.partes_ver"),
+         "ve los indicadores de Almacén y el monitoreo de producción en tiempo real")):
+    for _p in _ps:
+        if any(x[0] == _p for x in PERMISSIONS) and not any(x[0] == _p for x in ROLE_PERMISSIONS.setdefault(_r, [])):
+            ROLE_PERMISSIONS[_r].append((_p, "DEFINIDO", f"{V70}: {_why}"))
+for _r in [r for r, ps in ROLE_PERMISSIONS.items() if any(x[0] == "calidad.liberar" for x in ps)]:
+    if not any(x[0] == "lote.reglas_clientes" for x in ROLE_PERMISSIONS[_r]):
+        ROLE_PERMISSIONS[_r].append(("lote.reglas_clientes", "DEFINIDO", f"{V70}: Calidad define a qué clientes va un lote"))
+PARAMS += [
+    ("carga_almacen_granel", "1524", "str", "Distribución",
+     "Almacén al que le llega el aviso de unidad lista cuando la ruta lleva granel (GR) o materia prima (MP). Se reconoce "
+     "por el código o el nombre del almacén.", "DEFINIDO", V70),
+    ("carga_almacen_pt", "1560", "str", "Distribución",
+     "Almacén al que le llega el aviso de unidad lista cuando la ruta lleva producto terminado.", "DEFINIDO", V70),
+    ("carga_exigir_fotos", False, "bool", "Distribución",
+     "Exigir las fotos del antes y del después de la carga para autorizar la salida.", "PROPUESTO", V70),
+    ("vb_auxiliar_si_asignado", True, "bool", "Distribución",
+     "El Auxiliar de Despacho firma la salida solo si la ruta lleva uno (si va sin auxiliar, no se le pide).", "DEFINIDO", V70),
+    ("vb_calidad_opcional", True, "bool", "Distribución",
+     "Calidad puede dar su visto bueno a la carga aunque no sea obligatorio (no bloquea la salida si no está en "
+     "«vistos_buenos_salida»).", "DEFINIDO", V70),
+]
+ALERT_TYPES += [
+    ("CARGA_UNIDAD_LISTA", "Unidad lista para cargar", "Almacén", "Distribución", "ALTA", [], "DEFINIDO", V70,
+     "El chofer avisa que la unidad está limpia y dentro del almacén: le llega al personal del almacén que corresponde "
+     "(granel y MP al 1524, producto terminado al 1560).", False),
+    ("CARGA_INICIADA", "Almacén inició el traslado y la carga", "Distribución", "Distribución", "MEDIA",
+     ["JEFE_LOGISTICA", "COORD_LOGISTICA"], "DEFINIDO", V70,
+     "Almacén responde al aviso del chofer e indica a quién asignó el traslado y la carga.", False),
+]
+PERMISSIONS += [
+    ("ov.aprobar_fuera_horario", "Aprobar o desestimar una OV ingresada fuera del horario (después de la hora de corte)",
+     "Operaciones", "aprobacion"),
+]
+for _r in ("JEFE_OPERACIONES",):
+    if not any(x[0] == "ov.aprobar_fuera_horario" for x in ROLE_PERMISSIONS.setdefault(_r, [])):
+        ROLE_PERMISSIONS[_r].append(("ov.aprobar_fuera_horario", "DEFINIDO",
+                                     f"{V70}: si Comercial ingresa una OV fuera de horario la aprueba el Jefe de Operaciones; "
+                                     "si la desestima, se puede elevar a Gerencia General"))
+ALERT_TYPES += [
+    ("OV_FUERA_HORARIO", "OV fuera de horario por aprobar", "Operaciones", "Estados de pedidos", "ALTA",
+     ["JEFE_OPERACIONES"], "DEFINIDO", V70,
+     "Comercial ingresó una OV después de la hora de corte y pide su aprobación al Jefe de Operaciones.", False),
+    ("OV_FUERA_HORARIO_GG", "OV fuera de horario elevada a Gerencia General", "Gerencia", "Estados de pedidos", "ALTA",
+     ["GERENCIA_GENERAL"], "DEFINIDO", V70,
+     "El Jefe de Operaciones desestimó una OV fuera de horario y Comercial la elevó a Gerencia General.", False),
+    ("OV_FUERA_HORARIO_RESPUESTA", "Respuesta a la OV fuera de horario", "Comercial", "Estados de pedidos", "MEDIA",
+     [], "DEFINIDO", V70, "El Jefe de Operaciones o Gerencia General decidió sobre la OV fuera de horario.", False),
+]
+# V70: Calidad pasa a ser opcional en la salida (puede firmar, no bloquea) y el Auxiliar de Despacho firma solo si la
+# ruta lleva uno («vb_auxiliar_si_asignado»).
+PARAMS_CAMBIO.append(("vistos_buenos_salida", ["SEGURIDAD", "CHOFER", "CALIDAD", "AUX_DESPACHO", "LIDER_ALMACEN"],
+                      ["SEGURIDAD", "CHOFER", "AUX_DESPACHO", "LIDER_ALMACEN"],
+                      f"{V70}: antes de salir firman Seguridad, el chofer y el Auxiliar de Despacho (si va uno); Calidad, "
+                      "opcional"))
+PARAMS = [(k, (["SEGURIDAD", "CHOFER", "AUX_DESPACHO", "LIDER_ALMACEN"] if k == "vistos_buenos_salida" else v), *rest)
+          for k, v, *rest in PARAMS]

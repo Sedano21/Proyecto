@@ -122,7 +122,7 @@ def tablero(desde=None, hasta=None, q="", vendedor_id=None, etapa_f=""):
         atrasada = o.fecha_compromiso < hoy and e not in ("DESPACHADA", "ENTREGADA", "CERRADA", "CANCELADA")
         kp, kd = kilos(o)
         fd = fecha_despacho(o, paradas.get(o.id), guias.get(o.id))
-        filas.append({"o": o, "etapa": e, "despacho": fd, "kg_pedido": kp, "kg_despachado": kd, "avance": round(100 * kd / kp, 1) if kp else None,
+        filas.append({"o": o, "etapa": e, "despacho": fd, "guias": guias.get(o.id) or [], "kg_pedido": kp, "kg_despachado": kd, "avance": round(100 * kd / kp, 1) if kp else None,
                       "pasos": pasos(o, picks.get(o.id, []), paradas.get(o.id), facts.get(o.id, []),
                                                          guias.get(o.id)),
                       "atrasada": atrasada, "motivo": (o.bloqueo_ov or {}).get("motivo") if o.estado == "BLOQUEADA"

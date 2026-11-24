@@ -55,7 +55,7 @@ def guias_de(orders):
                     g.get("docentry") == (sg.sap or {}).get("docentry") for g in out[sg.order_id].values()):
                 continue
             g = out[sg.order_id].setdefault(folio, {"documento": folio, "fecha": sg.fecha_traslado, "origen": "MODULO",
-                                                    "lineas": defaultdict(float)})
+                                                    "archivo": sg.archivo or "", "lineas": defaultdict(float)})
             for ln in sg.lineas or []:
                 g["lineas"][str(ln.get("codigo") or "")] += float(ln.get("cantidad") or 0)
     return {oid: sorted(gs.values(), key=lambda g: (g["fecha"] is None, g["fecha"] or datetime.min.date()))
@@ -246,3 +246,51 @@ def al_dia_vista(orders=None):
     except Exception:  # noqa: BLE001
         logging.getLogger(__name__).exception("OV al día con SAP")
         db().rollback()
+
+
+def guia_sap(docentry, leer_sap=True):
+    """V70: la guía de remisión de SAP para verla e imprimirla en el módulo. Toma las líneas leídas por el vigilante
+    (cliente, OV, factura, productos y cantidades) y, si SAP responde, completa la cabecera con una lectura de solo
+    lectura del documento (dirección de llegada, comentarios, lotes). No es el comprobante electrónico de SUNAT: ese se
+    imprime desde SAP o el OSE."""
+    from ..models import Product, SapMovement
+    movs = list(db().execute(select(SapMovement).where(SapMovement.tipo == "GUIA", SapMovement.docentry == int(docentry))
+                             .order_by(SapMovement.id)).scalars())
+    if not movs:
+        return None
+    m0 = movs[0]
+    lineas = []
+    for m in movs:
+        p = db().get(Product, m.product_code)
+        from .orders import kg_unidad
+        lineas.append({"code": m.product_code, "descripcion": p.descripcion if p else "", "cantidad": m.cantidad or 0,
+                       "um": p.um if p else "", "kg": round((m.cantidad or 0) * kg_unidad(p), 2) if p else None,
+                       "total": round((m.total or 0) + (m.igv or 0), 2), "lotes": ""})
+    g = {"docentry": int(docentry), "documento": m0.documento or f"SAP {docentry}", "fecha": m0.fecha, "cliente": m0.cliente,
+         "ov": m0.ov_numero, "factura": m0.factura, "lineas": lineas, "direccion": "", "comentarios": "", "fuente": "vigilante",
+         "total": round(sum(x["total"] for x in lineas), 2), "kg": round(sum(x["kg"] or 0 for x in lineas), 2)}
+    if leer_sap:
+        try:
+            from . import sap_sl
+            if sap_sl.configured():
+                sl = sap_sl.ServiceLayer()
+                sl.login()
+                try:
+                    d = sl._req("GET", f"DeliveryNotes({int(docentry)})")
+                finally:
+                    sl.logout()
+                g["direccion"] = d.get("Address2") or d.get("Address") or ""
+                g["comentarios"] = d.get("Comments") or ""
+                g["cardcode"] = d.get("CardCode") or ""
+                g["fuente"] = "SAP"
+                por_cod = {}
+                for ln in d.get("DocumentLines") or []:
+                    lotes = ", ".join(f"{b.get('BatchNumber')} ({b.get('Quantity'):g})" for b in ln.get("BatchNumbers") or []
+                                      if b.get("BatchNumber"))
+                    por_cod.setdefault(ln.get("ItemCode"), []).append(lotes)
+                for x in g["lineas"]:
+                    if por_cod.get(x["code"]):
+                        x["lotes"] = "; ".join(l for l in por_cod[x["code"]] if l)
+        except Exception as e:  # noqa: BLE001 - sin conexión: se muestra lo ya leído
+            g["aviso_sap"] = f"No se pudo leer la guía en SAP en este momento ({str(e)[:120]}); se muestra lo ya leído."
+    return g

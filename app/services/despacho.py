@@ -300,15 +300,24 @@ VB_LABEL = {"SEGURIDAD": "Seguridad (documentos completos)", "AUX_DESPACHO": "Au
             "LIDER_ALMACEN": "Líder Operativo", "CHOFER": "Conductor", "CALIDAD": "Calidad (día anterior o mismo día)"}
 
 
-def required_exit_approvals():
-    return list(param("vistos_buenos_salida", ["SEGURIDAD", "CHOFER", "LIDER_ALMACEN"]) or [])
+def required_exit_approvals(route=None):
+    """V70: además de los del parámetro, firma el Auxiliar de Despacho cuando la ruta lleva uno (si va sin auxiliar, no).
+    Calidad es opcional: puede firmar siempre, pero solo bloquea si está en «vistos_buenos_salida»."""
+    req = list(param("vistos_buenos_salida", ["SEGURIDAD", "CHOFER", "LIDER_ALMACEN"]) or [])
+    if route is not None:
+        lleva_aux = bool(route.auxiliares or route.auxiliar_id)
+        if lleva_aux and "AUX_DESPACHO" not in req and param("vb_auxiliar_si_asignado", True):
+            req.append("AUX_DESPACHO")
+        if not lleva_aux and "AUX_DESPACHO" in req and param("vb_auxiliar_si_asignado", True):
+            req.remove("AUX_DESPACHO")
+    return req
 
 
 def roles_vb_de(route, user):
     """V27: vistos buenos de la carga que este usuario puede dar ahora en la ruta (los que faltan): conductor,
     Auxiliar de Despacho y Calidad (Calidad el día anterior o el mismo día del despacho). Seguridad da el suyo al revisar
     los documentos y el Líder Operativo da el último al autorizar la salida."""
-    requeridos = required_exit_approvals()
+    requeridos = required_exit_approvals(route)
     vb = route.vistos_buenos or {}
     out = []
     sin_cuenta = route.driver is not None and not route.driver.user_id
@@ -319,7 +328,8 @@ def roles_vb_de(route, user):
             has_perm(user, "distribucion.visto_bueno_salida"):
         out.append("AUX_DESPACHO")
     hoy = date.today()
-    if "CALIDAD" in requeridos and "CALIDAD" not in vb and route.estado in ("PROPUESTA", "CONFIRMADA") and \
+    if ("CALIDAD" in requeridos or param("vb_calidad_opcional", True)) and "CALIDAD" not in vb and \
+            route.estado in ("PROPUESTA", "CONFIRMADA") and \
             has_perm(user, "distribucion.visto_bueno_calidad") and route.fecha - timedelta(days=1) <= hoy <= route.fecha:
         out.append("CALIDAD")
     return out
@@ -350,7 +360,7 @@ def give_exit_ok(route, user, nota="", rol=None):
 
 def missing_exit_approvals(route, excluir=("LIDER_ALMACEN",)):
     vb = route.vistos_buenos or {}
-    return [r for r in required_exit_approvals() if r not in excluir and r not in vb]
+    return [r for r in required_exit_approvals(route) if r not in excluir and r not in vb]
 
 
 def approve_exit_with_discrepancy(route, user, motivo):

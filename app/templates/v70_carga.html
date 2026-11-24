@@ -1,0 +1,27 @@
+{% extends "base.html" %}{% from "_m.html" import csrf, empty, ic %}
+{% block content %}<div class="page-head"><div><h1>Carga de unidades</h1>
+<p class="sub">El chofer avisa que la unidad está lista (limpia y dentro del almacén). Le llega la alerta al almacén que corresponde: granel y MP al 1524, producto terminado al 1560. Almacén responde a quién asignó el traslado y la carga, y sube las fotos del antes y del después (y, si puede, un video). Antes de salir firman Seguridad, el chofer, el Auxiliar de Despacho (si la ruta lleva uno) y, de forma opcional, Calidad.</p></div></div>
+{% for r in rutas %}{% set ac = r.aviso_carga or {} %}{% set al = ac.lista %}{% set rs = ac.respuesta %}
+<section class="card" id="ruta{{ r.id }}"><h3><a href="{{ url_for('dist.route_detail', rid=r.id) }}">Ruta #{{ r.id }}</a> · {{ r.fecha|d }} · {{ r.vehicle.placa if r.vehicle else (r.transportista or {}).get('placa', 'sin unidad') }} · {{ r.driver.nombre if r.driver else (r.transportista or {}).get('nombre', 'sin chofer') }}
+<span class="b {{ 'ok' if rs else ('warn' if al else '') }}">{{ 'carga en curso' if rs else ('unidad lista: esperando a Almacén' if al else 'sin aviso') }}</span></h3>
+<p class="small">Cargar en: <b>{{ cv.almacenes_de(r)|join(' y ') or '—' }}</b> · OV: {% for st in r.stops %}{{ st.order.numero }} ({{ st.order.customer.nombre }}){{ ', ' if not loop.last }}{% endfor %} · Auxiliar de despacho: <b>{{ (r.auxiliares or ([r.auxiliar_id] if r.auxiliar_id else []))|map('usuario_nombre')|join(', ') or 'sin auxiliar' }}</b></p>
+{% if al %}<p class="small">✓ <b>Unidad lista</b> ({{ al.ts|replace('T', ' ') }}, {{ al.user }}): limpia, en <b>{{ al.ubicacion }}</b>{{ ' · ' ~ al.nota if al.nota }}</p>{% endif %}
+{% if rs %}<p class="small">✓ <b>Almacén inició el traslado y la carga</b> ({{ rs.ts|replace('T', ' ') }}, {{ rs.user }}): asignado a <b>{{ rs.asignados|map(attribute='nombre')|join(', ') }}</b>{{ ' · ' ~ rs.nota if rs.nota }}</p>{% endif %}
+{% if r.estado in ('PROPUESTA', 'CONFIRMADA') %}
+{% if es_chofer(r) or can('distribucion.programar') %}<details {{ 'open' if es_chofer(r) and not al }}><summary><b>Avisar que la unidad está lista para cargar</b></summary>
+<form method="post" class="pila">{{ csrf() }}<input type="hidden" name="rid" value="{{ r.id }}"><input type="hidden" name="accion" value="lista">
+<label class="chk"><input type="checkbox" name="limpia" value="1" required> La unidad está limpia</label>
+<label>¿Dónde está la unidad?</label><div class="seg"><label><input type="radio" name="ubicacion" value="Almacén 1560" required><span>Dentro del 1560</span></label><label><input type="radio" name="ubicacion" value="Almacén 1524"><span>Dentro del 1524</span></label><label><input type="radio" name="ubicacion" value="OTRO"><span>Otro lugar</span></label></div>
+<input name="otra" placeholder="si es otro lugar, escríbalo"><input name="nota" placeholder="nota (opcional)"><button>Avisar a Almacén</button></form></details>{% endif %}
+{% if can('picking.asignar') or can('distribucion.carga') %}{% if al %}<details {{ 'open' if not rs }}><summary><b>Responder: inicié el traslado y la carga</b></summary>
+<form method="post" class="pila">{{ csrf() }}<input type="hidden" name="rid" value="{{ r.id }}"><input type="hidden" name="accion" value="responder">
+<label>¿A quién asignó? (marque a todos los que cargan)</label><select name="asignados" multiple required>{% for u in personal %}<option value="{{ u.id }}" {{ 'selected' if rs and u.id in rs.asignados|map(attribute='id')|list }}>{{ u.nombre }} · {{ u.role.nombre if u.role }}</option>{% endfor %}</select>
+<input name="nota" placeholder="nota (opcional)"><button>Enviar respuesta</button></form></details>{% endif %}{% endif %}
+{% if can('picking.asignar') or can('distribucion.carga') or can('tareas.ejecutar') or can('movimiento.ejecutar') %}<details><summary><b>Fotos del antes y el después y video de la carga</b></summary>
+<form method="post" enctype="multipart/form-data" class="pila">{{ csrf() }}<input type="hidden" name="rid" value="{{ r.id }}"><input type="hidden" name="accion" value="evidencia">
+<select name="etapa">{% for k, v in etapas.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select>
+<input type="file" name="archivos" accept="image/*,video/*" multiple required><input name="nota" placeholder="nota (opcional)"><button>Subir</button></form></details>{% endif %}
+{% endif %}
+{% for k, v in etapas.items() if (r.fotos or {}).get(k) %}<div class="small"><b>{{ v }}:</b> {% for x in r.fotos[k] %}<a href="{{ url_for('main.evidence', name=x.archivo) }}" target="_blank" rel="noopener">{{ ic('file') }} {{ x.ts|replace('T', ' ') }} · {{ x.user }}</a>{{ ' · ' if not loop.last }}{% endfor %}</div>{% endfor %}
+</section>{% else %}{{ empty('No hay rutas de ayer, hoy o mañana por cargar.', 'truck') }}{% endfor %}
+{% endblock %}

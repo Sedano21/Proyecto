@@ -77,6 +77,13 @@ def lot_usable(lot, fecha_compromiso=None, customer=None):
         return False, f"Estado {ESTADOS_LABEL.get(lot.estado, lot.estado)}"
     if not lot.verificado:
         return False, "Stock no verificado"
+    rc = lot.restriccion_clientes or {}
+    if customer is not None and rc.get("clientes"):  # V70: regla de Calidad por cliente
+        ids = {c.get("id") for c in rc["clientes"]}
+        if rc.get("modo") == "SOLO" and customer.id not in ids:
+            return False, "Calidad: este lote solo se despacha a " + ", ".join(c.get("nombre", "") for c in rc["clientes"])
+        if rc.get("modo") == "EXCEPTO" and customer.id in ids:
+            return False, f"Calidad: este lote está bloqueado para {customer.nombre}"
     ref = fecha_compromiso or date.today()
     if lot.fecha_venc and lot.fecha_venc < ref:
         return False, f"Vencido a la fecha comprometida ({lot.fecha_venc:%d/%m/%Y})"

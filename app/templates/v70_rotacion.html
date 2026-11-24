@@ -1,0 +1,20 @@
+{% extends "base.html" %}{% from "_m.html" import empty %}
+{% block content %}<div class="page-head"><div><h1>Rotación y stock de seguridad</h1>
+<p class="sub">{{ d.familia or 'Todas las familias' }}{{ ' · ' ~ d.code if d.code }} · venta en kg de los últimos 12 meses frente al año anterior ({{ d.fuente }}).</p></div></div>
+<form class="row card noprint" method="get"><div><label>Familia</label><select name="familia"><option value="">(todas)</option>{% for x in d.familias %}<option {{ 'selected' if d.familia == x }}>{{ x }}</option>{% endfor %}</select></div>
+<div><label>Producto (opcional)</label><input name="code" value="{{ d.code }}" placeholder="código"></div><div><button class="sec">Ver</button></div></form>
+<div class="kpis"><div class="kpi"><span>Venta promedio</span><b>{{ d.promedio|n }} kg/mes</b><small>12 meses: {{ d.anual|n }} kg · año anterior {{ d.anual_ant|n }} kg</small></div>
+<div class="kpi"><span>Variación mensual (σ)</span><b>{{ d.sigma|n }} kg</b><small>coef. de variación {{ d.cv if d.cv is not none else '—' }}</small></div>
+<div class="kpi ok"><span>Stock de seguridad</span><b>{{ d.seguridad_kg|n }} kg</b><small>{{ (d.seguridad_dias|n ~ ' días de venta') if d.seguridad_dias is not none else '' }} · z {{ d.z }} · plazo {{ d.plazo }} días</small></div>
+{% if d.pico %}<div class="kpi warn"><span>Mes pico</span><b>{{ d.pico[0] }}</b><small>{{ d.pico[1]|n }} kg{% if d.valle %} · más bajo {{ d.valle[0] }} ({{ d.valle[1]|n }} kg){% endif %}</small></div>{% endif %}</div>
+<section class="card">{{ graf }}</section>
+<div class="grid g2"><section class="card"><h3>Presentaciones preferidas (últimos 6 meses)</h3>{% if d.presentaciones %}<table class="list small"><thead><tr><th>Tipo · presentación</th><th class="r">kg</th><th class="r">%</th></tr></thead>{% for k, v, p in d.presentaciones %}<tr><td>{{ k }}</td><td class="r">{{ v|n }}</td><td class="r">{{ p }} %</td></tr>{% endfor %}</table>{% else %}<p class="muted small">Sin ventas.</p>{% endif %}
+<h4>Productos más vendidos</h4><table class="small">{% for c, desc, v, p in d.codigos %}<tr><td><b>{{ c }}</b> {{ desc }}</td><td class="r">{{ v|n }} kg</td><td class="r">{{ p }} %</td></tr>{% endfor %}</table></section>
+<section class="card"><h3>Fechas pico</h3><h4>Semanas con más salida (12 meses)</h4><table class="small">{% for lunes, v in d.semanas_pico %}<tr><td>semana del {{ lunes|d }}</td><td class="r">{{ v|n }} kg</td></tr>{% else %}<tr><td class="muted">Sin ventas.</td></tr>{% endfor %}</table>
+<h4>Por día de la semana</h4><table class="small">{% for dia, p in d.dias %}<tr><td>{{ dia }}</td><td class="r">{{ p }} %</td></tr>{% endfor %}</table></section></div>
+<section class="card"><h3>Clientes (últimos 6 meses)</h3><p class="small muted">Habituales: compraron en 3 o más de los últimos 6 meses (su recompra entra en el stock de seguridad). Ocasionales: 1 o 2 meses (validar con Comercial antes de comprar para ellos).</p>
+<div class="grid g2"><div><h4>Habituales ({{ d.habituales|length }})</h4><table class="small">{% for c, m, v in d.habituales[:20] %}<tr><td>{{ c }}</td><td class="r">{{ m }} de 6 meses</td><td class="r">{{ v|n }} kg</td></tr>{% else %}<tr><td class="muted">—</td></tr>{% endfor %}</table></div>
+<div><h4>Ocasionales ({{ d.ocasionales|length }})</h4><table class="small">{% for c, m, v in d.ocasionales[:20] %}<tr><td>{{ c }}</td><td class="r">{{ m }} de 6 meses</td><td class="r">{{ v|n }} kg</td></tr>{% else %}<tr><td class="muted">—</td></tr>{% endfor %}</table></div></div>
+{% if d.fuente != 'guías de SAP' %}<p class="small muted">El historial cargado no trae el cliente: los clientes se ven cuando hay guías de SAP.</p>{% endif %}</section>
+<p class="small muted">Stock de seguridad = z × σ de la venta mensual × √(plazo ÷ 30). El plazo es el promedio de las categorías de reposición de los productos de la familia (o «semaforo_plazo_dias»). Es una referencia para compras y producción; se ajusta con «semaforo_z».</p>
+{% endblock %}

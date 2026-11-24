@@ -460,6 +460,10 @@ def confirm_departure(route, user, checklist):
         motivo = can_depart(route)
         if motivo:
             raise BusinessError(motivo)
+    from .carga_v70 import falta_para_salir  # V70: fotos del antes y después de la carga (si se exigen)
+    faltan_ev = falta_para_salir(route)
+    if faltan_ev:
+        raise BusinessError("Falta subir la evidencia de la carga: " + ", ".join(faltan_ev) + ".")
     from .despacho import needs_vehicle_photos
     if needs_vehicle_photos(route) and not (route.fotos or {}).get("vehiculo_salida"):
         raise BusinessError("El chofer debe subir la foto de cómo saca el vehículo antes de la salida.")

@@ -1,0 +1,16 @@
+{% extends "base.html" %}{% from "_m.html" import csrf, empty %}
+{% block content %}<div class="page-head"><div><h1>Pedidos fuera de horario</h1>
+<p class="sub">OV de producto terminado para despachar mañana ingresadas después de la hora de corte. Comercial solicita la aprobación; el Jefe de Operaciones aprueba o desestima; si la desestima, Comercial puede elevarla a Gerencia General. Almacén ve aquí las aprobadas para prepararlas.</p></div></div>
+{% if d.sin and (can('ov.crear') or can('ov.modificar')) %}<section class="card"><h3>Detenidas por la hora de corte (sin solicitud)</h3><div class="tw"><table class="list small"><thead><tr><th>OV</th><th>Cliente</th><th>Despacho</th><th>Solicitar aprobación</th></tr></thead>
+{% for o in d.sin %}<tr><td><a href="{{ url_for('com.order_detail', oid=o.id) }}"><b>{{ o.numero }}</b></a></td><td>{{ o.customer.nombre }}</td><td>{{ o.fecha_compromiso|d }}</td>
+<td><form method="post" class="row nowrap">{{ csrf() }}<input type="hidden" name="oid" value="{{ o.id }}"><input name="comentario" placeholder="¿por qué fuera de horario?" required><button class="small" name="accion" value="solicitar">Solicitar</button></form></td></tr>{% endfor %}</table></div></section>{% endif %}
+<section class="card"><h3>Solicitudes</h3>{% if d.con %}<div class="tw"><table class="list small"><thead><tr><th>OV</th><th>Cliente</th><th>Despacho</th><th>Estado</th><th>Historial</th><th class="noprint">Acción</th></tr></thead>
+{% for o in d.con %}{% set x = o.fuera_horario %}<tr><td><a href="{{ url_for('com.order_detail', oid=o.id) }}"><b>{{ o.numero }}</b></a><br><span class="muted">{{ o.estado|lower|replace('_', ' ') }}</span></td><td>{{ o.customer.nombre }}</td><td>{{ o.fecha_compromiso|d }}</td>
+<td><span class="b {{ 'ok' if x.estado in ('APROBADA', 'APROBADA_GG') else ('err' if x.estado in ('DESESTIMADA', 'RECHAZADA_GG') else 'warn') }}">{{ nombre.get(x.estado, x.estado) }}</span></td>
+<td>{% for h in x.historial or [] %}<div>{{ h.ts|replace('T', ' ') }} · {{ h.accion|lower|replace('_', ' ') }} · {{ h.user }}{{ ': ' ~ h.comentario if h.comentario }}</div>{% endfor %}</td>
+<td class="noprint"><form method="post" class="pila">{{ csrf() }}<input type="hidden" name="oid" value="{{ o.id }}">
+{% if x.estado == 'PENDIENTE' and can('ov.aprobar_fuera_horario') %}<input name="comentario" placeholder="comentario (obligatorio si desestima)"><div class="row"><button class="small" name="accion" value="aprobar">Aprobar</button><button class="small sec" name="accion" value="desestimar">Desestimar</button></div>
+{% elif x.estado == 'DESESTIMADA' and (can('ov.crear') or can('ov.modificar')) %}<input name="comentario" placeholder="¿por qué la eleva?" required><button class="small" name="accion" value="elevar">Elevar a Gerencia General</button>
+{% elif x.estado == 'ELEVADA' and can('ov.decision_gg') %}<input name="comentario" placeholder="comentario (obligatorio si rechaza)"><div class="row"><button class="small" name="accion" value="aprobar_gg">Aprobar</button><button class="small sec" name="accion" value="rechazar_gg">Rechazar</button></div>
+{% else %}<span class="muted">—</span>{% endif %}</form></td></tr>{% endfor %}</table></div>{% else %}{{ empty('No hay pedidos fuera de horario en los últimos días.', 'check') }}{% endif %}</section>
+{% endblock %}

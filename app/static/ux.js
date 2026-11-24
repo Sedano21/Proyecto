@@ -378,6 +378,34 @@
   document.addEventListener('input', function (e) { if (e.target.classList) e.target.classList.remove('falta'); }, true);
   document.addEventListener('change', function (e) { if (e.target.classList) e.target.classList.remove('falta'); }, true);
 
+  /* V70. listas de selección múltiple cómodas en el celular: cada <select multiple> se muestra como casillas grandes
+     (con buscador si son muchas). El <select> sigue enviando lo mismo; las casillas solo lo marcan. */
+  function casillas(sel) {
+    if (sel.hasAttribute('data-plain') || sel.dataset.casillas) return;
+    sel.dataset.casillas = '1';
+    var box = document.createElement('div'); box.className = 'multi';
+    var opts = Array.prototype.slice.call(sel.options);
+    if (opts.length > 6) {
+      var q = document.createElement('input'); q.type = 'search'; q.placeholder = 'Buscar…';
+      q.setAttribute('aria-label', 'Buscar en la lista'); box.appendChild(q);
+      q.addEventListener('input', function () {
+        var t = q.value.trim().toLowerCase();
+        $all('label', box).forEach(function (l) { l.hidden = t && l.textContent.toLowerCase().indexOf(t) < 0; });
+      });
+    }
+    var lista = document.createElement('div'); lista.className = 'multi-lista'; box.appendChild(lista);
+    opts.forEach(function (o) {
+      var l = document.createElement('label'), c = document.createElement('input');
+      c.type = 'checkbox'; c.checked = o.selected; c.disabled = o.disabled;
+      c.addEventListener('change', function () { o.selected = c.checked; sel.dispatchEvent(new Event('change', { bubbles: true })); });
+      l.appendChild(c); l.appendChild(document.createTextNode(' ' + o.textContent)); lista.appendChild(l);
+    });
+    sel.hidden = true; sel.style.display = 'none';
+    sel.parentNode.insertBefore(box, sel.nextSibling);
+  }
+  $all('select[multiple]').forEach(casillas);
+  document.addEventListener('toggle', function () { $all('select[multiple]').forEach(casillas); }, true);
+
   /* 7. recarga periódica */
   $all('[data-refresh]').forEach(function (el) {
     var s = parseInt(el.getAttribute('data-refresh'), 10) || 60;

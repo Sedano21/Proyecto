@@ -188,7 +188,7 @@ def route_detail(rid):
                            subtipos=__import__("app.catalogs", fromlist=["x"]).INCIDENT_SUBTYPES,
                            preguia=dsp.preguia(r), etapas=dsp.ETAPAS_FOTO, certs=certs,
                            faltan=dsp.missing_documents(r) if r.estado == "CONFIRMADA" else [],
-                           billing=dsp.billing_status, vb_req=dsp.required_exit_approvals(), vb_label=dsp.VB_LABEL,
+                           billing=dsp.billing_status, vb_req=dsp.required_exit_approvals(r), vb_label=dsp.VB_LABEL,
                            vb_puede=dsp.roles_vb_de(r, g.user),
                            horas_seg=dsvc.HORAS_SEGURIDAD, v22=_v22_ctx(r, auxiliares))
 
@@ -482,3 +482,11 @@ def guides():
     paradas = [st for r in rutas for st in r.stops
                if not q or q in (st.guia_numero or "").upper() or q in st.order.numero.upper() or q in st.order.customer.nombre.upper()]
     return render_template("guides.html", paradas=paradas, fecha=fecha, estados=GUIA_ESTADOS, q=q)
+
+
+@bp.route("/recorridos")
+@perm_required("distribucion.ver", "distribucion.programar")
+def routes_by_vehicle():
+    """V70: recorrido punto a punto de cada vehículo en el día (central → clientes → retorno → nueva carga…)."""
+    from ..services import recorrido
+    return render_template("v70_recorridos.html", d=recorrido.del_dia(f_date("fecha") or date.today()))

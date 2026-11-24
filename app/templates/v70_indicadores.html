@@ -1,0 +1,16 @@
+{% extends "base.html" %}{% from "_m.html" import empty %}
+{% block content %}<div class="page-head"><div><h1>Indicadores de pedidos y operación</h1><p class="sub">{{ d.hoy|d }} · lo que Almacén tiene que despachar hoy y mañana, lo atrasado y cómo va la operación.</p></div></div>
+<div class="kpis"><a class="kpi {{ 'err' if d.atrasadas else 'ok' }}" href="{{ url_for('com.order_status') }}"><span>OV atrasadas</span><b>{{ d.atrasadas|length }}</b><small>compromiso vencido sin despachar</small></a>
+<a class="kpi {{ 'warn' if d.tardias }}" href="{{ url_for('alm.late_orders') }}"><span>Pedidos de última hora por validar</span><b>{{ d.tardias }}</b></a>
+<a class="kpi" href="{{ url_for('alm.picking_schedule') }}"><span>Picking de hoy</span><b>{{ d.picking.total }}</b><small>{% for e, n in d.picking.estados.items() %}{{ e|lower|replace('_', ' ') }} {{ n }}{{ ' · ' if not loop.last }}{% endfor %}</small></a>
+<div class="kpi"><span>Tiempo promedio de picking</span><b>{{ (d.picking.prom_min ~ ' min') if d.picking.prom_min is not none else '—' }}</b><small>{{ d.picking.n_semana }} picking(s) en 7 días</small></div>
+<a class="kpi" href="{{ url_for('sup.moves') }}"><span>Movimientos</span><b>{{ d.movimientos.pendientes }} pend. · {{ d.movimientos.en_curso }} en curso</b><small>{{ d.movimientos.hechos_hoy }} hechos hoy{% if d.movimientos.prom_min is not none %} · {{ d.movimientos.prom_min }} min promedio{% endif %}</small></a>
+<a class="kpi" href="{{ url_for('alm.repacks') }}"><span>Reempaques abiertos</span><b>{{ d.reempaques }}</b></a>
+<div class="kpi {{ '' if d.otif is none else ('ok' if d.otif >= 95 else 'warn' if d.otif >= 85 else 'err') }}"><span>OTIF del mes</span><b>{{ (d.otif ~ ' %') if d.otif is not none else '—' }}</b><small>{{ d.otif_n or 0 }} OV</small></div></div>
+<div class="grid g2">{% for dia in [d.hoy, d.manana] %}<section class="card"><h3>Pedidos para {{ 'hoy' if dia == d.hoy else 'mañana' }} ({{ dia|d }})</h3>
+{% set x = d.por_dia[dia] %}{% if x %}<table class="list small"><thead><tr><th>Etapa</th><th class="r">OV</th><th class="r">kg</th></tr></thead>
+{% for k, nombre, _ in d.etapas if k in x %}<tr><td><a href="{{ url_for('com.order_status', etapa=k, desde=dia.isoformat(), hasta=dia.isoformat()) }}">{{ nombre }}</a></td><td class="r">{{ x[k][0] }}</td><td class="r">{{ x[k][1]|n }}</td></tr>{% endfor %}</table>
+{% else %}<p class="muted small">Sin pedidos.</p>{% endif %}</section>{% endfor %}</div>
+<section class="card"><h3>OV atrasadas</h3>{% if d.atrasadas %}<div class="tw"><table class="list small"><thead><tr><th>OV</th><th>Cliente</th><th>Compromiso</th><th class="r">Días de atraso</th><th>Etapa</th><th class="r">kg por despachar</th></tr></thead>
+{% for a in d.atrasadas[:40] %}<tr><td><a href="{{ url_for('com.order_detail', oid=a.o.id) }}"><b>{{ a.o.numero }}</b></a></td><td>{{ a.o.customer.nombre }}</td><td>{{ a.o.fecha_compromiso|d }}</td><td class="r err">{{ a.dias }}</td><td>{{ a.etapa }}</td><td class="r">{{ a.kg|n }}</td></tr>{% endfor %}</table></div>{% else %}{{ empty('Sin OV atrasadas.', 'check') }}{% endif %}</section>
+{% endblock %}

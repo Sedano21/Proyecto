@@ -218,9 +218,13 @@ def plan():
                                                               "Producción" if r["pendientes"] else "") + "."
                               + (f" Se reemplazaron {r['reemplazadas']} entrada(s) semanales/mensuales que se habían "
                                  "subido antes desde Excel." if r.get("reemplazadas") else "")
-                              + (f" {len(r['sin_producto'])} fila(s) no se cargaron porque su producto no coincide con un "
-                                 "artículo del sistema: " + "; ".join(f"fila {x['fila']} «{x['producto']}»"
-                                                                      for x in r["sin_producto"][:10])
+                              + (f" {len(r['errores'])} fila(s) con error: " + "; ".join(r["errores"][:5]) + "."
+                                 if r.get("errores") else "")
+                              + (f" {len(r['sin_producto'])} fila(s) no se cargaron (producto que no coincide con un "
+                                 "artículo del sistema, sin fecha o línea no reconocida): "
+                                 + "; ".join(f"fila {x['fila']} «{x['producto']}»"
+                                             + (f" ({x['motivo']})" if x.get("motivo") else "")
+                                             for x in r["sin_producto"][:10])
                                  + ("…" if len(r["sin_producto"]) > 10 else "") + "." if r["sin_producto"] else "")),
                    url_for("prod.plan", periodo="DIA"),
                    redirect_fn=lambda r: url_for("prod.plan", periodo="DIA",

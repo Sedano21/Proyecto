@@ -175,7 +175,12 @@ def _filas_plan(filas, h, cols, fechas):
             # sin código: por el nombre; en selección (kg) el producto es el granel («DATOS DE GRANEL»)
             orden = (granel, nombre) if um.startswith("k") and granel else (nombre, granel)
             code = _buscar_producto(por, *orden) or ""
-        linea = _linea(val("linea")) if "linea" in cols and val("linea") not in (None, "") else None
+        try:
+            linea = _linea(val("linea")) if "linea" in cols and val("linea") not in (None, "") else None
+        except BusinessError:  # V70: una línea no reconocida no detiene la carga: la fila se informa
+            sin.append({"fila": i, "producto": nombre or granel or code, "granel": granel, "fecha": _fecha(val("fecha")),
+                        "cantidad": _num(val("cantidad")), "linea": None, "motivo": f"línea «{val('linea')}» no reconocida"})
+            continue
         partes = [str(val("comentario") or "").strip()]
         if val("op") not in (None, ""):
             partes.append(f"OP {_num(val('op')) and int(_num(val('op'))) or val('op')}")
@@ -186,8 +191,10 @@ def _filas_plan(filas, h, cols, fechas):
             q, f = _num(val("cantidad")), _fecha(val("fecha"))
             if not q:
                 continue
-            if not f:
-                raise BusinessError(f"Fila {i}: fecha no válida ({val('fecha')}).")
+            if not f:  # V70: fila con cantidad y sin fecha (p. ej. una fila a medio llenar): se informa y se sigue
+                sin.append({"fila": i, "producto": nombre or granel or code, "granel": granel, "fecha": None,
+                            "cantidad": q, "linea": linea, "motivo": "sin fecha"})
+                continue
             if not code:
                 sin.append({"fila": i, "producto": nombre or granel, "granel": granel, "fecha": f, "cantidad": q,
                             "linea": linea})
@@ -221,7 +228,7 @@ def importar(user, periodo, path, nombre=""):
         else:
             junt[k] = dict(f, fecha=k[0])
     filas = list(junt.values())
-    res = {"creadas": 0, "actualizadas": 0, "iguales": 0, "pendientes": 0, "sin_producto": sin,
+    res = {"creadas": 0, "actualizadas": 0, "iguales": 0, "pendientes": 0, "sin_producto": sin, "errores": [],
            "primer_dia": min((f["fecha"] for f in filas), default=None)}
     for f in filas:
         try:
@@ -239,8 +246,8 @@ def importar(user, periodo, path, nombre=""):
             else:
                 r = prod.update_plan(user, pl, f["cantidad"], f"Actualizado desde Excel {nombre}".strip())
                 res["pendientes" if r is not None else "actualizadas"] += 1
-        except BusinessError as e:
-            raise BusinessError(f"Fila {f['fila']} ({f['product_code']} {f['fecha']:%d/%m/%Y}): {e}")
+        except BusinessError as e:  # V70: el error de una fila se informa y las demás se cargan
+            res["errores"].append(f"fila {f['fila']} ({f['product_code']} {f['fecha']:%d/%m/%Y}): {e}")
     if periodo == "DIA" and filas:
         # V49: lo que antes se subió desde Excel como plan semanal o mensual se reemplaza por el plan diario (no se suma
         # dos veces en la vista semanal); no se toca lo registrado a mano ni lo ya liquidado
