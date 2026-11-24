@@ -265,6 +265,13 @@ def importar(user, periodo, path, nombre=""):
                             "sin fecha o línea no reconocida): "
                             + "; ".join(f"fila {x['fila']} «{x['producto']}»" + (f" ({x['motivo']})" if x.get("motivo") else "")
                                         for x in sin[:8]) + ".")
+    try:  # V72: avisar a Almacén qué entregar y a Producción lo que revisar del plan
+        from .plan_produccion_v72 import avisar
+        fechas = [f["fecha"] for f in filas]
+        av = avisar(user, max(min(fechas), date.today()), max(fechas)) if fechas else None
+        res["avisos_plan"] = (av or {}).get("avisos", [])
+    except Exception:  # noqa: BLE001 - el aviso no debe impedir la carga del plan
+        res["avisos_plan"] = []
     audit(user, "PLAN_EXCEL", "ProductionPlan", nombre[:60], dict(res, periodo=periodo, filas=len(filas),
                                                                    sin_producto=[f"fila {x['fila']}: {x['producto']}"
                                                                                  for x in sin]))

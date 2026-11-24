@@ -1,0 +1,9 @@
+{% extends "base.html" %}{% from "_m.html" import empty %}
+{% block content %}<div class="page-head"><div><h1>Tiempos por producto</h1><p class="sub">Qué productos toman más y menos tiempo, con los partes de producción del {{ d.desde|d }} al {{ d.hasta|d }}{{ ' · línea ' ~ d.linea if d.linea }}. Primero los más lentos.</p></div></div>
+<form class="row card noprint" method="get"><div><label>Línea</label><select name="linea"><option value="">(todas)</option>{% for l in d.lineas %}<option {{ 'selected' if d.linea == l }}>{{ l }}</option>{% endfor %}</select></div>
+<div><label>Desde</label><input type="date" name="desde" value="{{ d.desde.isoformat() }}"></div><div><label>Hasta</label><input type="date" name="hasta" value="{{ d.hasta.isoformat() }}"></div><div><button class="sec">Ver</button></div></form>
+{% if d.filas %}<div class="tw"><table class="list small"><thead><tr><th>Producto</th><th>Línea</th><th class="r">Partes</th><th class="r">kg procesados</th><th class="r">Horas</th><th class="r">kg por hora</th><th class="r">kg por hora y operario</th><th class="r">Minutos por 100 kg</th></tr></thead>
+{% for a in d.filas %}<tr><td><b>{{ a.producto }}</b> {{ a.descripcion }}</td><td>{{ a.linea }}</td><td class="r">{{ a.partes }}</td><td class="r">{{ a.kg|n }}</td><td class="r">{{ a.horas|n }}</td><td class="r">{{ a.kg_hora|n if a.kg_hora is not none }}</td><td class="r">{{ a.kg_hora_operario|n if a.kg_hora_operario is not none }}</td><td class="r">{{ a.min_por_100kg|n if a.min_por_100kg is not none }}</td></tr>{% endfor %}</table></div>
+{% else %}{{ empty('No hay partes con horas y kg en ese periodo.', 'factory') }}{% endif %}
+<p class="small muted">Horas: las del parte o, si no las tiene, de la hora de inicio a la de fin menos el refrigerio y las paradas. kg procesados: el peso de entrada. Sirve para planificar: los productos lentos ocupan más horas de la línea.</p>
+{% endblock %}

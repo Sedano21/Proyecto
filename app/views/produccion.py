@@ -220,6 +220,8 @@ def plan():
                                  "subido antes desde Excel." if r.get("reemplazadas") else "")
                               + (f" {len(r['errores'])} fila(s) con error: " + "; ".join(r["errores"][:5]) + "."
                                  if r.get("errores") else "")
+                              + (" Se avisó a Almacén qué entregar." + (" Revisar: " + "; ".join(r["avisos_plan"]) + "."
+                                                                         if r.get("avisos_plan") else ""))
                               + (f" {len(r['sin_producto'])} fila(s) no se cargaron (producto que no coincide con un "
                                  "artículo del sistema, sin fecha o línea no reconocida): "
                                  + "; ".join(f"fila {x['fila']} «{x['producto']}»"
@@ -413,3 +415,29 @@ def history_excel():
     tipos = [t for t, in db().execute(select(ProductionHistory.tipo).distinct()).all()]
     return render_template("prod_historico.html", ultima=param("historico_produccion_ultima_carga", {}) or {}, filas=filas,
                            tipo=tipo, tipos=sorted(tipos), desde=param("historico_produccion_desde", "2026-01-01"))
+
+
+# ------------------------------------------------------------------ V72: el plan hacia Almacén, revisión y tiempos
+@bp.route("/plan/materiales", methods=["GET", "POST"])
+@perm_required("produccion.materiales_plan", "produccion.programar", "produccion.ver")
+def plan_materials():
+    """Qué materiales debe entregar Almacén a Producción y cuándo, según el plan; y la revisión del plan (capacidad
+    baja, entregas no incluidas, horario extendido)."""
+    from ..services import plan_produccion_v72 as pv
+    from .common import f_date
+    desde, hasta = f_date("desde"), f_date("hasta")
+    if request.method == "POST":
+        return act(lambda: pv.avisar(g.user, desde, hasta), lambda r: "Avisos enviados: Almacén recibió los materiales "
+                   "por entregar" + (f"; Producción: {'; '.join(r['avisos'])}" if r["avisos"] else "") + ".",
+                   url_for("prod.plan_materials", desde=desde.isoformat() if desde else "", hasta=hasta.isoformat() if hasta else ""))
+    return render_template("v72_plan_materiales.html", m=pv.materiales(desde, hasta), r=pv.revision(desde, hasta))
+
+
+@bp.route("/tiempos")
+@perm_required("produccion.ver", "produccion.partes_ver")
+def product_times():
+    """Qué productos toman más y menos tiempo (kg por hora y por operario), por línea; sobre todo en selección manual."""
+    from ..services import plan_produccion_v72 as pv
+    from .common import f_date
+    linea = request.args.get("linea", "SEL_MANUAL" if "linea" not in request.args else "")
+    return render_template("v72_tiempos.html", d=pv.tiempos(f_date("desde"), f_date("hasta"), linea))

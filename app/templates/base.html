@@ -90,6 +90,7 @@
       {% if ve('stock.ver') and not ve('calidad.ver') %}{{ nl(url_for('cal.fumigated'), 'shield', 'Producto fumigado almacenado') }}{% endif %}
       {% if ve('ingresos.ver') %}{{ nl(url_for('alm.entries'), 'download', 'Ingresos a almacén') }}{% endif %}
       {% if ve('almacen.indicadores') %}{{ nl(url_for('alm.indicators'), 'gauge', 'Indicadores de pedidos y operación') }}{% endif %}
+      {% if ve('produccion.materiales_plan') and user.role.area == 'Almacén' %}{{ nl(url_for('prod.plan_materials'), 'factory', 'Materiales para Producción') }}{% endif %}
       {% if (ve('picking.asignar') or ve('tareas.ejecutar')) and user.role.area == 'Almacén' %}{{ nl(url_for('alm.loading'), 'truck', 'Carga de unidades') }}{% endif %}
       {% if ve('produccion.partes_ver') and user.role.area == 'Almacén' %}{{ nl(url_for('prod.monitor'), 'trend', 'Producción en tiempo real') }}{% endif %}
       {% if ve('almacen.consolidado') %}{{ nl(url_for('alm.consolidated'), 'layers', 'Consolidado del picking') }}{% endif %}
@@ -103,6 +104,8 @@
     {% if ve('produccion.ver') %}<div class="grp" data-grupo="Producción"><h4><span class="lbl">Producción</span></h4>
       {{ nl(url_for('prod.requests'), 'factory', 'Solicitudes y programa') }}
       {{ nl(url_for('prod.plan'), 'calendar', 'Planeamiento') }}
+      {{ nl(url_for('prod.plan_materials'), 'layers', 'Plan: materiales y revisión') }}
+      {{ nl(url_for('prod.product_times'), 'gauge', 'Tiempos por producto') }}
       {% if ve('produccion.liquidar') or ve('produccion.programar') %}{{ nl(url_for('prod.history_excel'), 'upload', 'Cargar histórico (Excel de control)') }}{% endif %}
       {{ nl(url_for('prod.bom'), 'layers', 'Lista de materiales') }}
       {{ nl(url_for('prod.liquidations'), 'file', 'Liquidaciones') }}

@@ -1062,6 +1062,13 @@ def add_plans(user, periodo, filas):
             raise BusinessError(f"Fila {i}: {e}")
     if not creadas:
         raise BusinessError("Complete al menos una fila (producto y cantidad).")
+    if periodo == "DIA":  # V72: avisar a Almacén qué entregar y a Producción lo que revisar
+        try:
+            from .plan_produccion_v72 import avisar
+            fechas = [c.fecha for c in creadas]
+            avisar(user, max(min(fechas), date.today()), max(fechas))
+        except Exception:  # noqa: BLE001 - el aviso no debe impedir registrar el plan
+            pass
     return creadas
 
 

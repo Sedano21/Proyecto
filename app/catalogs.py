@@ -3567,3 +3567,42 @@ for _c, _n, _g in (("CARGA_FALTANTE", "Faltante al validar la carga", "LOGISTICA
         INCIDENT_SUBTYPES.append((_c, _n, _g))
         INCIDENT_TYPES.append((_c, _n))
         INCIDENT_GROUP[_c] = _g
+# ------------------------------------------------------------------ V72 (24-nov-2026)
+V72 = "Observaciones de Operaciones (24-nov-2026, reempaque, gerencias y planeamiento)"
+# Reempaque: lo solicitan líderes, supervisores, jefes y coordinadores. Calidad no lo solicita: lo evalúa (IF §9.1).
+for _r in ("JEFE_LOGISTICA", "JEFE_OPERACIONES", "JEFE_PRODUCCION", "JEFE_VENTAS", "COORD_DISTRIBUCION", "COORD_VENTAS"):
+    for _p in ("reempaque.ver", "reempaque.solicitar"):
+        if not any(x[0] == _p for x in ROLE_PERMISSIONS.setdefault(_r, [])):
+            ROLE_PERMISSIONS[_r].append((_p, "DEFINIDO", f"{V72}: el reempaque lo pueden solicitar líderes, supervisores, jefes "
+                                                         "y coordinadores"))
+# Gerencias: ven todo (solo consulta) y aprueban solo lo que les corresponde por su perfil
+for _r in ("GERENTE_COMERCIAL", "GERENTE_ADMIN_FINANZAS"):
+    if not any(x[0] == "vista.total" for x in ROLE_PERMISSIONS.setdefault(_r, [])):
+        ROLE_PERMISSIONS[_r].append(("vista.total", "DEFINIDO", f"{V72}: la gerencia ve todas las pantallas (solo consulta) y "
+                                                                "aprueba solo lo que le corresponde"))
+PARAMS += [
+    ("plan_almacen_anticipacion_dias", 1, "int", "Producción",
+     "Con cuántos días de anticipación Almacén entrega a Producción los materiales del plan (1 = el día anterior).",
+     "PROPUESTO", V72),
+    ("plan_almacen_horizonte_dias", 7, "int", "Producción",
+     "Días hacia adelante que se revisan del plan (materiales para Almacén y revisión del plan).", "PROPUESTO", V72),
+    ("plan_capacidad_minima_pct", 80, "float", "Producción",
+     "Se avisa a Producción si programa una línea por debajo de este % de su capacidad.", "DEFINIDO", V72),
+]
+ALERT_TYPES += [
+    ("PLAN_MATERIALES_ALMACEN", "Materiales para Producción según el plan", "Almacén", "Producción", "MEDIA",
+     ["COORD_ALMACEN_MP", "SUPERV_ALMACEN", "LIDER_ALMACEN", "ASIST_ALMACEN", "COORD_ALMACEN"], "DEFINIDO", V72,
+     "Producción cargó o cambió su planeamiento: qué materiales entregar y cuándo.", False),
+    ("PLAN_REVISION", "Revisar el plan de producción", "Producción", "Capacidad", "MEDIA",
+     ["JEFE_PRODUCCION", "ASIST_PRODUCCION"], "DEFINIDO", V72,
+     "El plan está por debajo de la capacidad, no incluye algo que se debe entregar o necesita horario extendido.", False),
+]
+PERMISSIONS += [
+    ("produccion.materiales_plan", "Ver los materiales que pide el plan de producción (qué entregar y cuándo)", "Almacén",
+     "consulta"),
+]
+for _r in ("COORD_ALMACEN_MP", "COORD_ALMACEN", "SUPERV_ALMACEN", "LIDER_ALMACEN", "ASIST_ALMACEN", "AUX_ALMACEN",
+           "JEFE_PRODUCCION", "ASIST_PRODUCCION", "JEFE_OPERACIONES", "JEFE_LOGISTICA", "COORD_LOGISTICA"):
+    if not any(x[0] == "produccion.materiales_plan" for x in ROLE_PERMISSIONS.setdefault(_r, [])):
+        ROLE_PERMISSIONS[_r].append(("produccion.materiales_plan", "DEFINIDO",
+                                     f"{V72}: Almacén ve qué debe entregar a Producción según el plan"))
