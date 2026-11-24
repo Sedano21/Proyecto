@@ -182,7 +182,9 @@ def route_detail(rid):
                                    .order_by(User.nombre)).scalars())
     from ..services.ov_sap import guias_de  # V70: guía y factura de SAP de cada OV para validar la carga
     from ..services import carga_v70
+    from ..services.ruta_chofer_v73 import certificados_de
     return render_template("route_detail.html", r=r, guias=guias_de([st.order for st in r.stops]), carga_v70=carga_v70,
+                           certs_ov=certificados_de([r]),
                            vehicles=vehicles, drivers=drivers, others=others, auxiliares=auxiliares,
                            gmaps=maps.gmaps_link(r), embed=maps.embed_url(r), estimado=maps.estimate(r) if not maps.api_key() else None,
                            maps_ok=bool(maps.api_key()),
@@ -499,3 +501,57 @@ def routes_by_vehicle():
     """V70: recorrido punto a punto de cada vehículo en el día (central → clientes → retorno → nueva carga…)."""
     from ..services import recorrido
     return render_template("v70_recorridos.html", d=recorrido.del_dia(f_date("fecha") or date.today()))
+
+
+# ------------------------------------------------------------------ V73: mi ruta paso a paso (chofer y auxiliar)
+@bp.route("/mi-ruta", methods=["GET", "POST"])
+@perm_required("distribucion.conformidad", "distribucion.visto_bueno_salida", "distribucion.carga", "distribucion.programar")
+def my_route():
+    """Pantalla simple, para el celular, del chofer y del auxiliar de distribución: validar la carga guía por guía, salir,
+    llegar, ser atendido, dar la conformidad y salir del cliente; además, avisar si no los dejan ingresar, reportar
+    peajes, combustible y parqueo, y ver los documentos y el correo de la cita."""
+    from ..services import ruta_chofer_v73 as rc
+    from ..services.distribution import save_upload
+    back = url_for("dist.my_route")
+    if request.method == "POST":
+        f = request.form
+        acc = f.get("accion")
+        up = current_app.config["UPLOAD_DIR"]
+        if acc in ("checklist", "gasto"):
+            r = db().get(Route, int(f.get("rid") or 0)) or abort(404)
+            if acc == "checklist":
+                lineas = {k[3:]: {"ok": f.get(f"ok_{k[3:]}") == "1", "cantidad": v} for k, v in f.items() if k.startswith("ca_")}
+                return act(lambda: rc.registrar_checklist(g.user, r, f.get("oid"), lineas, f.get("observacion", ""),
+                                                          f.get("mal_paletizado") == "1"),
+                           lambda res: "Checklist de la guía guardado: todo conforme." if res[0]["conforme"]
+                           else "Checklist guardado: se avisó a Almacén lo que no cuadra.", back + f"#ruta{r.id}")
+            foto = save_upload(request.files.get("foto"), up, f"gasto_ruta{r.id}") if request.files.get("foto") else ""
+            return act(lambda: rc.registrar_gasto(g.user, r, f.get("tipo"), f.get("monto"), f.get("lugar", ""),
+                                                  f.get("comprobante") == "1", foto, f.get("nota", "")),
+                       "Registrado: ya les llegó el aviso.", back + f"#ruta{r.id}")
+        stop = db().get(RouteStop, int(f.get("stop_id") or 0)) or abort(404)
+        dest = back + f"#parada{stop.id}"
+        if acc == "llegada":
+            return act(lambda: dsvc.register_arrival(stop, g.user), "Llegada registrada.", dest)
+        if acc in ("atencion", "salida"):
+            return act(lambda: rc.marcar(g.user, stop, acc), "Registrado.", dest)
+        if acc == "impedimento":
+            return act(lambda: rc.impedimento(g.user, stop, f.get("nota", "")),
+                       "Aviso enviado a Comercial y a Distribución para que habiliten el ingreso.", dest)
+        if acc == "correo_cita":
+            arch = save_upload(request.files.get("archivo"), up, f"cita_{stop.order.numero}")
+            return act(lambda: rc.adjuntar_correo_cita(g.user, stop, arch, f.get("nota", "")), "Correo de la cita adjuntado.", dest)
+        abort(400)
+    rutas = rc.rutas_de(g.user)
+    from ..services.ov_sap import guias_de
+    from ..services import carga_v70
+    return render_template("v73_mi_ruta.html", rutas=rutas, rc=rc, carga_v70=carga_v70, guias=guias_de([st.order for r in rutas for st in r.stops]),
+                           certs_ov=rc.certificados_de(rutas), tipos_gasto=rc.TIPOS_GASTO)
+
+
+@bp.route("/demoras-clientes")
+@perm_required("distribucion.ver", "distribucion.programar")
+def customer_delays():
+    """V73: cuánto se espera y cuánto dura la atención en cada cliente (para reducir unidades de terceros)."""
+    from ..services import ruta_chofer_v73 as rc
+    return render_template("v73_demoras.html", d=rc.demoras(f_date("desde"), f_date("hasta")))

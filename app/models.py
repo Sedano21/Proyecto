@@ -1042,6 +1042,8 @@ class Route(Base):
     carga_libre: Mapped[list] = mapped_column(JSON, default=list, server_default="[]")
     # V70: aviso del chofer (unidad lista para cargar) y respuesta de Almacén {lista: {...}, respuesta: {...}}
     aviso_carga: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}")
+    # V73: gastos y avisos del trayecto (parqueo sin comprobante, peaje, combustible) [{tipo, monto, lugar, ...}]
+    gastos: Mapped[list] = mapped_column(JSON, default=list, server_default="[]")
     vehicle = relationship("Vehicle")
     driver = relationship("Driver")
     stops = relationship("RouteStop", back_populates="route", order_by="RouteStop.orden",
@@ -1082,6 +1084,8 @@ class RouteStop(Base):
     # V70: cómo recibió el cliente {resultado: CONFORME / INCONFORME, novedades: [{tipo, producto, despachado, recibido,
     # observado, motivo}]}
     recepcion: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}")
+    # V73: hitos en el cliente {atencion: {ts, user}, salida: {ts, user}, impedimentos: [...], correos_cita: [...]}
+    hitos: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}")
     receptor_foto: Mapped[str] = mapped_column(String(250), default="", server_default="")
     receptor_motivo: Mapped[str] = mapped_column(String(250), default="", server_default="")
     # V12: pre-guía validada por Distribución → guía en SAP (entrega) y expediente del cliente

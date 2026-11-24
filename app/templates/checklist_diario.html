@@ -18,8 +18,10 @@
 {% else %}<fieldset class="ind-group"><legend>Marque en el dibujo dónde está cada defecto (opcional)</legend>{{ dibujo([], True, 'veh-nuevo') }}</fieldset>{% endif %}
 <p class="small muted">B = bien · M = mal · NA = no aplica.</p>
 <div class="grid g2">{% for zona, lst in zonas.items() %}<fieldset class="ind-group"><legend>{{ zona }}</legend>
-<table class="small"><tbody>{% for code, item, nn in lst %}<tr><td>{{ item }}{% if nn %} <b class="err" title="No negociable">NN</b>{% endif %}</td>
+<table class="small"><tbody>{% for code, item, nn in lst %}<tr data-prev="{{ (previo or {}).get(code, '') }}"><td>{{ item }}{% if nn %} <b class="err" title="No negociable">NN</b>{% endif %}{% if code == 'SEG_CONOS' %}<br><label class="small">¿Cuántos conos lleva? <input name="i_CONOS_CANTIDAD" type="number" min="0" step="1" inputmode="numeric" style="width:70px"></label>{% endif %}</td>
 <td class="r" style="white-space:nowrap">{% for v in ['B','M','NA'] %}<label class="chk" style="margin-left:6px"><input type="radio" name="i_{{ code }}" value="{{ v }}" required {{ 'checked' if v == 'B' }}> {{ v }}</label>{% endfor %}</td></tr>{% endfor %}</tbody></table></fieldset>{% endfor %}</div>
+<script>(function(){document.querySelectorAll('tr[data-prev]').forEach(function(tr){tr.querySelectorAll('input[type=radio]').forEach(function(r){r.addEventListener('change',function(){var nuevo=r.checked&&r.value==='M'&&tr.getAttribute('data-prev')!=='M';tr.classList.toggle('malo-nuevo',nuevo);tr.classList.toggle('malo',r.checked&&r.value==='M');});});});})();</script>
+<p class="small muted">En <b class="err">rojo</b>: lo que marca en mal estado y en el checklist anterior de la unidad estaba bien.</p>
 <p><button>{{ ic('check') }} Registrar checklist</button></p></form>{% endif %}
 {% if hoy %}<div class="section-title">Checklists diarios de hoy (todos los conductores)</div>
 {% for c in hoy %}<div class="card"><div class="card-head"><h3>{{ c.vehicle.placa }} · {{ momentos.get(c.momento, c.momento) }} · {{ c.registrado_ts.strftime('%H:%M') }}</h3>{{ b(c.estado) }}</div>

@@ -438,7 +438,7 @@ dialog.viewer .dlg-head{gap:8px}
 .kpi.ok{box-shadow:inset 3px 0 0 var(--cp-verde),var(--sh)}.kpi.err{box-shadow:inset 3px 0 0 var(--err),var(--sh)}
 .kpi small[title]{display:block;max-width:26ch}
 .filters .row{align-items:flex-end;flex-wrap:wrap}
-.seg label{margin:0;cursor:pointer}.seg input{position:absolute;opacity:0;pointer-events:none}
+.seg label{margin:0;cursor:pointer}.seg label{position:relative}.seg input{position:absolute;left:0;top:0;width:1px;height:1px;opacity:0;pointer-events:none}
 .seg label span{display:inline-block;padding:6px 14px;color:var(--ink-2)}.seg input:checked+span{background:var(--cp-verde-700);color:#fff}
 .seg input:focus-visible+span{outline:2px solid var(--info);outline-offset:-2px}
 details.ms{position:relative;min-width:170px}
@@ -916,3 +916,18 @@ ol.recorrido li::before{content:"";position:absolute;left:-27px;top:9px;width:14
 ol.recorrido li.hecho::before{background:#2f7d32;border-color:#2f7d32}
 ol.recorrido li.paso-carga::before{border-radius:3px}ol.recorrido li.paso-retorno{color:#555}
 @media print{.doc-pagina{page-break-after:always}.doc-pagina:last-child{page-break-after:auto}}
+/* V73: checklist vehicular, lo nuevo que se marca en mal estado va en rojo */
+tr.malo td{background:#fff4f4}tr.malo-nuevo td{background:#fde2e2;color:#9b1c1c;font-weight:600}
+/* V73: «Mi ruta» del chofer y del auxiliar, pensada para el celular */
+.ruta-chofer .peso{font-size:15px}.ruta-chofer .paso-t{margin:14px 0 6px;color:var(--cp-verde,#2f7d32)}
+.guia-check{border:1px solid var(--line,#d5dbde);border-radius:10px;padding:8px 10px;margin:6px 0;background:#fff}
+.guia-check summary{cursor:pointer;padding:6px 0}.item-check{display:flex;flex-direction:column;gap:6px;padding:8px 0;border-bottom:1px solid #eef1f2}
+label.chk.grande{display:flex;gap:10px;align-items:center;font-size:15px;padding:6px 0}label.chk.grande input{width:22px;height:22px}
+.botones-grandes{display:flex;flex-direction:column;gap:8px;margin:8px 0}.botones-grandes .btn,.botones-grandes button{width:100%;min-height:46px;font-size:16px}
+ol.pasos-cliente{display:flex;flex-wrap:wrap;gap:6px;list-style:none;padding:0;margin:6px 0}
+ol.pasos-cliente li{padding:4px 10px;border-radius:999px;background:#eef1f2;color:#555}ol.pasos-cliente li.hecho{background:#2f7d32;color:#fff}
+/* V73: tablas que no estaban dentro de un contenedor con desplazamiento: en el celular se desplazan en vez de salirse */
+@media (max-width:760px){main table:not(.kv):not(.apilable){display:block;max-width:100%;overflow-x:auto}
+  .row{flex-wrap:wrap}.row>div{min-width:0}input,select,textarea{max-width:100%}}
+/* V73: en celulares angostos la barra superior entra completa (sin desplazamiento lateral) */
+@media (max-width:480px){.top{gap:4px}.top-right{gap:2px}.top-right .stock-chip span{max-width:56px}.top .crumbs{flex:1 1 0}}

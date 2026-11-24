@@ -24,6 +24,7 @@
     <div class="grp" data-grupo="Panel">
       {{ nl(url_for('main.dashboard'), 'home', 'Inicio') }}
       {% if es_gerencia(user) %}{{ nl(url_for('main.alerts_management'), 'flag', 'Bandeja de gerencia') }}{% endif %}
+      {% if can('distribucion.conformidad') or can('distribucion.visto_bueno_salida') %}{{ nl(url_for('dist.my_route'), 'truck', 'Mi ruta (paso a paso)') }}{% endif %}
       {{ nl(url_for('alm.stock_light'), 'gauge', 'Semáforo de inventarios') }}
       {{ nl(url_for('main.alerts'), 'bell', 'Alertas y tareas', ('<span class="count" aria-label="' ~ alertas_abiertas ~ ' abiertas">' ~ alertas_abiertas ~ '</span>')|safe if alertas_abiertas else '') }}
       {% if can('dias.no_laborables') %}{{ nl(url_for('main.days_off'), 'calendar', 'Días no laborables') }}{% endif %}
@@ -148,6 +149,7 @@
       {% if ve('distribucion.conformidad') %}{{ nl(url_for('dist.my_deliveries'), 'check', 'Mis entregas') }}{% endif %}
       {% if ve('distribucion.entrega') or ve('distribucion.programar') %}{{ nl(url_for('alm.loading'), 'truck', 'Carga de unidades') }}{% endif %}
       {{ nl(url_for('dist.routes_by_vehicle'), 'route', 'Recorrido de los vehículos') }}
+      {{ nl(url_for('dist.customer_delays'), 'history', 'Demoras en clientes') }}
       {% if can('distribucion.checklist') or can('distribucion.checklist_validar') %}{{ nl(url_for('dist.daily_checklist'), 'clipboard', 'Checklist vehicular diario') }}{% endif %}
       {{ nl(url_for('dist.routes'), 'route', 'Programación y rutas') }}
       {{ nl(url_for('v22.board'), 'clipboard', 'Cuadro de despacho y ruta manual') }}

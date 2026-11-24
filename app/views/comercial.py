@@ -1068,3 +1068,19 @@ def print_documents():
         return send_file(io.BytesIO(pdfreport.html_to_pdf(html, "Documentos")), mimetype="application/pdf",
                          as_attachment=True, download_name="documentos.pdf")
     return html
+
+
+@bp.route("/certificado/<int:cid>")
+@perm_required(*VALIDAN_DOCS)
+def view_certificate(cid):
+    """V73: el certificado de calidad aprobado de la OV, en modo lectura e impresión, para quienes validan la carga
+    (chofer, auxiliar, Seguridad, Almacén) y Comercial."""
+    from ..models import Certificate
+    from ..services import quality as qsvc
+    from .calidad import _firma_url
+    c = db().get(Certificate, cid) or abort(404)
+    if c.estado != "APROBADO":
+        abort(404)
+    return render_template("certificate.html", c=c, d=c.datos, editable=qsvc.EDITABLE_CERT_FIELDS, print_mode=True,
+                           tipos=qsvc.CERT_TIPOS, etiquetas=qsvc.CERT_ETIQUETAS, procesado=qsvc.CERT_PROCESADO,
+                           firma_url=_firma_url(c))

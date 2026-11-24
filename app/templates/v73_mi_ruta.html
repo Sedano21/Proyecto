@@ -1,0 +1,46 @@
+{% extends "base.html" %}{% from "_m.html" import b, csrf, ic, empty %}{% import "_entrega.html" as ent with context %}
+{% block content %}<h1>Mi ruta</h1>
+<p class="small muted">Paso a paso: 1) valide la carga guía por guía, 2) salga a ruta, 3) en cada cliente: «Llegué», «Me están atendiendo», la conformidad y «Salí». Si algo pasa, use los botones de abajo de cada parada.</p>
+{% for r in rutas %}{% set peso, cap, excede = rc.exceso_peso(r) %}
+<section class="card ruta-chofer" id="ruta{{ r.id }}"><div class="card-head"><h2 style="margin:0">Ruta #{{ r.id }} · {{ r.fecha|d }}</h2>{{ b(r.estado) }}</div>
+<p class="small">{{ r.vehicle.placa if r.vehicle else (r.transportista or {}).get('placa', '') }} · chofer {{ r.driver.nombre if r.driver else (r.transportista or {}).get('nombre', '—') }} · auxiliar: <b>{{ (r.auxiliares or ([r.auxiliar_id] if r.auxiliar_id else []))|map('usuario_nombre')|join(', ') or 'sin auxiliar' }}</b></p>
+<p class="peso {{ 'err' if excede }}"><b>{{ peso|n }} kg</b>{% if cap %} de {{ cap|n }} kg de capacidad{% endif %}{% if excede %} · <b>EXCEDE la capacidad de la unidad</b>: avise a Distribución antes de salir.{% endif %}</p>
+{% include "_docs_ruta.html" %}
+
+{% if r.estado in ('PROPUESTA', 'CONFIRMADA') %}<h3 class="paso-t">1. Validar la carga guía por guía</h3>
+{% set chk = (r.aviso_carga or {}).get('checklists') or {} %}
+{% for st in r.stops %}{% set gr = rc.checklist_guia(r, st.order.id) %}{% set hecho = chk.get(st.order.id|string) %}
+<details class="guia-check" {{ 'open' if not hecho and loop.first }}><summary><b>OV {{ st.order.numero }}</b> · {{ st.order.customer.nombre }} {% if hecho %}<span class="b {{ 'ok' if hecho.conforme else 'warn' }}">{{ 'conforme' if hecho.conforme else 'con observaciones' }} · {{ hecho.user }}</span>{% else %}<span class="b">por validar</span>{% endif %}</summary>
+<form method="post" class="pila">{{ csrf() }}<input type="hidden" name="accion" value="checklist"><input type="hidden" name="rid" value="{{ r.id }}"><input type="hidden" name="oid" value="{{ st.order.id }}">
+{% for it in gr['items'] %}<div class="item-check"><div><b>{{ it.codigo }}</b> {{ it.descripcion }}<br><span class="small muted">{% for x in it.lotes %}lote {{ x.lote }}{{ ' · FP ' ~ (x.fp|d) if x.fp }}{{ ' · FV ' ~ (x.fv|d) if x.fv }} ({{ x.cantidad|n }}){{ '; ' if not loop.last }}{% else %}sin lote reservado{% endfor %}</span></div>
+<div class="row nowrap"><label class="chk grande"><input type="checkbox" name="ok_{{ it.order_line_id }}" value="1" checked data-ok> Está bien ({{ it.cantidad|n }})</label>
+<input type="number" step="any" min="0" name="ca_{{ it.order_line_id }}" value="{{ it.cantidad }}" aria-label="Cantidad cargada" data-cant style="width:100px" hidden></div></div>{% endfor %}
+<label class="chk grande"><input type="checkbox" name="mal_paletizado" value="1"> La mercadería va mal paletizada</label>
+<input name="observacion" placeholder="observación (opcional)"><button class="btn">Guardar checklist de esta guía</button></form></details>{% endfor %}
+<script>(function(){document.querySelectorAll('.item-check').forEach(function(d){var c=d.querySelector('[data-ok]'),q=d.querySelector('[data-cant]');function u(){q.hidden=c.checked;}c.addEventListener('change',u);u();});})();</script>
+{% set accion_url = url_for('alm.loading') %}{% set cv = carga_v70 %}{% include "_novedades_carga.html" %}{% endif %}
+
+{% if r.estado == 'EN_RUTA' %}<h3 class="paso-t">2. En cada cliente</h3>{% endif %}
+<div class="cards">{% for s in r.stops|sort(attribute='orden') %}{% set h = s.hitos or {} %}<article class="xcard st-{{ s.estado }}" id="parada{{ s.id }}"><div class="xcard-head"><b>{{ s.orden }}. {{ s.order.customer.nombre }}</b>{{ b(s.estado) }}</div>
+<div class="meta"><span>OV {{ s.order.numero }} · {{ s.peso_kg|n }} kg</span><span>{{ s.order.direccion }} · {{ s.order.distrito }}</span>{% if s.order.hora_cita %}<span>cita {{ s.order.hora_cita }}</span>{% endif %}</div>
+{% for cc in h.correos_cita or [] %}<p class="small">{{ ic('mail') }} <a href="{{ url_for('main.evidence', name=cc.archivo) }}" target="_blank" rel="noopener"><b>Correo de la cita</b> (mostrar a Seguridad)</a>{{ ' · ' ~ cc.nota if cc.nota }}</p>{% endfor %}
+<ol class="pasos-cliente small"><li class="{{ 'hecho' if s.llegada_ts }}">Llegué {{ s.llegada_ts.strftime('%H:%M') if s.llegada_ts }}</li><li class="{{ 'hecho' if h.atencion }}">Me atienden {{ (h.atencion or {}).get('ts', '')[11:16] }}</li><li class="{{ 'hecho' if s.entrega_ts }}">Conformidad {{ s.entrega_ts.strftime('%H:%M') if s.entrega_ts }}</li><li class="{{ 'hecho' if h.salida }}">Salí {{ (h.salida or {}).get('ts', '')[11:16] }}</li></ol>
+{% if r.estado == 'EN_RUTA' %}<div class="botones-grandes">
+{% if s.estado == 'EN_CAMINO' and r.driver and r.driver.user_id == user.id %}<form method="post">{{ csrf() }}<input type="hidden" name="stop_id" value="{{ s.id }}"><button class="btn" name="accion" value="llegada">{{ ic('flag') }} Llegué</button></form>{% endif %}
+{% if s.estado == 'LLEGADA' and not h.atencion %}<form method="post">{{ csrf() }}<input type="hidden" name="stop_id" value="{{ s.id }}"><button class="btn" name="accion" value="atencion">{{ ic('clipboard') }} Me están atendiendo</button></form>{% endif %}
+{% if s.estado in ['EN_CAMINO','LLEGADA'] and r.driver and r.driver.user_id == user.id %}{{ ent.conformidad(s, url_for('dist.my_deliveries')) }}{% endif %}
+{% if s.estado not in ['EN_CAMINO'] and not h.salida %}<form method="post">{{ csrf() }}<input type="hidden" name="stop_id" value="{{ s.id }}"><button class="btn sec" name="accion" value="salida">{{ ic('truck') }} Salí del cliente</button></form>{% endif %}
+</div>
+<details class="small"><summary><b>¿No lo dejan ingresar?</b></summary><form method="post" class="pila">{{ csrf() }}<input type="hidden" name="stop_id" value="{{ s.id }}"><input type="hidden" name="accion" value="impedimento"><input name="nota" placeholder="qué le dicen (opcional)"><button class="btn sec">Avisar a Comercial y a Distribución</button></form></details>
+<p class="small"><a href="{{ url_for('dist.incidents') }}">Registrar una incidencia de la mercadería o del trayecto</a></p>{% endif %}
+{% if can('distribucion.programar') %}<details class="small"><summary>Adjuntar el correo de la cita</summary><form method="post" enctype="multipart/form-data" class="pila">{{ csrf() }}<input type="hidden" name="stop_id" value="{{ s.id }}"><input type="hidden" name="accion" value="correo_cita"><input type="file" name="archivo" accept="image/*,application/pdf" required><input name="nota" placeholder="nota (opcional)"><button class="sec">Adjuntar</button></form></details>{% endif %}
+{% for im in h.impedimentos or [] %}<p class="small err">No dejaron ingresar {{ im.ts|replace('T', ' ') }}{{ ': ' ~ im.nota if im.nota }}</p>{% endfor %}
+</article>{% endfor %}</div>
+
+<details class="card"><summary><b>Peaje, combustible o parqueo</b></summary><form method="post" enctype="multipart/form-data" class="pila">{{ csrf() }}<input type="hidden" name="accion" value="gasto"><input type="hidden" name="rid" value="{{ r.id }}">
+<select name="tipo">{% for k, v in tipos_gasto.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select>
+<input name="monto" type="number" step="any" min="0" placeholder="monto S/ (obligatorio en parqueo)"><input name="lugar" placeholder="dónde">
+<label class="chk grande"><input type="checkbox" name="comprobante" value="1"> Me dieron comprobante</label><input type="file" name="foto" accept="image/*"><input name="nota" placeholder="detalle (opcional)"><button class="btn sec">Registrar y avisar</button></form>
+{% for gx in r.gastos or [] %}<p class="small">{{ tipos_gasto.get(gx.tipo, gx.tipo) }}{{ ' S/ ' ~ gx.monto if gx.monto }}{{ ' · ' ~ gx.lugar if gx.lugar }}{{ ' · sin comprobante' if not gx.comprobante and gx.tipo == 'PARQUEO' }} · {{ gx.ts|replace('T', ' ') }}</p>{% endfor %}</details>
+</section>{% else %}{{ empty('No tiene rutas de ayer, hoy o mañana.', 'truck') }}{% endfor %}
+{% endblock %}

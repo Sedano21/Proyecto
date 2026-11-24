@@ -847,6 +847,14 @@ def cancel_order(order, user, motivo, causal=None):
     alerts.emit("OV_CANCELADA", f"OV {order.numero} cancelada", f"Motivo: {motivo}. Reservas liberadas: {liberadas}; "
                 f"paradas de ruta retiradas: {paradas}.", "SalesOrder", order.id, creado_por=user,
                 extra_users=[order.vendedor_id] if order.vendedor_id else None)
+    # V73: Comercial debe avisar una cancelación con 24 h de anticipación; si no, se avisa a Operaciones y Distribución
+    horas = (datetime.combine(order.fecha_compromiso, datetime.min.time()) - datetime.now()).total_seconds() / 3600 \
+        if order.fecha_compromiso else None
+    if horas is not None and horas < float(param("ov_cancelacion_anticipacion_horas", 24) or 24):
+        alerts.emit("OV_CANCELACION_TARDIA", f"OV {order.numero} cancelada con menos de 24 h para el despacho",
+                    f"{order.customer.nombre} · despacho {order.fecha_compromiso:%d/%m/%Y}. Motivo: {motivo}. "
+                    + (f"Estaba en {paradas} ruta(s) programada(s)." if paradas else ""), "SalesOrder", order.id,
+                    prioridad="ALTA", creado_por=user)
     audit(user, "OV_CANCELADA", "SalesOrder", order.numero, {"motivo": motivo, "reservas_liberadas": liberadas,
                                                              "paradas_retiradas": paradas})
     # el stock liberado puede cubrir otras OV

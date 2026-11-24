@@ -858,7 +858,9 @@ def loading():
                                                        "SUPERV_ALMACEN", "AUX_DESPACHO")]
     from ..services.ov_sap import guias_de
     guias = guias_de([st.order for r in rutas for st in r.stops])
+    from ..services.ruta_chofer_v73 import certificados_de
     return render_template("v70_carga.html", rutas=rutas, personal=personal, cv=cv, etapas=cv.ETAPAS, guias=guias,
+                           certs_ov=certificados_de(rutas),
                            es_chofer=lambda r: r.driver is not None and r.driver.user_id == g.user.id)
 
 

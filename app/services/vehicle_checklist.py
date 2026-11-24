@@ -20,6 +20,25 @@ from .core import BusinessError, audit, has_perm
 VALORES = ("B", "M", "NA")
 
 
+def _conos(valores, vals):
+    """V73: cantidad de conos de seguridad que lleva la unidad (además de su estado)."""
+    c = str((valores or {}).get("CONOS_CANTIDAD") or "").strip()
+    if c:
+        try:
+            vals["CONOS_CANTIDAD"] = int(float(c))
+        except ValueError:
+            raise BusinessError("Cantidad de conos no válida.") from None
+
+
+def previo(vehicle_id, antes_de_id=None):
+    """V73: el último checklist del vehículo (para resaltar en rojo lo que ahora se marca en mal estado y antes no)."""
+    q = select(VehicleChecklist).where(VehicleChecklist.vehicle_id == vehicle_id)
+    if antes_de_id:
+        q = q.where(VehicleChecklist.id < antes_de_id)
+    c = db().execute(q.order_by(VehicleChecklist.id.desc())).scalars().first()
+    return dict(c.items or {}) if c else {}
+
+
 def items():
     from ..catalogs import CHECKLIST_VEHICULAR
     return CHECKLIST_VEHICULAR
@@ -111,6 +130,7 @@ def register(user, route, momento, valores, km=None, observaciones="", marcas=No
         vals[code] = v
     if falt:
         raise BusinessError(f"Marque B, M o NA en todos los ítems (faltan {len(falt)}: {', '.join(falt[:4])}…).")
+    _conos(valores, vals)
     try:
         km = float(km) if km not in (None, "") else None
     except ValueError:
@@ -275,6 +295,7 @@ def register_daily(user, vehicle, momento, valores, km=None, observaciones="", m
         vals[code] = v
     if falt:
         raise BusinessError(f"Marque B, M o NA en todos los ítems (faltan {len(falt)}: {', '.join(falt[:4])}…).")
+    _conos(valores, vals)
     try:
         km = float(km) if km not in (None, "") else None
     except ValueError:

@@ -3616,3 +3616,33 @@ for _r in ("COORD_ALMACEN", "COORD_ALMACEN_MP", "SUPERV_ALMACEN", "COORD_LOGISTI
     if not any(x[0] == "reempaque.presolicitud" for x in ROLE_PERMISSIONS.setdefault(_r, [])):
         ROLE_PERMISSIONS[_r].append(("reempaque.presolicitud", "DEFINIDO", f"{V72}: Q12, la pre-solicitud la aprueba el "
                                                                            "Supervisor o el Coordinador de Almacén"))
+# ------------------------------------------------------------------ V73 (24-nov-2026)
+V73 = "Capacitación de choferes (24-nov-2026)"
+for _c, _n, _g in (("CARGA_MAL_PALETIZADA", "Mercadería mal paletizada al validar la carga", "LOGISTICA"),
+                   ("IMPEDIMENTO_INGRESO", "El cliente no permite el ingreso de la unidad", "CLIENTE")):
+    if not any(x[0] == _c for x in INCIDENT_SUBTYPES):
+        INCIDENT_SUBTYPES.append((_c, _n, _g))
+        INCIDENT_TYPES.append((_c, _n))
+        INCIDENT_GROUP[_c] = _g
+ALERT_TYPES += [
+    ("CHOFER_IMPEDIMENTO_INGRESO", "El cliente no deja ingresar a la unidad", "Comercial", "Distribución", "ALTA",
+     ["COORD_VENTAS", "JEFE_VENTAS", "COORD_DISTRIBUCION", "ASIST_DISTRIBUCION"], "DEFINIDO", V73,
+     "El chofer avisa que no le permiten el ingreso: Comercial habilita el acceso con el cliente.", False),
+    ("FLOTA_PEAJE_COMBUSTIBLE", "Deuda de peaje o tarjeta de combustible sin saldo", "Finanzas", "Distribución", "ALTA",
+     ["COORD_FINANZAS", "JEFE_ADMIN_FINANZAS", "COORD_DISTRIBUCION", "JEFE_OPERACIONES"], "DEFINIDO", V73,
+     "El chofer reporta deuda de peajes o la tarjeta de combustible sin saldo, para resolverlo rápido.", False),
+    ("RUTA_GASTO", "Gasto en la ruta (parqueo y otros)", "Distribución", "Distribución", "BAJA",
+     ["COORD_DISTRIBUCION", "COORD_FINANZAS"], "DEFINIDO", V73,
+     "El chofer registra un gasto de la ruta (por ejemplo, parqueo sin comprobante) para su reembolso.", False),
+    ("OV_CANCELACION_TARDIA", "OV cancelada con menos de 24 h para el despacho", "Operaciones", "Estados de pedidos", "ALTA",
+     ["JEFE_OPERACIONES", "COORD_DISTRIBUCION", "JEFE_VENTAS"], "DEFINIDO", V73,
+     "Comercial debe avisar con 24 h de anticipación; una cancelación tardía afecta la ruta y la mano de obra.", False),
+]
+PARAMS += [
+    ("ov_cancelacion_anticipacion_horas", 24, "int", "Comercial",
+     "Horas mínimas antes del despacho para cancelar una OV sin aviso de cancelación tardía.", "DEFINIDO", V73),
+]
+# Checklist vehicular: luces diurnas (camionetas) y cantidad de conos
+_i = next((i for i, x in enumerate(CHECKLIST_VEHICULAR) if x[0] == "LUZ_FRENO"), len(CHECKLIST_VEHICULAR) - 1)
+if not any(x[0] == "LUZ_DIURNAS" for x in CHECKLIST_VEHICULAR):
+    CHECKLIST_VEHICULAR.insert(_i + 1, ("LUZ_DIURNAS", "Sistema de luces", "Luces diurnas (camionetas)", False))

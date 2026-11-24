@@ -67,7 +67,7 @@ def checklist(rid):
                               .order_by(VehicleChecklist.id.desc())).scalars())
     from ..catalogs import IMAGENES_CHECKLIST, PARTES_VEHICULO
     clave = (r.vehicle.imagen_checklist if r.vehicle else "") or _imagen_por_tipo(r.vehicle)
-    return render_template("checklist.html", r=r, lista=lista, zonas=vc.zonas(), items=dict((c, i) for c, _, i, _ in vc.items()),
+    return render_template("checklist.html", r=r, lista=lista, zonas=vc.zonas(), previo=vc.previo(r.vehicle_id) if r.vehicle_id else {}, items=dict((c, i) for c, _, i, _ in vc.items()),
                            pend_paso2=vc.pending_part2(r), puede_salir=vc.can_depart(r),
                            imagenes=IMAGENES_CHECKLIST.get(clave, (None, []))[1], partes=PARTES_VEHICULO)
 
@@ -367,6 +367,6 @@ def daily_checklist():
     hoy = list(db().execute(select(VehicleChecklist).where(VehicleChecklist.route_id.is_(None), VehicleChecklist.fecha == _d.today())
                             .order_by(VehicleChecklist.id.desc())).scalars()) if "distribucion.checklist_validar" in g.perms \
         or "checklist.ver" in g.perms else []
-    return render_template("checklist_diario.html", st=st, veh=veh, momento=momento, momentos=vc.MOMENTOS_DIA,
+    return render_template("checklist_diario.html", st=st, veh=veh, momento=momento, previo=vc.previo(veh.id) if veh else {}, momentos=vc.MOMENTOS_DIA,
                            zonas=vc.zonas(), items=dict((c, i) for c, _, i, _ in vc.items()), hoy=hoy,
                            imagenes=IMAGENES_CHECKLIST.get(clave, (None, []))[1], partes=PARTES_VEHICULO)
