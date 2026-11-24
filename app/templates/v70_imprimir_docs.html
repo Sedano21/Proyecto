@@ -1,0 +1,6 @@
+{% extends "base.html" %}{% from "_m.html" import ic %}
+{% block content %}<div class="page-head noprint"><div><h1>Documentos seleccionados</h1><p class="sub">{{ guias|length }} guía(s) y {{ facturas|length }} factura(s) de SAP.</p></div>
+<div class="row"><button class="btn sec" onclick="window.print()">{{ ic('file') }} Imprimir</button> <a class="btn sec" href="?{{ request.query_string.decode() }}&formato=pdf">{{ ic('download') }} PDF</a></div></div>
+{% for gd in guias %}<div class="doc-pagina"><h2>Guía de remisión {{ gd.documento }}</h2>{% include "_doc_guia_sap.html" %}</div>{% endfor %}
+{% for fd in facturas %}<div class="doc-pagina"><h2>{{ 'Nota de crédito' if fd.tipo == 'NOTA_CREDITO' else 'Factura' }} {{ fd.numero }}</h2>{% set ov = none %}{% include "_doc_factura_sap.html" %}</div>{% endfor %}
+{% endblock %}

@@ -55,7 +55,14 @@ def group(cid, fecha):
     ovs = seg.group_detail(cid, f)
     from ..services.finance import order_documents
     modo = request.args.get("certificados", "producto")
+    from ..models import RouteStop
+    from ..services.ov_sap import facturas_de, guias_de  # V70: guías y facturas de SAP de cada OV, para ver e imprimir
+    firmadas = {}
+    for st in db().execute(select(RouteStop).where(RouteStop.order_id.in_([o.id for o in ovs] or [0]))).scalars():
+        if st.guia_firmada_path or st.foto_path:
+            firmadas.setdefault(st.order_id, []).append(st)
     return render_template("seg_expediente.html", c=c, fecha=f, ovs=ovs, docs={o.id: order_documents(o) for o in ovs},
+                           guias=guias_de(ovs), facturas=facturas_de(ovs), firmadas=firmadas,
                            avance={o.id: seg.progress(o) for o in ovs}, area={o.id: seg.order_area(o) for o in ovs},
                            retraso={o.id: seg.delay(o) for o in ovs}, certs=seg.group_certificates(ovs, modo != "consolidado"),
                            modo=modo, imprimir=request.args.get("imprimir") == "1")

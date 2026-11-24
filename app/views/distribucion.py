@@ -181,7 +181,8 @@ def route_detail(rid):
     auxiliares = list(db().execute(select(User).where(User.role_code == "AUX_DESPACHO", User.activo.is_(True))
                                    .order_by(User.nombre)).scalars())
     from ..services.ov_sap import guias_de  # V70: guía y factura de SAP de cada OV para validar la carga
-    return render_template("route_detail.html", r=r, guias=guias_de([st.order for st in r.stops]),
+    from ..services import carga_v70
+    return render_template("route_detail.html", r=r, guias=guias_de([st.order for st in r.stops]), carga_v70=carga_v70,
                            vehicles=vehicles, drivers=drivers, others=others, auxiliares=auxiliares,
                            gmaps=maps.gmaps_link(r), embed=maps.embed_url(r), estimado=maps.estimate(r) if not maps.api_key() else None,
                            maps_ok=bool(maps.api_key()),
@@ -223,9 +224,14 @@ def _conformidad(stop, u):
     guia = dsvc.save_upload(request.files.get("guia"), updir, f"guia_{stop.order.numero}")
     entregas = {k[4:]: v for k, v in f.items() if k.startswith("ent_") and v != ""}
     foto_rec = dsvc.save_upload(request.files.get("receptor_foto"), updir, f"receptor_{stop.order.numero}")
+    novedades = {k[9:]: {"tipo": v, "observado": f.get(f"nov_obs_{k[9:]}", ""), "motivo": f.get(f"nov_motivo_{k[9:]}", "")}
+                 for k, v in f.items() if k.startswith("nov_tipo_") and v}  # V70: inconformidad por SKU
+    recepcion = f.get("recepcion") or "CONFORME"
+    if recepcion == "CONFORME":
+        entregas, novedades = {}, {}
     dsvc.register_delivery(stop, u, foto, guia, entregas, f.get("observacion", ""), f.get("receptor_nombre", ""),
                            f.get("receptor_dni", ""), firma, f.get("receptor_tipo", "DNI"), foto_rec,
-                           f.get("receptor_motivo", ""))
+                           f.get("receptor_motivo", ""), recepcion, novedades)
 
 
 @bp.route("/mis-entregas", methods=["GET", "POST"])

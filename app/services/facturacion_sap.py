@@ -17,6 +17,12 @@ def sync(user, sl=None, desde=None):
     from . import sap_sl
     from .sap_v31 import historial_desde
     hay = db().execute(select(SapBilling.id).limit(1)).first() is not None
+    # V70: si las facturas leídas antes aún no traen de qué guía y OV salen, se relee todo el historial una vez
+    sin_origen = hay and any(not (x.origenes or {}).get("leido") for x in db().execute(
+        select(SapBilling).order_by(SapBilling.id.desc()).limit(50)).scalars())
+    if sin_origen and desde is None:
+        from .sap_v31 import historial_desde as _hd
+        desde = _hd()
     hoy = date.today()
     # la primera vez, desde el inicio del historial (para comparar con el año anterior); luego, el mes en curso y el
     # anterior (las notas de crédito o anulaciones tardías)
@@ -30,8 +36,12 @@ def sync(user, sl=None, desde=None):
         for tipo, ent in (("FACTURA", "Invoices"), ("NOTA_CREDITO", "CreditNotes")):
             for d in sl.get_all(ent, {"$filter": f"DocDate ge '{desde.isoformat()}'",
                                       "$select": "DocEntry,DocNum,FolioPrefixString,FolioNumber,CardCode,CardName,DocDate,"
-                                                 "DocCurrency,DocTotal,VatSum,Cancelled"}):
+                                                 "DocCurrency,DocTotal,VatSum,Cancelled,DocumentLines"}):
                 docs.append((tipo, d))
+        # V70: OV de origen (líneas basadas en una OV, BaseType 17) para ver la factura en la OV
+        from .sap_v29 import _por_entry
+        ovs = _por_entry(sl, "Orders", [ln.get("BaseEntry") for _, d in docs for ln in d.get("DocumentLines") or []
+                                        if ln.get("BaseType") == 17], "DocEntry,DocNum")
     finally:
         if propio:
             sl.logout()
@@ -54,7 +64,8 @@ def sync(user, sl=None, desde=None):
             continue
         datos = {"tipo": tipo, "numero": sap_sl._folio(d), "fecha": fecha, "cardcode": (d.get("CardCode") or "")[:30],
                  "cliente": (d.get("CardName") or "")[:200], "moneda": (d.get("DocCurrency") or "")[:10],
-                 "total": float(d.get("DocTotal") or 0), "igv": float(d.get("VatSum") or 0)}
+                 "total": float(d.get("DocTotal") or 0), "igv": float(d.get("VatSum") or 0),
+                 "origenes": origenes(d, ovs)}
         x = existentes.get(clave)
         if x is None:
             db().add(SapBilling(clave=clave, ts=now(), **datos))
@@ -65,6 +76,20 @@ def sync(user, sl=None, desde=None):
             act += 1
     db().flush()
     return {"desde": desde.isoformat(), "leidas": len(docs), "nuevas": nuevas, "actualizadas": act, "anuladas": anuladas}
+
+
+def origenes(d, ovs=None):
+    """V70: {guias: [DocEntry de la entrega], ovs: [DocNum de la OV]} de las líneas de la factura (BaseType 15 = entrega,
+    17 = orden de venta)."""
+    guias, nums = [], []
+    for ln in d.get("DocumentLines") or []:
+        if ln.get("BaseType") == 15 and ln.get("BaseEntry") and int(ln["BaseEntry"]) not in guias:
+            guias.append(int(ln["BaseEntry"]))
+        if ln.get("BaseType") == 17 and ln.get("BaseEntry"):
+            n = str(((ovs or {}).get(ln["BaseEntry"]) or {}).get("DocNum") or "")
+            if n and n not in nums:
+                nums.append(n)
+    return {"guias": guias, "ovs": nums, "leido": True}
 
 
 def resumen(desde, hasta, canal=""):

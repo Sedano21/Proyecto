@@ -109,17 +109,30 @@ def rows_guias(sl, desde, cambios_desde=None):
         filtro += f" and UpdateDate ge '{cambios_desde.isoformat()}'"
     docs = sl.get_all("DeliveryNotes", {"$filter": filtro, "$select": "DocEntry,DocNum,FolioPrefixString,FolioNumber,DocDate,"
                                                                        "CardName,DocumentLines"})
+    # V70: una guía también puede salir de una factura (BaseType 13, p. ej. una factura de reserva): su OV es la de la
+    # factura y la factura queda enlazada a la guía
+    facts = _por_entry(sl, "Invoices", [l.get("BaseEntry") for d in docs for l in d.get("DocumentLines") or []
+                                        if l.get("BaseType") == 13],
+                       "DocEntry,DocNum,FolioPrefixString,FolioNumber,DocumentLines")
     ovs = _por_entry(sl, "Orders", [l.get("BaseEntry") for d in docs for l in d.get("DocumentLines") or []
-                                    if l.get("BaseType") == 17], "DocEntry,DocNum")
+                                    if l.get("BaseType") == 17]
+                     + [fl.get("BaseEntry") for f in facts.values() for fl in f.get("DocumentLines") or []
+                        if fl.get("BaseType") == 17], "DocEntry,DocNum")
     out = []
     for d in docs:
         for ln in d.get("DocumentLines") or []:
             if not ln.get("ItemCode"):
                 continue
             ov = ovs.get(ln.get("BaseEntry"), {}).get("DocNum") if ln.get("BaseType") == 17 else ""
+            factura = ""
+            if ln.get("BaseType") == 13 and ln.get("BaseEntry") in facts:
+                fd = facts[ln["BaseEntry"]]
+                factura = _folio(fd)
+                base_ov = next((fl.get("BaseEntry") for fl in fd.get("DocumentLines") or [] if fl.get("BaseType") == 17), None)
+                ov = ovs.get(base_ov, {}).get("DocNum") if base_ov else ov
             out.append({"clave": f"GUIA:{d['DocEntry']}:{ln.get('LineNum', 0)}", "tipo": "GUIA", "docentry": d["DocEntry"],
                         "documento": _folio(d), "fecha": str(d.get("DocDate") or "")[:10], "ov": str(ov or ""),
-                        "of": "", "factura": "", "cliente": (d.get("CardName") or "")[:200], "producto": ln["ItemCode"][:30],
+                        "of": "", "factura": factura, "cliente": (d.get("CardName") or "")[:200], "producto": ln["ItemCode"][:30],
                         "cantidad": float(ln.get("Quantity") or 0), "total": float(ln.get("LineTotal") or 0),
                         "igv": float(ln.get("TaxTotal") or 0)})
     return out

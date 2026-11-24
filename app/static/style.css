@@ -915,3 +915,4 @@ ol.recorrido li{position:relative;padding:6px 0 10px 10px}
 ol.recorrido li::before{content:"";position:absolute;left:-27px;top:9px;width:14px;height:14px;border-radius:50%;background:#fff;border:3px solid #9aa4a8}
 ol.recorrido li.hecho::before{background:#2f7d32;border-color:#2f7d32}
 ol.recorrido li.paso-carga::before{border-radius:3px}ol.recorrido li.paso-retorno{color:#555}
+@media print{.doc-pagina{page-break-after:always}.doc-pagina:last-child{page-break-after:auto}}

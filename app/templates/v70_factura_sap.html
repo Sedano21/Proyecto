@@ -2,13 +2,5 @@
 {% block content %}<div class="page-head"><div><h1>{{ 'Nota de crédito' if fd.tipo == 'NOTA_CREDITO' else 'Factura' }} {{ fd.numero }}</h1>
 <p class="sub">Leída de SAP{{ ' (ahora)' if fd.fuente == 'SAP' else ' por el vigilante' }}. Representación de los datos de SAP para consulta e impresión interna; el comprobante electrónico se imprime desde SAP o el OSE.</p></div>
 <div class="row noprint"><button class="btn sec" onclick="window.print()">{{ ic('file') }} Imprimir</button> <a class="btn sec" href="?doc={{ fd.numero }}&formato=pdf">{{ ic('download') }} PDF</a></div></div>
-{% if fd.aviso_sap %}<div class="note warn small noprint">{{ fd.aviso_sap }}</div>{% endif %}
-<section class="card"><table class="kv"><tr><td>Número</td><td><b>{{ fd.numero }}</b></td></tr><tr><td>Fecha</td><td>{{ fd.fecha|d if fd.fecha }}</td></tr>
-<tr><td>Cliente</td><td>{{ fd.cliente }}{{ ' · ' ~ fd.cardcode if fd.cardcode }}</td></tr>{% if fd.direccion %}<tr><td>Dirección</td><td>{{ fd.direccion }}</td></tr>{% endif %}
-<tr><td>OV</td><td>{% if ov %}<a href="{{ url_for('com.order_detail', oid=ov.id) }}">{{ fd.ov }}</a>{% else %}{{ fd.ov or '—' }}{% endif %}</td></tr>
-{% if fd.guias %}<tr><td>Guías</td><td>{% for gn in fd.guias %}<a href="{{ url_for('com.sap_guide', doc=gn) }}">{{ gn }}</a>{{ ', ' if not loop.last }}{% endfor %}</td></tr>{% endif %}
-<tr><td>Total</td><td><b>S/ {{ fd.total|n }}</b>{% if fd.igv is not none %} <span class="muted">(IGV S/ {{ fd.igv|n }})</span>{% endif %}</td></tr>
-{% if fd.comentarios %}<tr><td>Comentarios</td><td>{{ fd.comentarios }}</td></tr>{% endif %}</table></section>
-<section class="card"><h3>Detalle</h3><div class="tw"><table class="list"><thead><tr><th>Código</th><th>Descripción</th><th class="r">Cantidad</th><th class="r">kg</th><th class="r">Precio</th><th class="r">Importe con IGV</th></tr></thead>
-{% for x in fd.lineas %}<tr><td><b>{{ x.code }}</b></td><td>{{ x.descripcion }}</td><td class="r">{{ x.cantidad|n }}</td><td class="r">{{ x.kg|n if x.kg is not none }}</td><td class="r">{{ x.precio|n if x.precio is not none else '—' }}</td><td class="r">{{ x.total|n }}</td></tr>{% else %}<tr><td colspan="6" class="muted">Las líneas se ven cuando SAP responde.</td></tr>{% endfor %}</table></div></section>
+{% include "_doc_factura_sap.html" %}
 {% endblock %}

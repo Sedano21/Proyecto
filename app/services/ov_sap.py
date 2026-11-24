@@ -58,8 +58,45 @@ def guias_de(orders):
                                                     "archivo": sg.archivo or "", "lineas": defaultdict(float)})
             for ln in sg.lineas or []:
                 g["lineas"][str(ln.get("codigo") or "")] += float(ln.get("cantidad") or 0)
+    # V70: la factura de cada guía de SAP, por las facturas leídas de SAP (de qué entrega salen)
+    sin_fact = {g["docentry"] for gs in out.values() for g in gs.values() if g.get("docentry") and not g.get("factura")}
+    if sin_fact:
+        from ..models import SapBilling
+        por_guia = {}
+        fechas = [g["fecha"] for gs in out.values() for g in gs.values() if g.get("docentry") and g.get("fecha")]
+        q = select(SapBilling).where(SapBilling.tipo == "FACTURA")
+        if fechas:
+            from datetime import timedelta
+            q = q.where(SapBilling.fecha >= min(fechas) - timedelta(days=60))
+        for b in db().execute(q).scalars():
+            for de in (b.origenes or {}).get("guias") or []:
+                por_guia.setdefault(int(de), b.numero)
+        for gs in out.values():
+            for g in gs.values():
+                if g.get("docentry") and not g.get("factura") and g["docentry"] in por_guia:
+                    g["factura"] = por_guia[g["docentry"]]
     return {oid: sorted(gs.values(), key=lambda g: (g["fecha"] is None, g["fecha"] or datetime.min.date()))
             for oid, gs in out.items()}
+
+
+def facturas_de(orders):
+    """V70: {order_id: [SapBilling]} facturas y notas de crédito de SAP de cada OV: las que salen de la OV, de una de sus
+    guías o que la guía cita."""
+    from ..models import SapBilling
+    por_num = {n: o.id for o in orders for n in _nums(o)}
+    guias = guias_de(orders)
+    por_guia = {g["docentry"]: oid for oid, gs in guias.items() for g in gs if g.get("docentry")}
+    citadas = {g["factura"]: oid for oid, gs in guias.items() for g in gs if g.get("factura")}
+    out = defaultdict(list)
+    for b in db().execute(select(SapBilling).order_by(SapBilling.fecha)).scalars():
+        o = (b.origenes or {})
+        oids = {por_num[n] for n in o.get("ovs") or [] if n in por_num}
+        oids |= {por_guia[int(d)] for d in o.get("guias") or [] if int(d) in por_guia}
+        if b.numero in citadas:
+            oids.add(citadas[b.numero])
+        for oid in oids:
+            out[oid].append(b)
+    return dict(out)
 
 
 def estado_sap(orders):

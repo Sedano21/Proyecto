@@ -839,6 +839,12 @@ def loading():
         if acc == "responder":
             return act(lambda: cv.responder(g.user, r, f.getlist("asignados"), f.get("nota", "")),
                        "Respuesta enviada al chofer: traslado y carga iniciados.", back)
+        if acc == "novedad":
+            return act(lambda: cv.reportar_novedad(g.user, r, f.get("tipo"), f.get("cantidad"), f.get("order_line_id"),
+                                                   f.get("producto", ""), f.get("nota", "")),
+                       "Novedad reportada: Almacén recibió la alerta; la salida espera a que se resuelva.", back)
+        if acc == "resolver_novedad":
+            return act(lambda: cv.resolver_novedad(g.user, r, f.get("n"), f.get("nota", "")), "Novedad resuelta.", back)
         if acc == "evidencia":
             def _ev():
                 arch = save_evidences(request.files.getlist("archivos"), current_app.config["UPLOAD_DIR"],

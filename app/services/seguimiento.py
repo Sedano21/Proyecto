@@ -118,6 +118,8 @@ def groups(desde=None, hasta=None, customer_id=None, vendedor_id=None, solo_abie
             continue
         por[(o.customer_id, o.fecha_compromiso)].append(o)
     out = []
+    from .ov_sap import guias_de
+    gu = guias_de([o for ovs in por.values() for o in ovs])
     for (cid, f), ovs in por.items():
         cli = ovs[0].customer
         kg = sum((l.cantidad or 0) * ((l.product.peso_kg or 1) if l.product else 1) for o in ovs for l in o.lines if l.activa)
@@ -125,8 +127,24 @@ def groups(desde=None, hasta=None, customer_id=None, vendedor_id=None, solo_abie
         out.append({"cliente": cli, "fecha": f, "ovs": sorted(ovs, key=lambda o: o.numero), "kg": round(kg, 1),
                     "avance": round(sum(av) / len(av), 1) if av else 0,
                     "retrasos": sum(1 for o in ovs if delay(o)), "estados": Counter(o.estado for o in ovs),
-                    "motivos": _motivos(ovs)})
+                    "motivos": _motivos(ovs), "skus": _skus(ovs, gu)})
     return sorted(out, key=lambda g: (g["fecha"], g["cliente"].nombre if g["cliente"] else ""))
+
+
+def _skus(ovs, gu):
+    """V70: todos los SKU del grupo (cliente y fecha de despacho o de reprogramación) con lo pedido, lo despachado, lo
+    pendiente y la guía (de SAP o subida al módulo) que los llevó, para no entrar OV por OV."""
+    out = []
+    for o in ovs:
+        guias = gu.get(o.id, [])
+        for l in o.lines:
+            if not l.activa:
+                continue
+            docs = [g for g in guias if (g.get("lineas") or {}).get(l.product_code)]
+            out.append({"o": o, "code": l.product_code, "descripcion": l.product.descripcion if l.product else "",
+                        "pedido": l.cantidad or 0, "despachado": l.despachado or 0,
+                        "pendiente": max((l.cantidad or 0) - (l.despachado or 0), 0), "guias": docs})
+    return sorted(out, key=lambda x: (x["code"], x["o"].numero))
 
 
 def _motivos(ovs):

@@ -3558,3 +3558,12 @@ PARAMS_CAMBIO.append(("vistos_buenos_salida", ["SEGURIDAD", "CHOFER", "CALIDAD",
                       "opcional"))
 PARAMS = [(k, (["SEGURIDAD", "CHOFER", "AUX_DESPACHO", "LIDER_ALMACEN"] if k == "vistos_buenos_salida" else v), *rest)
           for k, v, *rest in PARAMS]
+# V70: novedades de la carga y de la recepción en el cliente, por SKU
+for _c, _n, _g in (("CARGA_FALTANTE", "Faltante al validar la carga", "LOGISTICA"),
+                   ("CARGA_SOBRANTE", "Sobrante al validar la carga", "LOGISTICA"),
+                   ("FALTANTE_ENTREGA", "Faltante en la entrega al cliente", "LOGISTICA"),
+                   ("PRODUCTO_OBSERVADO", "Producto observado por el cliente (mal estado)", "CALIDAD")):
+    if not any(x[0] == _c for x in INCIDENT_SUBTYPES):
+        INCIDENT_SUBTYPES.append((_c, _n, _g))
+        INCIDENT_TYPES.append((_c, _n))
+        INCIDENT_GROUP[_c] = _g

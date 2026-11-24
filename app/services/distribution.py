@@ -463,7 +463,7 @@ def confirm_departure(route, user, checklist):
     from .carga_v70 import falta_para_salir  # V70: fotos del antes y después de la carga (si se exigen)
     faltan_ev = falta_para_salir(route)
     if faltan_ev:
-        raise BusinessError("Falta subir la evidencia de la carga: " + ", ".join(faltan_ev) + ".")
+        raise BusinessError("Antes de la salida falta: " + ", ".join(faltan_ev) + ".")
     from .despacho import needs_vehicle_photos
     if needs_vehicle_photos(route) and not (route.fotos or {}).get("vehiculo_salida"):
         raise BusinessError("El chofer debe subir la foto de cómo saca el vehículo antes de la salida.")
@@ -549,7 +549,8 @@ def es_video(nombre):
 
 
 def register_delivery(stop, user, foto_path, guia_path, entregas=None, observacion="", receptor_nombre="", receptor_dni="",
-                      firma_path="", receptor_tipo="DNI", receptor_foto="", receptor_motivo=""):
+                      firma_path="", receptor_tipo="DNI", receptor_foto="", receptor_motivo="", recepcion=None,
+                      novedades=None):
     """Conformidad de entrega digital (ronda UX 24-oct-2026): la valida el chofer de la ruta con el nombre y DNI de quien
     recibe, su firma en pantalla, la fotografía de la entrega y la guía de remisión firmada. entregas: {order_line_id: cantidad}."""
     _req(user, "distribucion.conformidad")
@@ -587,12 +588,45 @@ def register_delivery(stop, user, foto_path, guia_path, entregas=None, observaci
     stop.receptor_motivo = (receptor_motivo or "").strip()[:250] if tipo == "SIN_DOCUMENTO" else ""
     order = stop.order
     parcial = False
+    # V70: el cliente recibe conforme o con inconformidad (faltante, producto observado o devolución) por SKU
+    rec_dada = recepcion is not None  # sin indicarla (llamadas anteriores): solo las cantidades, como antes
+    recepcion = (recepcion or ("INCONFORME" if novedades else "CONFORME")).upper()
+    novedades = {str(k): v for k, v in (novedades or {}).items() if (v or {}).get("tipo")}
+    if rec_dada and recepcion == "CONFORME" and entregas and any(
+            str(l.id) in entregas and float(entregas[str(l.id)] or 0) < (l.despachado or 0) - 1e-9 for l in order.lines if l.activa):
+        raise BusinessError("Si el cliente no recibió todo, marque «Con inconformidad» e indique qué SKU y por qué.")
+    if recepcion == "INCONFORME" and not novedades:
+        raise BusinessError("Indique al menos un SKU con su inconformidad (faltante, producto observado o devolución).")
+    detalle_nov, devolver = [], []
     for l in order.lines:
         if not l.activa:
             continue
         q = l.despachado if not entregas or str(l.id) not in entregas else float(entregas[str(l.id)])
         if q > l.despachado + 1e-9:
             raise BusinessError(f"{l.product_code}: lo entregado no puede superar lo despachado ({l.despachado:g}).")
+        if q < 0:
+            raise BusinessError(f"{l.product_code}: cantidad recibida no válida.")
+        nv = novedades.get(str(l.id))
+        if nv:
+            tipo = str(nv.get("tipo")).upper()
+            if tipo not in ("FALTANTE", "OBSERVADO", "DEVOLUCION"):
+                raise BusinessError(f"{l.product_code}: tipo de inconformidad no válido.")
+            dif = round((l.despachado or 0) - q, 6)
+            try:
+                obs = float(str(nv.get("observado") or 0).replace(",", "."))
+            except ValueError:
+                obs = 0.0
+            if tipo in ("FALTANTE", "DEVOLUCION") and dif <= 1e-9:
+                raise BusinessError(f"{l.product_code}: indique cuánto recibió el cliente (menos de lo despachado).")
+            if tipo == "OBSERVADO" and obs <= 0 and dif <= 1e-9:
+                raise BusinessError(f"{l.product_code}: indique la cantidad observada.")
+            detalle_nov.append({"tipo": tipo, "line_id": l.id, "producto": l.product_code, "despachado": l.despachado or 0,
+                                "recibido": q, "observado": obs or (dif if tipo == "OBSERVADO" else 0),
+                                "faltante": dif if tipo == "FALTANTE" else 0,
+                                "devuelto": dif if tipo in ("OBSERVADO", "DEVOLUCION") else 0,
+                                "motivo": str(nv.get("motivo") or "").strip()[:250]})
+            if tipo in ("OBSERVADO", "DEVOLUCION") and dif > 1e-9:
+                devolver.append({"line_id": l.id, "devuelto": dif})
         l.entregado = q
         if q < l.cantidad - 1e-9:
             parcial = True
@@ -603,8 +637,35 @@ def register_delivery(stop, user, foto_path, guia_path, entregas=None, observaci
     stop.estado = "ENTREGA_PARCIAL" if parcial else "ENTREGADO"
     order.estado = "ENTREGA_PARCIAL" if parcial else "ENTREGADA"
     order.entrega_ts = now()
-    if parcial:
+    stop.recepcion = {"resultado": recepcion, "novedades": detalle_nov, "user": user.nombre,
+                      "ts": now().isoformat(timespec="minutes")}
+    if detalle_nov:
+        nombres = {"FALTANTE": ("FALTANTE_ENTREGA", "Faltante"), "OBSERVADO": ("PRODUCTO_OBSERVADO", "Producto observado"),
+                   "DEVOLUCION": ("DEVOLUCION", "Devolución parcial")}
+        inc_dev = None
+        for t in ("FALTANTE", "OBSERVADO", "DEVOLUCION"):
+            items = [x for x in detalle_nov if x["tipo"] == t]
+            if not items:
+                continue
+            cod, nom = nombres[t]
+            desc = f"{nom} en la entrega: " + "; ".join(
+                f"{x['producto']} despachado {x['despachado']:g}, recibido {x['recibido']:g}"
+                + (f", observado {x['observado']:g}" if t == "OBSERVADO" else "") + (f" ({x['motivo']})" if x["motivo"] else "")
+                for x in items)
+            inc = _incident(user, cod, stop, desc, cantidad=sum(x["faltante"] or x["devuelto"] or x["observado"] for x in items))
+            if t in ("OBSERVADO", "DEVOLUCION") and inc_dev is None:
+                inc_dev = inc
+        if devolver:  # lo que el cliente no recibió por mal estado o devolución vuelve al almacén
+            from .devoluciones import create_for
+            create_for(order, user, "PARCIAL", inc_dev, stop, devolver)
+    elif parcial:
         _incident(user, "ENTREGA_PARCIAL", stop, f"Entrega parcial registrada. {observacion}")
+    # V70: la guía firmada y la foto quedan en el expediente de la OV (y del cliente)
+    from ..models import OrderAttachment
+    db().add(OrderAttachment(order_id=order.id, tipo="GUIA_FIRMADA", nombre=f"Guía firmada por el cliente ({stop.receptor_nombre})",
+                             archivo=guia_path, observacion=observacion or "", user_id=user.id))
+    db().add(OrderAttachment(order_id=order.id, tipo="ENTREGA", nombre="Foto de la entrega", archivo=foto_path,
+                             user_id=user.id))
     alerts.emit("DIST_ENTREGADO", f"OV {order.numero} {'entregada parcialmente' if parcial else 'entregada con conformidad'}",
                 f"{order.customer.nombre}. Recibió {stop.receptor_nombre} ({_doc_txt(stop)}). Evidencia: firma, foto y "
                 "guía firmada.", "Route", stop.route_id, creado_por=user)

@@ -147,11 +147,13 @@ def subir_evidencia(user, route, etapa, archivos, nota=""):
 
 
 def falta_para_salir(route):
-    """Evidencias de carga que exige «carga_exigir_fotos» (antes y después)."""
-    if not param("carga_exigir_fotos", False):
-        return []
-    f = route.fotos or {}
-    return [ETAPAS[e] for e in ("carga_antes", "carga_despues") if not f.get(e)]
+    """Lo que falta para salir: novedades de la carga sin resolver y, si se exigen, las fotos del antes y el después."""
+    out = [f"resolver {'el faltante' if x['tipo'] == 'FALTANTE' else 'el sobrante'} de {x['producto']} ({x['cantidad']:g})"
+           for x in novedades_abiertas(route)]
+    if param("carga_exigir_fotos", False):
+        f = route.fotos or {}
+        out += [ETAPAS[e] for e in ("carga_antes", "carga_despues") if not f.get(e)]
+    return out
 
 
 def de_hoy(user=None):
@@ -161,3 +163,80 @@ def de_hoy(user=None):
     return list(db().execute(select(Route).where(Route.fecha >= hoy - timedelta(days=1), Route.fecha <= hoy + timedelta(days=1),
                                                  Route.estado.in_(("PROPUESTA", "CONFIRMADA", "EN_RUTA")))
                              .order_by(Route.fecha, Route.id)).scalars())
+
+
+# ------------------------------------------------------------------ novedades de la carga (faltante / sobrante)
+PUEDEN_REPORTAR = ("distribucion.carga", "picking.asignar", "distribucion.visto_bueno_salida", "distribucion.seguridad",
+                   "distribucion.visto_bueno_calidad", "tareas.ejecutar", "distribucion.entrega")
+
+
+def items_carga(route):
+    """SKU de la pre-guía de la ruta para elegir el que falta o sobra: [(order_line_id, texto)]."""
+    from .despacho import preguia
+    return [(it["order_line_id"], f"OV {g['order'].numero} · {it['codigo']} {it['descripcion']} · pre-guía {it['cantidad']:g}")
+            for g in preguia(route) for it in g["items"]]
+
+
+def reportar_novedad(user, route, tipo, cantidad, order_line_id=None, producto="", nota=""):
+    """Al validar la carga, cualquiera de los que validan reporta ahí mismo qué SKU falta o sobra y cuánto."""
+    from ..models import Product, SalesOrderLine
+    from .distribution import _incident
+    if not any(has_perm(user, p) for p in PUEDEN_REPORTAR):
+        raise BusinessError("Reportan las novedades de la carga Almacén, el Auxiliar de Despacho, el chofer, Seguridad o Calidad.")
+    if route.estado not in ("PROPUESTA", "CONFIRMADA"):
+        raise BusinessError("La ruta ya salió.")
+    tipo = (tipo or "").upper()
+    if tipo not in ("FALTANTE", "SOBRANTE"):
+        raise BusinessError("Elija si falta o sobra mercadería.")
+    try:
+        q = float(str(cantidad).replace(",", "."))
+    except (TypeError, ValueError):
+        raise BusinessError("Indique la cantidad.")
+    if q <= 0:
+        raise BusinessError("La cantidad debe ser mayor que 0.")
+    ln = db().get(SalesOrderLine, int(order_line_id)) if str(order_line_id or "").isdigit() else None
+    if ln is not None and ln.order_id not in [st.order_id for st in route.stops]:
+        raise BusinessError("Ese producto no es de esta ruta.")
+    code = ln.product_code if ln is not None else (producto or "").strip().upper().split(" ")[0]
+    if not code or (ln is None and db().get(Product, code) is None):
+        raise BusinessError("Elija el producto de la pre-guía (o escriba el código si sobra algo que no está en ella).")
+    if tipo == "FALTANTE" and ln is None:
+        raise BusinessError("Un faltante se reporta sobre un producto de la pre-guía.")
+    ac = dict(route.aviso_carga or {})
+    nov = list(ac.get("novedades") or [])
+    reg = {"n": len(nov) + 1, "tipo": tipo, "producto": code, "order_line_id": ln.id if ln else None,
+           "ov": ln.order.numero if ln else "", "cantidad": q, "nota": (nota or "").strip()[:300], "user": user.nombre,
+           "user_id": user.id, "ts": now().isoformat(timespec="minutes"), "resuelta": None}
+    nov.append(reg)
+    ac["novedades"] = nov
+    route.aviso_carga = ac
+    route.carga_validada = False
+    _incident(user, "CARGA_FALTANTE" if tipo == "FALTANTE" else "CARGA_SOBRANTE", route=route,
+              order=ln.order if ln else None, cantidad=q,
+              descripcion=f"{'Falta' if tipo == 'FALTANTE' else 'Sobra'} {q:g} de {code} al validar la carga. {reg['nota']}".strip())
+    usuarios = [u.id for k in almacenes_de(route) for u in personal_de(k)]
+    alerts.emit("CARGA_INCONGRUENCIA", f"Ruta #{route.id}: {'falta' if tipo == 'FALTANTE' else 'sobra'} {code} en la carga",
+                f"{q:g} {'por completar' if tipo == 'FALTANTE' else 'por retirar'}. Reportó {user.nombre}. {reg['nota']}".strip(),
+                "Route", route.id, extra_users=usuarios, creado_por=user)
+    audit(user, "CARGA_NOVEDAD", "Route", route.id, reg)
+    return reg
+
+
+def resolver_novedad(user, route, n, nota=""):
+    """Almacén completa lo que falta o retira lo que sobra y lo marca resuelto."""
+    if not has_perm(user, "picking.asignar"):
+        raise BusinessError("La resuelve Almacén (Líder, Asistente, Supervisor o Coordinador).")
+    ac = dict(route.aviso_carga or {})
+    nov = [dict(x) for x in ac.get("novedades") or []]
+    x = next((x for x in nov if x["n"] == int(n)), None)
+    if x is None or x.get("resuelta"):
+        raise BusinessError("Novedad no encontrada o ya resuelta.")
+    x["resuelta"] = {"user": user.nombre, "ts": now().isoformat(timespec="minutes"), "nota": (nota or "").strip()[:300]}
+    ac["novedades"] = nov
+    route.aviso_carga = ac
+    audit(user, "CARGA_NOVEDAD_RESUELTA", "Route", route.id, x)
+    return x
+
+
+def novedades_abiertas(route):
+    return [x for x in (route.aviso_carga or {}).get("novedades") or [] if not x.get("resuelta")]

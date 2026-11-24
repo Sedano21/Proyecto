@@ -264,6 +264,7 @@ def order_detail(oid):
     paradas = list(db().execute(select(RouteStop).where(RouteStop.order_id == o.id).order_by(RouteStop.id)).scalars())
     from ..services import ov_sap
     guias_ov = ov_sap.guias_de([o]).get(o.id, [])  # V54: guías de SAP y del módulo de la OV
+    facturas_sap = ov_sap.facturas_de([o]).get(o.id, [])  # V70: facturas y notas de crédito de SAP de la OV
     from ..services.prefacturas import de_la_orden as _pf_ov, total as _pf_total
     # V64: costo de la empresa al lado del precio para quien aprueba precios fuera de lista y ve costos
     costos_lineas = {}
@@ -272,7 +273,7 @@ def order_detail(oid):
         costos_lineas = {l.id: cost_for_line(l) for l in o.lines if l.activa}
     dias_atencion = (o.fecha_compromiso - o.fecha_emision).days if o.fecha_compromiso and o.fecha_emision else "-"
     return render_template("ov_detail.html", prefacturas=_pf_ov(o.id), tot=osvc.totales(o), tax_codes=osvc.tax_codes(),
-                           costos_lineas=costos_lineas, dias_atencion=dias_atencion, causales=osvc.causales(), pf_total=_pf_total, guias_ov=guias_ov, motivo_det=ov_sap.motivo_detencion(o), o=o, sap_pendiente=__import__("app.services.sap_sl", fromlist=["x"]).pending_action(o), prioridades_gg=osvc.PRIORIDADES_GG, alts=alts, paradas=paradas, docs=order_documents(o), tipos_doc=TIPOS_DOC_OV,
+                           costos_lineas=costos_lineas, dias_atencion=dias_atencion, causales=osvc.causales(), pf_total=_pf_total, guias_ov=guias_ov, facturas_sap=facturas_sap, motivo_det=ov_sap.motivo_detencion(o), o=o, sap_pendiente=__import__("app.services.sap_sl", fromlist=["x"]).pending_action(o), prioridades_gg=osvc.PRIORIDADES_GG, alts=alts, paradas=paradas, docs=order_documents(o), tipos_doc=TIPOS_DOC_OV,
                            comp_estados=cmsvc.ESTADOS, dias_prod=cmsvc.production_days(), whs=whs, reqs=reqs, decs=decs, hist=hist, certs=certs,
                            products=products, line_reserved=line_reserved, monto=osvc.order_amount(o), peso=peso,
                            sin_peso=sin_peso, can_auth=osvc.can_authorize_change(g.user, o), prep=osvc.prep_progress(o),
@@ -1046,4 +1047,24 @@ def sap_invoice():
         from ..services import pdfreport
         return send_file(io.BytesIO(pdfreport.html_to_pdf(html, f"Factura {fd['numero']}")), mimetype="application/pdf",
                          as_attachment=True, download_name=f"factura_{fd['numero']}.pdf")
+    return html
+
+
+@bp.route("/imprimir-documentos")
+@perm_required(*VALIDAN_DOCS)
+def print_documents():
+    """V70: imprime juntas (o en un solo PDF) las guías y facturas de SAP que el usuario eligió en el expediente."""
+    import io
+    from flask import send_file
+    from ..services import ov_sap
+    leer = request.args.get("sap", "1") != "0"
+    guias = [g for g in (ov_sap.guia_sap(int(x), leer_sap=leer) for x in request.args.getlist("g") if str(x).isdigit()) if g]
+    facts = [f for f in (ov_sap.factura_sap(x.strip(), leer_sap=leer) for x in request.args.getlist("f") if x.strip()) if f]
+    if not guias and not facts:
+        abort(404)
+    html = render_template("v70_imprimir_docs.html", guias=guias, facturas=facts)
+    if request.args.get("formato") == "pdf":
+        from ..services import pdfreport
+        return send_file(io.BytesIO(pdfreport.html_to_pdf(html, "Documentos")), mimetype="application/pdf",
+                         as_attachment=True, download_name="documentos.pdf")
     return html

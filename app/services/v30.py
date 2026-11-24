@@ -191,6 +191,25 @@ def documentos_cliente(customer, desde=None, hasta=None):
         if n and str(n) not in guias:
             guias[str(n)] = {"guia": str(n), "fecha": str(pg.get("fecha_guia") or "")[:10], "ov": o.numero, "factura": "",
                              "origen": "MÓDULO", "lineas": len(pg.get("items") or [])}
+    # V70: también las guías que trae el vigilante de SAP (con su factura) y la guía firmada por el cliente
+    from ..models import RouteStop
+    from .ov_sap import guias_de
+    por_id = {o.id: o for o in ovs.values()}
+    for oid, gs in guias_de(list(ovs.values())).items():
+        for gx in gs:
+            k = gx["documento"]
+            reg = guias.setdefault(k, {"guia": k, "fecha": str(gx.get("fecha") or "")[:10], "ov": por_id[oid].numero,
+                                       "factura": gx.get("factura") or "", "origen": gx.get("origen") or "SAP",
+                                       "lineas": len(gx.get("lineas") or {})})
+            reg["docentry"] = gx.get("docentry")
+            reg["archivo"] = gx.get("archivo") or ""
+            if not reg.get("factura") and gx.get("factura"):
+                reg["factura"] = gx["factura"]
+    for st in s.execute(select(RouteStop).where(RouteStop.order_id.in_(list(por_id) or [0]),
+                                               RouteStop.guia_firmada_path != "")).scalars():
+        ov = por_id[st.order_id].numero
+        for reg in [g for g in guias.values() if g["ov"] == ov] or []:
+            reg["firmada"] = st.guia_firmada_path
     q = select(CustomerInvoice).where(CustomerInvoice.customer_id == customer.id)
     if desde:
         q = q.where(CustomerInvoice.fecha >= desde)

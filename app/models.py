@@ -1079,6 +1079,9 @@ class RouteStop(Base):
     receptor_dni: Mapped[str] = mapped_column(String(15), default="")
     # V8 (D05): tipo de documento de quien recibe (DNI / CE / PASAPORTE / SIN_DOCUMENTO); sin documento: foto y motivo
     receptor_tipo_doc: Mapped[str] = mapped_column(String(12), default="DNI", server_default="DNI")
+    # V70: cómo recibió el cliente {resultado: CONFORME / INCONFORME, novedades: [{tipo, producto, despachado, recibido,
+    # observado, motivo}]}
+    recepcion: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}")
     receptor_foto: Mapped[str] = mapped_column(String(250), default="", server_default="")
     receptor_motivo: Mapped[str] = mapped_column(String(250), default="", server_default="")
     # V12: pre-guía validada por Distribución → guía en SAP (entrega) y expediente del cliente
@@ -2882,6 +2885,8 @@ class SapBilling(Base):
     moneda: Mapped[str] = mapped_column(String(10), default="")
     total: Mapped[float] = mapped_column(Float, default=0)  # DocTotal en soles (moneda local), con IGV
     igv: Mapped[float] = mapped_column(Float, default=0)  # VatSum en soles
+    # V70: de qué guías (DocEntry de la entrega) y de qué OV (DocNum) sale la factura, para verla en la OV y el expediente
+    origenes: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}")
     ts: Mapped[datetime] = mapped_column(DateTime, default=now)
 
 

@@ -1,0 +1,10 @@
+{% from "_m.html" import ic %}{% if gd.aviso_sap %}<div class="note warn small noprint">{{ gd.aviso_sap }}</div>{% endif %}
+<section class="card"><table class="kv"><tr><td>Guía</td><td><b>{{ gd.documento }}</b> <span class="muted">(DocEntry {{ gd.docentry }})</span></td></tr>
+<tr><td>Fecha</td><td>{{ gd.fecha|d if gd.fecha }}</td></tr><tr><td>Cliente</td><td>{{ gd.cliente }}{{ ' · ' ~ gd.cardcode if gd.cardcode }}</td></tr>
+{% if gd.direccion %}<tr><td>Punto de llegada</td><td>{{ gd.direccion }}</td></tr>{% endif %}
+<tr><td>OV</td><td>{% if ov %}<a href="{{ url_for('com.order_detail', oid=ov.id) }}">{{ gd.ov }}</a>{% else %}{{ gd.ov or '—' }}{% endif %}</td></tr>
+{% if gd.factura %}<tr><td>Factura</td><td>{{ gd.factura }}</td></tr>{% endif %}
+{% if gd.comentarios %}<tr><td>Comentarios</td><td>{{ gd.comentarios }}</td></tr>{% endif %}</table></section>
+<section class="card"><h3>Productos</h3><div class="tw"><table class="list"><thead><tr><th>Código</th><th>Descripción</th><th class="r">Cantidad</th><th>UM</th><th class="r">kg</th><th>Lotes</th></tr></thead>
+{% for x in gd.lineas %}<tr><td><b>{{ x.code }}</b></td><td>{{ x.descripcion }}</td><td class="r">{{ x.cantidad|n }}</td><td>{{ x.um|lower }}</td><td class="r">{{ x.kg|n if x.kg is not none }}</td><td class="small">{{ x.lotes or '—' }}</td></tr>{% endfor %}
+<tr><th colspan="4">Total</th><th class="r">{{ gd.kg|n }}</th><th></th></tr></table></div></section>
