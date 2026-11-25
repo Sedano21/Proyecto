@@ -281,6 +281,33 @@ class _Ref:
         self.__dict__.update(kw)
 
 
+def venta_periodo_sap(ini, fin, customer_id=None, canal=""):
+    """V75: venta del periodo con SAP, para compararla con el año anterior junto al OTIF.
+    - Venta en OV: total sin IGV de las OV de venta con fecha de entrega en el periodo (el mismo universo del OTIF).
+    - Facturado neto: facturas menos notas de crédito de SAP emitidas en el periodo, sin IGV."""
+    from ..models import Customer, SapBilling, SapOrderLine
+    q = select(SapOrderLine).where(SapOrderLine.fecha_entrega >= ini, SapOrderLine.fecha_entrega <= fin,
+                                   SapOrderLine.estado != "CANCELADA", SapOrderLine.clase != "SERVICIO")
+    qb = select(SapBilling).where(SapBilling.fecha >= ini, SapBilling.fecha <= fin)
+    if customer_id:
+        cli = db().get(Customer, int(customer_id))
+        q = q.where(SapOrderLine.cliente == (cli.nombre if cli else ""))
+        qb = qb.where(SapBilling.cliente == (cli.nombre if cli else ""))
+    lineas = list(db().execute(q).scalars())
+    docs = list(db().execute(qb).scalars())
+    if canal:
+        from .margin import channel
+        nombres = {ln.cliente for ln in lineas} | {d.cliente for d in docs}
+        canal_de = {c.nombre: channel(c) for c in db().execute(select(Customer).where(Customer.nombre.in_(list(nombres) or [""]))).scalars()}
+        lineas = [ln for ln in lineas if canal_de.get(ln.cliente) == canal]
+        docs = [d for d in docs if canal_de.get(d.cliente) == canal]
+    ov = sum(ln.total or 0 for ln in lineas)
+    fac = sum((d.total or 0) - (d.igv or 0) for d in docs if d.tipo == "FACTURA")
+    nc = sum((d.total or 0) - (d.igv or 0) for d in docs if d.tipo == "NOTA_CREDITO")
+    return {"ov": round(ov, 2), "ov_n": len({ln.docnum for ln in lineas}), "facturado": round(fac - nc, 2),
+            "facturas": sum(1 for d in docs if d.tipo == "FACTURA"), "notas_credito": sum(1 for d in docs if d.tipo == "NOTA_CREDITO")}
+
+
 def service_month_sap(ini, fin, customer_id=None, canal=""):
     """V42: nivel de servicio con las OV de venta de SAP (abiertas y cerradas) cuya fecha de entrega cae en el periodo,
     comparadas con sus guías (entregas) de SAP. Misma fórmula de la empresa (V23):

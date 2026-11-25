@@ -3685,3 +3685,10 @@ PARAMS += [
      "list", "Calidad", "Parámetros sugeridos al registrar un control de Calidad en el proceso (se puede escribir otro).",
      "PROPUESTO", f"{V74}; formatos REG-HACCP-CAL-002 (PCC1) y REG-CAL-003"),
 ]
+
+# V75 (25-nov-2026): Gerencia General — sugerencias de productividad por área
+PARAMS += [
+    ("sugerencias_productividad_umbral_pct", 70, "int", "Gerencia",
+     "Sugerencias de productividad: se señala lo que rinde por debajo de este % de la mediana de su grupo (producto en su "
+     "línea, picking en su almacén, espera por cliente).", "PROPUESTO", "Pedido de Gerencia General (25-nov-2026)"),
+]

@@ -173,8 +173,11 @@ def returns():
         q = q.where(ReturnReceipt.estado.in_(dev.POR_RECIBIR))
     elif estado != "TODAS":
         q = q.where(ReturnReceipt.estado == estado)
+    tipo = request.args.get("tipo", "")  # V75: TOTAL (devolución general) o PARCIAL
+    if tipo in ("TOTAL", "PARCIAL"):
+        q = q.where(ReturnReceipt.tipo == tipo)
     rows = list(db().execute(q).scalars())
-    return render_template("v22_devoluciones.html", rows=paginate(rows), estado=estado, hoy=date.today())
+    return render_template("v22_devoluciones.html", rows=paginate(rows), estado=estado, hoy=date.today(), tipo=tipo)
 
 
 # ------------------------------------------------------------------ tickets («Reportar avería»)
@@ -219,7 +222,11 @@ def tickets():
 @perm_required("sugerencias.ver")
 def suggestions():
     from ..services import sugerencias
-    return render_template("v22_sugerencias.html", rows=sugerencias.all_suggestions())
+    rows = sugerencias.all_suggestions()
+    area = request.args.get("area", "")
+    areas = sorted({r["area"] for r in rows})
+    return render_template("v22_sugerencias.html", rows=[r for r in rows if not area or r["area"] == area], areas=areas,
+                           area=area, prod=sugerencias.productivity_summary())
 
 
 @bp.route("/finanzas/gastos-por-area")

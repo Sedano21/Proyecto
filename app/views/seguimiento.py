@@ -96,6 +96,10 @@ def service():
                                          request.args.get("cliente") or None, canal)
         if not anterior["universo"]:
             anterior = dict(anterior, vacio=True)
+        # V75: si se compara el OTIF con el año anterior, también la venta
+        anterior = dict(anterior, venta=seg.venta_periodo_sap(_menos_un_anio(d["desde"]), _menos_un_anio(d["hasta"]),
+                                                              request.args.get("cliente") or None, canal),
+                        venta_hoy=seg.venta_periodo_sap(d["desde"], d["hasta"], request.args.get("cliente") or None, canal))
     return render_template("seg_servicio.html", d=d, filas=filas, ver=ver, f=request.args, clientes=clientes, canal=canal,
                            anterior=anterior)
 

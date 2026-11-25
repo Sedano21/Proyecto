@@ -39,8 +39,16 @@ def area_cards(hoy=None, perms=frozenset()):
     abiertas = db().execute(select(func.count(SalesOrder.id)).where(SalesOrder.estado.notin_(
         ("CANCELADA", "ENTREGADA", "DESPACHADA", "BORRADOR")))).scalar() or 0
     detenidas = db().execute(select(func.count(SalesOrder.id)).where(SalesOrder.estado.in_(("BLOQUEADA",)))).scalar() or 0
+    # V75: OV emitidas (no canceladas) cuya fecha de entrega cae en el mes en curso
+    fin_mes = (ini.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
+    ov_entrega = list(db().execute(select(SalesOrder).where(SalesOrder.fecha_compromiso >= ini, SalesOrder.fecha_compromiso <= fin_mes,
+                                                            SalesOrder.estado.notin_(("CANCELADA", "BORRADOR")))).scalars())
+    por_entregar = [o for o in ov_entrega if o.estado not in ("ENTREGADA", "DESPACHADA")]
     out.append({"area": "Comercial", "tarjetas": [
         _card("Venta del mes (OV)", f"S/ {venta:,.0f}", f"{len(ovs)} OV", u("com.orders", "ov.ver")),
+        _card("OV con entrega en el mes", len(ov_entrega), f"S/ {sum(order_amount(o) for o in ov_entrega):,.0f} · "
+              f"{len(por_entregar)} por despachar", u("com.orders", "ov.ver", entrega_desde=ini.isoformat(),
+                                                       entrega_hasta=fin_mes.isoformat())),
         _card("OV abiertas", abiertas, "por atender", u("com.orders", "ov.ver")),
         _card("OV bloqueadas", detenidas, "requieren decisión", u("com.orders", "ov.ver"), "alto" if detenidas else "")]})
     # Logística: nivel de servicio del mes
@@ -53,12 +61,15 @@ def area_cards(hoy=None, perms=frozenset()):
         otif = fill = None
     observados = db().execute(select(func.count(StockLot.id)).where(StockLot.estado.in_(("OBSERVADO", "BLOQUEADO")),
                                                                    StockLot.cantidad > 0)).scalar() or 0
-    dev_pend = db().execute(select(func.count(ReturnReceipt.id)).where(ReturnReceipt.estado == "PENDIENTE")).scalar() or 0
+    # V75: solo las devoluciones generales (totales); las parciales se ven en la pantalla de devoluciones
+    dev_pend = db().execute(select(func.count(ReturnReceipt.id)).where(ReturnReceipt.estado.in_(("PENDIENTE", "EN_VEHICULO")),
+                                                                       ReturnReceipt.tipo == "TOTAL")).scalar() or 0
     out.append({"area": "Logística y Almacén", "tarjetas": [
         _card("OTIF del mes", f"{otif} %" if otif is not None else "—", "a tiempo y completo", u("seg.service")),
         _card("Fill rate", f"{fill} %" if fill is not None else "—", "", u("seg.service")),
         _card("Lotes observados o bloqueados", observados, "", u("alm.stock", "stock.ver"), "alto" if observados else ""),
-        _card("Devoluciones por recibir", dev_pend, "", u("v22.returns", "devoluciones.ver"), "medio" if dev_pend else "")]})
+        _card("Devoluciones generales por recibir", dev_pend, "devoluciones totales",
+              u("v22.returns", "devoluciones.ver", tipo="TOTAL"), "medio" if dev_pend else "")]})
     # Distribución: hoy
     rutas = list(db().execute(select(Route).where(Route.fecha == hoy, Route.estado != "ANULADA")).scalars())
     from .rutas_manual import overload
@@ -102,6 +113,8 @@ def area_cards(hoy=None, perms=frozenset()):
               u("prod.attendance")),
         _card("No disponibles", len(aus), ", ".join(f"{v} {k.replace('_', ' ').lower()}" for k, v in tipos.items()) or "",
               u("v22.absences"), "medio" if aus else "")]})
+    out.append(_calidad(hoy, ini, fin, u))
+    out.append(_abastecimiento(hoy, u))
     # Finanzas: presupuesto
     cons = budget_by_area(hoy)
     sobre_p = [c for c in cons if (c["pct"] or 0) >= 100]
@@ -111,6 +124,55 @@ def area_cards(hoy=None, perms=frozenset()):
         _card("Áreas sobre su presupuesto", len(sobre_p), ", ".join(c["area"] for c in sobre_p),
               u("v22.area_spending", "finanzas.gastos_areas"), "alto" if sobre_p else "")]})
     return out
+
+
+def _calidad(hoy, ini, fin, u):
+    """V75: resumen de Calidad para el inicio de Gerencia."""
+    from ..models import Certificate, FumigationRequest, Inspection, QualityRecord, RepackRequest
+    insp = list(db().execute(select(Inspection).where(Inspection.fecha >= ini, Inspection.fecha <= fin)).scalars())
+    reemp = Counter(r.estado for r in db().execute(select(RepackRequest).where(RepackRequest.estado.in_(
+        ("SOLICITADA", "APROBADA", "EN_EJECUCION")))).scalars())
+    por_liberar = db().execute(select(func.count(StockLot.id)).where(StockLot.estado.in_(("PENDIENTE_REVISION", "OBSERVADO", "BLOQUEADO")),
+                                                                     StockLot.cantidad > 0)).scalar() or 0
+    fumi = db().execute(select(func.count(FumigationRequest.id)).where(FumigationRequest.estado.in_(
+        ("SOLICITADA", "POR_ESPACIO", "SIN_ESPACIO", "POR_PROGRAMAR", "APROBADA", "EN_FUMIGACION")))).scalar() or 0
+    borr = db().execute(select(func.count(Certificate.id)).where(Certificate.estado == "BORRADOR")).scalar() or 0
+    regs = list(db().execute(select(QualityRecord).where(QualityRecord.fecha >= ini, QualityRecord.fecha <= fin)).scalars())
+    nc = sum(1 for r in regs if (r.resultado or "").upper() in ("NO_CONFORME", "DESAPROBADO", "RECHAZADO"))
+    quejas = sum(1 for r in regs if r.formato == "QUEJA")
+    return {"area": "Calidad", "tarjetas": [
+        _card("Inspecciones del mes", len(insp), f"{sum(1 for i in insp if i.fase != 'CERRADA')} abiertas",
+              u("cal.management", "calidad.ver")),
+        _card("Reempaques en curso", sum(reemp.values()),
+              f"{reemp.get('SOLICITADA', 0)} por evaluar · {reemp.get('APROBADA', 0) + reemp.get('EN_EJECUCION', 0)} por ejecutar",
+              u("alm.repacks", "reempaque.ver"), "medio" if reemp.get("SOLICITADA") else ""),
+        _card("Lotes por liberar u observados", por_liberar, "", u("cal.inbox", "calidad.ver"), "alto" if por_liberar else ""),
+        _card("Fumigaciones en curso", fumi, "solicitudes abiertas", u("cal.fumigation_requests", "calidad.ver")),
+        _card("Certificados en borrador", borr, "", u("cal.certificates", "calidad.ver")),
+        _card("No conformidades y quejas del mes", nc + quejas, f"{nc} no conformes · {quejas} quejas",
+              u("cal.management", "calidad.ver"), "alto" if nc + quejas else "")]}
+
+
+def _abastecimiento(hoy, u):
+    """V75: compras nacionales e importaciones para el inicio de Gerencia."""
+    from ..models import ImportFollowup, PurchaseRequest
+    abiertas = list(db().execute(select(PurchaseRequest).where(PurchaseRequest.estado.notin_(
+        ("BORRADOR", "RECIBIDA", "RECIBIDA_CON_DIFERENCIAS", "RECIBIDA_BAJO_OBSERVACION", "CERRADA", "ANULADA",
+         "MUESTRA_RECHAZADA")))).scalars())
+    por_aprobar = sum(1 for p in abiertas if p.estado == "PENDIENTE_APROBACION")
+    atrasadas = sum(1 for p in abiertas if p.fecha_prevista and p.fecha_prevista < hoy)
+    imps = list(db().execute(select(ImportFollowup).where(ImportFollowup.estado.notin_(("RETIRADO", "CERRADO")))).scalars())
+    imp_venc = sum(1 for f in imps if f.fecha_llegada and f.fecha_llegada < hoy)
+    sin_inf = sum(1 for f in db().execute(select(ImportFollowup).where(ImportFollowup.estado == "RETIRADO")).scalars()
+                  if not f.informe_calidad)
+    return {"area": "Compras nacionales e importaciones", "tarjetas": [
+        _card("Compras nacionales abiertas", len(abiertas), f"{por_aprobar} por aprobar", u("buy.purchases", "compras.ver")),
+        _card("Compras atrasadas", atrasadas, "fecha prevista vencida", u("buy.purchases", "compras.ver"),
+              "alto" if atrasadas else ""),
+        _card("Importaciones en curso", len(imps), f"{imp_venc} con llegada vencida", u("v24.imports", "importaciones.ver"),
+              "medio" if imp_venc else ""),
+        _card("Importaciones sin informe de Calidad", sin_inf, "retiradas", u("cal.reception_reports", "calidad.ver"),
+              "medio" if sin_inf else "")]}
 
 
 def budget_by_area(hoy=None):

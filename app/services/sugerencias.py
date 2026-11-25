@@ -182,7 +182,159 @@ def maintenance_backlog(hoy=None):
     return []
 
 
-GENERADORES = (third_party, overloads, breakdowns, machines, tickets, returns, absences, cleaning, maintenance_backlog)
+# ------------------------------------------------------------------ V75: productividad por área
+def _mediana(xs):
+    xs = sorted(x for x in xs if x is not None)
+    if not xs:
+        return None
+    n = len(xs)
+    return xs[n // 2] if n % 2 else (xs[n // 2 - 1] + xs[n // 2]) / 2
+
+
+def _umbral():
+    return float(param("sugerencias_productividad_umbral_pct", 70) or 70)
+
+
+def prod_productivity(dias=60, hoy=None):
+    """Producción: productos que se procesan mucho más lento que la mediana de su misma línea (kg por hora)."""
+    from .plan_produccion_v72 import tiempos
+    hoy = hoy or date.today()
+    filas = tiempos(hoy - timedelta(days=dias), hoy)["filas"]
+    out = []
+    por_linea = defaultdict(list)
+    for f in filas:
+        if f["kg_hora"]:
+            por_linea[f["linea"]].append(f)
+    for linea, fs in por_linea.items():
+        med = _mediana([f["kg_hora"] for f in fs])
+        if not med or len(fs) < 2:
+            continue
+        lentos = [f for f in fs if f["kg_hora"] < med * _umbral() / 100 and f["partes"] >= 2]
+        for f in lentos[:3]:
+            out.append(_s("Producción", f"{linea}: {f['producto']} se procesa lento",
+                          f"{f['kg_hora']:g} kg/h frente a {med:g} kg/h de mediana en la línea ({f['partes']} partes, "
+                          f"{f['horas']:g} h en {dias} días).",
+                          "Revisar el método, la calibración y la capacitación del personal en ese producto; si es "
+                          "selección manual, evaluar pasarlo a una línea mecanizada o reforzar el turno.", "MEDIO",
+                          "prod.product_times"))
+    return out
+
+
+def warehouse_productivity(dias=30, hoy=None):
+    """Almacén: tiempo de picking por almacén y pickings que tardan mucho más que lo usual."""
+    from ..models import PickingTask
+    hoy = hoy or date.today()
+    tareas = [t for t in db().execute(select(PickingTask).where(PickingTask.fecha >= hoy - timedelta(days=dias),
+                                                                PickingTask.estado == "LISTO")).scalars()
+              if t.inicio_ts and t.fin_ts and t.fin_ts > t.inicio_ts]
+    out = []
+    por_alm = defaultdict(list)
+    for t in tareas:
+        por_alm[t.warehouse_code].append((t.fin_ts - t.inicio_ts).total_seconds() / 60)
+    for alm, mins in por_alm.items():
+        med = _mediana(mins)
+        largos = [m for m in mins if med and m > med * 100 / _umbral()]
+        if med and len(mins) >= 3 and len(largos) >= max(2, len(mins) // 4):
+            out.append(_s("Almacén", f"Picking lento en {alm}",
+                          f"{len(largos)} de {len(mins)} pickings tardaron más de {med * 100 / _umbral():.0f} min "
+                          f"(la mediana es {med:.0f} min) en {dias} días.",
+                          "Revisar la ubicación de los lotes (rotación ABC), la asignación de personal y los "
+                          "montacarguistas disponibles en las horas de mayor carga.", "MEDIO", "alm.picking_schedule"))
+    return out
+
+
+def delivery_waits(dias=30, hoy=None):
+    """Distribución: clientes donde la unidad espera mucho más que en el resto."""
+    from .ruta_chofer_v73 import demoras
+    hoy = hoy or date.today()
+    filas = [f for f in demoras(hoy - timedelta(days=dias), hoy)["filas"] if f.get("espera") is not None]
+    med = _mediana([f["espera"] for f in filas])
+    out = []
+    for f in sorted(filas, key=lambda x: -(x["espera"] or 0))[:3]:
+        if med and f["visitas"] >= 2 and f["espera"] > med * 100 / _umbral():
+            out.append(_s("Distribución", f"Espera alta en {f['cliente']}",
+                          f"{f['espera']:.0f} min de espera promedio en {f['visitas']} visitas (mediana de los clientes: "
+                          f"{med:.0f} min).",
+                          "Coordinar la cita con el cliente (horario de recepción) a través de Comercial; considerar esa "
+                          "espera al armar la ruta.", "MEDIO", "dist.customer_delays"))
+    return out
+
+
+def purchases_late(hoy=None):
+    """Compras nacionales e importaciones atrasadas respecto de la fecha prevista."""
+    from ..models import ImportFollowup, PurchaseRequest
+    hoy = hoy or date.today()
+    comp = [p for p in db().execute(select(PurchaseRequest).where(PurchaseRequest.estado.in_(
+        ("SOLICITADA", "EN_COTIZACION", "PENDIENTE_APROBACION", "ORDEN_GENERADA")))).scalars()
+        if p.fecha_prevista and p.fecha_prevista < hoy]
+    out = []
+    if comp:
+        out.append(_s("Compras", f"{len(comp)} compra(s) nacional(es) atrasada(s)",
+                      "Con fecha prevista vencida: " + ", ".join(f"#{p.id} {p.product_code}" for p in comp[:5]) + ".",
+                      "Confirmar la nueva fecha con el proveedor y avisar a Producción y Comercial si afecta una OV.",
+                      "ALTO" if len(comp) >= 3 else "MEDIO", "buy.purchases"))
+    imps = [f for f in db().execute(select(ImportFollowup)).scalars() if _import_atrasada(f, hoy)]
+    if imps:
+        out.append(_s("Importaciones", f"{len(imps)} importación(es) con llegada vencida",
+                      ", ".join(f"{f.item} ({f.contrato})" for f in imps[:5]) + ".",
+                      "Revisar con la naviera o el agente de aduana y actualizar la fecha de llegada.", "MEDIO",
+                      "v24.imports"))
+    return out
+
+
+def _import_atrasada(f, hoy):
+    llegada = getattr(f, "fecha_llegada", None)
+    estado = (getattr(f, "estado", "") or "").upper()
+    return bool(llegada and llegada < hoy and not getattr(f, "retiro_fecha", None) and estado not in ("RETIRADO", "CERRADO"))
+
+
+def quality_pending(hoy=None):
+    """Calidad: lotes observados o bloqueados que siguen sin decisión, y reempaques por evaluar."""
+    from ..models import RepackRequest, StockLot
+    hoy = hoy or date.today()
+    lotes = list(db().execute(select(StockLot).where(StockLot.estado.in_(("PENDIENTE_REVISION", "OBSERVADO", "BLOQUEADO")),
+                                                     StockLot.cantidad > 0)).scalars())
+    reemp = db().execute(select(RepackRequest).where(RepackRequest.estado == "SOLICITADA")).scalars().all()
+    out = []
+    if lotes:
+        out.append(_s("Calidad", f"{len(lotes)} lote(s) por revisar, observados o bloqueados",
+                      f"{sum(l.cantidad for l in lotes):,.0f} unidades sin poder venderse.",
+                      "Priorizar la evaluación (liberar, reprocesar o reempacar) para no inmovilizar stock.",
+                      "ALTO" if len(lotes) >= 5 else "MEDIO", "cal.inbox"))
+    if reemp:
+        out.append(_s("Calidad", f"{len(reemp)} reempaque(s) por evaluar", "Solicitudes de reempaque sin aprobar ni desaprobar.",
+                      "Evaluarlas para que Almacén pueda ejecutarlas.", "MEDIO", "alm.repacks"))
+    return out
+
+
+def productivity_summary(hoy=None):
+    """Resumen de productividad por área (últimos 30 días) con los datos que registra el propio sistema."""
+    from ..models import PickingTask
+    from .plan_produccion_v72 import tiempos
+    from .ruta_chofer_v73 import demoras
+    hoy = hoy or date.today()
+    desde = hoy - timedelta(days=30)
+    out = []
+    t = tiempos(desde, hoy)["filas"]
+    kg, h = sum(f["kg"] for f in t), sum(f["horas"] for f in t)
+    hh = sum(f["kg"] / f["kg_hora_operario"] for f in t if f.get("kg_hora_operario"))
+    out.append({"area": "Producción", "indicador": "kg procesados por hora (y por hora-operario)",
+                "valor": f"{kg / h:,.0f} kg/h" + (f" · {kg / hh:,.0f} kg/h-op" if hh else "") if h else "—",
+                "base": f"{len(t)} producto-línea · {h:,.0f} h", "enlace": "prod.product_times"})
+    pk = [(x.fin_ts - x.inicio_ts).total_seconds() / 60 for x in db().execute(select(PickingTask).where(
+        PickingTask.fecha >= desde, PickingTask.estado == "LISTO")).scalars() if x.inicio_ts and x.fin_ts and x.fin_ts > x.inicio_ts]
+    med = _mediana(pk)
+    out.append({"area": "Almacén", "indicador": "minutos por picking (mediana)", "valor": f"{med:.0f} min" if med else "—",
+                "base": f"{len(pk)} pickings", "enlace": "alm.picking_schedule"})
+    d = demoras(desde, hoy)["filas"]
+    esp = _mediana([f["espera"] for f in d if f.get("espera") is not None])
+    out.append({"area": "Distribución", "indicador": "espera en el cliente (mediana)", "valor": f"{esp:.0f} min" if esp else "—",
+                "base": f"{sum(f['visitas'] for f in d)} visitas", "enlace": "dist.customer_delays"})
+    return out
+
+
+GENERADORES = (third_party, overloads, breakdowns, machines, tickets, returns, absences, cleaning, maintenance_backlog,
+               prod_productivity, warehouse_productivity, delivery_waits, purchases_late, quality_pending)
 
 
 def all_suggestions(hoy=None):

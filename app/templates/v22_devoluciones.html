@@ -1,6 +1,7 @@
 {% extends "base.html" %}{% from "_m.html" import b, csrf, ic, empty, paginacion, buscador_lista %}
 {% block content %}<div class="page-head"><div><h1>Recepción de devoluciones</h1><p class="sub">Contraste con la guía cuando llegue la mercadería: cantidad, presentación y daños. Si no hay personal para recibir, regístrelo y la mercadería queda en el vehículo.</p></div></div>
-<p class="seg small">{% for k, t in [('PENDIENTE','Por recibir'),('OBSERVADA','Con observaciones'),('CONFORME','Conformes'),('TODAS','Todas')] %}<a class="{{ 'on' if estado == k }}" href="{{ url_for('v22.returns', estado=k) }}">{{ t }}</a>{% endfor %}</p>
+<p class="seg small">{% for k, t in [('PENDIENTE','Por recibir'),('OBSERVADA','Con observaciones'),('CONFORME','Conformes'),('TODAS','Todas')] %}<a class="{{ 'on' if estado == k }}" href="{{ url_for('v22.returns', estado=k, tipo=tipo) }}">{{ t }}</a>{% endfor %}</p>
+<p class="seg small">{% for k, t in [('','Todas'),('TOTAL','Generales (totales)'),('PARCIAL','Parciales')] %}<a class="{{ 'on' if tipo == k }}" href="{{ url_for('v22.returns', estado=estado, tipo=k) }}">{{ t }}</a>{% endfor %}</p>
 {{ buscador_lista() }}{% for r in rows %}<section class="card {{ 'alerta' if r.estado == 'EN_VEHICULO' }}"><div class="card-head"><h3>OV <a href="{{ url_for('com.order_detail', oid=r.order_id) }}">{{ r.order.numero }}</a> · {{ r.order.customer.nombre }}</h3>
 <span>{{ b(r.tipo) }} {{ b(r.estado) }} {% if r.estado == 'EN_VEHICULO' %}<span class="b ALTA">en vehículo {{ r.en_vehiculo.vehiculo }}</span>{% endif %}</span></div>
 <p class="small muted">Guía {{ r.guia_numero or '—' }}{% if r.route_id %} · <a href="{{ url_for('dist.route_detail', rid=r.route_id) }}">ruta #{{ r.route_id }}</a>{% endif %} · registrada {{ r.ts|d }}</p>

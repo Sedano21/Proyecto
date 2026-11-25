@@ -59,6 +59,11 @@ def orders():
         q = q.where(SalesOrder.estado == estado)
     if stock:
         q = q.where(SalesOrder.estado_stock == stock)
+    ent_d, ent_h = f_date("entrega_desde"), f_date("entrega_hasta")  # V75: OV con entrega en un rango (p. ej. el mes)
+    if ent_d:
+        q = q.where(SalesOrder.fecha_compromiso >= ent_d, SalesOrder.estado.notin_(("CANCELADA", "BORRADOR")))
+    if ent_h:
+        q = q.where(SalesOrder.fecha_compromiso <= ent_h)
     if g.user.role_code == "EJECUTIVO_VENTAS" and request.args.get("mias") != "0":
         q = q.where(osvc.clausula_vendedor(g.user.id))  # V64: también sus vendedores de SAP
     rows = sorted(db().execute(q).scalars(), key=priority_key)  # el orden por prioridad se calcula; luego se pagina

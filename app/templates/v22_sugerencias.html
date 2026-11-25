@@ -1,6 +1,9 @@
 {% extends "base.html" %}{% from "_m.html" import b, ic, empty %}
 {% block content %}<div class="page-head"><div><h1>Sugerencias para mejorar la eficiencia</h1><p class="sub">El sistema revisa la operación y propone acciones con la evidencia de sus propios registros</p></div></div>
 <p class="note small">Las sugerencias no reemplazan la decisión de la Gerencia: señalan patrones (transporte tercero frecuente, sobrecargas, averías repetidas, paradas de máquinas, devoluciones, faltas, limpieza incompleta, trabajos vencidos). Cuando falta un dato para estimar el ahorro, la sugerencia indica qué parámetro registrar.</p>
+<div class="card"><h3>Productividad por área (últimos 30 días)</h3><div class="tw"><table class="small"><tr><th>Área</th><th>Indicador</th><th class="r">Valor</th><th>Base</th></tr>
+{% for x in prod %}<tr><td><b>{{ x.area }}</b></td><td>{{ x.indicador }}</td><td class="r"><a href="{{ url_for(x.enlace) }}">{{ x.valor }}</a></td><td class="muted">{{ x.base }}</td></tr>{% endfor %}</table></div></div>
+<form method="get" class="row noprint"><div><label>Área</label><select name="area" onchange="this.form.submit()"><option value="">Todas ({{ areas|length }})</option>{% for a in areas %}<option {{ 'selected' if a == area }}>{{ a }}</option>{% endfor %}</select></div></form>
 {% for s in rows %}<section class="card sug {{ s.impacto }}"><div class="card-head"><h3>{{ s.titulo }}</h3><span><span class="b info">{{ s.area }}</span> <span class="b {{ 'ALTA' if s.impacto == 'ALTO' else 'MEDIA' }}">impacto {{ s.impacto|lower }}</span></span></div>
 <p class="small"><b>Evidencia:</b> {{ s.evidencia }}</p><p class="small"><b>Qué evaluar:</b> {{ s.accion }}</p>
 {% if s.enlace %}{% set u = url_for(s.enlace) %}<a class="small" href="{{ u }}">Ver detalle</a>{% endif %}</section>
