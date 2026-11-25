@@ -229,9 +229,13 @@ def test_solicitud_de_fumigacion_parcial(app, s, U):
     s.commit()
     with pytest.raises(BusinessError):
         fs.aprobar(U("coord.almacen"), r, "Patio", date.today(), date.today() + timedelta(days=3))
+    # V74: Calidad decide, Almacén confirma el espacio y Calidad programa
+    fs.decidir(U("jefe.calidad"), r, True)
+    fs.confirmar_espacio(U("coord.almacen"), r, True, "Contenedor 1")
+    ini = fs.proximo_dia_preferido()
     with pytest.raises(BusinessError):
-        fs.aprobar(U("jefe.calidad"), r, "Techo", date.today(), date.today() + timedelta(days=3))
-    fs.aprobar(U("jefe.calidad"), r, "Contenedor 1", date.today(), date.today() + timedelta(days=3))
+        fs.aprobar(U("jefe.calidad"), r, "Techo", ini, ini + timedelta(days=3))
+    fs.aprobar(U("jefe.calidad"), r, "Contenedor 1", ini, ini + timedelta(days=3))
     s.commit()
     fs.confirmar_ingreso(U("coord.almacen"), r, {str(l1.id): "40", str(l2.id): "30"})
     s.commit()

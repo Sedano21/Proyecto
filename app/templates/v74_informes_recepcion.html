@@ -1,0 +1,20 @@
+{% extends "base.html" %}{% from "_m.html" import csrf, ic, empty %}
+{% block content %}<div class="page-head"><div><h1>Informes de recepción (Calidad)</h1>
+<p class="sub">Calidad sube el informe de recepción de las compras nacionales y de las importaciones, en PDF o Excel. Compras e Importaciones reciben el aviso y lo ven aquí y en su seguimiento.</p></div></div>
+<nav class="tabs"><a href="{{ url_for('cal.reception_reports', tab='compras') }}" class="{{ 'on' if tab == 'compras' }}">Compras nacionales</a><a href="{{ url_for('cal.reception_reports', tab='importaciones') }}" class="{{ 'on' if tab == 'importaciones' }}">Importaciones</a></nav>
+{% if tab == 'compras' %}<div data-lista>{% for pr in compras %}{% set inf = informe_compra(pr) %}<section class="card"><div class="card-head"><h3>Compra #{{ pr.id }} · {{ pr.product_code }} {{ pd(pr.product_code) }}</h3><span class="b {{ 'ok' if inf else 'warn' }}">{{ 'con informe' if inf else 'sin informe' }}</span></div>
+<div class="meta small"><span>{{ pr.proveedor or 'proveedor por definir' }}</span><span>OC {{ pr.numero_oc or '—' }}</span><span>{{ pr.cantidad|n }}{{ ' · recibido ' ~ (pr.cantidad_recibida|n) if pr.cantidad_recibida is not none }}</span><span>{{ pr.estado|lower|replace('_', ' ') }}</span>{% if pr.lote_recibido %}<span>lote {{ pr.lote_recibido }}</span>{% endif %}</div>
+{% for x in (pr.analisis or {}).get('informes_calidad') or [] %}<div class="small"><a href="{{ url_for('main.evidence', name=x.archivo) }}" target="_blank">{{ ic('file') }} {{ x.nombre }}</a> · {{ x.resultado|replace('_', ' ')|lower or 'sin resultado' }} · {{ x.user }} {{ x.ts|replace('T', ' ') }}{{ ': ' ~ x.nota if x.nota }}</div>{% endfor %}
+{% if puede %}<form method="post" enctype="multipart/form-data" class="row">{{ csrf() }}<input type="hidden" name="tipo" value="compra"><input type="hidden" name="id" value="{{ pr.id }}">
+<div class="grow"><label class="req">Informe (PDF o Excel)</label><input type="file" name="archivo" accept=".pdf,.xlsx,.xls" required data-plain></div>
+<div><label>Resultado</label><select name="resultado"><option value="">—</option><option value="CONFORME">Conforme</option><option value="OBSERVADO">Observado</option><option value="NO_CONFORME">No conforme</option></select></div>
+<div class="grow"><label>Nota</label><input name="nota"></div><div><button>{{ ic('upload') }} Subir informe</button></div></form>{% endif %}</section>
+{% else %}{{ empty('No hay compras con orden generada o recibidas.', 'box') }}{% endfor %}</div>
+{% else %}<div data-lista>{% for f in importaciones %}{% set ic_ = f.informe_calidad or {} %}<section class="card"><div class="card-head"><h3>{{ f.item }} · contrato {{ f.contrato }}</h3><span class="b {{ 'ok' if ic_ else 'warn' }}">{{ 'con informe' if ic_ else 'sin informe' }}</span></div>
+<div class="meta small"><span>{{ f.proveedor }}</span><span>{{ f.pais_origen }}</span></div>
+{% if ic_.get('archivo') %}<div class="small"><a href="{{ url_for('main.evidence', name=ic_.archivo) }}" target="_blank">{{ ic('file') }} Informe</a> · {{ ic_.user }} {{ (ic_.ts or '')|replace('T', ' ') }}{{ ': ' ~ ic_.nota if ic_.nota }}</div>{% elif ic_.get('record_id') %}<div class="small"><a href="{{ url_for('cal.record_detail', rid=ic_.record_id) }}">Informe generado (REG-CAL-005)</a> · {{ ic_.resultado }}</div>{% endif %}
+{% if puede %}<form method="post" enctype="multipart/form-data" class="row">{{ csrf() }}<input type="hidden" name="tipo" value="importacion"><input type="hidden" name="id" value="{{ f.id }}">
+<div class="grow"><label class="req">Informe (PDF o Excel)</label><input type="file" name="archivo" accept=".pdf,.xlsx,.xls" required data-plain></div>
+<div class="grow"><label>Nota</label><input name="nota"></div><div><button>{{ ic('upload') }} Subir informe</button> <a class="btn sec" href="{{ url_for('cal.new_record', formato='RECEPCION_IMPORTADO', referencia_tipo='ImportFollowup', referencia_id=f.id) }}">Generar con REG-CAL-005</a></div></form>{% endif %}</section>
+{% else %}{{ empty('No hay importaciones registradas.', 'ship') }}{% endfor %}</div>{% endif %}
+{% endblock %}

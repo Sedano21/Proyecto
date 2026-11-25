@@ -522,7 +522,7 @@ def my_route():
             if acc == "checklist":
                 lineas = {k[3:]: {"ok": f.get(f"ok_{k[3:]}") == "1", "cantidad": v} for k, v in f.items() if k.startswith("ca_")}
                 return act(lambda: rc.registrar_checklist(g.user, r, f.get("oid"), lineas, f.get("observacion", ""),
-                                                          f.get("mal_paletizado") == "1"),
+                                                          f.get("mal_paletizado") == "1", f.get("obs_calidad", "")),
                            lambda res: "Checklist de la guía guardado: todo conforme." if res[0]["conforme"]
                            else "Checklist guardado: se avisó a Almacén lo que no cuadra.", back + f"#ruta{r.id}")
             foto = save_upload(request.files.get("foto"), up, f"gasto_ruta{r.id}") if request.files.get("foto") else ""

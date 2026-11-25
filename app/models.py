@@ -1493,6 +1493,8 @@ class ProductionReport(Base):
     pausas: Mapped[list] = mapped_column(JSON, default=list)  # [{inicio, fin, causa, foto, user}]
     defectos: Mapped[dict] = mapped_column(JSON, default=dict)  # {causa: unidades}
     indicadores: Mapped[dict] = mapped_column(JSON, default=dict)  # OEE, peso promedio, desviación, horas efectivas…
+    # V74: controles de Calidad durante el proceso [{n, parametro, valor, conforme, observacion, user, ts}]
+    controles_calidad: Mapped[list] = mapped_column(JSON, default=list, server_default="[]")
     inicio_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     fin_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     bloqueo: Mapped[dict] = mapped_column(JSON, default=dict)  # BLOQUEADO por Calidad: {motivo, user, ts}
@@ -1936,6 +1938,7 @@ class SanitationLog(Base):
     evidencia: Mapped[str] = mapped_column(String(250), default="")
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    validacion: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}")  # V74: {resultado, user, ts, nota}
     zone = relationship("SanitationZone")
     vehicle = relationship("Vehicle")
 
@@ -2737,6 +2740,8 @@ class FumigationRequest(Base):
     liberacion: Mapped[date | None] = mapped_column(Date, nullable=True)
     aprobacion: Mapped[dict] = mapped_column(JSON, default=dict)  # {user, ts, comentario}
     ingreso: Mapped[dict] = mapped_column(JSON, default=dict)  # {user, ts, observacion}
+    # V74: {decision: {fumigar, user, ts, comentario}, espacio: [{hay, lugar, user, ts, nota}]}
+    flujo: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}")
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     ts: Mapped[datetime] = mapped_column(DateTime, default=now)
     user = relationship("User")
@@ -2970,6 +2975,8 @@ class LabelSpec(Base):
     marca: Mapped[str] = mapped_column(String(120), default="")
     instrucciones: Mapped[str] = mapped_column(Text, default="")
     foto: Mapped[str] = mapped_column(String(250), default="")
+    lote: Mapped[str] = mapped_column(String(60), default="", server_default="")  # V74: lote y vencimiento digitados
+    fecha_vencimiento: Mapped[date | None] = mapped_column(Date, nullable=True)
     activa: Mapped[bool] = mapped_column(Boolean, default=True)
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     ts: Mapped[datetime] = mapped_column(DateTime, default=now)

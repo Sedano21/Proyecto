@@ -1,0 +1,20 @@
+{% extends "base.html" %}{% from "_m.html" import csrf, ic, empty %}
+{% block content %}<div class="page-head"><div><h1>Especificaciones por producto</h1>
+<p class="sub">Los archivos del producto que ya están en la base de datos: especificaciones de calidad, ficha técnica y certificados. La Jefatura y la Supervisión de Calidad suben o actualizan las especificaciones en PDF o Excel; del Excel se ve la primera hoja aquí mismo.</p></div></div>
+<form class="card row" method="get"><div class="grow"><label>Producto</label><input name="producto" list="es-prods" value="{{ code }}" placeholder="escriba el código o el nombre" autocomplete="off"></div><div><button>{{ ic('search') }} Ver</button></div>
+<datalist id="es-prods">{% for x in productos %}<option value="{{ x.code }} · {{ x.descripcion }}">{{ 'con especificación' if x.code in con else 'sin especificación' }}</option>{% endfor %}</datalist></form>
+{% if p %}<section class="card"><div class="card-head"><h2 style="margin:0">{{ p.code }} · {{ p.descripcion }}</h2><span class="b">{{ p.tipo }}</span></div>
+{% if can('calidad.especificaciones') %}<details {{ 'open' if not (docs.ESPECIFICACIONES or docs.FICHA_TECNICA) }}><summary><b>{{ ic('upload') }} Subir o actualizar</b></summary>
+<form method="post" enctype="multipart/form-data" class="pila">{{ csrf() }}<input type="hidden" name="producto" value="{{ p.code }}">
+<div class="row"><div><label>Carpeta</label><select name="carpeta">{% for k, t in carpetas.items() %}<option value="{{ k }}">{{ t }}</option>{% endfor %}</select></div>
+<div class="grow"><label class="req">Archivos (PDF o Excel)</label><input type="file" name="archivos" accept=".pdf,.xlsx,.xls" multiple required data-plain></div></div>
+<label class="chk"><input type="checkbox" name="reemplazar" value="1"> Actualizar: reemplaza los archivos vigentes de esa carpeta (quedan en el historial)</label>
+<p><button>{{ ic('check') }} Guardar</button></p></form></details>{% endif %}
+{% for k, t in carpetas.items() %}<h3>{{ t }} ({{ docs[k]|length }})</h3>
+{% for d in docs[k] %}<div class="card" style="margin:6px 0"><div class="row"><div class="grow small"><a href="{{ url_for('main.evidence', name=d.archivo) }}" target="_blank">{{ ic('file') }} {{ d.nombre }}</a> · {{ d.user.nombre if d.user }} · {{ d.ts|d }}</div>
+{% if can('calidad.especificaciones') %}<form method="post">{{ csrf() }}<input type="hidden" name="producto" value="{{ p.code }}"><input type="hidden" name="accion" value="retirar"><input type="hidden" name="doc_id" value="{{ d.id }}"><button class="small sec">Retirar</button></form>{% endif %}</div>
+{% set v = vistas.get(d.id) %}{% if v and v[1] %}<details open><summary class="small">Hoja «{{ v[0] }}»</summary><div class="tw"><table class="small">{% for fila in v[1] %}<tr>{% for c in fila %}<td>{{ c }}</td>{% endfor %}</tr>{% endfor %}</table></div></details>{% endif %}</div>
+{% else %}<p class="small muted">Sin archivos.</p>{% endfor %}{% endfor %}</section>
+{% else %}{{ empty('Elija un producto para ver sus especificaciones.', 'file') }}
+<p class="small muted">{{ con|length }} producto(s) con especificación o ficha técnica cargada.</p>{% endif %}
+{% endblock %}

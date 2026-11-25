@@ -48,6 +48,11 @@ def home():
                                                    f.get("observacion", ""),
                                                    save_upload(request.files.get("evidencia"), up, "saneamiento")),
                        "Registro guardado en la bitácora.", back)
+        if acc == "validar_fumigacion":  # V74: Calidad valida el registro de fumigación de la unidad
+            from ..models import SanitationLog
+            lg = db().get(SanitationLog, int(f.get("log_id") or 0)) or abort(404)
+            return act(lambda: msvc.validate_vehicle_fumigation(g.user, lg, f.get("resultado") == "conforme", f.get("nota", "")),
+                       "Validación del registro guardada.", back)
         abort(400)
     from ..models import Warehouse
     from sqlalchemy import select

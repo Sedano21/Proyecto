@@ -10,7 +10,7 @@ from ..models import Product, ProductDocument, now
 from .core import BusinessError, audit, has_perm
 
 CARPETAS = {"FICHA_TECNICA": "Ficha técnica", "FOTOS": "Fotos", "CERTIFICADOS": "Certificados", "RECETAS": "Recetas",
-            "ESTRATEGIAS": "Estrategias comerciales"}
+            "ESTRATEGIAS": "Estrategias comerciales", "ESPECIFICACIONES": "Especificaciones de calidad"}
 DESTACADOS = {"MES": "Producto del mes", "TEMPORADA": "Producto de temporada"}
 
 

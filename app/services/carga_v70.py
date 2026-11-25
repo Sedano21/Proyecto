@@ -150,6 +150,7 @@ def falta_para_salir(route):
     """Lo que falta para salir: novedades de la carga sin resolver y, si se exigen, las fotos del antes y el después."""
     out = [f"resolver {'el faltante' if x['tipo'] == 'FALTANTE' else 'el sobrante'} de {x['producto']} ({x['cantidad']:g})"
            for x in novedades_abiertas(route)]
+    out += [f"la aprobación de Calidad de la observación «{x['texto'][:60]}»" for x in obs_calidad_abiertas(route)]  # V74
     if param("carga_exigir_fotos", False):
         f = route.fotos or {}
         out += [ETAPAS[e] for e in ("carga_antes", "carga_despues") if not f.get(e)]
@@ -240,3 +241,58 @@ def resolver_novedad(user, route, n, nota=""):
 
 def novedades_abiertas(route):
     return [x for x in (route.aviso_carga or {}).get("novedades") or [] if not x.get("resuelta")]
+
+
+# ------------------------------------------------------------------ V74: observación de calidad del producto
+def reportar_obs_calidad(user, route, texto, ov=""):
+    """Al validar la carga (chofer, auxiliar, Almacén, Seguridad) se observa la calidad del producto (p. ej. sacos
+    húmedos, rotos, con plaga). La unidad sale solo cuando Calidad lo aprueba."""
+    if not any(has_perm(user, p) for p in PUEDEN_REPORTAR):
+        raise BusinessError("Observan la carga Almacén, el Auxiliar de Despacho, el chofer, Seguridad o Calidad.")
+    if route.estado not in ("PROPUESTA", "CONFIRMADA"):
+        raise BusinessError("La ruta ya salió.")
+    texto = (texto or "").strip()
+    if not texto:
+        raise BusinessError("Describa la observación de calidad del producto.")
+    ac = dict(route.aviso_carga or {})
+    lst = list(ac.get("obs_calidad") or [])
+    reg = {"n": len(lst) + 1, "texto": texto[:300], "ov": ov or "", "user": user.nombre, "user_id": user.id,
+           "ts": now().isoformat(timespec="minutes"), "decision": None}
+    lst.append(reg)
+    ac["obs_calidad"] = lst
+    route.aviso_carga = ac
+    alerts.emit("CARGA_OBS_CALIDAD", f"Ruta #{route.id}: observación de calidad del producto" + (f" (OV {ov})" if ov else ""),
+                f"{texto} — reportó {user.nombre}. La unidad sale solo con la aprobación de Calidad.", "Route", route.id,
+                prioridad="ALTA", creado_por=user, dedup_key=f"CARGA_OBSCAL:{route.id}:{reg['n']}")
+    audit(user, "CARGA_OBS_CALIDAD", "Route", route.id, reg)
+    return reg
+
+
+def resolver_obs_calidad(user, route, n, aprueba, nota=""):
+    """Calidad revisa: aprueba que la unidad salga, o no (Almacén cambia el producto y Calidad vuelve a revisar)."""
+    if not (has_perm(user, "distribucion.visto_bueno_calidad") or has_perm(user, "calidad.liberar")):
+        raise BusinessError("La observación de calidad la aprueba Calidad.")
+    nota = (nota or "").strip()
+    if not aprueba and not nota:
+        raise BusinessError("Indique qué debe corregirse (no aprobado).")
+    ac = dict(route.aviso_carga or {})
+    lst = [dict(x) for x in ac.get("obs_calidad") or []]
+    x = next((x for x in lst if x["n"] == int(n)), None)
+    if x is None or (x.get("decision") or {}).get("aprueba"):
+        raise BusinessError("Observación no encontrada o ya aprobada.")
+    x["decision"] = {"aprueba": bool(aprueba), "user": user.nombre, "ts": now().isoformat(timespec="minutes"), "nota": nota[:300]}
+    x.setdefault("historial", []).append(dict(x["decision"]))
+    ac["obs_calidad"] = lst
+    route.aviso_carga = ac
+    if aprueba:
+        alerts.close_by_system(f"CARGA_OBSCAL:{route.id}:{x['n']}", f"Aprobada por Calidad ({user.nombre})")
+    else:
+        alerts.emit("CARGA_INCONGRUENCIA", f"Ruta #{route.id}: Calidad no aprueba la carga",
+                    f"{x['texto']} → {nota} ({user.nombre}). Corrija y Calidad vuelve a revisar.", "Route", route.id,
+                    extra_users=[u.id for k in almacenes_de(route) for u in personal_de(k)], creado_por=user)
+    audit(user, "CARGA_OBS_CALIDAD_DECISION", "Route", route.id, x)
+    return x
+
+
+def obs_calidad_abiertas(route):
+    return [x for x in (route.aviso_carga or {}).get("obs_calidad") or [] if not (x.get("decision") or {}).get("aprueba")]

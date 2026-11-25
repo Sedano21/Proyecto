@@ -3646,3 +3646,42 @@ PARAMS += [
 _i = next((i for i, x in enumerate(CHECKLIST_VEHICULAR) if x[0] == "LUZ_FRENO"), len(CHECKLIST_VEHICULAR) - 1)
 if not any(x[0] == "LUZ_DIURNAS" for x in CHECKLIST_VEHICULAR):
     CHECKLIST_VEHICULAR.insert(_i + 1, ("LUZ_DIURNAS", "Sistema de luces", "Luces diurnas (camionetas)", False))
+
+# ---------------------------------------------------------------------------------------------------------------
+# V74 (25-nov-2026): pedidos de Calidad
+# ---------------------------------------------------------------------------------------------------------------
+V74 = "Pedidos de Calidad (25-nov-2026)"
+_CAL3 = ["JEFE_CALIDAD", "SUPERV_CALIDAD", "ASIST_CALIDAD"]
+for _code, _n, _m, _t, _roles in [
+        ("calidad.especificaciones", "Subir o actualizar las especificaciones y fichas técnicas por producto (PDF o Excel)",
+         "Calidad", "edicion", ["JEFE_CALIDAD", "SUPERV_CALIDAD"]),
+        ("saneamiento.validar", "Validar el registro de fumigación de las unidades (conforme / no conforme)", "Calidad",
+         "aprobacion", ["JEFE_CALIDAD", "SUPERV_CALIDAD"]),
+]:
+    PERMISSIONS.append((_code, _n, _m, _t))
+    for _r in _roles:
+        if _r in ROLE_PERMISSIONS and not any(p[0] == _code for p in ROLE_PERMISSIONS[_r]):
+            ROLE_PERMISSIONS[_r].append((_code, "DEFINIDO", V74))
+ALERT_TYPES += [
+    ("FUMIGACION_ESPACIO", "Fumigación: confirmar si hay espacio", "Almacén", "Fumigación", "ALTA", _ALM_ING, "DEFINIDO", V74,
+     "Calidad decidió fumigar: Almacén confirma el espacio; sin espacio la solicitud queda pendiente.", False),
+    ("FUMIGACION_PROGRAMAR", "Fumigación: espacio confirmado, programar", "Calidad", "Fumigación", "ALTA", _CAL_JS, "DEFINIDO",
+     V74, "Almacén confirmó el espacio: Calidad programa (de preferencia martes, jueves o sábado).", False),
+    ("COMPRA_INFORME_CALIDAD", "Compra nacional: informe de recepción de Calidad", "Compras", "Seguimiento", "MEDIA",
+     ["COMPRAS", "JEFE_LOGISTICA", "COORD_LOGISTICA"], "DEFINIDO", V74,
+     "Calidad subió el informe de recepción de la compra.", False),
+    ("CALIDAD_CONTROL_PROCESO", "Control de Calidad no conforme en el proceso", "Producción", "Calidad", "ALTA",
+     ["JEFE_PRODUCCION", "ASIST_PRODUCCION", "JEFE_CALIDAD", "SUPERV_CALIDAD"], "DEFINIDO", V74,
+     "Calidad registró un control no conforme en un parte en curso.", False),
+    ("CARGA_OBS_CALIDAD", "Carga con observación de calidad del producto", "Calidad", "Distribución", "ALTA",
+     _CAL3 + ["COORD_DISTRIBUCION"], "DEFINIDO", V74,
+     "Al validar la carga se observó la calidad del producto: la unidad sale solo con la aprobación de Calidad.", False),
+]
+PARAMS += [
+    ("fumigacion_dias_preferidos", [1, 3, 5], "list", "Calidad",
+     "Días preferidos para fumigar (0 = lunes … 6 = domingo): martes, jueves y sábado. Otro día pide el motivo.",
+     "DEFINIDO", V74),
+    ("calidad_parametros_proceso", ["Humedad (%) – PCC1", "Peso (control de pesos REG-CAL-003)", "Rotulado", "Sellado"],
+     "list", "Calidad", "Parámetros sugeridos al registrar un control de Calidad en el proceso (se puede escribir otro).",
+     "PROPUESTO", f"{V74}; formatos REG-HACCP-CAL-002 (PCC1) y REG-CAL-003"),
+]

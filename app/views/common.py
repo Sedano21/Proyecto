@@ -378,6 +378,8 @@ def install(app):
         u = db().get(User, int(uid)) if str(uid).isdigit() else None
         return u.nombre if u else str(uid)
     app.jinja_env.filters["usuario_nombre"] = usuario_nombre
+    app.jinja_env.filters["dia_semana"] = lambda n: ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado",
+                                                       "domingo"][int(n) % 7]  # V74
 
 
 def fail(msg, redirect_to):

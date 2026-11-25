@@ -1,0 +1,24 @@
+{% extends "base.html" %}{% from "_m.html" import ic %}
+{% block content %}<div class="page-head"><div><h1>Formatos de Calidad</h1>
+<p class="sub">Todos los formatos en un solo lugar: registrar y ver el reporte (por día o rango, en PDF o Excel). La Jefatura, la Supervisión y el Asistente de Calidad registran; el reporte lo ve Calidad.</p></div></div>
+<div class="section-title">Higiene</div>
+<div class="grid g3"><div class="card"><h3>{{ higiene[1] }}</h3><p class="small muted">{{ higiene[0] }} · diario, por persona</p>
+<p>{% if can('calidad.registrar') %}<a class="btn" href="{{ url_for('cal.personal_hygiene') }}">Registrar</a>{% endif %} {% if can('calidad.formatos_revisar') %}<a class="btn sec" href="{{ url_for('cal.records_report', formato='HIGIENE_PERSONAL') }}">Reporte</a>{% endif %}</p></div>
+{% for k, f in checklists.items() %}<div class="card"><h3>{{ f[1] }}</h3><p class="small muted">{{ f[0] }} · {{ f[2]|map(attribute=1)|map('length')|sum }} puntos de verificación</p>
+<p>{% if can('calidad.registrar') %}<a class="btn" href="{{ url_for('cal.checklist_format', formato=k) }}">Registrar</a>{% endif %} {% if can('calidad.formatos_revisar') %}<a class="btn sec" href="{{ url_for('cal.records_report', formato=k) }}">Reporte</a>{% endif %}</p></div>{% endfor %}</div>
+{% for etapa, codigos in etapas.items() %}<div class="section-title">{{ etapa }}</div><div class="grid g3">
+{% for k in codigos if k in formatos %}{% set f = formatos[k] %}<div class="card"><h3>{{ f[1] }}</h3><p class="small muted">{{ f[0] }}</p>
+<p>{% if can('calidad.registrar') %}<a class="btn" href="{{ url_for('cal.new_record', formato=k) }}">Registrar</a>{% endif %} {% if can('calidad.formatos_revisar') %}<a class="btn sec" href="{{ url_for('cal.records_report', formato=k) }}">Reporte</a>{% endif %}</p></div>{% endfor %}</div>{% endfor %}
+{% set en_etapas = etapas.values()|sum(start=[]) %}<div class="section-title">Otros formatos</div><div class="grid g3">
+{% for k, f in formatos.items() if k not in en_etapas %}<div class="card"><h3>{{ f[1] }}</h3><p class="small muted">{{ f[0] }}</p>
+<p>{% if can('calidad.registrar') %}<a class="btn" href="{{ url_for('cal.new_record', formato=k) }}">Registrar</a>{% endif %} {% if can('calidad.formatos_revisar') %}<a class="btn sec" href="{{ url_for('cal.records_report', formato=k) }}">Reporte</a>{% endif %}</p></div>{% endfor %}</div>
+<div class="section-title">Todo lo de Calidad</div>
+<div class="card"><ul class="small">
+<li><a href="{{ url_for('cal.inbox') }}">Bandeja de Calidad</a></li><li><a href="{{ url_for('cal.home') }}">Liberación y registros</a></li>
+<li><a href="{{ url_for('cal.line') }}">En la línea: controles del proceso en tiempo real, observaciones y merma</a></li><li><a href="{{ url_for('prod.monitor') }}">Monitoreo de producción en tiempo real</a></li>
+<li><a href="{{ url_for('cal.specifications') }}">Especificaciones por producto</a></li><li><a href="{{ url_for('cal.certificates') }}">Certificados</a></li><li><a href="{{ url_for('cal.references') }}">Referencias de los certificados</a></li>
+<li><a href="{{ url_for('cal.labels') }}">Etiquetas para el despacho</a></li><li><a href="{{ url_for('cal.fumigation_requests') }}">Solicitudes de fumigación</a></li><li><a href="{{ url_for('cal.fumigated') }}">Producto fumigado almacenado</a></li>
+<li><a href="{{ url_for('mant.home', tab='unidades') }}">Fumigación de unidades</a></li><li><a href="{{ url_for('mant.home', tab='saneamiento') }}">Zonas: limpieza y fumigación</a></li>
+<li><a href="{{ url_for('cal.reception_reports') }}">Informes de recepción (compras e importaciones)</a></li><li><a href="{{ url_for('cal.materials') }}">Material y saldo por línea</a></li>
+<li><a href="{{ url_for('cal.management') }}">Inspecciones, visitas, quejas y NC</a></li><li><a href="{{ url_for('dist.routes') }}">Visto bueno de la carga (rutas)</a></li></ul></div>
+{% endblock %}

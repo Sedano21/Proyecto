@@ -1,6 +1,9 @@
 {% extends "base.html" %}{% from "_m.html" import b, csrf, ic, empty %}{% from "_cal.html" import fotos, galeria %}
 {% block content %}<div class="page-head"><div><h1>Calidad en la línea de proceso</h1><p class="sub">Observaciones (notificación → atención → fin con motivo) · validación de merma al terminar el proceso · reproceso</p></div>
 {% if can('calidad.registrar') %}<button class="btn" data-open="dlg-obs">{{ ic('plus') }} Nueva observación</button>{% endif %}</div>
+<div class="section-title">Proceso en tiempo real: controles de Calidad</div>
+{% for r in partes %}<details class="card" {{ 'open' if loop.first }}><summary><b>{{ r.linea }}</b> · OF {{ r.of or '—' }} · {{ r.product_code }} {{ pd(r.product_code) }} · {{ r.estado|lower }} · <a href="{{ url_for('prod.part_detail', pid=r.id) }}">ver parte</a></summary>
+{% set accion_url = url_for('cal.line') %}{% include '_v74_controles.html' %}</details>{% else %}<p class="small muted">No hay partes en proceso ahora.</p>{% endfor %}
 <div class="section-title">Validación de merma</div>
 <div class="card">{% if mvs %}<div class="tw"><table class="small"><thead><tr><th>Parte</th><th>Línea</th><th>Producto</th><th class="r">Merma %</th><th class="r">Límite %</th><th>Estado</th><th>Grano bueno / dañado (kg)</th><th>Acción</th></tr></thead><tbody>
 {% for m in mvs %}{% set r = m.report %}<tr class="{{ 'warn' if m.merma_pct is not none and m.merma_pct > m.limite_pct }}"><td>{{ r.fecha|d }} · OF {{ r.of or '—' }}</td><td>{{ r.linea }}</td><td>{{ r.product_code }}</td><td class="r">{{ m.merma_pct if m.merma_pct is not none else '—' }}</td><td class="r">{{ m.limite_pct }}</td><td>{{ b(m.estado) }}</td>

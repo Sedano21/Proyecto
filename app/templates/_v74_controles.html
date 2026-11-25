@@ -1,0 +1,11 @@
+{# V74: controles de Calidad en el proceso en tiempo real. Necesita: r (parte), accion_url, sugeridos #}
+{% set cc = r.controles_calidad or [] %}
+<div class="card" id="controles-calidad{{ r.id }}"><h3>{{ ic('shield') }} Controles de Calidad en el proceso ({{ cc|length }})</h3>
+{% if cc %}<div class="tw"><table class="small"><tr><th>Hora</th><th>Parámetro</th><th>Valor</th><th>Resultado</th><th>Observación</th><th>Registró</th></tr>
+{% for x in cc|reverse %}<tr class="{{ '' if x.conforme else 'err' }}"><td>{{ x.ts[11:16] }}</td><td>{{ x.parametro }}</td><td>{{ x.valor }}</td><td>{{ 'Conforme' if x.conforme else 'No conforme' }}</td><td>{{ x.observacion }}</td><td>{{ x.user }}{{ ' (' ~ x.rol ~ ')' if x.rol }}</td></tr>{% endfor %}</table></div>{% else %}<p class="small muted">Sin controles registrados en este parte.</p>{% endif %}
+{% if can('calidad.registrar') and r.estado in ('EN PROCESO', 'PAUSADO', 'PROGRAMADO') %}<form method="post" action="{{ accion_url }}" class="row">{{ csrf() }}<input type="hidden" name="accion" value="control_calidad"><input type="hidden" name="report_id" value="{{ r.id }}">
+<div class="grow"><label class="req">Parámetro</label><input name="parametro" list="cc-param{{ r.id }}" required placeholder="qué se controló"></div>
+<div><label>Valor</label><input name="valor" size="10"></div>
+<div class="grow"><label>Observación (obligatoria si no conforme)</label><input name="observacion"></div>
+<div><button class="small" name="conforme" value="1">Conforme</button> <button class="small sec" name="conforme" value="0">No conforme</button></div>
+<datalist id="cc-param{{ r.id }}">{% for x in sugeridos %}<option value="{{ x }}"></option>{% endfor %}</datalist></form>{% endif %}</div>

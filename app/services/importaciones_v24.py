@@ -202,10 +202,10 @@ def upload_quality_report(user, f, archivo, nota=""):
     if not has_perm(user, "calidad.registrar"):
         raise BusinessError("El informe de recepción lo registra Calidad.")
     if not archivo:
-        raise BusinessError("Adjunte el informe en PDF.")
-    if not archivo.lower().endswith(".pdf"):
-        raise BusinessError("El informe debe ser un PDF.")
-    f.informe_calidad = {"modo": "PDF", "archivo": archivo, "nota": (nota or "").strip(), "user": user.nombre,
+        raise BusinessError("Adjunte el informe en PDF o Excel.")
+    if not archivo.lower().endswith((".pdf", ".xlsx", ".xls")):  # V74: también en Excel
+        raise BusinessError("El informe debe ser un PDF o un Excel.")
+    f.informe_calidad = {"modo": "PDF" if archivo.lower().endswith(".pdf") else "EXCEL", "archivo": archivo, "nota": (nota or "").strip(), "user": user.nombre,
                          "ts": datetime.now().isoformat(timespec="minutes")}
     _avisar_informe(f, user)
     audit(user, "IMPORTACION_INFORME_CALIDAD", "ImportFollowup", f.id, f.informe_calidad)

@@ -127,13 +127,18 @@
       {% if ve('calidad.etiquetas') %}{{ nl(url_for('cal.labels'), 'tag', 'Etiquetas para el despacho') }}{% endif %}
       {% if ve('calidad.ver') %}{{ nl(url_for('cal.inbox'), 'clipboard', 'Bandeja de Calidad') }}
       {{ nl(url_for('cal.home'), 'shield', 'Liberación y registros') }}
+      {{ nl(url_for('cal.formats_hub'), 'clipboard', 'Formatos (higiene y todos)') }}
+      {{ nl(url_for('cal.specifications'), 'file', 'Especificaciones por producto') }}
+      {{ nl(url_for('cal.reception_reports'), 'upload', 'Informes de recepción') }}
       {{ nl(url_for('cal.fumigation_requests'), 'shield', 'Solicitudes de fumigación') }}
       {% if can('distribucion.visto_bueno_calidad') and not ve('distribucion.ver') %}{{ nl(url_for('dist.routes'), 'truck', 'Visto bueno de la carga (rutas)') }}{% endif %}
       {{ nl(url_for('cal.fumigated'), 'alert', 'Producto fumigado almacenado') }}
       {{ nl(url_for('cal.line'), 'factory', 'En la línea y merma') }}
       {{ nl(url_for('cal.materials'), 'layers', 'Material y saldo por línea') }}
       {{ nl(url_for('cal.management'), 'check', 'Inspecciones, visitas, quejas y NC') }}
-      {{ nl(url_for('cal.certificates'), 'award', 'Certificados') }}{% endif %}
+      {{ nl(url_for('cal.certificates'), 'award', 'Certificados') }}
+      {{ nl(url_for('cal.references'), 'award', 'Referencias de certificados') }}
+      {{ nl(url_for('mant.home', tab='unidades'), 'truck', 'Fumigación de unidades') }}{% endif %}
       {% if can('distribucion.seguridad') and not can('calidad.ver') %}{{ nl(url_for('cal.new_record', formato='VEHICULO_SEGURIDAD'), 'shield', 'Control de vehículos') }}{% endif %}
       {% if ve('seguridad.llegadas') %}{{ nl(url_for('dist.arrivals'), 'truck', 'Llegadas de compras e importaciones') }}{% endif %}
     </div>{% endif %}
@@ -141,6 +146,7 @@
       {% if ve('compras.ver') %}{{ nl(url_for('buy.purchases'), 'bag', 'Compras nacionales') }}
       {% if user.role.area != 'Calidad' %}{{ nl(url_for('buy.replenishment'), 'trend', 'Análisis de reposición') }}{% endif %}{% endif %}
       {% if ve('importaciones.ver') %}{{ nl(url_for('buy.imports'), 'ship', 'Importaciones') }}{% endif %}
+      {{ nl(url_for('cal.reception_reports'), 'shield', 'Informes de recepción de Calidad') }}
     </div>{% endif %}
     {% if ve('guias.estado') and not ve('distribucion.ver') %}<div class="grp" data-grupo="Distribución"><h4><span class="lbl">Distribución</span></h4>
       {{ nl(url_for('dist.guides'), 'file', 'Guías de remisión') }}</div>{% endif %}

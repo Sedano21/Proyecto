@@ -98,6 +98,11 @@ def part_detail(pid):
                        "Parte actualizado.", back)
         if acc == "estado":
             return act(lambda: ptsvc.set_state(g.user, r, f.get("estado"), f.get("motivo", "")), "Estado actualizado.", back)
+        if acc == "control_calidad":  # V74: Jefatura, Supervisión y Asistente de Calidad, en tiempo real
+            from ..services import calidad_v74 as c74
+            return act(lambda: c74.registrar_control(g.user, r, f.get("parametro", ""), f.get("valor", ""),
+                                                     f.get("conforme") != "0", f.get("observacion", "")),
+                       "Control de Calidad registrado.", back + "#controles-calidad" + str(r.id))
         if acc == "bloquear":
             return act(lambda: ptsvc.block(g.user, r, f.get("motivo", "")), "Parte bloqueado por Calidad.", back)
         if acc == "liberar":
@@ -112,7 +117,8 @@ def part_detail(pid):
                                                      .order_by(Worker.nombre)).scalars()),
                            gtin=db().get(ProductGTIN, r.ean) if r.ean else None, live=ptsvc.live(r),
                            tol=ptsvc.tolerance_for(r.linea, r.presentacion_kg) or {}, no_editables=ptsvc.NO_EDITABLES,
-                           formato_hora=(param("formato_hora", "24H") or "24H").upper(), fmt_hora=ptsvc.fmt_hora)
+                           formato_hora=(param("formato_hora", "24H") or "24H").upper(), fmt_hora=ptsvc.fmt_hora,
+                           sugeridos=param("calidad_parametros_proceso", []) or [])
 
 
 @bp.route("/tablero")

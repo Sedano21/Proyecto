@@ -47,7 +47,7 @@
 <td>{{ f.retiro_fecha.strftime('%d-%m') if f.retiro_fecha else '—' }}{% if f.retiro_fecha %}<br><span class="small muted">{{ 'real' if f.retiro_real else 'tentativa' }}</span>{% endif %}</td>
 <td class="{{ 'pend' if 'PENDIENTE' in (f.almacen_info or '').upper() }}">{{ f.almacen_info }}</td>
 <td class="small">{% for dx in f.documentos or [] %}<a href="{{ url_for('main.evidence', name=dx.archivo) }}" target="_blank" title="{{ dx.nombre }} · {{ dx.fecha }} · {{ dx.user }}">{{ ic('file') }} {{ dx.nombre }}</a><br>{% endfor %}{% set fl = faltan(f) %}{% if fl %}<span class="pend" title="{{ fl|join(', ') }}">Faltan {{ fl|length }}</span>{% elif f.documentos %}<span class="ok">Completo</span>{% endif %}</td>
-<td class="small">{% set ic_ = f.informe_calidad or {} %}{% if ic_.get('modo') == 'PDF' %}<a href="{{ url_for('main.evidence', name=ic_.archivo) }}" target="_blank">{{ ic('file') }} Informe PDF</a><br><span class="muted">{{ ic_.user }} · {{ ic_.ts[:10] }}</span>
+<td class="small">{% set ic_ = f.informe_calidad or {} %}{% if ic_.get('modo') in ['PDF', 'EXCEL'] %}<a href="{{ url_for('main.evidence', name=ic_.archivo) }}" target="_blank">{{ ic('file') }} Informe {{ 'PDF' if ic_.modo == 'PDF' else 'Excel' }}</a><br><span class="muted">{{ ic_.user }} · {{ ic_.ts[:10] }}</span>
 {% elif ic_.get('modo') == 'GENERADO' %}<a href="{{ url_for('cal.record_detail', rid=ic_.record_id) }}">{{ ic('file') }} REG-CAL-005 #{{ ic_.record_id }}</a><br>{{ b(ic_.resultado) if ic_.resultado }}
 {% else %}<span class="pend">Pendiente</span>{% endif %}
 {% if calidad %}<div class="noprint" style="margin-top:4px"><button type="button" class="btn sec sm" data-open="dlg-inf{{ f.id }}">Subir PDF</button> <a class="btn sm" href="{{ url_for('cal.new_record', formato='RECEPCION_IMPORTADO', referencia_tipo='ImportFollowup', referencia_id=f.id) }}">Generar informe</a></div>{% endif %}</td>
@@ -96,8 +96,8 @@
 <label class="req">Motivo</label><input name="motivo" required style="width:100%" placeholder="p. ej. SENASA reprogramó la inspección; la naviera no liberó el BL"></div>
 <div class="dlg-foot"><button type="button" class="sec" data-close>Cancelar</button> <button>{{ ic('check') }} Registrar retraso</button></div></form></dialog>{% endif %}{% endfor %}
 {% if calidad %}{% for x in d.filas %}{% set f = x.f %}<dialog class="modal" id="dlg-inf{{ f.id }}"><div class="dlg-head"><h3>Informe de recepción · {{ f.item }} ({{ f.contrato }})</h3><button class="ibtn" type="button" data-close>{{ ic('x') }}</button></div><div class="dlg-body">
-<p class="small">Suba el informe firmado en PDF, o use <b>Generar informe</b> para llenarlo en el sistema con el formato REG-CAL-005 (informe de recepción de productos importados).</p>
+<p class="small">Suba el informe firmado en PDF o en Excel, o use <b>Generar informe</b> para llenarlo en el sistema con el formato REG-CAL-005 (informe de recepción de productos importados).</p>
 <form method="post" enctype="multipart/form-data" class="row">{{ csrf() }}<input type="hidden" name="accion" value="informe_pdf"><input type="hidden" name="id" value="{{ f.id }}">
-<div class="grow"><label class="req">Informe (PDF)</label><input type="file" name="archivo" accept=".pdf" required data-plain></div><div class="grow"><label>Nota</label><input name="nota"></div><div><button>Guardar informe</button></div></form>
+<div class="grow"><label class="req">Informe (PDF o Excel)</label><input type="file" name="archivo" accept=".pdf,.xlsx,.xls" required data-plain></div><div class="grow"><label>Nota</label><input name="nota"></div><div><button>Guardar informe</button></div></form>
 </div></dialog>{% endfor %}{% endif %}
 {% endblock %}

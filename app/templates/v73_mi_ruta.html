@@ -16,6 +16,7 @@
 <div class="row nowrap"><label class="chk grande"><input type="checkbox" name="ok_{{ it.order_line_id }}" value="1" checked data-ok> Está bien ({{ it.cantidad|n }})</label>
 <input type="number" step="any" min="0" name="ca_{{ it.order_line_id }}" value="{{ it.cantidad }}" aria-label="Cantidad cargada" data-cant style="width:100px" hidden></div></div>{% endfor %}
 <label class="chk grande"><input type="checkbox" name="mal_paletizado" value="1"> La mercadería va mal paletizada</label>
+<input name="obs_calidad" placeholder="observación de calidad del producto (Calidad aprueba la salida)">
 <input name="observacion" placeholder="observación (opcional)"><button class="btn">Guardar checklist de esta guía</button></form></details>{% endfor %}
 <script>(function(){document.querySelectorAll('.item-check').forEach(function(d){var c=d.querySelector('[data-ok]'),q=d.querySelector('[data-cant]');function u(){q.hidden=c.checked;}c.addEventListener('change',u);u();});})();</script>
 {% set accion_url = url_for('alm.loading') %}{% set cv = carga_v70 %}{% include "_novedades_carga.html" %}{% endif %}

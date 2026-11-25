@@ -131,6 +131,12 @@ def line():
             return act(lambda: q13.validate_merma(g.user, mv, f.get("decision") == "conforme", f.get("grano_bueno"),
                                                   f.get("grano_danado"), _fotos("fotos", "merma"), f.get("observacion", "")),
                        "Validación de merma registrada.", back)
+        if acc == "control_calidad":  # V74: controles de Calidad en el proceso en tiempo real
+            from ..services import calidad_v74 as c74
+            rep = db().get(ProductionReport, int(f.get("report_id") or 0)) or abort(404)
+            return act(lambda: c74.registrar_control(g.user, rep, f.get("parametro", ""), f.get("valor", ""),
+                                                     f.get("conforme") != "0", f.get("observacion", "")),
+                       "Control de Calidad registrado.", back + f"#controles-calidad{rep.id}")
         if acc == "reproceso":
             mv = db().get(MermaValidation, int(f["mid"])) or abort(404)
             return act(lambda: q13.attend_reprocess(g.user, mv, f.get("nota", "")), "Reproceso registrado como atendido.", back)
@@ -142,7 +148,9 @@ def line():
     lineas = list(db().execute(select(ProductionLine).where(ProductionLine.activa.is_(True)).order_by(ProductionLine.code)).scalars())
     partes = list(db().execute(select(ProductionReport).where(ProductionReport.estado.in_(("EN PROCESO", "PAUSADO")))
                                .order_by(ProductionReport.linea)).scalars())
-    return render_template("cal_linea.html", obs=obs, mvs=mvs, lineas=lineas, partes=partes)
+    from ..services.core import param as _param
+    return render_template("cal_linea.html", obs=obs, mvs=mvs, lineas=lineas, partes=partes,
+                           sugeridos=_param("calidad_parametros_proceso", []) or [])
 
 
 @bp.route("/material")

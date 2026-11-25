@@ -16,14 +16,44 @@ def _require(user):
         raise BusinessError("Registra las etiquetas Calidad.")
 
 
-def guardar(user, product_code, customer_id=None, marca="", instrucciones="", foto="", eid=None):
+TIPOS = ("MP", "PT")  # V74: la etiqueta es solo para materia prima y producto terminado
+MARCAS = ["Cantaclaro", "Cosecha Andina"]  # V74: sugeridas; la marca es opcional
+
+
+def productos():
+    return list(db().execute(select(Product).where(Product.tipo.in_(TIPOS)).order_by(Product.code)).scalars())
+
+
+def _cliente(customer_id):
+    """Acepta el id o el texto «nombre · RUC» elegido de la lista que filtra al escribir."""
+    v = str(customer_id or "").strip()
+    if not v:
+        return None
+    if v.isdigit():
+        return int(v)
+    partes = [x.strip() for x in v.split(" · ")]
+    c = None
+    if len(partes) > 1 and partes[-1]:
+        c = db().execute(select(Customer).where(Customer.ruc == partes[-1])).scalars().first()
+    if c is None:
+        c = db().execute(select(Customer).where(Customer.nombre == partes[0])).scalars().first()
+    if c is None:
+        raise BusinessError("Elija el cliente de la lista (escriba y seleccione).")
+    return c.id
+
+
+def guardar(user, product_code, customer_id=None, marca="", instrucciones="", foto="", eid=None, lote="",
+            fecha_vencimiento=None):
     _require(user)
     code = (product_code or "").strip().upper().split(" ")[0]
-    if db().get(Product, code) is None:
+    p = db().get(Product, code)
+    if p is None:
         raise BusinessError("Elija el producto de la lista.")
+    if (p.tipo or "").upper() not in TIPOS:
+        raise BusinessError("La etiqueta es solo para materia prima (MP) y producto terminado (PT).")
     if not (instrucciones or "").strip() and not foto:
         raise BusinessError("Indique las instrucciones de la etiqueta o suba su foto.")
-    cid = int(customer_id) if str(customer_id or "").isdigit() else None
+    cid = _cliente(customer_id)
     if cid and db().get(Customer, cid) is None:
         raise BusinessError("Cliente no válido.")
     e = db().get(LabelSpec, int(eid)) if eid else None
@@ -35,10 +65,19 @@ def guardar(user, product_code, customer_id=None, marca="", instrucciones="", fo
     e.instrucciones = (instrucciones or "").strip()
     if foto:
         e.foto = foto
+    e.lote = (lote or "").strip()[:60]
+    if isinstance(fecha_vencimiento, str):
+        from datetime import date
+        try:
+            fecha_vencimiento = date.fromisoformat(fecha_vencimiento[:10]) if fecha_vencimiento.strip() else None
+        except ValueError:
+            raise BusinessError("Fecha de vencimiento no válida.") from None
+    e.fecha_vencimiento = fecha_vencimiento
     e.activa = True
     e.user_id = user.id
     db().flush()
-    audit(user, "ETIQUETA_GUARDADA", "LabelSpec", e.id, {"producto": code, "cliente": cid, "marca": e.marca})
+    audit(user, "ETIQUETA_GUARDADA", "LabelSpec", e.id, {"producto": code, "cliente": cid, "marca": e.marca, "lote": e.lote,
+                                                         "vence": e.fecha_vencimiento})
     return e
 
 

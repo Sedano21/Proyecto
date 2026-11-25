@@ -1,6 +1,6 @@
 {% extends "base.html" %}{% from "_m.html" import csrf, ic, empty, b %}
 {% block content %}<div class="page-head"><div><h1>Solicitudes de fumigación</h1>
-<p class="sub">Calidad, Producción o Almacén solicita (uno o varios lotes, completos o en parte). Calidad aprueba, elige el lugar ({{ lugares|join(', ') }}) y la fecha de liberación. Almacén confirma con el checklist lo que ingresa a fumigar.</p></div>
+<p class="sub">1) Almacén (o Producción, o Calidad) solicita la revisión de los lotes. 2) Calidad decide si se fumiga o no. 3) Si se fumiga, Almacén confirma que hay espacio; sin espacio queda pendiente. 4) Calidad programa el lugar ({{ lugares|join(', ') }}), el inicio y la liberación; se prefieren {{ fs.dias_preferidos()|map('dia_semana')|join(', ') }}. 5) Almacén confirma con el checklist lo que ingresa.</p></div>
 <div><a class="btn sec small" href="{{ url_for('cal.fumigated') }}">Producto fumigado almacenado</a></div></div>
 {% if can('fumigacion.solicitar') %}<details class="card" {{ 'open' if not reqs }}><summary><b>{{ ic('plus') }} Nueva solicitud de fumigación</b></summary>
 <form method="post">{{ csrf() }}<input type="hidden" name="accion" value="solicitar">
@@ -10,12 +10,14 @@
 <tr class="dynrow"><td><select name="lot_id" data-search="Buscar lote o producto…" required><option value="">Elija el lote</option>{% for l in lotes %}<option value="{{ l.id }}" data-stock="{{ l.cantidad }}">{{ l.lote }} · {{ l.product_code }} {{ pd(l.product_code) }} · {{ l.warehouse_code }} · {{ l.cantidad|n }} · {{ l.estado|lower|replace('_', ' ') }}</option>{% endfor %}</select></td>
 <td><input name="cantidad" type="number" step="any" min="0.001" placeholder="todo el lote" style="width:130px"></td><td><button type="button" class="ibtn" data-delrow aria-label="Quitar">{{ ic('x') }}</button></td></tr></table>
 <p><button type="button" class="sec small" data-addrow="#fs-lotes">{{ ic('plus') }} Agregar otro lote</button> <span class="small muted">Deje la cantidad vacía para fumigar el lote completo.</span></p>
-<p><button>{{ ic('check') }} Enviar a Calidad</button></p></form></details>{% endif %}
-<form class="row" method="get"><div><label>Estado</label><select name="estado"><option value="">(todas)</option>{% for e in ['SOLICITADA','APROBADA','EN_FUMIGACION','RECHAZADA'] %}<option value="{{ e }}" {{ 'selected' if estado == e }}>{{ e|lower|replace('_', ' ') }}</option>{% endfor %}</select></div></form>
-<div data-lista id="lista-fumi">{% for r in reqs %}<section class="card"><div class="card-head"><h3>Fumigación #{{ r.id }} · {{ r.area }}</h3>{{ b(r.estado) }}</div>
+<p><button>{{ ic('check') }} Solicitar revisión a Calidad</button></p></form></details>{% endif %}
+<form class="row" method="get"><div><label>Estado</label><select name="estado"><option value="">(todas)</option>{% for e, t in fs.ESTADOS.items() %}<option value="{{ e }}" {{ 'selected' if estado == e }}>{{ t }}</option>{% endfor %}</select></div></form>
+<div data-lista id="lista-fumi">{% for r in reqs %}<section class="card"><div class="card-head"><h3>Fumigación #{{ r.id }} · {{ r.area }}</h3><span class="b {{ 'err' if r.estado in ['SIN_ESPACIO','RECHAZADA'] else ('ok' if r.estado == 'EN_FUMIGACION' else 'warn') }}">{{ fs.ESTADOS.get(r.estado, r.estado) }}</span></div>
 <div class="meta small"><span>Solicitó {{ r.user.nombre if r.user }} · {{ r.ts.strftime('%d/%m/%Y %H:%M') }}</span><span>{{ r.motivo }}</span>
 {% if r.lugar %}<span><b>{{ r.lugar }}</b> · del {{ r.inicio.strftime('%d/%m/%Y') }} · liberación {{ r.liberacion.strftime('%d/%m/%Y') }}</span>{% endif %}
-{% if r.aprobacion %}<span>{{ 'Rechazó' if r.aprobacion.rechazo else 'Aprobó' }} {{ r.aprobacion.user }}{{ ': ' ~ r.aprobacion.comentario if r.aprobacion.comentario }}</span>{% endif %}</div>
+{% set fl = r.flujo or {} %}{% if fl.decision %}<span>Calidad decidió fumigar: {{ fl.decision.user }} {{ fl.decision.ts|replace('T', ' ') }}{{ ': ' ~ fl.decision.comentario if fl.decision.comentario }}</span>{% endif %}
+{% for x in fl.espacio or [] %}<span class="{{ '' if x.hay else 'err' }}">{{ 'Hay espacio' ~ (' en ' ~ x.lugar if x.lugar else '') if x.hay else 'Sin espacio' }} · {{ x.user }} {{ x.ts|replace('T', ' ') }}{{ ': ' ~ x.nota if x.nota }}</span>{% endfor %}
+{% if r.aprobacion %}<span>{{ 'No se fumiga' if r.aprobacion.rechazo else 'Programó' }} {{ r.aprobacion.user }}{{ ': ' ~ r.aprobacion.comentario if r.aprobacion.comentario }}</span>{% endif %}</div>
 {% if r.estado == 'APROBADA' and can('fumigacion.ingreso') %}<form method="post">{{ csrf() }}<input type="hidden" name="accion" value="ingreso"><input type="hidden" name="id" value="{{ r.id }}">
 <p class="small"><b>Checklist de ingreso a {{ r.lugar }}:</b> marque la cantidad que ingresó de cada lote (0 si no ingresó).</p>{% endif %}
 <div class="tw"><table class="small"><tr><th>Lote</th><th>Producto</th><th>Almacén</th><th class="r">Solicitado</th><th>{{ 'Ingresó' if r.estado in ['APROBADA','EN_FUMIGACION'] else '' }}</th></tr>
@@ -23,10 +25,17 @@
 <td>{% if r.estado == 'APROBADA' and can('fumigacion.ingreso') %}<input name="cant_{{ x.lot_id }}" type="number" step="any" min="0" value="{{ x.cantidad }}" style="width:110px" aria-label="Cantidad que ingresó del lote {{ x.lote }}">{% elif x.ingresado is not none %}{{ x.ingresado|n }}{% endif %}</td></tr>{% endfor %}</table></div>
 {% if r.estado == 'APROBADA' and can('fumigacion.ingreso') %}<div class="row"><div class="grow"><label>Observación</label><input name="observacion"></div><div><button>{{ ic('check') }} Confirmar ingreso</button></div></div></form>{% endif %}
 {% if r.estado == 'SOLICITADA' and can('fumigacion.aprobar') %}<form method="post" class="row">{{ csrf() }}<input type="hidden" name="id" value="{{ r.id }}">
-<div><label class="req">Lugar</label><select name="lugar">{% for l in lugares %}<option>{{ l }}</option>{% endfor %}</select></div>
-<div><label class="req">Inicio</label><input type="date" name="inicio" value="{{ today.isoformat() }}"></div>
+<div class="grow"><label>Comentario (obligatorio si no se fumiga)</label><input name="comentario"></div>
+<div><button name="accion" value="fumigar">{{ ic('check') }} Se fumiga</button> <button class="sec" name="accion" value="no_fumigar">No se fumiga</button></div></form>{% endif %}
+{% if r.estado in ['POR_ESPACIO', 'SIN_ESPACIO'] and can('fumigacion.ingreso') %}<form method="post" class="row">{{ csrf() }}<input type="hidden" name="id" value="{{ r.id }}">
+<div><label>Lugar con espacio</label><select name="lugar"><option value="">—</option>{% for l in lugares %}<option>{{ l }}</option>{% endfor %}</select></div>
+<div class="grow"><label>Nota (obligatoria si no hay espacio)</label><input name="nota"></div>
+<div><button name="accion" value="hay_espacio">{{ ic('check') }} Hay espacio</button> <button class="sec" name="accion" value="sin_espacio">No hay espacio (queda pendiente)</button></div></form>{% endif %}
+{% if r.estado == 'POR_PROGRAMAR' and can('fumigacion.aprobar') %}{% set sug = fs.proximo_dia_preferido(today) %}<form method="post" class="row">{{ csrf() }}<input type="hidden" name="id" value="{{ r.id }}">
+<div><label class="req">Lugar</label><select name="lugar">{% set ls = fs.lugar_sugerido(r) %}{% for l in lugares %}<option {{ 'selected' if l == ls }}>{{ l }}</option>{% endfor %}</select></div>
+<div><label class="req">Inicio</label><input type="date" name="inicio" value="{{ sug.isoformat() }}"><small class="muted">sugerido: {{ sug.weekday()|dia_semana }}</small></div>
 <div><label class="req">Liberación</label><input type="date" name="liberacion" min="{{ today.isoformat() }}"></div>
-<div class="grow"><label>Comentario (obligatorio si rechaza)</label><input name="comentario"></div>
-<div><button name="accion" value="aprobar">{{ ic('check') }} Aprobar</button> <button class="sec" name="accion" value="rechazar">Rechazar</button></div></form>{% endif %}
+<div class="grow"><label>Comentario (obligatorio si no es {{ fs.dias_preferidos()|map('dia_semana')|join(', ') }} o si no se fumiga)</label><input name="comentario"></div>
+<div><button name="accion" value="aprobar">{{ ic('calendar') }} Programar</button> <button class="sec" name="accion" value="rechazar">No se fumiga</button></div></form>{% endif %}
 {% if r.ingreso %}<p class="small muted">Ingreso confirmado por {{ r.ingreso.user }} ({{ r.ingreso.ts|replace('T', ' ') }}){{ ': ' ~ r.ingreso.observacion if r.ingreso.observacion }}</p>{% endif %}
 </section>{% else %}{{ empty('No hay solicitudes de fumigación.', 'shield') }}{% endfor %}</div>{% endblock %}

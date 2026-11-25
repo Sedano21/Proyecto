@@ -845,6 +845,12 @@ def loading():
                        "Novedad reportada: Almacén recibió la alerta; la salida espera a que se resuelva.", back)
         if acc == "resolver_novedad":
             return act(lambda: cv.resolver_novedad(g.user, r, f.get("n"), f.get("nota", "")), "Novedad resuelta.", back)
+        if acc == "obs_calidad":  # V74: observación de calidad del producto (Calidad aprueba la salida)
+            return act(lambda: cv.reportar_obs_calidad(g.user, r, f.get("texto", ""), f.get("ov", "")),
+                       "Observación enviada a Calidad: la unidad sale cuando Calidad la apruebe.", back)
+        if acc == "obs_calidad_decision":
+            return act(lambda: cv.resolver_obs_calidad(g.user, r, f.get("n"), f.get("decision") == "aprueba", f.get("nota", "")),
+                       "Decisión de Calidad registrada.", back)
         if acc == "evidencia":
             def _ev():
                 arch = save_evidences(request.files.getlist("archivos"), current_app.config["UPLOAD_DIR"],

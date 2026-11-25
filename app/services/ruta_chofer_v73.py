@@ -54,7 +54,7 @@ def checklist_guia(route, order_id):
     return None
 
 
-def registrar_checklist(user, route, order_id, lineas, observacion="", mal_paletizado=False):
+def registrar_checklist(user, route, order_id, lineas, observacion="", mal_paletizado=False, obs_calidad=""):
     """lineas: {order_line_id: {"ok": bool, "cantidad": cargado}}. Lo que no cuadra se reporta como faltante o sobrante."""
     from .carga_v70 import PUEDEN_REPORTAR, reportar_novedad
     if not any(has_perm(user, p) for p in PUEDEN_REPORTAR):
@@ -88,9 +88,13 @@ def registrar_checklist(user, route, order_id, lineas, observacion="", mal_palet
     chk = dict(ac.get("checklists") or {})
     chk[str(order_id)] = {"ov": g["order"].numero, "user": user.nombre, "ts": now().isoformat(timespec="minutes"),
                           "lineas": detalle, "observacion": (observacion or "").strip()[:300],
-                          "mal_paletizado": bool(mal_paletizado), "conforme": not novedades and not mal_paletizado}
+                          "mal_paletizado": bool(mal_paletizado), "obs_calidad": (obs_calidad or "").strip()[:300],
+                          "conforme": not novedades and not mal_paletizado and not (obs_calidad or "").strip()}
     ac["checklists"] = chk
     route.aviso_carga = ac
+    if (obs_calidad or "").strip():  # V74: Calidad aprueba la salida
+        from .carga_v70 import reportar_obs_calidad
+        reportar_obs_calidad(user, route, obs_calidad, g["order"].numero)
     if mal_paletizado:
         from .carga_v70 import almacenes_de, personal_de
         from .distribution import _incident

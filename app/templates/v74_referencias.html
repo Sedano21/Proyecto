@@ -1,0 +1,9 @@
+{% extends "base.html" %}{% from "_m.html" import csrf, ic %}
+{% block content %}<div class="page-head"><div><h1>Referencias de los certificados</h1>
+<p class="sub">El certificado toma la referencia según el tipo de producto: busca la palabra del tipo en el producto declarado (por ejemplo, FRIJOL en «Frijol canario»). La tabla la mantiene Calidad; los certificados nuevos y los regenerados la usan.</p></div></div>
+<form method="post" class="card">{{ csrf() }}
+<table class="small" id="tabla-ref"><tr><th>Tipo de producto (palabra)</th><th>Referencia (norma)</th><th></th></tr>
+{% for k, v in refs.items() %}<tr class="dynrow"><td><input name="tipo" value="{{ k }}" {{ 'readonly' if not can('calidad.certificado_revisar') }}></td><td><input name="referencia" value="{{ v }}" style="width:100%" {{ 'readonly' if not can('calidad.certificado_revisar') }}></td><td>{% if can('calidad.certificado_revisar') %}<button type="button" class="ibtn" data-delrow aria-label="Quitar">{{ ic('x') }}</button>{% endif %}</td></tr>{% endfor %}
+{% if can('calidad.certificado_revisar') %}<tr class="dynrow"><td><input name="tipo" placeholder="p. ej. GARBANZO"></td><td><input name="referencia" style="width:100%" placeholder="norma técnica de referencia"></td><td><button type="button" class="ibtn" data-delrow aria-label="Quitar">{{ ic('x') }}</button></td></tr>{% endif %}</table>
+{% if can('calidad.certificado_revisar') %}<p><button type="button" class="sec small" data-addrow="#tabla-ref">{{ ic('plus') }} Agregar tipo</button> <button>{{ ic('check') }} Guardar tabla</button></p>{% endif %}</form>
+{% endblock %}

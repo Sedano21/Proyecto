@@ -194,7 +194,7 @@ def log_sanitation(user, tipo, fecha=None, zone=None, vehicle=None, responsable=
         raise BusinessError("La fecha no puede ser futura.")
     if not (responsable or "").strip():
         raise BusinessError("Indique quién lo realizó (persona o empresa).")
-    if tipo == "FUMIGACION" and not (producto or "").strip():
+    if tipo == "FUMIGACION" and vehicle is None and not (producto or "").strip():  # V74: en las unidades no se pide
         raise BusinessError("Indique el producto utilizado en la fumigación.")
     vence = _date(vence)
     if vence is None:
@@ -311,6 +311,25 @@ def check_alerts(hoy=None):
                         prioridad="ALTA" if x["estado"] == "VENCIDO" else None, dedup_key=f"SAN:V{v.id}")
             n += 1
     return n
+
+
+def validate_vehicle_fumigation(user, lg, conforme, nota=""):
+    """V74: Calidad valida el registro (formato) de la fumigación de una unidad: conforme o no conforme."""
+    if not has_perm(user, "saneamiento.validar"):
+        raise BusinessError("Valida el registro de fumigación de unidades la Jefatura o Supervisión de Calidad.")
+    if lg.vehicle_id is None or lg.tipo != "FUMIGACION":
+        raise BusinessError("Solo se validan los registros de fumigación de unidades.")
+    nota = (nota or "").strip()
+    if not conforme and not nota:
+        raise BusinessError("Indique qué está mal en el registro (no conforme).")
+    lg.validacion = {"resultado": "CONFORME" if conforme else "NO_CONFORME", "user": user.nombre, "user_id": user.id,
+                     "ts": now().isoformat(timespec="minutes"), "nota": nota}
+    if not conforme:  # la unidad vuelve a quedar pendiente de un registro válido
+        alerts.emit("FUMIGACION_UNIDAD", f"Registro de fumigación de la unidad {lg.vehicle.placa} no conforme",
+                    f"Calidad observó el registro del {lg.fecha:%d/%m/%Y}: {nota}", "Vehicle", lg.vehicle_id,
+                    prioridad="ALTA", creado_por=user, dedup_key=f"SAN:V{lg.vehicle_id}")
+    audit(user, "FUMIGACION_UNIDAD_VALIDADA", "SanitationLog", lg.id, lg.validacion)
+    return lg
 
 
 # ------------------------------------------------------------------ V12: documentos e incidencias con el taller

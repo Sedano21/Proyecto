@@ -9,5 +9,7 @@
 <div class="meter {{ 'bad' if l.alerta }}"><i style="width:{{ [l.rend or 0, 100]|min }}%"></i></div>
 <div class="meta"><span>{{ 'MP por convertir' if not l.final else 'Desmedro' }} <b>{{ l.desm if l.desm is not none else '—' }} %</b></span><span>{{ l.salida_kg|n }} kg producidos</span></div>
 {% if r.estado == 'PENDIENTE' %}<div class="pending-why">Pendiente de: {{ r.motivo_estado or 'sin motivo registrado' }}</div>{% endif %}
-{% if l.alerta %}<div class="chk bad">Avance muy por debajo del mínimo esperado ({{ l.min_pct }} %).</div>{% endif %}</article>{% endfor %}</div>
+{% if l.alerta %}<div class="chk bad">Avance muy por debajo del mínimo esperado ({{ l.min_pct }} %).</div>{% endif %}
+{% set cc = r.controles_calidad or [] %}{% if cc %}{% set u = cc[-1] %}<div class="small {{ '' if u.conforme else 'err' }}">{{ ic('shield') }} Calidad {{ u.ts[11:16] }}: {{ u.parametro }} {{ u.valor }} · {{ 'conforme' if u.conforme else 'no conforme' }} ({{ cc|length }} control{{ 'es' if cc|length > 1 }})</div>{% endif %}
+{% if can('calidad.registrar') and r.estado in ('EN PROCESO', 'PAUSADO') %}<a class="btn small sec" href="{{ url_for('prod.part_detail', pid=r.id) }}#controles-calidad{{ r.id }}">{{ ic('shield') }} Registrar control de Calidad</a>{% endif %}</article>{% endfor %}</div>
 {% else %}{{ empty('No hay partes en curso ni del día.', 'factory') }}{% endif %}</div>{% endblock %}

@@ -70,6 +70,7 @@
 {% endif %}
 <div class="grid g2">
 {% if can('produccion.liquidar') and r.estado not in ['BLOQUEADO','PROGRAMADO'] %}<form method="post" class="card row">{{ csrf() }}<input type="hidden" name="accion" value="estado"><div><label>Estado</label><select name="estado">{% for e in estados if e not in ['BLOQUEADO'] %}<option {{ 'selected' if e == r.estado }}>{{ e }}</option>{% endfor %}</select></div><div class="grow"><label>Motivo (obligatorio si queda pendiente: «pendiente de…»)</label><input name="motivo" value="{{ r.motivo_estado }}"></div><div><button class="sec">Cambiar estado</button></div></form>{% endif %}
+{% set accion_url = url_for('prod.part_detail', pid=r.id) %}{% include '_v74_controles.html' %}
 {% if can('calidad.bloquear_parte') %}{% if r.estado != 'BLOQUEADO' %}<form method="post" class="card row">{{ csrf() }}<input type="hidden" name="accion" value="bloquear"><div class="grow"><label class="req">Calidad: problema encontrado</label><input name="motivo" required></div><div><button class="sec">Bloquear</button></div></form>
 {% else %}<form method="post" class="card row">{{ csrf() }}<input type="hidden" name="accion" value="liberar"><div><label>Pasa a</label><select name="estado"><option>REPROCESO</option><option>PENDIENTE</option><option>EN PROCESO</option><option>ANULADO</option></select></div><div class="grow"><label class="req">Acción realizada</label><input name="motivo" required placeholder="fumigación, reproceso…"></div><div><button>Liberar</button></div></form>{% endif %}{% endif %}
 </div>{% endblock %}

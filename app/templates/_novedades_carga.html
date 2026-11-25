@@ -9,3 +9,14 @@
 <label>Producto (SKU)</label><select name="order_line_id"><option value="">— elegir de la pre-guía —</option>{% for lid, txt in cv.items_carga(r) %}<option value="{{ lid }}">{{ txt }}</option>{% endfor %}</select>
 <input name="producto" placeholder="si sobra algo que no está en la pre-guía, escriba su código">
 <input name="cantidad" type="number" step="any" min="0" placeholder="cantidad" required><input name="nota" placeholder="detalle (opcional)"><button>Reportar</button></form></details>{% endif %}
+
+{# V74: observación de calidad del producto: la unidad sale solo con la aprobación de Calidad #}
+{% set ocal = (r.aviso_carga or {}).get('obs_calidad') or [] %}
+{% if ocal %}<div class="small"><b>Observaciones de calidad del producto:</b><ul>{% for x in ocal %}{% set dz = x.decision or {} %}<li class="{{ '' if dz.aprueba else 'err' }}">{{ x.texto }}{{ ' (OV ' ~ x.ov ~ ')' if x.ov }} · {{ x.user }} {{ x.ts|replace('T', ' ') }}
+{% if dz.aprueba %} · <span class="ok">Calidad aprobó la salida: {{ dz.user }}{{ ': ' ~ dz.nota if dz.nota }}</span>{% else %}{% if dz.user %} · <span class="err">Calidad no aprobó: {{ dz.nota }} ({{ dz.user }})</span>{% else %} · <b>espera la aprobación de Calidad</b>{% endif %}
+{% if can('distribucion.visto_bueno_calidad') or can('calidad.liberar') %}<form method="post" action="{{ accion_url }}" class="row nowrap" style="display:inline-flex">{{ csrf() }}<input type="hidden" name="rid" value="{{ r.id }}"><input type="hidden" name="accion" value="obs_calidad_decision"><input type="hidden" name="n" value="{{ x.n }}"><input name="nota" placeholder="nota (obligatoria si no aprueba)"><button class="small" name="decision" value="aprueba">Aprobar salida</button><button class="small sec" name="decision" value="no">No aprobar</button></form>{% endif %}{% endif %}</li>{% endfor %}</ul></div>{% endif %}
+{% if r.estado in ('PROPUESTA', 'CONFIRMADA') and (can('distribucion.carga') or can('picking.asignar') or can('distribucion.visto_bueno_salida') or can('distribucion.seguridad') or can('distribucion.visto_bueno_calidad') or can('tareas.ejecutar') or can('distribucion.entrega')) %}
+<details><summary><b>Observación de calidad del producto</b> (Calidad aprueba la salida)</summary>
+<form method="post" action="{{ accion_url }}" class="pila">{{ csrf() }}<input type="hidden" name="rid" value="{{ r.id }}"><input type="hidden" name="accion" value="obs_calidad">
+<select name="ov"><option value="">— OV (opcional) —</option>{% for st in r.stops %}<option>{{ st.order.numero }}</option>{% endfor %}</select>
+<input name="texto" required placeholder="p. ej. sacos húmedos, rotos, con plaga, mal olor"><button>Enviar a Calidad</button></form></details>{% endif %}

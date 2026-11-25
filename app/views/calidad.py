@@ -186,6 +186,7 @@ def certificates():
 @bp.route("/certificados/<int:cid>", methods=["GET", "POST"])
 @perm_required("calidad.ver")
 def certificate_detail(cid):
+    from ..services import calidad_v74 as c74
     c = db().get(Certificate, cid) or abort(404)
     if request.method == "POST":
         if request.form.get("accion") == "regenerar":
@@ -212,7 +213,7 @@ def certificate_detail(cid):
     return render_template("certificate.html", c=c, d=c.datos, editable=qsvc.EDITABLE_CERT_FIELDS,
                            print_mode=request.args.get("imprimir") == "1", tipos=qsvc.CERT_TIPOS, etiquetas=qsvc.CERT_ETIQUETAS,
                            procesado=qsvc.CERT_PROCESADO,
-                           firma_url=_firma_url(c))
+                           firma_url=_firma_url(c), espec=c74.documentos(c.product_code), pk=c74.picking_de_certificado(c))
 
 
 def _firma_url(c):
@@ -282,9 +283,17 @@ def fumigation_requests():
             return act(lambda: fs.solicitar(g.user, f.get("area", ""), f.get("motivo", ""), lineas),
                        lambda r: f"Solicitud de fumigación #{r.id} enviada a Calidad.", back)
         r = db().get(FumigationRequest, int(f.get("id") or 0)) or abort(404)
+        if acc in ("fumigar", "no_fumigar"):  # V74: Calidad decide si se fumiga
+            return act(lambda: fs.decidir(g.user, r, acc == "fumigar", f.get("comentario", "")),
+                       f"Fumigación #{r.id}: " + ("Almacén recibió la alerta para confirmar el espacio." if acc == "fumigar"
+                                                  else "no se fumiga."), back)
+        if acc in ("hay_espacio", "sin_espacio"):  # V74: Almacén confirma el espacio
+            return act(lambda: fs.confirmar_espacio(g.user, r, acc == "hay_espacio", f.get("lugar", ""), f.get("nota", "")),
+                       f"Fumigación #{r.id}: " + ("espacio confirmado, Calidad la programa." if acc == "hay_espacio"
+                                                  else "queda pendiente por falta de espacio."), back)
         if acc == "aprobar":
             return act(lambda: fs.aprobar(g.user, r, f.get("lugar", ""), f_date("inicio"), f_date("liberacion"), f.get("comentario", "")),
-                       f"Fumigación #{r.id} aprobada: Almacén recibió el checklist de ingreso.", back)
+                       f"Fumigación #{r.id} programada: Almacén recibió el checklist de ingreso.", back)
         if acc == "rechazar":
             return act(lambda: fs.rechazar(g.user, r, f.get("comentario", "")), f"Solicitud #{r.id} rechazada.", back)
         if acc == "ingreso":
@@ -297,7 +306,7 @@ def fumigation_requests():
     areas = [propia] + [a for a in ("Calidad", "Producción", "Almacén") if a != propia]
     return render_template("fumigacion_solicitudes.html", reqs=fs.listar(request.args.get("estado", "")),
                            lotes=fs.lotes_disponibles() if "fumigacion.solicitar" in g.perms else [],
-                           lugares=fs.lugares(), areas=areas, estado=request.args.get("estado", ""))
+                           lugares=fs.lugares(), areas=areas, estado=request.args.get("estado", ""), fs=fs)
 
 
 # ------------------------------------------------------------------ V66: etiquetas para el despacho
@@ -314,10 +323,98 @@ def labels():
         if f.get("accion") == "desactivar":
             e = db().get(LabelSpec, int(f.get("eid") or 0)) or abort(404)
             return act(lambda: esvc.desactivar(g.user, e), "Etiqueta retirada.", back)
-        return act(lambda: esvc.guardar(g.user, f.get("product_code", ""), f.get("customer_id") or None, f.get("marca", ""),
-                                        f.get("instrucciones", ""),
+        return act(lambda: esvc.guardar(g.user, f.get("product_code", ""), f.get("customer_id") or f.get("cliente") or None,
+                                        f.get("marca", ""), f.get("instrucciones", ""),
                                         save_upload(request.files.get("foto"), current_app.config["UPLOAD_DIR"], "etiqueta"),
-                                        f.get("eid") or None), "Etiqueta guardada: se verá en el picking.", back)
-    productos = list(db().execute(select(Product).order_by(Product.code)).scalars())
+                                        f.get("eid") or None, f.get("lote", ""), f.get("fecha_vencimiento", "")),
+                   "Etiqueta guardada: se verá en el picking.", back)
     clientes = list(db().execute(select(Customer).order_by(Customer.nombre)).scalars())
-    return render_template("v66_etiquetas.html", rows=esvc.listar(), productos=productos, clientes=clientes)
+    return render_template("v66_etiquetas.html", rows=esvc.listar(), productos=esvc.productos(), clientes=clientes,
+                           marcas=esvc.MARCAS)
+
+
+# ------------------------------------------------------------------ V74: especificaciones por producto
+@bp.route("/especificaciones", methods=["GET", "POST"])
+@perm_required("calidad.ver")
+def specifications():
+    """Archivos del producto que están en la base de datos (ficha técnica, especificaciones y certificados). Calidad
+    sube o actualiza las especificaciones en PDF o Excel."""
+    from ..models import ProductDocument
+    from ..services import calidad_v74 as c74
+    code = (request.values.get("producto") or "").strip().upper().split(" ")[0]
+    back = url_for("cal.specifications", producto=code) if code else url_for("cal.specifications")
+    if request.method == "POST":
+        f = request.form
+        if f.get("accion") == "retirar":
+            d = db().get(ProductDocument, int(f.get("doc_id") or 0)) or abort(404)
+            return act(lambda: c74.retirar(g.user, d), "Archivo retirado.", back)
+        p = db().get(Product, code)
+        if p is None:
+            flash("Elija el producto de la lista.", "error")
+            return redirect(back)
+
+        def _subir():
+            arch = [c74.guardar_archivo(fs, current_app.config["UPLOAD_DIR"], f"espec_{p.code}")
+                    for fs in request.files.getlist("archivos")]
+            return c74.subir(g.user, p, f.get("carpeta", "ESPECIFICACIONES"), arch, f.get("reemplazar") == "1")
+        return act(_subir, lambda r: f"{len(r[0])} archivo(s) guardados" + (f"; {r[1]} anterior(es) reemplazado(s)." if r[1] else "."),
+                   back)
+    p = db().get(Product, code) if code else None
+    docs, vistas = (c74.documentos(p.code), {}) if p else ({}, {})
+    for lst in docs.values():
+        for d in lst:
+            if d.archivo.lower().endswith((".xlsx", ".xlsm")):
+                vistas[d.id] = c74.vista_excel(os.path.join(current_app.config["UPLOAD_DIR"], d.archivo))
+    productos = list(db().execute(select(Product).where(Product.tipo.in_(("MP", "PT", "GR")))
+                                  .order_by(Product.code)).scalars())
+    con = c74.con_especificacion()
+    return render_template("v74_especificaciones.html", p=p, docs=docs, vistas=vistas, carpetas=c74.CARPETAS_CALIDAD,
+                           productos=productos, con=con, code=code)
+
+
+@bp.route("/referencias", methods=["GET", "POST"])
+@perm_required("calidad.ver")
+def references():
+    """V74: tabla de referencias de los certificados por tipo de producto (la mantiene Calidad)."""
+    from ..services import calidad_v74 as c74
+    if request.method == "POST":
+        filas = list(zip(request.form.getlist("tipo"), request.form.getlist("referencia")))
+        return act(lambda: c74.guardar_referencias(g.user, filas), "Tabla de referencias guardada: los certificados nuevos la usan.",
+                   url_for("cal.references"))
+    return render_template("v74_referencias.html", refs=c74.referencias())
+
+
+@bp.route("/informes-recepcion", methods=["GET", "POST"])
+@perm_required("calidad.ver", "compras.ver", "importaciones.ver", "importaciones.calidad")
+def reception_reports():
+    """V74: informe de recepción de Calidad de las compras nacionales y de las importaciones (PDF o Excel)."""
+    from ..models import ImportFollowup
+    from ..services import calidad_v74 as c74
+    from ..services import importaciones_v24 as imp
+    back = url_for("cal.reception_reports", tab=request.args.get("tab", "compras"))
+    if request.method == "POST":
+        f = request.form
+        arch, nombre = c74.guardar_archivo(request.files.get("archivo"), current_app.config["UPLOAD_DIR"],
+                                           f"informe_recepcion_{f.get('tipo', '')}{f.get('id', '')}")
+        if f.get("tipo") == "compra":
+            pr = db().get(PurchaseRequest, int(f.get("id") or 0)) or abort(404)
+            return act(lambda: c74.subir_informe_compra(g.user, pr, arch, nombre, f.get("nota", ""), f.get("resultado", "")),
+                       "Informe de recepción guardado; se avisó a Compras.", back)
+        fila = db().get(ImportFollowup, int(f.get("id") or 0)) or abort(404)
+        return act(lambda: imp.upload_quality_report(g.user, fila, arch, f.get("nota", "")),
+                   "Informe de recepción guardado; se avisó a Importaciones.", back)
+    return render_template("v74_informes_recepcion.html", compras=c74.compras_para_informe(),
+                           importaciones=c74.importaciones_para_informe(), informe_compra=c74.informe_compra,
+                           tab=request.args.get("tab", "compras"), puede="calidad.registrar" in g.perms)
+
+
+@bp.route("/formatos")
+@perm_required("calidad.ver")
+def formats_hub():
+    """V74: todos los formatos de Calidad en un solo lugar (higiene del personal incluida), con registrar y reporte, y
+    todas las pantallas que ve y usa la Jefatura de Calidad."""
+    from ..catalogs import HIGIENE_PERSONAL
+    formatos = {k: v for k, v in qsvc.FORMATOS.items() if k not in qsvc.FORMATOS_RETIRADOS
+                and k not in qsvc.FORMATOS_PRODUCCION and k != "VEHICULO_SEGURIDAD"}
+    return render_template("v74_formatos.html", formatos=formatos, checklists=CHECKLIST_CALIDAD, higiene=HIGIENE_PERSONAL,
+                           etapas=qsvc.ETAPAS_PRODUCCION)

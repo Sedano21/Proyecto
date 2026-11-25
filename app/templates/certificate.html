@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% from "_m.html" import b, csrf %}{% from "_doc.html" import membrete, marca_agua, pie %}
+{% extends "base.html" %}{% from "_m.html" import b, csrf, ic %}{% from "_doc.html" import membrete, marca_agua, pie %}
 {% block content %}
 {% set ro = c.estado=='APROBADO' or not can('calidad.certificado_revisar') or c.estado=='ANULADO' %}
 {% set tipo = d.tipo or (c.serie if c.serie in tipos else 'PT') %}{% set td = tipos[tipo] %}
@@ -36,5 +36,15 @@
 {% if not ro %}<p class="noprint small muted">«Guardar avance» conserva lo modificado como borrador para continuar luego. Al aprobar se guarda primero el avance; si falta algún dato, el certificado queda en borrador con lo escrito y se indica qué falta.</p>
 <p class="noprint"><button class="sec" name="accion" value="guardar" data-confirm="¿Guardar el avance del certificado como borrador?">Guardar avance</button> <button name="accion" value="aprobar" data-confirm="¿Está de acuerdo en confirmar el certificado? Una vez aprobado ya no se puede modificar.">Confirmar y aprobar certificado</button></p>{% endif %}
 </form>
+{% if not print_mode %}<div class="noprint">
+<details class="card"><summary><b>Especificaciones del producto</b> ({{ (espec.ESPECIFICACIONES|length) + (espec.FICHA_TECNICA|length) }} archivo(s))</summary>
+{% for k in ['ESPECIFICACIONES', 'FICHA_TECNICA'] %}{% for x in espec[k] %}<div class="small"><a href="{{ url_for('main.evidence', name=x.archivo) }}" target="_blank">{{ ic('file') }} {{ x.nombre }}</a> · {{ 'especificación' if k == 'ESPECIFICACIONES' else 'ficha técnica' }} · {{ x.ts|d }}</div>{% endfor %}{% endfor %}
+{% if not (espec.ESPECIFICACIONES or espec.FICHA_TECNICA) %}<p class="small muted">El producto aún no tiene especificación ni ficha técnica cargada.</p>{% endif %}
+<p class="small"><a href="{{ url_for('cal.specifications', producto=c.product_code) }}">Ver o actualizar las especificaciones</a> · <a href="{{ url_for('cal.references') }}">Tabla de referencias por tipo de producto</a></p></details>
+<details class="card"><summary><b>Detalle del picking</b> ({{ pk.registros|length }} registro(s){{ ' · lote ' ~ pk.lote if pk.lote }})</summary>
+{% for t in pk.tareas %}<div class="small">Picking #{{ t.id }} · OV {{ t.order.numero }} ({{ t.order.customer.nombre }}) · {{ t.warehouse_code }} · {{ t.fecha|d }} · <b>{{ t.estado|lower }}</b>{{ ' · verificó ' ~ t.verificador if t.verificador }}{% if t.foto_inicio %} · <a href="{{ url_for('main.evidence', name=t.foto_inicio) }}" target="_blank">foto inicio</a>{% endif %}{% if t.foto_listo %} · <a href="{{ url_for('main.evidence', name=t.foto_listo) }}" target="_blank">foto listo</a>{% endif %}{{ ' · ' ~ t.observacion if t.observacion }}</div>{% endfor %}
+{% if pk.registros %}<div class="tw"><table class="small"><tr><th>OV</th><th>Producto</th><th>Lote</th><th class="r">Cantidad</th><th class="r">Bultos</th><th>F. producción</th><th>F. vencimiento</th><th>Registró</th><th>Comentario</th></tr>
+{% for r in pk.registros %}<tr><td>{{ r.line.order.numero if r.line and r.line.order }}</td><td>{{ r.line.product_code if r.line }}</td><td>{{ r.lote }}</td><td class="r">{{ r.cantidad|n }}</td><td class="r">{{ r.bultos|n if r.bultos is not none }}</td><td>{{ r.fecha_produccion|d }}</td><td>{{ r.fecha_venc|d }}</td><td>{{ r.user.nombre if r.user }} {{ r.ts.strftime('%d/%m %H:%M') }}</td><td>{{ r.comentario }}</td></tr>{% endfor %}</table></div>
+{% else %}<p class="small muted">Aún no hay picking registrado para este certificado.</p>{% endif %}</details></div>{% endif %}
 {% if c.cambios %}<div class="noprint"><h3>Correcciones registradas</h3><table class="small">{% for x in c.cambios %}<tr><td>{{ x.ts }}</td><td>{{ x.user }}</td><td>{{ x.campo }}</td><td>{{ x.antes }} → {{ x.despues }}</td></tr>{% endfor %}</table></div>{% endif %}
 {% endblock %}
