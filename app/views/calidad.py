@@ -416,5 +416,14 @@ def formats_hub():
     from ..catalogs import HIGIENE_PERSONAL
     formatos = {k: v for k, v in qsvc.FORMATOS.items() if k not in qsvc.FORMATOS_RETIRADOS
                 and k not in qsvc.FORMATOS_PRODUCCION and k != "VEHICULO_SEGURIDAD"}
+    # V76: todos los registros que hay en la base, por formato (también los de formatos ya retirados o sin pantalla propia)
+    from sqlalchemy import func
+    conteo = {f: (n, u) for f, n, u in db().execute(select(QualityRecord.formato, func.count(QualityRecord.id),
+                                                          func.max(QualityRecord.fecha)).group_by(QualityRecord.formato))}
+    nombres = {k: v[1] for k, v in qsvc.FORMATOS.items()}
+    nombres.update({k: v[1] for k, v in CHECKLIST_CALIDAD.items()})
+    nombres["HIGIENE_PERSONAL"] = HIGIENE_PERSONAL[1]
+    en_bd = sorted(((f, nombres.get(f, f.replace("_", " ").capitalize()), n, u) for f, (n, u) in conteo.items()),
+                   key=lambda x: -x[2])
     return render_template("v74_formatos.html", formatos=formatos, checklists=CHECKLIST_CALIDAD, higiene=HIGIENE_PERSONAL,
-                           etapas=qsvc.ETAPAS_PRODUCCION)
+                           etapas=qsvc.ETAPAS_PRODUCCION, conteo=conteo, en_bd=en_bd)

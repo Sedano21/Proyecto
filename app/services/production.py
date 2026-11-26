@@ -806,7 +806,7 @@ def _fin(periodo, f):
     return f
 
 
-def add_plan(user, periodo, fecha, product_code, cantidad, line_code=None, comentario=""):
+def add_plan(user, periodo, fecha, product_code, cantidad, line_code=None, comentario="", insumo=""):
     """Producción ingresa lo que producirá (día, semana o mes) para contrastarlo con la liquidación."""
     from ..models import ProductionPlan
     from .core import has_perm
@@ -822,7 +822,8 @@ def add_plan(user, periodo, fecha, product_code, cantidad, line_code=None, comen
     if not cantidad or cantidad <= 0:
         raise BusinessError("La cantidad planificada debe ser mayor que cero.")
     pl = ProductionPlan(periodo=periodo, fecha=_inicio(periodo, fecha), product_code=product_code, cantidad=cantidad,
-                        line_code=line_code or None, comentario=comentario, user_id=user.id)
+                        line_code=line_code or None, comentario=comentario, user_id=user.id,
+                        insumo=(insumo or "").strip().split(" · ")[0].split(" ")[0].upper()[:60])
     db().add(pl)
     db().flush()
     audit(user, "PLAN_PRODUCCION", "ProductionPlan", pl.id, {"periodo": periodo, "fecha": pl.fecha.isoformat(),
@@ -1057,16 +1058,18 @@ def add_plans(user, periodo, filas):
             continue
         try:
             creadas.append(add_plan(user, periodo, f.get("fecha"), (f.get("product_code") or "").strip().upper().split(" ")[0],
-                                    f.get("cantidad"), f.get("line_code") or None, f.get("comentario") or ""))
+                                    f.get("cantidad"), f.get("line_code") or None, f.get("comentario") or "",
+                                    f.get("insumo") or ""))
         except BusinessError as e:
             raise BusinessError(f"Fila {i}: {e}")
     if not creadas:
         raise BusinessError("Complete al menos una fila (producto y cantidad).")
-    if periodo == "DIA":  # V72: avisar a Almacén qué entregar y a Producción lo que revisar
+    if periodo in ("DIA", "SEMANA", "MES"):  # V72/V76: avisar a Almacén qué entregar y a Producción lo que revisar
         try:
             from .plan_produccion_v72 import avisar
             fechas = [c.fecha for c in creadas]
-            avisar(user, max(min(fechas), date.today()), max(fechas))
+            fin = max(fechas) + timedelta(days={"DIA": 0, "SEMANA": 6, "MES": 30}[periodo])
+            avisar(user, max(min(fechas), date.today()), fin)
         except Exception:  # noqa: BLE001 - el aviso no debe impedir registrar el plan
             pass
     return creadas

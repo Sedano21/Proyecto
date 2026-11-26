@@ -25,11 +25,11 @@
 <table class="small"><tr><th>Tarea</th><th class="r">Abierta hace</th><th>Plazo</th><th></th></tr>{% for x in arrastre.filas %}<tr><td><a href="{{ url_for('main.alert_detail', aid=x.alerta.id) }}">{{ x.alerta.titulo }}</a></td><td class="r">{{ x.horas }} h</td><td>{{ x.plazo }}</td><td>{% if x.vencida %}<span class="b ALTA">VENCIDA</span>{% endif %}</td></tr>{% endfor %}</table></section>{% endif %}
 <section class="card" aria-labelledby="t-tareas"><div class="card-head"><h3 id="t-tareas">Mis tareas</h3><span class="muted small">designadas a usted o a su cargo</span></div>
 {% if tareas %}<ul class="list-tasks">{% for a in tareas %}<li><span class="prio {{ a.prioridad }}" aria-hidden="true"></span><div class="t"><a href="{{ url_for('main.alert_detail', aid=a.id) }}">{{ a.titulo }}</a>
-<div class="meta">#{{ a.id }} · {{ a.area }} · {{ a.creado_ts|d }}</div></div>{% set ea = estado_alerta(a) %}<span class="b {{ ea[0] }}">{{ ea[1] }}</span></li>{% endfor %}</ul>
+<div class="meta">#{{ a.id }} · {{ a.area }} · {{ a.creado_ts|d }} · {{ a.creador.nombre if a.creador else 'sistema' }}</div></div>{% set ea = estado_alerta(a) %}<span class="b {{ ea[0] }}">{{ ea[1] }}</span></li>{% endfor %}</ul>
 {% else %}{{ empty('No tiene tareas designadas.', 'check') }}{% endif %}</section>
 {% if not bandeja %}<section class="card" aria-labelledby="t-alertas"><div class="card-head"><h3 id="t-alertas">Alertas abiertas de su área</h3><a class="small" href="{{ url_for('main.alerts') }}">Ver todas</a></div>
 {% if mis_alertas %}<ul class="list-tasks">{% for a in (criticas + otras)[:8] %}<li><span class="prio {{ a.prioridad }}" aria-hidden="true"></span><div class="t"><a href="{{ url_for('main.alert_detail', aid=a.id) }}">{{ a.titulo }}</a>
-<div class="meta">{{ b(a.prioridad) }} {{ a.area }} · {{ a.creado_ts|d }}{% if not es_tarea(a) %} · información{% endif %}</div></div>{% set ea = estado_alerta(a) %}<span class="b {{ ea[0] }}">{{ ea[1] }}</span></li>{% endfor %}</ul>
+<div class="meta">{{ b(a.prioridad) }} {{ a.area }} · {{ a.creado_ts|d }} · {{ a.creador.nombre if a.creador else 'sistema' }}{% if not es_tarea(a) %} · información{% endif %}</div></div>{% set ea = estado_alerta(a) %}<span class="b {{ ea[0] }}">{{ ea[1] }}</span></li>{% endfor %}</ul>
 {% else %}{{ empty('Sin alertas abiertas.', 'bell') }}{% endif %}</section>{% endif %}
 </div>
 

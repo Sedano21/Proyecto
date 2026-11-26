@@ -1,0 +1,20 @@
+{% extends "base.html" %}{% from "_m.html" import empty, ic %}
+{% block content %}<div class="page-head"><div><h1>Comportamiento por grano</h1>
+<p class="sub">Cuánto nos toma procesar cada grano en cada línea, con qué rendimiento y desmedro, cómo evoluciona y cómo se comparan los granos. Partes del {{ d.desde|d }} al {{ d.hasta|d }} · {{ d.partes }} partes.</p></div></div>
+<form class="row card noprint" method="get"><div><label>Grano</label><select name="grano"><option value="">(todos)</option>{% for g in d.todos_granos %}<option {{ 'selected' if d.grano == g }}>{{ g }}</option>{% endfor %}</select></div>
+<div><label>Línea</label><select name="linea"><option value="">(todas)</option>{% for c, n, _ in lineas %}<option value="{{ c }}" {{ 'selected' if d.linea == c }}>{{ n }}</option>{% endfor %}</select></div>
+<div><label>Desde</label><input type="date" name="desde" value="{{ d.desde.isoformat() }}"></div><div><label>Hasta</label><input type="date" name="hasta" value="{{ d.hasta.isoformat() }}"></div><div><button class="sec">Ver</button></div></form>
+{% if d.granos %}
+<section class="card"><h2 style="margin-top:0">Resumen</h2>
+{% set top = d.granos[0] %}<p>El grano más procesado fue <b>{{ top.grano }}</b> ({{ top.kg|n }} kg en {{ top.partes }} partes){% if top.kg_hora %}, a <b>{{ top.kg_hora|n }} kg/h</b>{% endif %}{% if top.rendimiento is not none %}, con <b>{{ top.rendimiento }} %</b> de rendimiento{% endif %}{% if top.desmedro is not none %} y <b>{{ top.desmedro }} %</b> de desmedro{% endif %}.
+{% if d.sin_horas %} {{ d.sin_horas }} parte(s) no tienen horas registradas y no entran en los tiempos.{% endif %}</p>
+{% if d.sugerencias %}<h3>Qué revisar</h3><ul class="sug-lista">{% for x in d.sugerencias %}<li><span class="b warn">{{ x.tipo }}</span> {{ x.texto }}<br><span class="small"><b>Propuesta:</b> {{ x.accion }}</span></li>{% endfor %}</ul>
+<p class="small muted">Las propuestas son hipótesis basadas en los partes; confírmelas con Producción y Calidad antes de actuar.</p>{% else %}<p class="small muted">No se encontraron desviaciones relevantes entre granos ni líneas en el periodo.</p>{% endif %}</section>
+<div class="grid g3"><div class="card"><h3>¿Qué grano se procesa más rápido?</h3>{{ graf.kgh }}</div><div class="card"><h3>¿Qué grano rinde más?</h3>{{ graf.rend }}</div><div class="card"><h3>¿Dónde se pierde más?</h3>{{ graf.desm }}</div></div>
+<div class="card"><h3>¿Mejora o empeora la velocidad? (kg/h por semana)</h3>{{ graf.evol_kgh }}</div>
+<div class="grid g2"><div class="card"><h3>Rendimiento por semana</h3>{{ graf.evol_rend }}</div><div class="card"><h3>Desmedro por semana</h3>{{ graf.evol_desm }}</div></div>
+<div class="card"><h3>Grano por línea</h3><div class="tw"><table class="list small"><thead><tr><th>Grano</th><th>Línea</th><th class="r">Partes</th><th class="r">kg</th><th class="r">Horas</th><th class="r">kg/h</th><th class="r">kg/h por operario</th><th class="r">Min. por 100 kg</th><th class="r">Rendimiento</th><th class="r">Desmedro</th></tr></thead>
+{% for x in d.lineas %}<tr><td><b>{{ x.grano }}</b></td><td>{{ x.linea }}</td><td class="r">{{ x.partes }}</td><td class="r">{{ x.kg|n }}</td><td class="r">{{ x.horas|n }}</td><td class="r">{{ x.kg_hora|n if x.kg_hora is not none else '—' }}</td><td class="r">{{ x.kg_hora_op|n if x.kg_hora_op is not none else '—' }}</td><td class="r">{{ x.min_100kg|n if x.min_100kg is not none else '—' }}</td><td class="r">{{ (x.rendimiento ~ ' %') if x.rendimiento is not none else '—' }}</td><td class="r">{{ (x.desmedro ~ ' %') if x.desmedro is not none else '—' }}</td></tr>{% endfor %}</table></div>
+<p class="small muted">kg/h = kg de entrada ÷ horas efectivas (inicio a fin menos refrigerio y paradas). Rendimiento y desmedro ponderados por los kg de cada parte. El grano sale de la descripción del producto.</p></div>
+{% else %}{{ empty('No hay partes con kg en el periodo y filtros elegidos.', 'factory') }}{% endif %}
+{% endblock %}

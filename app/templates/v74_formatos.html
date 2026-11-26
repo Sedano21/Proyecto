@@ -1,16 +1,19 @@
 {% extends "base.html" %}{% from "_m.html" import ic %}
 {% block content %}<div class="page-head"><div><h1>Formatos de Calidad</h1>
 <p class="sub">Todos los formatos en un solo lugar: registrar y ver el reporte (por día o rango, en PDF o Excel). La Jefatura, la Supervisión y el Asistente de Calidad registran; el reporte lo ve Calidad.</p></div></div>
+<details class="card" open><summary><b>Registros en la base de datos ({{ en_bd|sum(attribute=2) }})</b> <span class="small muted">todos los formatos que se han emitido, con el último</span></summary>
+<div class="tw"><table class="small"><tr><th>Formato</th><th class="r">Registros</th><th>Último</th><th></th></tr>
+{% for k, nombre, n, ult in en_bd %}<tr><td><b>{{ nombre }}</b> <span class="muted mono">{{ k }}</span></td><td class="r">{{ n }}</td><td>{{ ult|d }}</td><td>{% if can('calidad.formatos_revisar') %}<a href="{{ url_for('cal.records_report', formato=k) }}">Ver registros</a>{% endif %}</td></tr>{% else %}<tr><td colspan="4" class="muted">Aún no hay registros.</td></tr>{% endfor %}</table></div></details>
 <div class="section-title">Higiene</div>
 <div class="grid g3"><div class="card"><h3>{{ higiene[1] }}</h3><p class="small muted">{{ higiene[0] }} · diario, por persona</p>
 <p>{% if can('calidad.registrar') %}<a class="btn" href="{{ url_for('cal.personal_hygiene') }}">Registrar</a>{% endif %} {% if can('calidad.formatos_revisar') %}<a class="btn sec" href="{{ url_for('cal.records_report', formato='HIGIENE_PERSONAL') }}">Reporte</a>{% endif %}</p></div>
 {% for k, f in checklists.items() %}<div class="card"><h3>{{ f[1] }}</h3><p class="small muted">{{ f[0] }} · {{ f[2]|map(attribute=1)|map('length')|sum }} puntos de verificación</p>
 <p>{% if can('calidad.registrar') %}<a class="btn" href="{{ url_for('cal.checklist_format', formato=k) }}">Registrar</a>{% endif %} {% if can('calidad.formatos_revisar') %}<a class="btn sec" href="{{ url_for('cal.records_report', formato=k) }}">Reporte</a>{% endif %}</p></div>{% endfor %}</div>
 {% for etapa, codigos in etapas.items() %}<div class="section-title">{{ etapa }}</div><div class="grid g3">
-{% for k in codigos if k in formatos %}{% set f = formatos[k] %}<div class="card"><h3>{{ f[1] }}</h3><p class="small muted">{{ f[0] }}</p>
+{% for k in codigos if k in formatos %}{% set f = formatos[k] %}<div class="card"><h3>{{ f[1] }}</h3><p class="small muted">{{ f[0] }}{% if conteo.get(k) %} · {{ conteo[k][0] }} registro(s){% endif %}</p>
 <p>{% if can('calidad.registrar') %}<a class="btn" href="{{ url_for('cal.new_record', formato=k) }}">Registrar</a>{% endif %} {% if can('calidad.formatos_revisar') %}<a class="btn sec" href="{{ url_for('cal.records_report', formato=k) }}">Reporte</a>{% endif %}</p></div>{% endfor %}</div>{% endfor %}
 {% set en_etapas = etapas.values()|sum(start=[]) %}<div class="section-title">Otros formatos</div><div class="grid g3">
-{% for k, f in formatos.items() if k not in en_etapas %}<div class="card"><h3>{{ f[1] }}</h3><p class="small muted">{{ f[0] }}</p>
+{% for k, f in formatos.items() if k not in en_etapas %}<div class="card"><h3>{{ f[1] }}</h3><p class="small muted">{{ f[0] }}{% if conteo.get(k) %} · {{ conteo[k][0] }} registro(s){% endif %}</p>
 <p>{% if can('calidad.registrar') %}<a class="btn" href="{{ url_for('cal.new_record', formato=k) }}">Registrar</a>{% endif %} {% if can('calidad.formatos_revisar') %}<a class="btn sec" href="{{ url_for('cal.records_report', formato=k) }}">Reporte</a>{% endif %}</p></div>{% endfor %}</div>
 <div class="section-title">Todo lo de Calidad</div>
 <div class="card"><ul class="small">

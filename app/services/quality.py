@@ -489,6 +489,17 @@ CERT_TIPOS = {
            "organoleptico": ["Apariencia", "Color", "Olor", "Sabor"], "especificacion": True, "sanidad": False, "inocuidad": False,
            "referencias": False, "conclusion": "codex"},
 }
+# V76: harinas (modelos N°CP2026-CA0995 y CA0996): el formato de Cosecha Andina con la columna de especificación y la
+# referencia a la ficha técnica de cada producto («FICHA TECNICA CORPORACIÓN PRODUCTIVA. HARINA DE SOYA»). Se numera
+# con la serie CA, como los modelos.
+CERT_TIPOS["HA"] = {"nombre": "Harinas (modelos CA0995 / CA0996)", "subtitulo": "", "serie": "CA", "layout": "CA",
+                    "campos": list(CERT_TIPOS["CA"]["campos"]), "organoleptico": ["Apariencia", "Color", "Olor", "Sabor"],
+                    "especificacion": True, "sanidad": False, "inocuidad": False, "referencias": True, "conclusion": "codex",
+                    "ref_ficha": True,
+                    "especificaciones_org": {"Apariencia": "Homogéneo, sin grumos.", "Color": "Característico",
+                                             "Olor": "Característico, exento de olores extraños",
+                                             "Sabor": "Característico, exento de sabor extraño"}}
+CERT_TIPOS["CA"]["layout"] = "CA"
 CERT_ETIQUETAS = {"producto_declarado": "PRODUCTO DECLARADO", "lote": "LOTE", "fecha_produccion": "FECHA DE PRODUCCIÓN",
                   "fecha_vencimiento": "FECHA DE VENCIMIENTO", "marca": "MARCA", "grado": "GRADO", "procesado_por": "PROCESADO POR",
                   "ruc": "RUC", "autorizacion_sanitaria": "AUTORIZACION SANITARIA", "registro_sanitario": "REGISTRO SANITARIO",
@@ -509,6 +520,10 @@ def fecha_larga(d):
 
 def certificate_type_for(lot):
     p = lot.product
+    # V76: por palabra de la descripción (p. ej. HARINA → certificado de harinas), antes que por marca
+    for palabra, t in (param("tipo_certificado_por_palabra", {}) or {}).items():
+        if p and str(palabra).upper() in (p.descripcion or "").upper() and t in CERT_TIPOS:
+            return t
     por_marca = {str(k).upper(): v for k, v in (param("tipo_certificado_por_marca", {}) or {}).items()}
     if p and (p.marca or "").upper() in por_marca and por_marca[(p.marca or "").upper()] in CERT_TIPOS:
         return por_marca[(p.marca or "").upper()]
@@ -517,11 +532,25 @@ def certificate_type_for(lot):
     return t if t in CERT_TIPOS else "PT"
 
 
+def _sin_tildes(t):
+    import unicodedata
+    return "".join(c for c in unicodedata.normalize("NFD", str(t or "").upper()) if unicodedata.category(c) != "Mn")
+
+
 def _referencia_ntp(producto):
+    """V76: la referencia del tipo de producto cuya palabra aparece en el producto declarado; gana la más específica
+    (MAÍZ MOTE antes que MAÍZ, TRIGO MOTE antes que TRIGO); sin importar tildes."""
+    prod = f" {_sin_tildes(producto)} "
+    mejor, largo = "", 0
     for k, v in (param("referencias_ntp", {}) or {}).items():
-        if str(k).upper() in (producto or "").upper():
-            return v
-    return ""
+        kk = _sin_tildes(k).strip()
+        if kk and f" {kk} " in prod.replace(",", " ").replace(".", " ") and len(kk) > largo:
+            mejor, largo = v, len(kk)
+    if not mejor:  # compatibilidad: coincidencia dentro de la palabra (como antes)
+        for k, v in (param("referencias_ntp", {}) or {}).items():
+            if _sin_tildes(k) in _sin_tildes(producto):
+                return v
+    return mejor
 
 
 def _fmt_fecha(d):
@@ -598,9 +627,25 @@ def certificate_data(lot, order=None, tipo=None):
             if v is not None and k != "humedad":
                 sanidad.append({"analisis": lbl, "resultado": f"{v}", "conclusion": "CONFORME" if rec.resultado == "CONFORME" else "REVISAR"})
     humedad = rec.datos.get("humedad") if rec else None
+    fuente_proc = ""
+    if humedad is None:  # V76: lo que registró Calidad durante el proceso de producción (controles en el parte)
+        for pr in s.execute(select(ProductionReport).where(ProductionReport.lote_pt == lot.lote)
+                            .order_by(ProductionReport.id.desc())).scalars():
+            for c in reversed(pr.controles_calidad or []):
+                if "HUMEDAD" in _sin_tildes(c.get("parametro")):
+                    try:
+                        humedad = float(str(c.get("valor") or "").replace("%", "").replace(",", ".").strip())
+                        fuente_proc = f"Control en proceso del {c.get('ts', '')[:10]} ({c.get('user', '')})"
+                        break
+                    except ValueError:
+                        continue
+            if humedad is not None:
+                break
     hmax = (param("humedad_maxima_por_tipo", {}) or {}).get(tipo) if td["especificacion"] else None
     producto = (p.producto_base or p.descripcion) if p else lot.product_code
     ref = _referencia_ntp(producto) if td["referencias"] else ""
+    if td.get("ref_ficha"):  # V76: harinas: la ficha técnica del producto
+        ref = f"FICHA TECNICA CORPORACIÓN PRODUCTIVA. {producto}"
     fp = lot.fecha_fab or (liq.fecha_fab if liq else None)
     fv = lot.fecha_venc or (liq.fecha_venc if liq else None)
     marca = (p.marca if p else "") or _marca_de(p)
@@ -609,7 +654,7 @@ def certificate_data(lot, order=None, tipo=None):
     elif hmax is not None:
         hum_concl = "CONFORME" if humedad <= hmax else "NO CONFORME"
     else:
-        hum_concl = "CONFORME" if rec.resultado == "CONFORME" else "REVISAR"
+        hum_concl = "CONFORME" if rec is not None and rec.resultado == "CONFORME" else "REVISAR"
     if td["conclusion"] == "codex":
         concl = (f"El área de aseguramiento de Calidad de la empresa “Corporación Productiva SAC” certifica que el producto "
                  f"denominado como “{producto}” cumple con las especificaciones de calidad según la ficha técnica del producto y "
@@ -633,12 +678,13 @@ def certificate_data(lot, order=None, tipo=None):
         "pais_origen": next((r.datos.get("procedencia") for r in recs if (r.datos or {}).get("procedencia")), ""),
         "tamano_lote": tam or pend,
         "fecha_analisis": _fmt_fecha(rec.fecha) if rec else pend,
-        "organoleptico": [_org(a, analisis, pend) for a in td["organoleptico"]],
+        "organoleptico": [dict(_org(a, analisis, pend), especificacion=(td.get("especificaciones_org") or {}).get(a, ""))
+                          for a in td["organoleptico"]],
         "humedad": {"resultado": f"{humedad}%" if humedad is not None else pend,
                     "especificacion": (f"MÁX. {hmax:g} %" if hmax is not None else ""), "conclusion": hum_concl},
-        "referencia_organoleptico": f"ANALSIS ORGANOLÉPTICO: {ref}" if ref else "",
+        "referencia_organoleptico": (ref if td.get("ref_ficha") else f"ANALSIS ORGANOLÉPTICO: {ref}") if ref else "",
         "referencia_fisicoquimico": (f"{HUMEDAD_METODO} ANÁLISIS FÍSICOS-QUÍMICOS: {ref}" if ref and tipo == "PT"
-                                     else (f"ANÁLISIS FÍSICOS-QUÍMICOS: {ref}" if ref else "")),
+                                     else (ref if td.get("ref_ficha") else (f"ANÁLISIS FÍSICOS-QUÍMICOS: {ref}" if ref else ""))),
         "referencia_sanidad": f"ANÁLISIS SANIDAD ASPECTO: {ref}" if ref and td["sanidad"] else "",
         "sanidad": sanidad,
         "inocuidad": (f"El producto cumple con el Decreto Supremo Nº004-2011-AG y sus modificatorias, por lo que el {producto}, "
@@ -646,7 +692,8 @@ def certificate_data(lot, order=None, tipo=None):
         "conclusiones": concl,
         "fecha_emision": fecha_larga(date.today()),
         "pedido": order.numero if order else "", "cliente": order.customer.nombre if order else "",
-        "fuente_calidad": f"Registro #{rec.id} ({rec.codigo_formato})" if rec else "Sin registro de Calidad para el lote",
+        "fuente_calidad": (f"Registro #{rec.id} ({rec.codigo_formato})" if rec else "Sin registro de Calidad para el lote")
+                          + (f" · humedad: {fuente_proc}" if fuente_proc else ""),
         "fuente_produccion": f"Liquidación {liq.numero_documento}" if liq else "Sin liquidación registrada",
     }
 
@@ -655,7 +702,7 @@ def generate_certificate(lot, user=None, order=None, tipo=None):
     tipo = tipo or certificate_type_for(lot)
     if tipo not in CERT_TIPOS:
         raise BusinessError(f"Tipo de certificado desconocido: {tipo}")
-    cert = Certificate(numero=_next_number(tipo), serie=tipo, lot_id=lot.id, order_id=order.id if order else None,
+    cert = Certificate(numero=_next_number(CERT_TIPOS[tipo].get("serie", tipo)), serie=tipo, lot_id=lot.id, order_id=order.id if order else None,
                        product_code=lot.product_code, datos=certificate_data(lot, order, tipo))
     db().add(cert)
     db().flush()

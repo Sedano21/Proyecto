@@ -1,7 +1,7 @@
 """Vistas de Producción: solicitudes, validación, programación, BOM/calculadora, liquidaciones y recepción de PT."""
 from datetime import date, datetime, timedelta
 
-from flask import Blueprint, abort, g, redirect, render_template, request, url_for
+from flask import Blueprint, abort, current_app, g, redirect, render_template, request, url_for
 from sqlalchemy import select
 
 from ..db import db
@@ -167,6 +167,19 @@ def liquidations():
                        "Recepción validada.", url_for("prod.liquidations"))
         if "produccion.liquidar" not in g.perms:
             abort(403)
+        if acc == "sap_traer":  # V76: liquidaciones de SAP al módulo
+            from ..services import sap_liquidacion as sliq
+            return act(lambda: sliq.traer(g.user, current_app.config["UPLOAD_DIR"]),
+                       lambda b: "Liquidaciones traídas de SAP." if b else "SAP no tiene cambios desde la última lectura.",
+                       url_for("prod.liquidations"))
+        if acc == "sap_enviar":  # V76: la liquidación del módulo se registra en SAP
+            from ..services import sap_liquidacion as sliq
+            liq = db().get(Liquidation, int(request.form["id"])) or abort(404)
+            resp = act(lambda: sliq.enviar(g.user, liq), lambda n: f"Liquidación registrada en SAP (entrada {n}).",
+                       url_for("prod.liquidations"))
+            if (liq.sap or {}).get("error"):  # el error queda guardado junto a la liquidación
+                db().commit()
+            return resp
         if acc == "corregir":
             liq = db().get(Liquidation, int(request.form["id"])) or abort(404)
             ops = (request.form.get("operarios") or "").strip()
@@ -292,10 +305,11 @@ def plan():
                 return float(str(v).replace(",", ".")) if str(v or "").strip() else None
             except ValueError:
                 raise BusinessError(f"Cantidad inválida: {v}")
+        _ins = f.getlist("insumo") + [""] * len(f.getlist("product_code"))  # V76: granel o MP a utilizar
         filas = [{"fecha": _d.fromisoformat(fe) if fe else None, "product_code": pc, "cantidad": _num(q), "line_code": ln,
-                  "comentario": co}
-                 for fe, pc, q, ln, co in zip(f.getlist("fecha"), f.getlist("product_code"), f.getlist("cantidad"),
-                                              f.getlist("line_code"), f.getlist("comentario"))]
+                  "comentario": co, "insumo": ins}
+                 for fe, pc, q, ln, co, ins in zip(f.getlist("fecha"), f.getlist("product_code"), f.getlist("cantidad"),
+                                                   f.getlist("line_code"), f.getlist("comentario"), _ins)]
         return act(lambda: psvc.add_plans(g.user, f.get("periodo"), filas), lambda r: f"Plan registrado: {len(r)} producto(s).",
                    url_for("prod.plan", periodo=f.get("periodo", "DIA"), hasta=max([x["fecha"] for x in filas if x["fecha"]] or [None]) or ""))
     periodo = request.args.get("periodo", "DIA")
@@ -303,7 +317,8 @@ def plan():
     from ..services import charts
     graf = charts.line([("Plan", [(f"{k:%d/%m}", v["plan"]) for k, v in d["serie"]]),
                         ("Real (liquidado)", [(f"{k:%d/%m}", v["real"]) for k, v in d["serie"]])], "und", title="Plan vs real")
-    products = list(db().execute(select(Product).where(Product.tipo.in_(["PT", "GR", "MP", "C3"])).order_by(Product.code)).scalars())
+    from ..services import parte as _pt
+    products, insumos_mp = _pt.productos_parte()  # V76: lo que se genera (PT o MP) y la MP o granel que ingresa
     # V18: el programa incluye lo ya planificado a futuro (no solo hasta hoy)
     from datetime import timedelta as _td
     hasta_prog = max(d["hasta"], date.today() + _td(days={"DIA": 14, "SEMANA": 42, "MES": 93}.get(d["periodo"], 42)))
@@ -333,9 +348,16 @@ def plan():
     dia_linea = f_date("dia") or date.today()  # V48: el % por línea es el del día elegido frente a su capacidad diaria
     capa_dia = psvc.capacity_vs_plan(dia_linea, dia_linea)
     from ..services.v42 import plan_por_linea
+    # V76: rotación del producto y de su grano en el periodo vs el mismo periodo del año anterior
+    from ..services.analisis_grano import rotacion_plan
+    _rd, _rh = (dia_linea, dia_linea) if d["periodo"] == "DIA" else (r_desde, r_hasta)
+    try:
+        rot_p, rot_g, rot_fuente, rot_ant = rotacion_plan({e.product_code for e in entradas}, _rd, _rh)
+    except Exception:  # noqa: BLE001 — sin historial de ventas la columna queda vacía; el plan se muestra igual
+        rot_p, rot_g, rot_fuente, rot_ant = {}, {}, "", (None, None)
     return render_template("prod_plan.html", capa=capa, d=d, por_linea=plan_por_linea(entradas, capa_dia, dia_linea, r_desde, r_hasta), dia_linea=dia_linea,
                            r_desde=r_desde, r_hasta=r_hasta,
-                           kg_de=psvc.kg_de, timedelta=_td, graf=graf, products=products, lineas=PRODUCTION_LINES, hoy=date.today(),
+                           kg_de=psvc.kg_de, timedelta=_td, graf=graf, products=products, insumos_mp=insumos_mp, rot_p=rot_p, rot_g=rot_g, rot_fuente=rot_fuente, rot_ant=rot_ant, lineas=PRODUCTION_LINES, hoy=date.today(),
                            entradas=entradas, req=req, faltan=faltan, estados=estados,
                            nombre_periodo={"DIA": "diario", "SEMANA": "semanal", "MES": "mensual"}[d["periodo"]])
 
@@ -374,11 +396,11 @@ def reports():
     programados = list(db().execute(select(ProductionReport).where(ProductionReport.linea.in_(visibles),
                                                                    ProductionReport.estado == "PROGRAMADO")
                                     .order_by(ProductionReport.fecha, ProductionReport.id)).scalars())
-    products = list(db().execute(select(Product).where(Product.tipo.in_(["PT", "GR", "MP", "C3"])).order_by(Product.code)).scalars())
+    products, entradas = ptsvc.productos_parte()  # V76: todos los disponibles; lo que se genera y lo que ingresa
     from ..models import ProductGTIN
     gtins = list(db().execute(select(ProductGTIN).order_by(ProductGTIN.product_code)).scalars())  # V18: EAN en lista o escrito
     return render_template("prod_reports.html", rows=paginate(rows), lineas=[x for x in PRODUCTION_LINES if x[0] in visibles], hoy=date.today(), gtins=gtins,
-                           products=products, programados=programados, turnos=param("turnos_produccion", []) or [],
+                           products=products, entradas=entradas, programados=programados, turnos=param("turnos_produccion", []) or [],
                            estados=ptsvc.ESTADOS_PARTE, no_editables=ptsvc.NO_EDITABLES, f=a, desde=desde,
                            formato_hora=(param("formato_hora", "24H") or "24H").upper(), fmt_hora=ptsvc.fmt_hora,
                            envasado=",".join(ptsvc.LINEAS_ENVASADO))
@@ -437,7 +459,55 @@ def plan_materials():
 @perm_required("produccion.ver", "produccion.partes_ver")
 def product_times():
     """Qué productos toman más y menos tiempo (kg por hora y por operario), por línea; sobre todo en selección manual."""
+    from ..services import analisis_grano as ag
+    from ..services import charts
     from ..services import plan_produccion_v72 as pv
     from .common import f_date
     linea = request.args.get("linea", "SEL_MANUAL" if "linea" not in request.args else "")
-    return render_template("v72_tiempos.html", d=pv.tiempos(f_date("desde"), f_date("hasta"), linea))
+    d = pv.tiempos(f_date("desde"), f_date("hasta"), linea)
+    # V76: filtros por producto y grano, y evolución semanal de kg/h
+    prod_f = (request.args.get("producto") or "").strip().upper().split(" ")[0]
+    grano_f = (request.args.get("grano") or "").strip().upper()
+    from ..services.plan_granos import granos_config, grano_de
+    cfg = granos_config()
+    for x in d["filas"]:
+        x["grano"] = grano_de(x.get("descripcion") or x["producto"], cfg)
+    granos = sorted({x["grano"] for x in d["filas"]})
+    d["filas"] = [x for x in d["filas"] if (not prod_f or x["producto"] == prod_f) and (not grano_f or x["grano"] == grano_f)]
+    fs = ag.partes(d["desde"], d["hasta"], linea, grano_f, prod_f)
+    sem = {}
+    for f in fs:
+        if f["horas"]:
+            k = (f["producto"] if prod_f or len({y["producto"] for y in fs}) <= 4 else f["grano"])
+            a = sem.setdefault(k, {}).setdefault(ag._semana(f["r"].fecha), [0.0, 0.0])
+            a[0] += f["kg"]
+            a[1] += f["horas"]
+    semanas = sorted({s for v in sem.values() for s in v})
+    top = sorted(sem, key=lambda k: -sum(v[0] for v in sem[k].values()))[:6]
+    evol = charts.line([(k, [(f"{s:%d/%m}", round(sem[k][s][0] / sem[k][s][1], 1) if sem[k].get(s) and sem[k][s][1] else None)
+                             for s in semanas]) for k in top], "kg/h", title="Evolución semanal: kg procesados por hora")
+    return render_template("v72_tiempos.html", d=d, evol=evol, granos=granos, producto=prod_f, grano=grano_f)
+
+
+@bp.route("/analisis-granos")
+@perm_required("produccion.ver", "produccion.partes_ver")
+def grain_analysis():
+    """V76: comportamiento por grano: tiempo, rendimiento y desmedro por línea, evolución, comparativo y sugerencias."""
+    from ..services import analisis_grano as ag
+    from ..services import charts
+    from .common import f_date
+    d = ag.analisis(f_date("desde"), f_date("hasta"), request.args.get("linea", ""), (request.args.get("grano") or "").upper())
+    lab = lambda s: f"{s:%d/%m}"
+    graf = {
+        "kgh": charts.bars([(x["grano"], x["kg_hora"]) for x in d["granos"]], "kg/h", title="kg procesados por hora, por grano"),
+        "rend": charts.bars([(x["grano"], x["rendimiento"]) for x in d["granos"]], "%", title="Rendimiento por grano", color=2),
+        "desm": charts.bars([(x["grano"], x["desmedro"]) for x in d["granos"]], "%", title="Desmedro por grano", color=7),
+        "evol_kgh": charts.line([(g, [(lab(s), a["kg_hora"] if a else None) for s, a in serie]) for g, serie in d["evolucion"].items()],
+                                "kg/h", title="Evolución semanal de kg/h por grano"),
+        "evol_rend": charts.line([(g, [(lab(s), a["rendimiento"] if a else None) for s, a in serie]) for g, serie in d["evolucion"].items()],
+                                 "%", title="Evolución semanal del rendimiento por grano"),
+        "evol_desm": charts.line([(g, [(lab(s), a["desmedro"] if a else None) for s, a in serie]) for g, serie in d["evolucion"].items()],
+                                 "%", title="Evolución semanal del desmedro por grano"),
+    }
+    from ..catalogs import PRODUCTION_LINES
+    return render_template("v76_granos.html", d=d, graf=graf, lineas=PRODUCTION_LINES)

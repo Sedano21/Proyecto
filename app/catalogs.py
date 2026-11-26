@@ -3692,3 +3692,47 @@ PARAMS += [
      "Sugerencias de productividad: se señala lo que rinde por debajo de este % de la mediana de su grupo (producto en su "
      "línea, picking en su almacén, espera por cliente).", "PROPUESTO", "Pedido de Gerencia General (25-nov-2026)"),
 ]
+
+# V76 (26-nov-2026): los Asistentes de Producción solicitan movimientos punto a punto (supervisan a su personal y su
+# material); se deja sin efecto, solo para ellos, el retiro de V7.
+V76 = "Producción, Calidad y experiencia de uso (26-nov-2026)"
+PERMISOS_RETIRADOS[:] = [x for x in PERMISOS_RETIRADOS if not (x[0] == "ASIST_PRODUCCION" and x[1] == "movimiento.solicitar")]
+if not any(p[0] == "movimiento.solicitar" for p in ROLE_PERMISSIONS["ASIST_PRODUCCION"]):
+    ROLE_PERMISSIONS["ASIST_PRODUCCION"].append(("movimiento.solicitar", "DEFINIDO", V76))
+# V76: el aviso de materiales del plan llega a todo Almacén y a la Jefatura de Operaciones
+_ag = ["COORD_ALMACEN_MP", "SUPERV_ALMACEN", "LIDER_ALMACEN", "ASIST_ALMACEN", "COORD_ALMACEN", "JEFE_LOGISTICA", "JEFE_OPERACIONES"]
+ALERT_TYPES[:] = [(x[0], x[1], x[2], x[3], x[4], _ag if x[0] == "PLAN_MATERIALES_ALMACEN" else x[5], *x[6:]) for x in ALERT_TYPES]
+ALERTAS_ROLES_CAMBIO.append(("PLAN_MATERIALES_ALMACEN", [], ["JEFE_LOGISTICA", "JEFE_OPERACIONES"]))
+PARAMS += [
+    ("sap_escritura_liquidacion", False, "bool", "Integración SAP",
+     "Enviar a SAP (recibo de producción contra la OF) las liquidaciones registradas en el módulo. Apagado: se prueba "
+     "primero en la base de pruebas; además la base debe estar en «sap_escritura_empresas».", "PROPUESTO", V76),
+]
+# V76: referencias de los certificados por grano, tal como figuran en el «Formato de control de calidad – granos 2023»
+# (pie de referencias). Se agregan solo las que falten: lo que Calidad ya configuró se respeta. Calidad debe verificar
+# dos números que en el formato parecen tener erratas: arveja «NTP. 2050.025:2014» y trigo «NTP 205.2009.2014».
+_REFS_GRANOS = {
+    "LENTEJA": "NTP 205.022:2014. LEGUMINOSAS. Lenteja. Requisitos",
+    "PALLAR": "NTP 205.019:2015. LEGUMINOSAS. Pallar. Requisitos",
+    "ARVEJA": "NTP 2050.025:2014. LEGUMINOSAS. Arveja verde partida. Requisitos",
+    "GARBANZO": "NTP 205.023:2014. LEGUMINOSAS. Garbanzo. Requisitos",
+    "FRIJOL": "NTP 205.015:2015 / COR 1:2016. LEGUMINOSAS. Frijol. Requisitos",
+    "MAIZ": "NTP 205.051:2009. CEREALES Y LEGUMINOSAS. Maíz. Requisitos",
+    "MAIZ MOTE": "NTP 205.084:2020. MAÍZ AMILÁCEO. Maíz mote. Requisitos",
+    "TRIGO": "NTP 205.2009.2014. TRIGO. Trigo en grano. Requisitos",
+    "TRIGO MOTE": "NTP 205.035:2016. TRIGO. Trigo mote. Requisitos",
+    "CEBADA": "NTP 205.052:2016. CEBADA. Cebada perlada o morón de cebada. Requisitos",
+    "PAPA SECA": "NTP 011.802:2017. PAPA Y SUS DERIVADOS. Papa seca. Requisitos",
+    "QUINUA": "NTP 205.062:2014. GRANOS ANDINOS. Quinua. Requisitos",
+    "KIWICHA": "NTP 205.054:2020. GRANOS ANDINOS. Kiwicha. Requisitos",
+}
+PARAMS[:] = [(k, (dict(v, **{a: b for a, b in _REFS_GRANOS.items() if a not in v}) if k == "referencias_ntp" else v), *r)
+             for k, v, *r in PARAMS]
+PARAMS_AGREGAR = list(globals().get("PARAMS_AGREGAR", [])) + [("referencias_ntp", _REFS_GRANOS, V76)]
+PARAMS += [
+    ("tipo_certificado_por_palabra", {"HARINA": "HA"}, "dict", "Certificados",
+     "Tipo de certificado según una palabra de la descripción del producto (se evalúa antes que la marca): las harinas "
+     "usan el formato de los modelos CA0995 / CA0996.", "DEFINIDO", f"{V76}; certificados N°CP2026-CA0995 y CA0996"),
+]
+PARAMS[:] = [(k, (dict(v, HA=15) if k == "humedad_maxima_por_tipo" and "HA" not in v else v), *r) for k, v, *r in PARAMS]
+PARAMS_AGREGAR.append(("humedad_maxima_por_tipo", {"HA": 15}, V76))

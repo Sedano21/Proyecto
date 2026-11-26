@@ -107,6 +107,7 @@
       {{ nl(url_for('prod.plan'), 'calendar', 'Planeamiento') }}
       {{ nl(url_for('prod.plan_materials'), 'layers', 'Plan: materiales y revisión') }}
       {{ nl(url_for('prod.product_times'), 'gauge', 'Tiempos por producto') }}
+      {{ nl(url_for('prod.grain_analysis'), 'trend', 'Comportamiento por grano') }}
       {% if ve('produccion.liquidar') or ve('produccion.programar') %}{{ nl(url_for('prod.history_excel'), 'upload', 'Cargar histórico (Excel de control)') }}{% endif %}
       {{ nl(url_for('prod.bom'), 'layers', 'Lista de materiales') }}
       {{ nl(url_for('prod.liquidations'), 'file', 'Liquidaciones') }}
@@ -116,7 +117,7 @@
       {{ nl(url_for('prod.monitor'), 'trend', 'Monitoreo en tiempo real') }}
       {{ nl(url_for('prod.control'), 'chart', 'Control de producción') }}
       {{ nl(url_for('prod.oee_dashboard'), 'gauge', 'Tablero OEE') }}
-      {% if user.role.area != 'Calidad' %}{{ nl(url_for('prod.productivity'), 'chart', 'Productividad por persona') }}{% endif %}{% endif %}
+      {% if user.role.area != 'Calidad' %}{{ nl(url_for('prod.productivity'), 'chart', 'Eficiencia por persona') }}{% endif %}{% endif %}
       {% if user.role.area != 'Calidad' %}{{ nl(url_for('prod.attendance'), 'users', 'Asistencia') }}{% endif %}{# V13: Calidad no ve productividad ni asistencia #}
       {% if can('produccion.lote_nuevo') %}{{ nl(url_for('cal.new_record', formato='LOTE_PRODUCIDO'), 'plus', 'Ingreso de nuevo lote') }}{% endif %}
       {% if ve('produccion.liquidar') and not ve('calidad.ver') %}{{ nl(url_for('cal.line'), 'shield', 'Observaciones de Calidad y reproceso') }}{% endif %}
@@ -336,8 +337,9 @@ d.addEventListener('change',function(e){if(e.target.matches('[data-dest]'))f();}
 })();
 </script>
 <script src="{{ url_for('static', filename='app.js') }}?v=1.0.1"></script>
-<script src="{{ url_for('static', filename='ux.js') }}?v=1.1.0.35"></script>
-<script src="{{ url_for('static', filename='v14.js') }}?v=1.0"></script>
+<script src="{{ url_for('static', filename='v76.js') }}?v=1.0"></script>
+<script src="{{ url_for('static', filename='ux.js') }}?v=1.1.0.36"></script>
+<script src="{{ url_for('static', filename='v14.js') }}?v=1.1"></script>
 <script src="{{ url_for('static', filename='v18.js') }}?v=1.0"></script>
 {{ velo() }}<script src="{{ url_for('static', filename='v19.js') }}?v=1.6"></script>
 {% if user %}<script src="{{ url_for('static', filename='v20.js') }}?v=1.1"></script>{% endif %}

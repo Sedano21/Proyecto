@@ -43,16 +43,41 @@ def alta_config(area):
     return {"campos": list(cfg.get("campos") or []), "puestos": list(cfg.get("puestos") or [])}
 
 
+# V76: filas de resumen de las hojas de asistencia que no son personas (se cargaron como colaboradores)
+NO_COLABORADORES = {"DM", "D.M.", "DESCANSO MEDICO", "DESCANSO MÉDICO", "VACACIONES", "ASISTENCIA", "ASISTENCIAS", "TOTAL",
+                    "TOTALES", "SUBTOTAL", "TARDANZA", "TARDANZAS", "FALTA", "FALTAS", "FALTA JUSTIFICADA",
+                    "FALTA INJUSTIFICADA", "LICENCIA", "PERMISO", "PERMISOS", "SUSPENSION", "SUSPENSIÓN", "RESUMEN",
+                    "CESADO", "CESADOS", "N°", "NRO", "ITEM"}
+
+
+def es_colaborador(nombre):
+    """Un nombre de persona: con letras y que no sea una fila de resumen (DM, VACACIONES, TOTAL…)."""
+    n = " ".join(str(nombre or "").strip().upper().split())
+    return bool(n) and any(c.isalpha() for c in n) and n not in NO_COLABORADORES
+
+
+def limpiar_no_colaboradores(user=None):
+    """Desactiva los «colaboradores» que en realidad son filas de resumen. Devuelve cuántos se desactivaron."""
+    n = 0
+    for w in db().execute(select(Worker).where(Worker.activo.is_(True))).scalars():
+        if not es_colaborador(w.nombre):
+            w.activo = False
+            n += 1
+            audit(user, "COLABORADOR_NO_PERSONA", "Worker", w.id, {"nombre": w.nombre})
+    return n
+
+
 def workers_of(user, activos=False, ver=False):
     """Personal que el usuario registra (ver=False: su área) o que puede ver (ver=True: visible_areas)."""
     q = select(Worker).order_by(Worker.area, Worker.linea, Worker.nombre)
     if activos:
         q = q.where(Worker.activo.is_(True))
+    filas = [w for w in db().execute(q).scalars() if es_colaborador(w.nombre)]  # V76: sin filas de resumen
     if ver:
         areas = visible_areas(user)
-        return [w for w in db().execute(q).scalars() if areas is None or (w.area or "Producción") in areas]
+        return [w for w in filas if areas is None or (w.area or "Producción") in areas]
     area = area_of(user)
-    return [w for w in db().execute(q).scalars() if (w.area or "Producción") == area] if area else []
+    return [w for w in filas if (w.area or "Producción") == area] if area else []
 
 
 def can_register(user):
@@ -82,6 +107,8 @@ def save_worker(user, datos, w=None):
     nombre = (datos.get("nombre") or "").strip().upper()
     if not nombre:
         raise BusinessError("Indique el nombre del colaborador.")
+    if not es_colaborador(nombre):
+        raise BusinessError(f"«{nombre}» no es un colaborador (es una fila de resumen de la hoja de asistencia).")
     doc = (datos.get("documento") or "").strip()
     if doc and (not doc.isalnum() or len(doc) > 15):
         raise BusinessError("Documento inválido.")
@@ -163,7 +190,7 @@ def summary(desde=None, hasta=None, linea="", area="Producción", areas=False):
     if areas is False:
         areas = {area}
     rows = [a for a in db().execute(select(Attendance).where(Attendance.fecha >= desde, Attendance.fecha <= hasta)).scalars()
-            if areas is None or (a.worker.area or "Producción") in areas]
+            if (areas is None or (a.worker.area or "Producción") in areas) and es_colaborador(a.worker.nombre)]
     por = defaultdict(Counter)
     for a in rows:
         if linea and a.worker.linea != linea:
@@ -212,7 +239,7 @@ def import_workers(user, path):
     nuevos = act = 0
     for f in filas[1:]:
         nombre = str(f[i_nom] or "").strip().upper() if i_nom < len(f) else ""
-        if not nombre:
+        if not nombre or not es_colaborador(nombre):  # V76: DM, VACACIONES, TOTAL… no son personas
             continue
         doc = str(f[i_doc] or "").strip() if i_doc is not None and i_doc < len(f) else ""
         if doc.endswith(".0"):

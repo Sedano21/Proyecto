@@ -35,6 +35,14 @@ def _entradas(desde, hasta):
                            .order_by(ProductionPlan.fecha)).scalars():
         if plan_status(pl)[0] != "LIQUIDADO":
             out.append(pl)
+    # V76: el plan semanal o mensual también avisa a Almacén, para los productos que no tienen plan diario en el rango
+    # (se toma el primer día de la semana o del mes como fecha de producción; sin doble conteo)
+    con_dia = {pl.product_code for pl in out}
+    for pl in db().execute(select(ProductionPlan).where(ProductionPlan.periodo.in_(("SEMANA", "MES")),
+                                                        ProductionPlan.fecha >= desde, ProductionPlan.fecha <= hasta)
+                           .order_by(ProductionPlan.fecha)).scalars():
+        if pl.product_code not in con_dia and plan_status(pl)[0] != "LIQUIDADO":
+            out.append(pl)
     return out
 
 

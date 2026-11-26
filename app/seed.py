@@ -138,6 +138,15 @@ def _apply_param_changes():
                                             AuditLog.entidad_id == marca)).first():
             continue
         p = s.get(Param, key)
+        if isinstance(agregar, dict):  # V76: diccionarios: solo las claves que faltan (no pisa lo configurado)
+            actual = dict((p.valor or {}).get("v") or {}) if p is not None else {}
+            nuevos = {k: v for k, v in agregar.items() if k not in actual}
+            if p is not None and nuevos:
+                p.valor = {"v": dict(actual, **nuevos)}
+                n += 1
+            s.add(AuditLog(user_id=None, accion="PARAMETRO_CAMBIO_CATALOGO", entidad="Param", entidad_id=marca,
+                           detalle={"agregado": nuevos, "fuente": fuente}))
+            continue
         actual = list((p.valor or {}).get("v") or []) if p is not None else []
         nuevos = [x for x in agregar if x not in actual]
         if p is not None and nuevos and isinstance((p.valor or {}).get("v", []), list):

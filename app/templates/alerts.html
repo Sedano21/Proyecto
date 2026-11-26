@@ -23,7 +23,7 @@
 {% macro tabla(lista) %}<div class="tw"><table class="stack"><thead><tr><th>Urgencia</th><th>Qué ocurrió</th><th>Naturaleza</th><th>Área</th><th>Estado</th><th>Responsable</th><th>Fecha</th></tr></thead><tbody>
 {% for a in lista %}{% set tarea = es_tarea(a) %}<tr>
 <td>{{ b(a.prioridad) }}</td>
-<td style="min-width:280px"><a href="{{ url_for('main.alert_detail', aid=a.id) }}"><b>{{ a.titulo }}</b></a><div class="small muted">#{{ a.id }} · {{ a.type.nombre if a.type }}</div></td>
+<td style="min-width:280px"><a href="{{ url_for('main.alert_detail', aid=a.id) }}"><b>{{ a.titulo }}</b></a><div class="small muted">#{{ a.id }} · {{ a.type.nombre if a.type }} · {{ ('generó ' ~ a.creador.nombre) if a.creador else 'generada por el sistema' }}</div></td>
 <td>{% if tarea %}<span class="b warn">Acción requerida</span>{% else %}<span class="b info">Información</span>{% endif %}</td>
 <td>{{ a.area }}</td><td>{% set ea = estado_alerta(a) %}<span class="b {{ ea[0] }}">{{ ea[1] }}</span></td>
 <td>{{ a.asignado.nombre if a.asignado else (a.asignado_rol or '—') }}</td><td class="small" style="white-space:nowrap">{{ a.creado_ts|d }}</td></tr>

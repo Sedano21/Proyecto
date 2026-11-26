@@ -125,9 +125,46 @@ def product_info(code):
     p = db().get(Product, (code or "").strip().upper().split(" ")[0])
     if p is None:
         return None
-    gt = [g for g in db().execute(select(ProductGTIN.gtin).where(ProductGTIN.product_code == p.code)).scalars()]
-    return {"code": p.code, "descripcion": p.descripcion, "tipo": p.tipo, "presentacion_kg": p.peso_kg,
-            "und_bulto": p.unidades_por_bulto, "gtins": gt}
+    from .stock import product_kind
+    tipo = (p.tipo or "").upper() or product_kind(p)
+    # V76: el EAN es solo del producto terminado
+    gt = [g for g in db().execute(select(ProductGTIN.gtin).where(ProductGTIN.product_code == p.code)).scalars()] if tipo == "PT" else []
+    return {"code": p.code, "descripcion": p.descripcion, "tipo": tipo, "presentacion_kg": p.peso_kg,
+            "und_bulto": p.unidades_por_bulto, "gtins": gt, "usa_ean": tipo == "PT", "insumos": insumos_sugeridos(p.code)}
+
+
+def insumos_sugeridos(code):
+    """V76: materia prima o granel que la lista de materiales activa indica para producir el producto: [(código, desc, kg por
+    unidad del padre)]. Sin lista de materiales, vacío (Producción lo indica)."""
+    from ..models import BOMLine
+    from .production import active_bom, is_desmedro
+    from .stock import product_kind
+    v = active_bom()
+    if v is None:
+        return []
+    out = []
+    for bl in db().execute(select(BOMLine).where(BOMLine.version_id == v.id, BOMLine.padre == code)).scalars():
+        if is_desmedro(bl.componente, bl.componente_desc):
+            continue
+        comp = db().get(Product, bl.componente)
+        kind = ((comp.tipo or "").upper() or product_kind(comp)) if comp else ""
+        if kind in ("MP", "GR") or bl.componente[:2] in ("MP", "GR"):
+            out.append({"code": bl.componente, "descripcion": bl.componente_desc or (comp.descripcion if comp else ""),
+                        "cantidad": round(bl.cantidad / (bl.cantidad_bom or 1), 6), "um": bl.um or ""})
+    return out
+
+
+def productos_parte():
+    """V76: productos para el parte: lo que se genera (PT o MP/GR) y lo que ingresa (MP o granel)."""
+    from .stock import product_kind
+    salida, entrada = [], []
+    for p in db().execute(select(Product).order_by(Product.code)).scalars():
+        k = (p.tipo or "").upper() or product_kind(p)
+        if k in ("PT", "MP", "GR", "C3", "MQ", "AB"):
+            salida.append(p)
+        if k in ("MP", "GR", "C3"):
+            entrada.append(p)
+    return salida, entrada
 
 
 # ------------------------------------------------------------------ colaboradores registrados
@@ -237,7 +274,13 @@ def start(user, datos, r=None):
     _check_line(user, r)
     for k in ("of", "op", "turno", "cliente", "mp_codigo", "lote", "maquina", "maquinista", "ean", "lote_pt"):
         if datos.get(k) not in (None, ""):
-            setattr(r, k, str(datos[k]).strip().upper() if k in ("mp_codigo", "maquina") else str(datos[k]).strip())
+            v = str(datos[k]).strip()
+            if k == "mp_codigo":  # V76: se elige de la lista «código · descripción»
+                v = v.split(" · ")[0].split(" ")[0]
+            setattr(r, k, v.upper() if k in ("mp_codigo", "maquina") else v)
+    _p = db().get(Product, r.product_code)
+    if _p is not None and ((_p.tipo or "").upper() not in ("", "PT")) and r.ean:  # V76: el EAN es solo del PT
+        r.ean = ""
     for k in ("presentacion_kg", "und_paquete", "sacos", "peso_saco_kg", "saldo_mp_kg", "peso_entrada_kg"):
         if datos.get(k) not in (None, ""):
             setattr(r, k, float(datos[k]))
@@ -399,8 +442,11 @@ def velocity(r):
 
 
 def rating(oee_pct):
-    for x in sorted(param("oee_calificacion", []) or [], key=lambda x: -float(x["min"])):
-        if oee_pct >= float(x["min"]):
+    if oee_pct is None:
+        return None
+    reglas = [x for x in (param("oee_calificacion", []) or []) if isinstance(x, dict) and _num(x.get("min")) is not None]
+    for x in sorted(reglas, key=lambda x: -_num(x["min"])):
+        if oee_pct >= _num(x["min"]):
             return x
     return None
 
@@ -511,6 +557,104 @@ def set_state(user, r, estado, motivo=""):
     r.motivo_estado = (motivo or "").strip()[:200]
     audit(user, "PARTE_ESTADO", "ProductionReport", r.id, {"antes": antes, "despues": estado, "motivo": motivo})
     return r
+
+
+# ------------------------------------------------------------------ V76: correcciones del parte con historial
+CAMPOS_CORREGIBLES = {
+    "operarios": ("Cantidad de personas", "int"), "turno": ("Turno", "str"), "of": ("OF", "str"),
+    "maquinista": ("Maquinista", "str"), "mp_codigo": ("MP / granel", "code"), "lote": ("Lote MP", "str"),
+    "lote_pt": ("Lote PT", "str"), "peso_entrada_kg": ("kg de MP que ingresan", "float"),
+    "granel_kg": ("kg producidos (granel / envasado)", "float"), "desmedro_kg": ("Desmedro (kg)", "float"),
+    "unidades": ("Unidades", "float"), "hora_inicio": ("Hora de inicio", "hora"), "hora_fin": ("Hora de fin", "hora"),
+    "refrigerio_min": ("Refrigerio (min)", "int"), "observacion": ("Observación", "str"),
+}
+
+
+def corregir(user, r, datos, motivo="", worker_ids=None):
+    """Corrige datos del parte (personas, personas asignadas, kg, horas…) y guarda cada cambio con quién, cuándo y por
+    qué. Si el parte ya terminó, recalcula rendimiento, desmedro y OEE. No se corrige un parte liquidado o anulado."""
+    from ..models import Worker
+    _check_line(user, r)
+    if not has_perm(user, "produccion.liquidar"):
+        raise BusinessError("Corrigen el parte el Jefe y los Asistentes de Producción.")
+    if r.estado in NO_EDITABLES:
+        raise BusinessError(f"El parte está {r.estado.lower()}: ya no se corrige.")
+    motivo = (motivo or "").strip()
+    if not motivo:
+        raise BusinessError("Indique el motivo de la corrección.")
+    cambios = {}
+    for k, (_lbl, tipo) in CAMPOS_CORREGIBLES.items():
+        if k not in datos or datos.get(k) is None:
+            continue
+        raw = str(datos.get(k)).strip()
+        antes = getattr(r, k)
+        if tipo in ("int", "float"):
+            if raw == "":
+                continue
+            try:
+                nuevo = int(float(raw.replace(",", "."))) if tipo == "int" else float(raw.replace(",", "."))
+            except ValueError:
+                raise BusinessError(f"{CAMPOS_CORREGIBLES[k][0]}: número no válido.") from None
+            if nuevo < 0:
+                raise BusinessError(f"{CAMPOS_CORREGIBLES[k][0]}: no puede ser negativo.")
+        elif tipo == "code":
+            nuevo = raw.split(" · ")[0].split(" ")[0].upper()
+        elif tipo == "hora":
+            nuevo = _norm_hora(raw) if raw else ""
+            if raw and nuevo is None:
+                raise BusinessError(f"{CAMPOS_CORREGIBLES[k][0]}: hora no válida (p. ej. 07:30).")
+        else:
+            nuevo = raw
+        if (antes if antes is not None else "") != nuevo and not (antes in (None, "") and nuevo in (None, "")):
+            setattr(r, k, nuevo)
+            cambios[k] = [antes, nuevo]
+    if worker_ids is not None:  # personas asignadas: se conservan los datos de quien sigue y se agregan los nuevos
+        ids = [int(x) for x in worker_ids if str(x).isdigit()]
+        actuales = {c.get("worker_id"): c for c in (r.colaboradores or [])}
+        nuevos = []
+        for wid in dict.fromkeys(ids):
+            if wid in actuales:
+                nuevos.append(actuales[wid])
+                continue
+            w = db().get(Worker, wid)
+            if w is None or not w.activo:
+                raise BusinessError("Elija colaboradores activos de la lista.")
+            nuevos.append({"worker_id": w.id, "nombre": w.nombre, "inicio": r.hora_inicio or "", "fin": r.hora_fin or "",
+                           "refrigerio_min": r.refrigerio_min or 0, "kg": 0})
+        antes_n = sorted(c.get("nombre", "") for c in (r.colaboradores or []))
+        despues_n = sorted(c.get("nombre", "") for c in nuevos)
+        if antes_n != despues_n:
+            r.colaboradores = nuevos
+            cambios["colaboradores"] = [antes_n, despues_n]
+            if "operarios" not in cambios and (r.operarios or 0) < len(nuevos):
+                cambios["operarios"] = [r.operarios, len(nuevos)]
+                r.operarios = len(nuevos)
+    if not cambios:
+        raise BusinessError("No hay cambios que guardar.")
+    if r.estado not in ("PROGRAMADO", "EN PROCESO", "PAUSADO") and r.peso_entrada_kg:
+        try:
+            compute(r)
+        except Exception:  # noqa: BLE001 — la corrección se guarda aunque falte algún dato para los indicadores
+            pass
+    lst = list(r.correcciones or [])
+    reg = {"n": len(lst) + 1, "user": user.nombre, "user_id": user.id, "ts": now().isoformat(timespec="minutes"),
+           "motivo": motivo[:300], "cambios": {k: [str(a) if a is not None else "", str(b) if b is not None else ""]
+                                               for k, (a, b) in cambios.items()}}
+    lst.append(reg)
+    r.correcciones = lst
+    audit(user, "PARTE_CORREGIDO", "ProductionReport", r.id, reg)
+    return reg
+
+
+def _norm_hora(v):
+    import re
+    t = str(v or "").strip().lower().replace(".", ":").replace("h", ":")
+    if re.fullmatch(r"\d{3,4}", t):
+        t = t[:-2] + ":" + t[-2:]
+    m = re.fullmatch(r"(\d{1,2}):(\d{2})", t)
+    if not m or int(m.group(1)) > 23 or int(m.group(2)) > 59:
+        return None
+    return f"{int(m.group(1)):02d}:{m.group(2)}"
 
 
 # ------------------------------------------------------------------ programación (formato único: Registrar / Programar)
@@ -678,6 +822,16 @@ def release(user, r, motivo, nuevo_estado="REPROCESO"):
 
 
 # ------------------------------------------------------------------ tablero de Producción
+def _num(v):
+    """V76: número seguro (los partes importados del histórico o de SAP pueden traer texto o vacío)."""
+    if v in (None, ""):
+        return None
+    try:
+        return float(str(v).replace(",", "."))
+    except (TypeError, ValueError):
+        return None
+
+
 def dashboard(user, desde=None, hasta=None, linea="", turno="", maquina=""):
     hasta = hasta or date.today()
     desde = desde or hasta - timedelta(days=29)
@@ -689,48 +843,56 @@ def dashboard(user, desde=None, hasta=None, linea="", turno="", maquina=""):
         rows = [r for r in rows if r.turno == turno]
     if maquina:
         rows = [r for r in rows if (r.maquina or r.linea) == maquina]
-    con_oee = [r for r in rows if (r.indicadores or {}).get("oee") is not None]
+
+    def ind(r, k):
+        return _num((r.indicadores or {}).get(k)) if isinstance(r.indicadores, dict) else None
+    con_oee = [r for r in rows if ind(r, "oee") is not None]
 
     def prom(lst, k):
-        vals = [(r.indicadores or {}).get(k) for r in lst if (r.indicadores or {}).get(k) is not None]
+        vals = [ind(r, k) for r in lst if ind(r, k) is not None]
         return round(sum(vals) / len(vals), 1) if vals else None
     por_linea = defaultdict(list)
     for r in rows:
-        por_linea[r.linea].append(r)
+        por_linea[r.linea or "(sin línea)"].append(r)
     lineas = []
     for l, lst in sorted(por_linea.items()):
-        entrada = sum(x.peso_entrada_kg or 0 for x in lst)
-        perdida = sum(x.desmedro_kg or 0 for x in lst)
+        entrada = sum(_num(x.peso_entrada_kg) or 0 for x in lst)
+        perdida = sum(_num(x.desmedro_kg) or 0 for x in lst)
         lineas.append({"linea": l, "partes": len(lst), "oee": prom([x for x in lst if x in con_oee], "oee"),
                        "disponibilidad": prom(lst, "disponibilidad"), "rendimiento": prom(lst, "rendimiento_oee"),
                        "calidad": prom(lst, "calidad"), "merma_pct": round(100 * perdida / entrada, 2) if entrada else None,
-                       "muerto_min": round(sum((x.indicadores or {}).get("tiempo_muerto_min") or 0 for x in lst), 1),
-                       "kg": round(sum(x.granel_kg or 0 for x in lst), 1)})
+                       "muerto_min": round(sum(ind(x, "tiempo_muerto_min") or 0 for x in lst), 1),
+                       "kg": round(sum(_num(x.granel_kg) or 0 for x in lst), 1)})
     causas = Counter()
     defectos = Counter()
     for r in rows:
-        for k, v in ((r.indicadores or {}).get("pausas_por_causa") or {}).items():
-            causas[k] += v
-        for k, v in (r.defectos or {}).items():
-            defectos[k] += v
+        pc = (r.indicadores or {}).get("pausas_por_causa") if isinstance(r.indicadores, dict) else None
+        for k, v in (pc if isinstance(pc, dict) else {}).items():
+            causas[str(k)] += _num(v) or 0
+        for k, v in (r.defectos if isinstance(r.defectos, dict) else {}).items():
+            defectos[str(k)] += _num(v) or 0
     semanas = defaultdict(lambda: defaultdict(float))
     productos = defaultdict(float)
     for r in rows:
         lunes = r.fecha - timedelta(days=r.fecha.weekday())
-        semanas[lunes][r.linea] += r.granel_kg or 0
-        productos[r.product_code] += r.granel_kg or 0
+        semanas[lunes][r.linea or "(sin línea)"] += _num(r.granel_kg) or 0
+        productos[r.product_code or ""] += _num(r.granel_kg) or 0
     serie_oee = defaultdict(list)
     for r in con_oee:
-        serie_oee[r.fecha].append(r.indicadores["oee"])
-    cal = rating(prom(con_oee, "oee")) if con_oee else None
+        serie_oee[r.fecha].append(ind(r, "oee"))
+    try:
+        cal = rating(prom(con_oee, "oee")) if con_oee else None
+    except (TypeError, ValueError, KeyError):  # calificación mal configurada: el tablero se muestra igual
+        cal = None
     return {"desde": desde, "hasta": hasta, "partes": len(rows), "oee": prom(con_oee, "oee"),
             "disponibilidad": prom(con_oee, "disponibilidad"), "rendimiento": prom(con_oee, "rendimiento_oee"),
             "calidad": prom(con_oee, "calidad"), "calificacion": cal, "lineas": lineas,
-            "causas": [(k, round(v, 1)) for k, v in causas.most_common(12)], "defectos": defectos.most_common(10),
+            "causas": [(k, round(v, 1)) for k, v in causas.most_common(12)],
+            "defectos": [(k, round(v, 1)) for k, v in defectos.most_common(10)],
             "semanas": sorted(semanas.items()), "productos": sorted(productos.items(), key=lambda x: -x[1])[:15],
             "serie_oee": sorted((d, round(sum(v) / len(v), 1)) for d, v in serie_oee.items()),
-            "sin_velocidad": len([r for r in rows if (r.indicadores or {}).get("oee_nota")]),
-            "kg_sobrepeso": round(sum((r.indicadores or {}).get("kg_sobrepeso") or 0 for r in rows), 1)}
+            "sin_velocidad": len([r for r in rows if isinstance(r.indicadores, dict) and r.indicadores.get("oee_nota")]),
+            "kg_sobrepeso": round(sum(ind(r, "kg_sobrepeso") or 0 for r in rows), 1)}
 
 
 def productivity(user, desde=None, hasta=None):
@@ -749,7 +911,7 @@ def productivity(user, desde=None, hasta=None):
                 if fin < ini:
                     fin += timedelta(days=1)
                 h = max(_min(ini, fin) - float(c.get("refrigerio_min") or 0), 0) / 60.0
-            a = acc[c["nombre"].strip().upper()]
+            a = acc[(c.get("nombre") or "").strip().upper() or "(sin nombre)"]
             a["horas"] += h
             a["kg"] += float(c.get("kg") or 0)
             a["partes"] += 1
@@ -761,8 +923,10 @@ def productivity(user, desde=None, hasta=None):
 
 # ------------------------------------------------------------------ GS1
 def _gs1_perm(user):
-    if not has_perm(user, "comercial.configurar"):
-        raise BusinessError("La tabla GS1 ↔ SAP la cargan y modifican el Jefe Comercial y el Gerente Comercial.")
+    # V76: también la carga Producción (Configuración de Producción), que es quien valida el EAN en el parte
+    produccion = has_perm(user, "produccion.configurar") and user.role is not None and user.role.area == "Producción"
+    if not (has_perm(user, "comercial.configurar") or produccion):
+        raise BusinessError("La tabla GS1 ↔ SAP la cargan Comercial (Jefe o Gerente) y la Jefatura de Producción.")
 
 
 def save_gtin(user, datos):
@@ -794,56 +958,148 @@ def delete_gtin(user, gtin):
     db().flush()
 
 
+def _norm_txt(t):
+    import unicodedata
+    t = unicodedata.normalize("NFD", str(t or "").upper())
+    t = "".join(c for c in t if unicodedata.category(c) != "Mn")
+    return " ".join(t.replace("ARVERJA", "ARVEJA").replace(".", " ").replace(",", " ").replace("*", " ").split())
+
+
+def _kg_contenido(contenido, unidad):
+    try:
+        v = float(str(contenido or "").replace(",", "."))
+    except ValueError:
+        return None
+    u = _norm_txt(unidad)
+    if u.startswith(("GRAMO", "GR", "G")):
+        return v / 1000
+    if u.startswith(("KILO", "KG")):
+        return v
+    return None
+
+
+def emparejar_gtin(marca, descripcion, contenido="", unidad="", nombre_generico="", variedad="", productos=None):
+    """V76: código SAP (solo PT) que corresponde a una fila de la tabla GS1 sin «código interno». Compara la marca, el
+    grano (nombre genérico), la variedad y el contenido (450 GR = 0,45 kg) con la descripción y el peso del producto.
+    Devuelve el código si hay una sola coincidencia clara; si no, None (queda para asignar a mano)."""
+    from .stock import product_kind
+    if productos is None:
+        productos = [p for p in db().execute(select(Product)).scalars() if ((p.tipo or "").upper() or product_kind(p)) == "PT"]
+    kg = _kg_contenido(contenido, unidad)
+    claves = [w for w in _norm_txt(f"{nombre_generico} {variedad}").split() if len(w) > 2]
+    marca_n = _norm_txt(marca)
+    mejores, top = [], 0
+    for p in productos:
+        d = _norm_txt(f"{p.descripcion} {p.marca}")
+        if marca_n and marca_n not in d:
+            continue
+        if kg is not None and p.peso_kg and abs(p.peso_kg - kg) > 1e-6:
+            continue
+        if not claves or not all(c in d for c in claves):
+            continue
+        pts = len(claves) + (2 if kg is not None and p.peso_kg else 0) + (1 if marca_n else 0)
+        extra = len(set(d.split()) - set(_norm_txt(descripcion).split()))  # menos palabras sobrantes, mejor
+        score = pts * 100 - extra
+        if score > top:
+            mejores, top = [p.code], score
+        elif score == top:
+            mejores.append(p.code)
+    return mejores[0] if len(mejores) == 1 else None
+
+
 def import_gtins(user, path):
-    """Carga la tabla GS1 ↔ SAP desde Excel: columnas GTIN (o EAN), tipo, código SAP, marca, descripción, envase,
-    contenido, unidad. Reemplaza las filas con el mismo GTIN."""
+    """Carga la tabla GS1 ↔ SAP desde Excel. Acepta dos formatos:
+    - la plantilla propia: GTIN (o EAN), tipo, código SAP, marca, descripción, envase, contenido, unidad;
+    - la exportación de GS1 Perú: Estándar (GTIN13/GTIN14), Código (el EAN), Marca, Descripción, Envase, Contenido,
+      Unidad, Código interno (el código SAP), Nombre genérico, Variedad…
+    V76: el EAN es solo del producto terminado (PT). Las filas sin código SAP se emparejan con el PT por marca, grano,
+    variedad y contenido; las que no se pueden emparejar con certeza quedan registradas sin código para asignarlas a
+    mano. Reemplaza las filas con el mismo GTIN. Devuelve (cargados, errores, sin_emparejar)."""
     from openpyxl import load_workbook
+    from .stock import product_kind
     _gs1_perm(user)
     ws = load_workbook(path, data_only=True, read_only=True).active
     filas = list(ws.iter_rows(values_only=True))
-    alias = {"gtin": ("gtin", "ean", "codigo gtin", "código gtin", "gtin13", "gtin14", "ean13", "ean14", "codigo de barras",
-                      "código de barras"),
-             "tipo": ("tipo", "tipo gtin"), "product_code": ("codigo sap", "código sap", "sap", "codigo", "código", "articulo",
-                                                             "artículo"),
-             "marca": ("marca",), "descripcion": ("descripcion", "descripción"), "envase": ("envase",),
-             "contenido": ("contenido",), "unidad": ("unidad", "um")}
 
     def norm(x):
-        return " ".join(str(x or "").strip().lower().split())
+        return " ".join(_norm_txt(x).lower().split())
     hdr = None
     for i, r in enumerate(filas[:15]):
         cols = [norm(v) for v in r]
-        if any(c in alias["gtin"] for c in cols):
+        if any(c in ("gtin", "ean", "codigo gtin", "gtin13", "gtin14", "ean13", "ean14", "codigo de barras") for c in cols) \
+                or ("estandar" in cols and "codigo" in cols):
             hdr = i
             break
     if hdr is None:
-        raise BusinessError("No se encontró la columna GTIN / EAN.")
+        raise BusinessError("No se encontró la columna GTIN / EAN (o «Estándar» y «Código» de GS1).")
     cols = [norm(v) for v in filas[hdr]]
-    idx = {k: next((j for j, c in enumerate(cols) if c in a), None) for k, a in alias.items()}
-    if idx["product_code"] is None:
-        raise BusinessError("Falta la columna con el código SAP del producto.")
-    n, errores = 0, []
+
+    def col(*nombres):
+        return next((j for j, c in enumerate(cols) if c in nombres), None)
+    gs1 = "estandar" in cols  # exportación de GS1: «Código» es el EAN y «Código interno» el código SAP
+    idx = {"gtin": col("gtin", "ean", "codigo gtin", "gtin13", "gtin14", "ean13", "ean14", "codigo de barras")
+           if not gs1 else col("codigo"),
+           "tipo": col("tipo", "tipo gtin", "estandar"),
+           "product_code": col("codigo interno", "codigo sap", "sap", "articulo") if gs1
+           else col("codigo sap", "sap", "codigo", "articulo", "codigo interno"),
+           "marca": col("marca"), "descripcion": col("descripcion"), "envase": col("envase"), "contenido": col("contenido"),
+           "unidad": col("unidad", "um"), "generico": col("nombre generico"), "variedad": col("variedad")}
+    if idx["gtin"] is None:
+        raise BusinessError("Falta la columna del GTIN / EAN.")
+    pts = [p for p in db().execute(select(Product)).scalars() if ((p.tipo or "").upper() or product_kind(p)) == "PT"]
+    pt_codes = {p.code for p in pts}
+
+    def v(r, k):
+        j = idx[k]
+        return str(r[j] if j is not None and j < len(r) and r[j] is not None else "").strip()
+    n, errores, sin = 0, [], []
     for k, r in enumerate(filas[hdr + 1:], start=hdr + 2):
-        g = str(r[idx["gtin"]] or "").strip().split(".")[0] if idx["gtin"] is not None else ""
-        code = str(r[idx["product_code"]] or "").strip().upper()
+        g = v(r, "gtin").split(".")[0]
+        code = v(r, "product_code").upper()
         if not g and not code:
             continue
         if not g.isdigit() or len(g) not in (8, 12, 13, 14):
             errores.append(f"Fila {k}: GTIN inválido «{g}».")
             continue
+        auto = False
         if not code:
-            errores.append(f"Fila {k}: falta el código SAP.")
+            code = emparejar_gtin(v(r, "marca"), v(r, "descripcion"), v(r, "contenido"), v(r, "unidad"), v(r, "generico"),
+                                  v(r, "variedad"), pts) or ""
+            auto = bool(code)
+        elif code not in pt_codes:
+            errores.append(f"Fila {k}: {code} no es un producto terminado (el EAN es solo de PT).")
             continue
         x = db().get(ProductGTIN, g) or ProductGTIN(gtin=g)
-        x.product_code = code
-        x.tipo = (str(r[idx["tipo"]] or "").strip().upper() if idx["tipo"] is not None else "") or f"EAN{len(g)}"
+        if code or not x.product_code:  # no borra una asignación hecha a mano si la fila no trae código
+            x.product_code = code
+        t = v(r, "tipo").upper().replace("GTIN", "EAN")
+        x.tipo = t if t in ("EAN13", "EAN14", "EAN8", "EAN12") else f"EAN{len(g)}"
         for f in ("marca", "descripcion", "envase", "contenido", "unidad"):
             if idx[f] is not None:
-                setattr(x, f, str(r[idx[f]] or "").strip()[:250])
+                setattr(x, f, v(r, f)[:250])
         db().add(x)
         n += 1
-    audit(user, "GS1_CARGADO", "ProductGTIN", "", {"filas": n, "errores": len(errores)})
-    return n, errores
+        if not x.product_code:
+            sin.append(f"{g} · {v(r, 'descripcion')[:60]}")
+    db().flush()
+    audit(user, "GS1_CARGADO", "ProductGTIN", "", {"filas": n, "errores": len(errores), "sin_codigo": len(sin)})
+    return n, errores, sin
+
+
+def asignar_gtin(user, gtin, product_code):
+    """V76: asigna a mano el código SAP (PT) de un GTIN cargado sin emparejar."""
+    from .stock import product_kind
+    _gs1_perm(user)
+    x = db().get(ProductGTIN, str(gtin or "").strip())
+    if x is None:
+        raise BusinessError("GTIN no encontrado.")
+    code = (product_code or "").strip().upper().split(" ")[0]
+    p = db().get(Product, code)
+    if p is None or ((p.tipo or "").upper() or product_kind(p)) != "PT":
+        raise BusinessError("Elija un producto terminado (PT): el EAN es solo de PT.")
+    x.product_code = code
+    audit(user, "GS1_ASIGNADO", "ProductGTIN", x.gtin, {"codigo": code})
+    return x
 
 
 # ------------------------------------------------------------------ Control de producción (formato de Producción)

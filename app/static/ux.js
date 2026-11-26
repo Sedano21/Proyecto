@@ -182,9 +182,28 @@
       var code = (v('product_code') || '').split(' ')[0];
       if (!code) { info = null; check(); return; }
       fetch(url + '?code=' + encodeURIComponent(code), { credentials: 'same-origin' }).then(function (r) { return r.ok ? r.json() : null; })
-        .then(function (j) { info = j && j.code ? j : null; if (info && env()) set('presentacion_kg', info.presentacion_kg); check(); }).catch(function () {});
+        .then(function (j) { info = j && j.code ? j : null; if (info && env()) set('presentacion_kg', info.presentacion_kg); v76(); check(); }).catch(function () {});
     }
     function env() { return (f.getAttribute('data-envasado') || '').split(',').indexOf(v('linea')) >= 0; }
+    /* V76: el EAN solo para PT; tipo del producto; MP o granel sugerido según la receta */
+    function v76() {
+      var pt = !info || info.usa_ean !== false;
+      $all('[data-solo-pt]', f).forEach(function (x) { x.hidden = !pt; var i = x.querySelector('input'); if (i && !pt) i.value = ''; });
+      $all('[data-tipo-producto]', f).forEach(function (x) { x.textContent = info ? (info.descripcion + ' · tipo ' + (info.tipo || '—')) : ''; });
+      $all('[data-insumos]', f).forEach(function (x) {
+        x.innerHTML = '';
+        if (!info || !info.insumos || !info.insumos.length) { if (info) x.textContent = 'Sin lista de materiales: indique la MP o el granel.'; return; }
+        x.appendChild(document.createTextNode('Según la receta: '));
+        info.insumos.forEach(function (m) {
+          var b = document.createElement('button'); b.type = 'button'; b.className = 'chip';
+          b.textContent = m.code + ' · ' + m.descripcion + ' (' + m.cantidad + ' ' + (m.um || 'kg') + ' por unidad)';
+          b.addEventListener('click', function () { var el = f.querySelector('[name="mp_codigo"]'); if (el) { el.value = m.code + ' · ' + m.descripcion; } });
+          x.appendChild(b);
+        });
+        var mp = f.querySelector('[name="mp_codigo"]');
+        if (mp && !mp.value && info.insumos.length === 1) mp.value = info.insumos[0].code + ' · ' + info.insumos[0].descripcion;
+      });
+    }
     f.addEventListener('change', function (e) { if (e.target.name === 'product_code' || e.target.name === 'linea') load(); else check(); });
     f.addEventListener('input', function (e) { if (e.target.name !== 'product_code') check(); });
     load();

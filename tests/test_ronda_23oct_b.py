@@ -81,11 +81,11 @@ def test_almacen_no_habilitado_no_se_usa(s):
     assert "ALM-001" not in stock.enabled_warehouses()
 
 
-def test_tabla_gs1_solo_jefe_y_gerente_comercial(app, s, U):
+def test_tabla_gs1_comercial_y_produccion(app, s, U):
     from app.models import ProductGTIN
     from app.services import parte
-    with pytest.raises(BusinessError):
-        parte.save_gtin(U("jefe.produccion"), {"gtin": "7750000000017", "product_code": "PT-901"})
+    # V76 (26-nov-2026): la Jefatura de Producción también carga la tabla GS1 (pedido del usuario)
+    parte.save_gtin(U("jefe.produccion"), {"gtin": "7750000000024", "product_code": "PT-901"})
     with pytest.raises(BusinessError):
         parte.save_gtin(U("sistemas"), {"gtin": "7750000000017", "product_code": "PT-901"})
     parte.save_gtin(U("gerente.comercial"), {"gtin": "7750000000017", "product_code": "pt-901", "marca": "M"})
@@ -96,11 +96,11 @@ def test_tabla_gs1_solo_jefe_y_gerente_comercial(app, s, U):
     r = c.post("/ov/configuracion", data={"_csrf": tok, "accion": "gtin_baja", "gtin": "7750000000017"}, follow_redirects=True)
     assert "GTIN retirado" in r.get_data(as_text=True)
     assert s.get(ProductGTIN, "7750000000017") is None
-    # Producción la ve en su panel, sin poder cargarla
+    # V76: Producción la carga desde su panel (Excel propio o exportación de GS1)
     c2 = app.test_client()
     login(c2, "jefe.produccion")
     html = c2.get("/produccion/configuracion").get_data(as_text=True)
-    assert "solo consulta" in html and 'value="gs1"' not in html
+    assert 'value="gs1"' in html
     from app.services.core import has_perm
     assert not has_perm(U("sistemas"), "catalogo.fotos") and has_perm(U("gerente.comercial"), "catalogo.fotos")
 

@@ -518,7 +518,7 @@ details.site{border:1px solid var(--line);border-radius:var(--r-sm);padding:6px 
 details.site>summary{cursor:pointer}
 
 /* V14: selector de hora práctico (lista + flechas + Ahora), carga de fotos/archivos y miniaturas */
-.hm-src{display:none!important}
+.hm-src{display:inline-block!important;width:5.5em;min-height:40px;font-variant-numeric:tabular-nums;text-align:center} /* V76: la hora también se digita */
 .hm{display:inline-flex;align-items:center;gap:4px;flex-wrap:wrap}
 .hm select{min-height:40px;padding:4px 6px;width:auto;font-variant-numeric:tabular-nums;font-size:15px}
 .hm .hm-b,.hm .hm-now{min-height:40px;min-width:40px;padding:4px 8px;background:#fff;color:var(--cp-verde-800);border:1px solid var(--line-2);font-size:16px}
@@ -931,3 +931,13 @@ ol.pasos-cliente li{padding:4px 10px;border-radius:999px;background:#eef1f2;colo
   .row{flex-wrap:wrap}.row>div{min-width:0}input,select,textarea{max-width:100%}}
 /* V73: en celulares angostos la barra superior entra completa (sin desplazamiento lateral) */
 @media (max-width:480px){.top{gap:4px}.top-right{gap:2px}.top-right .stock-chip span{max-width:56px}.top .crumbs{flex:1 1 0}}
+
+/* V76: sugerencias mientras se escribe (también en el celular) */
+.sug-caja{position:absolute;z-index:1200;max-height:min(55vh,360px);overflow:auto;background:var(--surface,#fff);border:1px solid var(--line-2,#cfd8d3);border-radius:10px;box-shadow:0 12px 28px rgba(16,40,28,.16);padding:4px;max-width:min(92vw,560px)}
+.sug-op{display:block;width:100%;text-align:left;background:none;border:0;border-radius:6px;padding:9px 10px;color:var(--ink,#1b2a22);font:inherit;min-height:40px;cursor:pointer}
+.sug-op small{color:var(--muted,#6b7a72)}
+.sug-op:hover,.sug-op:focus{background:var(--cp-verde-50,#eef6f1);outline:none}
+.personas-sel{border:1px solid var(--line,#e3e8ef);border-radius:10px;padding:8px;margin:6px 0}
+.personas-lista{max-height:240px;overflow:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:2px 12px;margin-top:6px}
+.personas-lista label[hidden]{display:none}
+.sug-lista{padding-left:18px}.sug-lista li{margin:8px 0}

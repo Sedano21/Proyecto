@@ -156,8 +156,10 @@ def commercial_config():
                 path = os.path.join(up, f"gs1_{os.urandom(4).hex()}.xlsx")
                 arch.save(path)
                 return ptsvc.import_gtins(g.user, path)
-            return act(_gs1, lambda r: f"{r[0]} código(s) GS1 cargados." + (f" Errores: {' | '.join(r[1][:5])}" if r[1] else ""),
-                       back + "#gs1")
+            return act(_gs1, lambda r: f"{r[0]} código(s) GS1 cargados." + (f" {len(r[2])} sin código SAP: asígnelos abajo." if r[2] else "")
+                       + (f" Errores: {' | '.join(r[1][:5])}" if r[1] else ""), back + "#gs1")
+        if acc == "gtin_asignar":  # V76
+            return act(lambda: ptsvc.asignar_gtin(g.user, f.get("gtin"), f.get("product_code")), "Código SAP asignado.", back + "#gs1")
         if acc == "gtin":
             return act(lambda: ptsvc.save_gtin(g.user, f), "GTIN guardado.", back + "#gs1")
         if acc == "gtin_baja":

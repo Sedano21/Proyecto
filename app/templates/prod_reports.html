@@ -1,25 +1,27 @@
 {% extends "base.html" %}{% from "_m.html" import b, csrf, ic, empty, paginacion, buscador_lista %}
 {% block content %}<div class="card-head"><h1 style="flex:1">Partes de producción</h1>
 {% if can('produccion.liquidar') %}<button class="btn" data-open="dlg-parte">{{ ic('plus') }} Nuevo parte</button>{% endif %}</div>
-<p class="seg small"><a class="on" href="{{ url_for('prod.reports') }}">Partes</a><a href="{{ url_for('prod.monitor') }}">Monitoreo en tiempo real</a><a href="{{ url_for('prod.plan') }}">Planeamiento</a><a href="{{ url_for('prod.liquidations') }}">Liquidaciones</a></p>
+<p class="seg small"><a class="on" href="{{ url_for('prod.reports') }}">Partes</a><a href="{{ url_for('prod.monitor') }}">Monitoreo en tiempo real</a><a href="{{ url_for('prod.plan') }}">Planeamiento</a><a href="{{ url_for('prod.liquidations') }}">Liquidaciones</a><a href="{{ url_for('prod.productivity') }}">Eficiencia por persona</a><a href="{{ url_for('prod.grain_analysis') }}">Análisis por grano</a>{% if can('movimiento.solicitar') %}<a href="{{ url_for('sup.moves') }}">Movimientos punto a punto</a>{% endif %}</p>
 <details class="small muted"><summary>Cómo se calculan el rendimiento y el desmedro</summary><p>Selección: % rendimiento = granel / kg de entrada; % desmedro = desmedro / kg de entrada. Envasado: % rendimiento = unidades × presentación / kg de MP; el desmedro es lo que no se convirtió en unidades. El desmedro es la merma y se liga a la liquidación por la OF.</p></details>
 
 {% if can('produccion.liquidar') %}
 <dialog class="drawer" id="dlg-parte" aria-labelledby="dlg-parte-t">
 <form method="post" action="{{ url_for('prod.part_new') }}" class="wizard" data-product-info="{{ url_for('prod.product_api') }}" data-envasado="{{ envasado }}">{{ csrf() }}
 <div class="dlg-head"><h3 id="dlg-parte-t">Nuevo parte de producción</h3><button class="ibtn" data-close aria-label="Cerrar">{{ ic('x') }}</button></div>
-<div class="dlg-body"><ol class="steps"><li>1. Línea y producto</li><li>2. Materia prima</li><li>3. Registrar o programar</li></ol>
+<div class="dlg-body"><ol class="steps"><li>1. Línea y producto a generar</li><li>2. Materia prima o granel que ingresa</li><li>3. Registrar o programar</li></ol>
 <section class="wz-step">
 <label class="req">Línea</label><select name="linea" required>{% for c, n, _ in lineas %}<option value="{{ c }}">{{ n }}</option>{% endfor %}</select>
-<label class="req">Producto</label><input name="product_code" required list="pp2" autocomplete="off" placeholder="código o nombre"><datalist id="pp2">{% for p in products %}<option value="{{ p.code }} · {{ p.descripcion }}{{ ' · ' ~ p.presentacion if p.presentacion }}"></option>{% endfor %}</datalist>
+<label class="req">Producto que se va a generar (PT o MP)</label><input name="product_code" required list="pp2" autocomplete="off" placeholder="escriba el código o el nombre y elija"><datalist id="pp2">{% for p in products %}<option value="{{ p.code }} · {{ p.descripcion }}{{ ' · ' ~ p.presentacion if p.presentacion }}">{{ p.tipo }}</option>{% endfor %}</datalist>
+<div class="small muted" data-tipo-producto></div>
 <div class="row"><div><label>Turno</label><select name="turno">{% for x in turnos %}<option>{{ x }}</option>{% endfor %}</select></div><div><label>OF</label><input name="of" size="10"></div><div><label>Máquina</label><input name="maquina" size="12" placeholder="= línea"></div></div>
-<div class="row"><div><label>EAN escaneado</label><input name="ean" inputmode="numeric" size="16" list="eans" autocomplete="off" placeholder="escanee, escriba o elija"></div><div><label>Presentación (kg)</label><input type="number" step="any" min="0" name="presentacion_kg" style="width:90px"></div><div><label>Und. por paquete</label><input type="number" step="1" min="1" name="und_paquete" style="width:80px"></div></div>
+<div class="row"><div data-solo-pt><label>EAN escaneado (solo PT)</label><input name="ean" inputmode="numeric" size="16" list="eans" autocomplete="off" placeholder="escanee, escriba o elija"></div><div><label>Presentación (kg)</label><input type="number" step="any" min="0" name="presentacion_kg" style="width:90px"></div><div><label>Und. por paquete</label><input type="number" step="1" min="1" name="und_paquete" style="width:80px"></div></div>
 <div class="live-check" aria-live="polite"></div>
 <div class="wz-nav"><span></span><button class="btn" data-next>Siguiente</button></div></section>
 <section class="wz-step" hidden>
 <div class="row"><div><label>Peso por saco (kg)</label><input type="number" step="any" min="0" name="peso_saco_kg" style="width:90px"></div><div><label># sacos</label><input type="number" step="1" min="0" name="sacos" style="width:80px"></div><div><label>Saldo (kg)</label><input type="number" step="any" min="0" name="saldo_mp_kg" style="width:80px"></div></div>
 <label>o total de MP (kg)</label><input type="number" step="any" min="0" name="peso_entrada_kg" style="width:120px">
-<div class="row"><div><label>MP (código)</label><input name="mp_codigo" size="10"></div><div><label>Lote MP</label><input name="lote" size="12"></div><div><label>F.V. MP</label><input type="date" name="fv_mp"></div></div>
+<label>Materia prima o granel que ingresa</label><div class="sug-insumos small" data-insumos></div>
+<div class="row"><div class="grow"><label>MP / granel (código)</label><input name="mp_codigo" list="pp-entrada" autocomplete="off" placeholder="escriba y elija; se sugiere según la receta"><datalist id="pp-entrada">{% for p in entradas %}<option value="{{ p.code }} · {{ p.descripcion }}">{{ p.tipo }}</option>{% endfor %}</datalist></div><div><label>Lote MP</label><input name="lote" size="12"></div><div><label>F.V. MP</label><input type="date" name="fv_mp"></div></div>
 <div class="row"><div><label>Lote PT (solo el número)</label><input name="lote_pt" size="12" placeholder="p. ej. 000863FA" title="Escriba el número del lote sin puntos: si es otra producción del mismo lote, el sistema le pone el punto que corresponde para SAP"></div><div><label>F.V. PT</label><input type="date" name="fv_pt"></div><div><label>Cliente</label><input name="cliente" size="14"></div></div>
 <div class="live-check" aria-live="polite"></div>
 <div class="wz-nav"><button class="btn sec" data-prev>Atrás</button><button class="btn" data-next>Siguiente</button></div></section>

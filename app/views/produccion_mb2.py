@@ -98,6 +98,11 @@ def part_detail(pid):
                        "Parte actualizado.", back)
         if acc == "estado":
             return act(lambda: ptsvc.set_state(g.user, r, f.get("estado"), f.get("motivo", "")), "Estado actualizado.", back)
+        if acc == "corregir":  # V76: correcciones con historial (personas, personas asignadas, kg, horas…)
+            datos = {k: f.get(k) for k in ptsvc.CAMPOS_CORREGIBLES if k in f}
+            wids = f.getlist("worker_id") if f.get("con_personas") == "1" else None
+            return act(lambda: ptsvc.corregir(g.user, r, datos, f.get("motivo", ""), wids),
+                       lambda x: f"Corrección registrada ({len(x['cambios'])} dato(s)).", back + "#correcciones")
         if acc == "control_calidad":  # V74: Jefatura, Supervisión y Asistente de Calidad, en tiempo real
             from ..services import calidad_v74 as c74
             return act(lambda: c74.registrar_control(g.user, r, f.get("parametro", ""), f.get("valor", ""),
@@ -113,12 +118,12 @@ def part_detail(pid):
                            estados=ptsvc.ESTADOS_PARTE, ideal=ideal,
                            destinos=["DESPACHO", "ENVASADO", "PRODUCCION", "ALMACÉN PT", "ALMACÉN MP", "SERV. EXTERNO",
                                      "OBSERVADO", "SEL. MANUAL", "CALIDAD 3", "DESMEDRO"],
-                           workers=list(db().execute(select(Worker).where(Worker.activo.is_(True), Worker.area == "Producción")
-                                                     .order_by(Worker.nombre)).scalars()),
+                           workers=[w for w in db().execute(select(Worker).where(Worker.activo.is_(True), Worker.area == "Producción")
+                                                            .order_by(Worker.nombre)).scalars() if asvc.es_colaborador(w.nombre)],
                            gtin=db().get(ProductGTIN, r.ean) if r.ean else None, live=ptsvc.live(r),
                            tol=ptsvc.tolerance_for(r.linea, r.presentacion_kg) or {}, no_editables=ptsvc.NO_EDITABLES,
                            formato_hora=(param("formato_hora", "24H") or "24H").upper(), fmt_hora=ptsvc.fmt_hora,
-                           sugeridos=param("calidad_parametros_proceso", []) or [])
+                           sugeridos=param("calidad_parametros_proceso", []) or [], corregibles=ptsvc.CAMPOS_CORREGIBLES)
 
 
 @bp.route("/tablero")
@@ -193,6 +198,8 @@ def attendance():
         obs = {k[4:]: v for k, v in f.items() if k.startswith("obs_")}
         lineas = {k[6:]: v for k, v in f.items() if k.startswith("linea_")}
         return act(lambda: asvc.register_day(g.user, fecha, marcas, obs, lineas), lambda n: f"Asistencia registrada ({n}).", back)
+    if asvc.limpiar_no_colaboradores(g.user):  # V76: DM, VACACIONES, ASISTENCIA, TOTAL… no son colaboradores
+        db().commit()
     from ..catalogs import PRODUCTION_LINES
     # V17: Almacén y Logística ven solo su propio personal (no el de Producción); Jefatura de Operaciones, todo
     visibles = asvc.visible_areas(g.user)
@@ -295,6 +302,22 @@ def prod_config():
             return act(lambda: _save_speeds(g.user, f), "Velocidades nominales guardadas.", back + "#velocidad_nominal")
         if f.get("accion") == "tolerancias":
             return act(lambda: _save_tolerances(g.user, f), "Tolerancias guardadas.", back + "#tolerancia_rendimiento")
+        if f.get("accion") == "gs1":  # V76: Producción carga la tabla GS1 (Excel propio o exportación de GS1 Perú)
+            def _gs1():
+                import os
+                from flask import current_app
+                arch = request.files.get("archivo")
+                if not arch or not arch.filename.lower().endswith((".xlsx", ".xlsm")):
+                    raise BusinessError("Suba la tabla GS1 en Excel (.xlsx).")
+                up = current_app.config["UPLOAD_DIR"]
+                os.makedirs(up, exist_ok=True)
+                path = os.path.join(up, f"gs1_{os.urandom(4).hex()}.xlsx")
+                arch.save(path)
+                return ptsvc.import_gtins(g.user, path)
+            return act(_gs1, lambda r: f"{r[0]} código(s) GS1 cargados." + (f" {len(r[2])} sin código SAP: asígnelos abajo." if r[2] else "")
+                       + (f" Errores: {' | '.join(r[1][:5])}" if r[1] else ""), back + "#gs1")
+        if f.get("accion") == "gtin_asignar":
+            return act(lambda: ptsvc.asignar_gtin(g.user, f.get("gtin"), f.get("product_code")), "Código SAP asignado.", back + "#gs1")
         key = f.get("key")
         if key not in PARAMS_PRODUCCION:
             abort(400)
@@ -306,4 +329,6 @@ def prod_config():
     return render_template("prod_config.html", params=[p for p in params if p], json=json, velocidades=vel, seleccion=seleccion,
                            tolerancias=param("tolerancia_rendimiento", []) or [], lineas=PRODUCTION_LINES,
                            pv=db().get(Param, "velocidad_nominal"), pt=db().get(Param, "tolerancia_rendimiento"),
-                           gtins=list(db().execute(select(ProductGTIN).order_by(ProductGTIN.product_code).limit(500)).scalars()))
+                           gtins=list(db().execute(select(ProductGTIN).order_by(ProductGTIN.product_code != "", ProductGTIN.product_code)
+                                                   .limit(800)).scalars()),
+                           pts=[p for p in ptsvc.productos_parte()[0] if (p.tipo or "").upper() in ("PT", "")])

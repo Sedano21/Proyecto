@@ -25,7 +25,7 @@
     w.className = 'hm';
     var hs = '<option value="">hh</option>', ms = '<option value="">mm</option>';
     for (var h = 0; h < 24; h++) hs += '<option value="' + h + '">' + pad(h) + '</option>';
-    for (var m = 0; m < 60; m++) ms += '<option value="' + m + '">' + pad(m) + '</option>';
+    for (var m = 0; m < 60; m += 5) ms += '<option value="' + m + '">' + pad(m) + '</option>';
     w.innerHTML = '<button type="button" class="hm-b" data-hm="-5" aria-label="Restar 5 minutos">«</button>' +
       '<button type="button" class="hm-b" data-hm="-1" aria-label="Restar 1 minuto">‹</button>' +
       '<select class="hm-h" aria-label="Hora">' + hs + '</select><b>:</b><select class="hm-m" aria-label="Minutos">' + ms + '</select>' +
@@ -41,7 +41,8 @@
   function paint(inp, w) {
     var t = parse(inp.value);
     w.querySelector('.hm-h').value = t ? String(t[0]) : '';
-    w.querySelector('.hm-m').value = t ? String(t[1]) : '';
+    var mm = w.querySelector('.hm-m'), m5 = t ? String(t[1]) : '';
+    mm.value = [].some.call(mm.options, function (o) { return o.value === m5; }) ? m5 : '';  // V76: minutos de 5 en 5; el exacto se digita
   }
   function setT(w, h, m) {
     var inp = w.previousElementSibling;

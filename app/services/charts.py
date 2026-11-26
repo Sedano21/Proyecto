@@ -65,7 +65,8 @@ def line(series, unit="", height=220, width=640, title=""):
             out.append(f'<text x="{x(i):.1f}" y="{height - 8}" class="ax" text-anchor="{ancla}">{escape(str(lb))}</text>')
     for si, (name, pts) in enumerate(series):
         c = SERIES[si]
-        d = " ".join(f"{'M' if i == 0 else 'L'}{x(i):.1f},{y(v):.1f}" for i, (_, v) in enumerate(pts) if v is not None)
+        validos = [(i, v) for i, (_, v) in enumerate(pts) if v is not None]  # V76: series con semanas sin dato
+        d = " ".join(f"{'M' if k == 0 else 'L'}{x(i):.1f},{y(v):.1f}" for k, (i, v) in enumerate(validos))
         out.append(f'<path d="{d}" fill="none" stroke="{c}" stroke-width="2" stroke-linejoin="round"/>')
         for i, (lb, v) in enumerate(pts):
             if v is None:

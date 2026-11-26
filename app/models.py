@@ -733,6 +733,7 @@ class Liquidation(Base):
     recibido_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     observacion: Mapped[str] = mapped_column(Text, default="")
     lot_id: Mapped[int | None] = mapped_column(ForeignKey("stock_lots.id"), nullable=True)
+    sap: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}")  # V76: {docnum, docentry, ts, user} o {error}
     parcial: Mapped[bool] = mapped_column(Boolean, default=False)  # liquidación parcial de la solicitud (ronda UX)
     ts: Mapped[datetime] = mapped_column(DateTime, default=now)
     product = relationship("Product")
@@ -1253,6 +1254,7 @@ class Alert(Base):
     derivadas: Mapped[list] = mapped_column(JSON, default=list)
     type = relationship("AlertType")
     asignado = relationship("User", foreign_keys=[asignado_a])
+    creador = relationship("User", foreign_keys="Alert.creado_por")  # V76: quién solicitó la tarea o generó la alerta
     events = relationship("AlertEvent", back_populates="alert", order_by="AlertEvent.ts",
                           cascade="all, delete-orphan")
     incidents = relationship("AlertIncident", back_populates="alert", order_by="AlertIncident.id",
@@ -1495,6 +1497,8 @@ class ProductionReport(Base):
     indicadores: Mapped[dict] = mapped_column(JSON, default=dict)  # OEE, peso promedio, desviación, horas efectivas…
     # V74: controles de Calidad durante el proceso [{n, parametro, valor, conforme, observacion, user, ts}]
     controles_calidad: Mapped[list] = mapped_column(JSON, default=list, server_default="[]")
+    # V76: correcciones del parte [{n, user, ts, motivo, cambios: {campo: [antes, después]}}]
+    correcciones: Mapped[list] = mapped_column(JSON, default=list, server_default="[]")
     inicio_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     fin_ts: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     bloqueo: Mapped[dict] = mapped_column(JSON, default=dict)  # BLOQUEADO por Calidad: {motivo, user, ts}
@@ -1519,6 +1523,7 @@ class ProductionPlan(Base):
     # obs. demo v0.7: MANUAL (lo registra Producción) o SISTEMA (preprogramado con los requerimientos; lo edita el Jefe)
     origen: Mapped[str] = mapped_column(String(10), default="MANUAL")
     # ronda 23-oct-2026: el cambio que propone un asistente queda pendiente hasta que lo valida el Jefe de Producción
+    insumo: Mapped[str] = mapped_column(String(60), default="", server_default="")  # V76: granel o MP a utilizar
     cambio_pendiente: Mapped[dict] = mapped_column(JSON, default=dict)
     product = relationship("Product")
 
