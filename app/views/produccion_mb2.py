@@ -206,7 +206,8 @@ def attendance():
     # V17: Almacén y Logística ven solo su propio personal (no el de Producción); Jefatura de Operaciones, todo
     visibles = asvc.visible_areas(g.user)
     area = asvc.area_of(g.user) or ("todas las áreas" if visibles is None else ", ".join(sorted(visibles)) or "su área")
-    return render_template("attendance.html", fecha=fecha, workers=asvc.workers_of(g.user, ver=True),
+    workers = asvc.workers_of(g.user, ver=True)
+    return render_template("attendance.html", fecha=fecha, workers=workers, usuarios=asvc.usuarios_de(workers),
                            dia=asvc.day(fecha), estados=asvc.states(), puede=asvc.can_register(g.user), area=area,
                            resumen=asvc.summary(fecha - timedelta(days=29), fecha, areas=visibles), lineas=PRODUCTION_LINES,
                            puestos=asvc.positions(g.user), alta=asvc.alta_config(asvc.area_of(g.user)),

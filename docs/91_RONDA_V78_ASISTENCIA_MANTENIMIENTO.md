@@ -14,6 +14,10 @@ Fuente: el mensaje del usuario del 27-nov. En «Asistencia de mi personal», el 
   colaboradores de su área, ligados a su usuario.
   - Parámetro nuevo «asistencia_roles_por_area»: `{"Mantenimiento": ["TECNICO_MANTENIMIENTO", "PERSONAL_LIMPIEZA"]}`.
   - Se puede ampliar a otras áreas desde Configuración.
+- **Usuario y rol en pantalla:** cada persona muestra, bajo su nombre, «Usuario: tecnico.mant1».
+  - Su rol (Técnico de Mantenimiento, Personal de Limpieza) va en la columna de puesto.
+  - El nombre y el rol se mantienen como están en Usuarios: si se corrigen allí, se ven aquí.
+  - En el resumen de los últimos 30 días, el usuario aparece entre paréntesis.
 - **Sin duplicados:**
   - Si ya hay un colaborador ligado al usuario, no se crea otro.
   - Si ya había un colaborador de Mantenimiento con el mismo nombre (registrado a mano o desde Limpieza), se le liga.
@@ -29,10 +33,12 @@ Fuente: el mensaje del usuario del 27-nov. En «Asistencia de mi personal», el 
   `app.cli init`, que la actualización automática ya ejecuta.
 
 ## Pruebas
-`tests/test_v78.py`: 6 pruebas.
+`tests/test_v78.py`: 8 pruebas.
 - Aparecen en la lista que ve y registra el jefe.
 - Aparecen en la pantalla del jefe y no en la de Producción.
 - No hay duplicados y se ligan a un colaborador existente.
 - Un usuario desactivado sale y vuelve al reactivarse.
 - Se respeta la baja manual del jefe.
 - Sin configuración, la sincronización no hace nada.
+- Se muestran el usuario y el rol.
+- El nombre y el rol siguen al usuario.

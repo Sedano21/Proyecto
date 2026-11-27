@@ -88,3 +88,22 @@ def test_sin_configuracion_no_hace_nada(app, s):
     s.commit()
     assert asvc.sincronizar_usuarios(None) == 0
     assert s.query(Worker).filter(Worker.user_id.isnot(None)).count() == 0
+
+
+def test_muestra_usuario_y_rol(app, s, U):
+    html = _cliente(app, "jefe.mantenimiento").get("/produccion/asistencia").get_data(as_text=True)
+    for u in _usuarios_mant(s):
+        assert f"Usuario: <b>{u.username}</b>" in html and u.role.nombre in html  # el rol va en la columna de puesto
+
+
+def test_nombre_y_rol_siguen_al_usuario(app, s, U):
+    from app.models import Worker
+    from app.services import attendance as asvc
+    asvc.sincronizar_usuarios(None)
+    s.commit()
+    u = U("tecnico.mant1")
+    u.nombre = "Técnico Demo Renombrado"
+    asvc.sincronizar_usuarios(None)
+    s.commit()
+    w = s.query(Worker).filter(Worker.user_id == u.id).one()
+    assert w.nombre == "TÉCNICO DEMO RENOMBRADO" and w.puesto == u.role.nombre

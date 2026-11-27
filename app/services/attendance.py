@@ -114,6 +114,14 @@ def sincronizar_usuarios(user=None):
             db().flush()
             n += 1
             audit(user, "COLABORADOR_DESDE_USUARIO", "Worker", w.id, {"usuario": u.username, "area": area})
+        elif w.activo and w.area == area:
+            # el nombre y el rol se mantienen como están en el usuario (si se corrigen en Usuarios, se ven aquí)
+            puesto = (u.role.nombre if u.role is not None else u.role_code)[:60]
+            if (w.nombre, w.puesto) != (nombre, puesto):
+                antes = {"nombre": w.nombre, "puesto": w.puesto}
+                w.nombre, w.puesto = nombre, puesto
+                n += 1
+                audit(user, "COLABORADOR_DESDE_USUARIO", "Worker", w.id, {"usuario": u.username, "antes": antes})
         elif not w.activo and w.area == area:
             # solo se reactiva si la baja la hizo esta misma regla (usuario desactivado y luego reactivado)
             from ..models import AuditLog
@@ -126,6 +134,16 @@ def sincronizar_usuarios(user=None):
                 n += 1
                 audit(user, "COLABORADOR_USUARIO_ACTIVO", "Worker", w.id, {"usuario": u.username, "area": area})
     return n
+
+
+def usuarios_de(workers):
+    """V78: usuario del sistema ligado a cada colaborador ({id del colaborador: User}), para mostrar su usuario y rol."""
+    from ..models import User
+    ids = {w.user_id for w in workers if w.user_id}
+    if not ids:
+        return {}
+    users = {u.id: u for u in db().execute(select(User).where(User.id.in_(ids))).scalars()}
+    return {w.id: users[w.user_id] for w in workers if w.user_id in users}
 
 
 def workers_of(user, activos=False, ver=False):
