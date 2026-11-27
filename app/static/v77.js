@@ -1,7 +1,7 @@
 /* V77 (27-nov-2026): menú lateral plegable por área.
    Los perfiles con muchas opciones (gerencias, jefaturas) veían una lista muy larga. Ahora:
-   - cada área (Comercial, Almacén, Producción…) tiene su encabezado con flecha, color y cantidad de opciones; al tocarlo
-     se despliega o se pliega;
+   - cada área (Comercial, Almacén, Producción…) conserva su título y tiene una flecha a la derecha; al tocarlo se
+     despliega o se pliega;
    - el área de la pantalla abierta se despliega sola; las demás quedan como el usuario las dejó (se recuerda en este
      dispositivo);
    - «Áreas» pliega o despliega todas a la vez;
@@ -35,9 +35,6 @@
   if (grupos.length < 2) return; // con una sola área no hay nada que plegar
 
   var K = 'cp-nav-grupos';
-  var COLORES = { 'Panel': '#3a7d5c', 'Comercial': '#2f6fb3', 'Finanzas': '#0f8a8a', 'Almacén': '#c0892b', 'Producción': '#00923f',
-    'Calidad': '#b8323a', 'Abastecimiento': '#d0682a', 'Distribución': '#5b55b0', 'Flota': '#6d6aa8',
-    'Planta': '#8a6a4a', 'Mantenimiento': '#6f7c76', 'Administración': '#46525c', 'Marcha blanca': '#b0507e' };
   var estado = {};
   try { estado = JSON.parse(localStorage.getItem(K) || '{}') || {}; } catch (e) { estado = {}; }
   function guardar() { try { localStorage.setItem(K, JSON.stringify(estado)); } catch (e) {} }
@@ -56,11 +53,8 @@
     b.type = 'button';
     b.className = 'grp-tog';
     b.setAttribute('aria-controls', g.id);
-    b.style.setProperty('--gc', COLORES[nombre] || '#7b8781');
     var titulo = (h4.textContent || nombre).trim();
-    b.innerHTML = '<svg class="ic grp-chev" aria-hidden="true"><use href="#i-chevron"/></svg>' +
-      '<span class="grp-sq" aria-hidden="true"></span><span class="grp-t"></span>' +
-      '<span class="grp-n" title="Opciones en esta área">' + links.length + '</span>';
+    b.innerHTML = '<span class="grp-t"></span><svg class="ic grp-chev" aria-hidden="true"><use href="#i-chevron"/></svg>';
     b.querySelector('.grp-t').textContent = titulo;
     h4.textContent = '';
     h4.appendChild(b);
@@ -88,8 +82,8 @@
   /* encabezado «Áreas»: plegar o desplegar todo; y buscador del menú */
   var barra = document.createElement('div');
   barra.className = 'nav-tools lbl';
-  barra.innerHTML = '<button type="button" class="grp-all"><svg class="ic grp-chev" aria-hidden="true"><use href="#i-chevron"/></svg>' +
-    '<span>Áreas</span></button>' +
+  barra.innerHTML = '<button type="button" class="grp-all"><span class="grp-t">Áreas</span>' +
+    '<svg class="ic grp-chev" aria-hidden="true"><use href="#i-chevron"/></svg></button>' +
     '<input type="search" class="nav-q" placeholder="Buscar en el menú…" aria-label="Buscar en el menú" autocomplete="off">';
   nav.insertBefore(barra, nav.firstChild);
   var todas = barra.querySelector('.grp-all'), q = barra.querySelector('.nav-q');

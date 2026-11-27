@@ -5,12 +5,10 @@ referencia, porque hay perfiles con muchas opciones.
 
 ## Qué se hizo
 - **Áreas plegables:** cada área del menú (Comercial, Finanzas, Almacén, Producción, Calidad, Abastecimiento,
-  Distribución, Mantenimiento, Administración, Marcha blanca…) tiene un encabezado con:
-  - una flecha que indica si está abierta o cerrada;
-  - un cuadro de color propio del área;
-  - la cantidad de opciones que tiene.
-
-  Al tocar el encabezado se despliega o se pliega.
+  Distribución, Mantenimiento, Administración, Marcha blanca…) conserva su título de siempre, en mayúsculas y gris, y
+  suma una flecha verde a la derecha.
+  - La flecha apunta hacia abajo con el área abierta y hacia la derecha con el área plegada.
+  - Al tocar el título se despliega o se pliega (modelo enviado por el usuario el 27-nov).
 - **Qué queda abierto:**
   - El área de la pantalla abierta se despliega sola.
   - Las demás quedan como el usuario las dejó, y se recuerda en ese dispositivo.
