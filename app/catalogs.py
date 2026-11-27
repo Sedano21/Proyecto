@@ -3736,3 +3736,13 @@ PARAMS += [
 ]
 PARAMS[:] = [(k, (dict(v, HA=15) if k == "humedad_maxima_por_tipo" and "HA" not in v else v), *r) for k, v, *r in PARAMS]
 PARAMS_AGREGAR.append(("humedad_maxima_por_tipo", {"HA": 15}, V76))
+
+# V78 (27-nov-2026): en Asistencia, cada jefatura ve también a su personal que tiene usuario en el sistema (p. ej. el Jefe de
+# Mantenimiento: técnicos de mantenimiento y personal de limpieza), sin tener que darlo de alta a mano como colaborador
+V78 = "Mensaje del usuario del 27-nov-2026 (V78)"
+PARAMS += [
+    ("asistencia_roles_por_area", {"Mantenimiento": ["TECNICO_MANTENIMIENTO", "PERSONAL_LIMPIEZA"]}, "dict", "Turnos",
+     "Perfiles cuyos usuarios aparecen solos en la Asistencia de esa área (se registran como colaboradores del área, "
+     "ligados a su usuario; si el usuario se desactiva, deja de figurar).", "DEFINIDO",
+     f"{V78}: el Jefe de Mantenimiento debe ver a los técnicos de mantenimiento y al personal de limpieza"),
+]

@@ -67,6 +67,67 @@ def limpiar_no_colaboradores(user=None):
     return n
 
 
+def sincronizar_usuarios(user=None):
+    """V78: los usuarios activos de los perfiles de «asistencia_roles_por_area» (p. ej. técnicos de mantenimiento y personal
+    de limpieza) figuran como colaboradores de su área, ligados a su usuario, para que su jefatura registre su asistencia.
+    - Si ya hay un colaborador ligado a ese usuario, no se duplica (solo se reactiva si estaba de baja por esta regla).
+    - Si hay un colaborador del área con el mismo nombre y sin usuario, se le liga (no se crea otro).
+    - Si el usuario se desactiva, su colaborador del área deja de figurar.
+    Devuelve cuántos colaboradores se crearon o cambiaron."""
+    from ..models import User
+    cfg = param("asistencia_roles_por_area", {}) or {}
+    if not isinstance(cfg, dict):
+        return 0
+    area_de_rol = {r: area for area, roles in cfg.items() for r in (roles or [])}
+    if not area_de_rol:
+        return 0
+    usuarios = db().execute(select(User).where(User.role_code.in_(list(area_de_rol)))).scalars().all()
+    if not usuarios:
+        return 0
+    todos = db().execute(select(Worker)).scalars().all()
+    por_usuario = {w.user_id: w for w in todos if w.user_id}
+    n = 0
+    for u in usuarios:
+        area = area_de_rol[u.role_code]
+        w = por_usuario.get(u.id)
+        nombre = " ".join((u.nombre or u.username or "").split()).upper()[:160]
+        if not u.activo:
+            if w is not None and w.activo and w.area == area:
+                w.activo = False
+                n += 1
+                audit(user, "COLABORADOR_USUARIO_INACTIVO", "Worker", w.id, {"usuario": u.username, "area": area})
+            continue
+        if not es_colaborador(nombre):
+            continue
+        if w is None:
+            w = next((x for x in todos if not x.user_id and (x.area or "Producción") == area
+                      and " ".join((x.nombre or "").split()).upper() == nombre), None)
+            puesto = u.role.nombre if u.role is not None else u.role_code
+            if w is None:
+                w = Worker(nombre=nombre, area=area, puesto=puesto[:60], sublinea=puesto[:40], activo=True)
+                db().add(w)
+                todos.append(w)
+            elif not w.puesto:
+                w.puesto, w.sublinea = puesto[:60], (w.sublinea or puesto)[:40]
+            w.user_id = u.id
+            por_usuario[u.id] = w
+            db().flush()
+            n += 1
+            audit(user, "COLABORADOR_DESDE_USUARIO", "Worker", w.id, {"usuario": u.username, "area": area})
+        elif not w.activo and w.area == area:
+            # solo se reactiva si la baja la hizo esta misma regla (usuario desactivado y luego reactivado)
+            from ..models import AuditLog
+            baja = db().execute(select(AuditLog).where(
+                AuditLog.entidad == "Worker", AuditLog.entidad_id == str(w.id),
+                AuditLog.accion.in_(("COLABORADOR_USUARIO_INACTIVO", "COLABORADOR_USUARIO_ACTIVO", "COLABORADOR_GUARDADO",
+                                     "PERSONAL_MANT"))).order_by(AuditLog.id.desc())).scalars().first()
+            if baja is not None and baja.accion == "COLABORADOR_USUARIO_INACTIVO":
+                w.activo = True
+                n += 1
+                audit(user, "COLABORADOR_USUARIO_ACTIVO", "Worker", w.id, {"usuario": u.username, "area": area})
+    return n
+
+
 def workers_of(user, activos=False, ver=False):
     """Personal que el usuario registra (ver=False: su área) o que puede ver (ver=True: visible_areas)."""
     q = select(Worker).order_by(Worker.area, Worker.linea, Worker.nombre)

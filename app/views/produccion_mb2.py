@@ -198,7 +198,9 @@ def attendance():
         obs = {k[4:]: v for k, v in f.items() if k.startswith("obs_")}
         lineas = {k[6:]: v for k, v in f.items() if k.startswith("linea_")}
         return act(lambda: asvc.register_day(g.user, fecha, marcas, obs, lineas), lambda n: f"Asistencia registrada ({n}).", back)
-    if asvc.limpiar_no_colaboradores(g.user):  # V76: DM, VACACIONES, ASISTENCIA, TOTAL… no son colaboradores
+    cambios = asvc.limpiar_no_colaboradores(g.user)  # V76: DM, VACACIONES, ASISTENCIA, TOTAL… no son colaboradores
+    cambios += asvc.sincronizar_usuarios(g.user)  # V78: técnicos y personal de limpieza con usuario, en su área
+    if cambios:
         db().commit()
     from ..catalogs import PRODUCTION_LINES
     # V17: Almacén y Logística ven solo su propio personal (no el de Producción); Jefatura de Operaciones, todo
