@@ -113,6 +113,9 @@ def _pasos(user, today):
         ("ingreso_semanal", lambda: __import__("app.services.ingresos_semana", fromlist=["x"]).revisar_semana_cerrada(today)),
         ("fumigados", lambda: __import__("app.services.fumigados", fromlist=["x"]).revisar(today)),
         ("capacidad_lineas_baja", lambda: __import__("app.services.v42", fromlist=["x"]).check_capacidad_lineas(today)),
+        # V78: técnicos y personal de limpieza con usuario figuran como personal de Mantenimiento (Trabajos, Limpieza,
+        # Asistencia y «Mis trabajos» del técnico) aunque nadie abra esas pantallas
+        ("personal_con_usuario", lambda: __import__("app.services.attendance", fromlist=["x"]).sincronizar_usuarios(user)),
         ("correo", lambda: flush_outbox()),
     ]
 

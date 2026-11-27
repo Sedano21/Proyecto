@@ -107,3 +107,56 @@ def test_nombre_y_rol_siguen_al_usuario(app, s, U):
     s.commit()
     w = s.query(Worker).filter(Worker.user_id == u.id).one()
     assert w.nombre == "TÉCNICO DEMO RENOMBRADO" and w.puesto == u.role.nombre
+
+
+def _opciones(html, nombre_select):
+    import re
+    m = re.search(r'<select name="' + nombre_select + r'"[^>]*>(.*?)</select>', html, re.S)
+    return m.group(1) if m else ""
+
+
+def test_trabajos_ofrece_tecnicos_con_usuario(app, s, U):
+    html = _cliente(app, "jefe.mantenimiento").get("/planta/trabajos").get_data(as_text=True)
+    ops = _opciones(html, "asignado_worker_id")
+    for u in _usuarios_mant(s):
+        if u.role_code == "TECNICO_MANTENIMIENTO":
+            assert f"({u.username})" in ops
+        else:
+            assert f"({u.username})" not in ops  # el personal de limpieza no se ofrece para trabajos
+
+
+def test_limpieza_ofrece_personal_de_limpieza_con_usuario(app, s, U):
+    html = _cliente(app, "jefe.mantenimiento").get("/planta/limpieza").get_data(as_text=True)
+    ops = _opciones(html, "worker_id")
+    for u in _usuarios_mant(s):
+        if u.role_code == "PERSONAL_LIMPIEZA":
+            assert f"({u.username})" in ops
+        else:
+            assert f"({u.username})" not in ops  # los técnicos no se ofrecen para asignar zonas
+
+
+def test_asignar_trabajo_y_zona_al_personal_con_usuario(app, s, U):
+    """Flujo completo: el trabajo y la limpieza asignados le aparecen al técnico y a la persona en su propia vista."""
+    from datetime import date
+    from app.models import Worker
+    from app.services import attendance as asvc, limpieza as lp, mant_trabajos as mt
+    asvc.sincronizar_usuarios(None)
+    s.commit()
+    jefe, tec, lim = U("jefe.mantenimiento"), U("tecnico.mant1"), U("limpieza1")
+    w_tec = s.query(Worker).filter(Worker.user_id == tec.id).one()
+    w_lim = s.query(Worker).filter(Worker.user_id == lim.id).one()
+    assert w_tec in mt.technicians() and w_lim not in mt.technicians()
+    assert w_lim in lp.staff(solo_limpieza=True) and w_tec not in lp.staff(solo_limpieza=True)
+    zona = lp.zones()[0]
+    lp.assign(jefe, date.today(), w_lim.id, [zona.id])
+    s.commit()
+    w, mias = lp.mine(lim)
+    assert w.id == w_lim.id and [c.zone_id for c in mias] == [zona.id]
+
+
+def test_verificacion_periodica_sincroniza(app, s):
+    from app.models import Worker
+    from app.services.scheduler import run_checks
+    out = run_checks()
+    assert not str(out.get("personal_con_usuario", "")).startswith("error")
+    assert s.query(Worker).filter(Worker.user_id.isnot(None), Worker.area == "Mantenimiento").count() >= 4

@@ -45,8 +45,10 @@ def _fecha(v):
 
 
 def technicians():
-    return list(db().execute(select(Worker).where(Worker.area == "Mantenimiento", Worker.activo.is_(True))
-                             .order_by(Worker.nombre)).scalars())
+    """Técnicos a quienes se asignan los trabajos. V78: no se ofrece al personal de limpieza con usuario."""
+    from .attendance import sin_roles
+    return sin_roles(list(db().execute(select(Worker).where(Worker.area == "Mantenimiento", Worker.activo.is_(True))
+                                       .order_by(Worker.nombre)).scalars()), ("PERSONAL_LIMPIEZA",))
 
 
 def machines():

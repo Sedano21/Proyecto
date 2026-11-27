@@ -20,11 +20,16 @@ def _req(user):
         raise BusinessError("La limpieza la programa el Jefe de Mantenimiento.")
 
 
-def staff(activos=True):
+def staff(activos=True, solo_limpieza=False):
+    """Personal de Mantenimiento. V78: con solo_limpieza (para asignar zonas) no se ofrece a los técnicos con usuario."""
     q = select(Worker).where(Worker.area == "Mantenimiento")
     if activos:
         q = q.where(Worker.activo.is_(True))
-    return list(db().execute(q.order_by(Worker.puesto, Worker.nombre)).scalars())
+    filas = list(db().execute(q.order_by(Worker.puesto, Worker.nombre)).scalars())
+    if solo_limpieza:
+        from .attendance import sin_roles
+        filas = sin_roles(filas, ("TECNICO_MANTENIMIENTO",))
+    return filas
 
 
 def zones(activas=True):

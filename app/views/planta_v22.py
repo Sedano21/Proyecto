@@ -85,7 +85,12 @@ def works():
         hoy = date.today()
         rows = mt.board(f_date("desde") or hoy - timedelta(days=30), f_date("hasta") or hoy + timedelta(days=60),
                         request.args.get("estado") or None, request.args.get("tipo") or None)
-    return render_template("v22_trabajos.html", rows=paginate(rows), tecnicos=mt.technicians(), zonas=lp.zones(),
+    from ..services import attendance as asvc
+    if asvc.sincronizar_usuarios(g.user):  # V78: técnicos con usuario, sin darlos de alta a mano
+        db().commit()
+    tecnicos = mt.technicians()
+    return render_template("v22_trabajos.html", rows=paginate(rows), tecnicos=tecnicos, usuarios=asvc.usuarios_de(tecnicos),
+                           zonas=lp.zones(),
                            maquinas=mt.machines(), tipos=mt.TIPOS, estados=mt.ESTADOS, lugar=mt.lugar,
                            gestiona="mantenimiento.gestionar" in g.perms, hoy=date.today(),
                            estado=request.args.get("estado", ""), tipo=request.args.get("tipo", ""))
@@ -160,6 +165,11 @@ def cleaning():
     from sqlalchemy import select
     cuentas = list(db().execute(select(User).where(User.role_code.in_(("PERSONAL_LIMPIEZA", "TECNICO_MANTENIMIENTO")),
                                                    User.activo.is_(True)).order_by(User.nombre)).scalars())
-    return render_template("v22_limpieza.html", fecha=fecha, dia=lp.day(fecha), staff=lp.staff(), todos=lp.staff(False),
+    from ..services import attendance as asvc
+    if asvc.sincronizar_usuarios(g.user):  # V78: personal de limpieza con usuario, sin darlo de alta a mano
+        db().commit()
+    staff, todos = lp.staff(solo_limpieza=True), lp.staff(False)
+    return render_template("v22_limpieza.html", fecha=fecha, dia=lp.day(fecha), staff=staff, todos=todos,
+                           usuarios=asvc.usuarios_de(todos),
                            zonas=lp.zones(), todas_zonas=lp.zones(False), perf=lp.performance(desde, hoy), desde=desde,
                            cuentas=cuentas)

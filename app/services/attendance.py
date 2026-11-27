@@ -146,6 +146,14 @@ def usuarios_de(workers):
     return {w.id: users[w.user_id] for w in workers if w.user_id in users}
 
 
+def sin_roles(workers, roles):
+    """V78: quita a los colaboradores ligados a un usuario de esos perfiles (p. ej. en Trabajos de mantenimiento no se
+    ofrece al personal de limpieza). Los registrados a mano, sin usuario, se mantienen como antes."""
+    roles = set(roles or ())
+    usuarios = usuarios_de(workers)
+    return [w for w in workers if not (w.id in usuarios and usuarios[w.id].role_code in roles)]
+
+
 def workers_of(user, activos=False, ver=False):
     """Personal que el usuario registra (ver=False: su área) o que puede ver (ver=True: visible_areas)."""
     q = select(Worker).order_by(Worker.area, Worker.linea, Worker.nombre)
